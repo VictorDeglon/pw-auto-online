@@ -371,6 +371,7 @@ import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, on as onNet, sendState, sendHit, feed as netFeed } from './src/online/net.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
+import { createFX } from './src/fx/fx.js';
 import { initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
 
 const D = window.POWAY_DATA;
@@ -830,6 +831,7 @@ class GB {
     if (this.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.computeBoundingSphere();
     const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix();
+    this._mesh = m; this.p = this.n = this.c = this.uv = null; // buildings keep vertex ranges into this mesh (collapse)
     return m;
   }
 }
@@ -892,7 +894,7 @@ function collideCircle(pos, r, withTrees = true) {
   for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
     const c = cgrid.get(ckey(gx, gz)); if (!c) continue;
     for (const bi of c.b) {
-      const P = polys[bi]; if (P.stamp === st) continue; P.stamp = st;
+      const P = polys[bi]; if (P.stamp === st) continue; P.stamp = st; if (P.dead) continue;
       if (pos.x + r < P.minx || pos.x - r > P.maxx || pos.z + r < P.minz || pos.z - r > P.maxz) continue;
       const p = P.p, n = p.length / 2;
       let best = 1e9, bx = 0, bz = 0;
@@ -930,7 +932,7 @@ function rayBuildings(ox, oy, oz, dx, dy, dz, maxD) {
     for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
       const c = cgrid.get(ckey(Math.floor(x / CELL) + ix, Math.floor(z / CELL) + iz)); if (!c) continue;
       for (const bi of c.b) {
-        const P = polys[bi]; if (P.stamp === st) continue; P.stamp = st;
+        const P = polys[bi]; if (P.stamp === st) continue; P.stamp = st; if (P.dead) continue;
         const p = P.p, n = p.length / 2;
         for (let i = 0, j = n - 1; i < n; j = i++) {
           const ax = p[j * 2], az = p[j * 2 + 1], ex = p[i * 2] - ax, ez = p[i * 2 + 1] - az;
@@ -1403,6 +1405,7 @@ function addBuilding(b) {
   const big = kind === 2 || (kind === 1 && h > 8);
   const wallC = bcol >= 0 ? hex(bcol) : pick(big ? WALL_BIG : WALL_HOUSE);
   const matIdx = kind === 0 ? 0 : big ? (srand() < 0.2 ? 2 : srand() < 0.5 ? 1 : 3) : (srand() < 0.5 ? 0 : 3);
+  const gbs0 = new Map(chunkGBs(ch).map(g => [g, g.p.length / 3]));
   const S = walls(ch, flat, base, top, wallC, matIdx);
   const photo = b[12] > 0 && TX.roofs[b[14] || 0]; const roofG = photo ? ch.roofP[b[14] || 0] : (kind === 0 ? (srand() < 0.5 ? ch.roofC : ch.roofS) : ch.roofF);
   const roofC = photo ? hex(0xffffff) : (rcol >= 0 ? hex(rcol) : (kind === 0 ? pick(roofG === ch.roofC ? ROOF_CLAY : ROOF_SHINGLE) : hex(0xb8b4ac)));
@@ -1421,8 +1424,79 @@ function addBuilding(b) {
     for (const t of tris) tri(roofG, [contour[t[0]].x, top, contour[t[0]].y], [contour[t[1]].x, top, contour[t[1]].y], [contour[t[2]].x, top, contour[t[2]].y], roofC, roofC, roofC, uvOf(contour[t[0]].x, contour[t[0]].y), uvOf(contour[t[1]].x, contour[t[1]].y), uvOf(contour[t[2]].x, contour[t[2]].y), 0, 1, 0);
     if (big) { const dark = wallC.clone().multiplyScalar(0.85); const gb = ch.wall[matIdx]; for (let i = 0; i < n; i++) { const j = (i + 1) % n; const ax = flat[i * 2], az = flat[i * 2 + 1], bx = flat[j * 2], bz = flat[j * 2 + 1]; const ox = S > 0 ? bz - az : az - bz, oz = S > 0 ? ax - bx : bx - ax; tri(gb, [ax, top, az], [bx, top, bz], [bx, lip, bz], dark, dark, dark, [0, 0], [0.1, 0], [0.1, 0.1], ox, 0, oz); tri(gb, [ax, top, az], [bx, lip, bz], [ax, lip, az], dark, dark, dark, [0, 0], [0.1, 0.1], [0, 0.1], ox, 0, oz); } }
   }
-  addPoly(flat, base, top + 2);
+  const poly = polys.length; addPoly(flat, base, top + 2);
   if (kind === 0 && ZONE && inCore(cx, cz)) facadeDetails(ch, flat, S, base, top, cx, cz);
+  const ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) ranges.push([g, a, e]); }
+  let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
+  const B = { ranges, flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false };
+  B.hp0 = B.hp; BLD.push(B); bldOfPoly.set(poly, B);
+}
+// ---- destruction: every building knows its vertex ranges in the chunk meshes, so it can come down
+const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [];
+function chunkGBs(ch) { const a = [...ch.wall, ...ch.roofP, ch.roofC, ch.roofS, ch.roofF, ch.facade]; for (const g of ch.roofGs.values()) a.push(g); return a; }
+function buildingsNear(x, z, R) {
+  const out = [], st = ++stampN;
+  for (let gx = Math.floor((x - R) / CELL); gx <= Math.floor((x + R) / CELL); gx++) for (let gz = Math.floor((z - R) / CELL); gz <= Math.floor((z + R) / CELL); gz++) {
+    const c = cgrid.get(ckey(gx, gz)); if (!c) continue;
+    for (const bi of c.b) { const P = polys[bi]; if (P.stamp === st) continue; P.stamp = st; const B = bldOfPoly.get(bi); if (B && !B.dead) out.push(B); }
+  }
+  return out;
+}
+// a blast at (x, z): damage falls off from the nearest wall; enough of it brings the building down
+function blastBuildings(x, z, R, by) {
+  for (const B of buildingsNear(x, z, R * 1.6)) {
+    let d = 1e9; const f = B.flat, n = f.length / 2;
+    if (pip(x, z, f)) d = 0; else for (let i = 0, j = n - 1; i < n; j = i++) { const q = segClosest(x, z, f[j * 2], f[j * 2 + 1], f[i * 2], f[i * 2 + 1]); d = Math.min(d, Math.hypot(q[0] - x, q[1] - z)); }
+    if (d > R * 1.6) continue;
+    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6));
+    if (B.hp <= 0) { const dx = B.cx - x, dz = B.cz - z, L = Math.hypot(dx, dz) || 1; collapseBuilding(B, dx / L, dz / L, by); }
+    else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
+  }
+}
+function collapseBuilding(B, dirx, dirz, by) {
+  if (B.dead) return; B.dead = true; polys[B.poly].dead = true;
+  const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
+  for (const [g, a, e] of B.ranges) {
+    const m = g._mesh; if (!m) continue; const pos = m.geometry.attributes.position, k = e - a, y0 = new Float32Array(k), x0 = new Float32Array(k), z0 = new Float32Array(k);
+    for (let i = 0; i < k; i++) { x0[i] = pos.getX(a + i); y0[i] = pos.getY(a + i); z0[i] = pos.getZ(a + i); }
+    anims.push({ pos, a, k, x0, y0, z0 });
+  }
+  collapsing.push({ B, t: 0, dur, dirx, dirz, anims });
+  // the building's mass as tumbling blocks, upper floors first
+  const f = B.flat, n = f.length / 2; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (let i = 0; i < n; i++) { x0 = Math.min(x0, f[i * 2]); x1 = Math.max(x1, f[i * 2]); z0 = Math.min(z0, f[i * 2 + 1]); z1 = Math.max(z1, f[i * 2 + 1]); }
+  const Qn = { potato: 0.35, low: 0.55, medium: 0.8, high: 1, ultra: 1.25 }[GFX.id] || 1;
+  const nx = clamp(Math.round((x1 - x0) / 4.5), 1, 6), nz = clamp(Math.round((z1 - z0) / 4.5), 1, 6), ny = clamp(Math.round(H / 3.2), 1, 4);
+  const bx = (x1 - x0) / nx, bz = (z1 - z0) / nz, by_ = H / ny, mat = new THREE.MeshStandardMaterial({ color: B.col, roughness: 0.95 });
+  const geo = new THREE.BoxGeometry(1, 1, 1); let made = 0, maxN = Math.round(48 * Qn);
+  for (let iy = ny - 1; iy >= 0; iy--) for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
+    if (made >= maxN) break;
+    const cx = x0 + (ix + 0.5) * bx, cz = z0 + (iz + 0.5) * bz; if (!pip(cx, cz, f)) continue;
+    const m = new THREE.Mesh(geo, mat); m.scale.set(bx * 0.92, by_ * 0.9, bz * 0.92); m.position.set(cx, B.base + 0.6 + (iy + 0.5) * by_, cz); m.castShadow = GFX.shadows > 0;
+    const lean = (iy + 1) / ny;
+    FX.body(m, new THREE.Vector3(dirx * rand(1, 4) * lean + rand(-1, 1), rand(-1, 1.5), dirz * rand(1, 4) * lean + rand(-1, 1)), new THREE.Vector3(rand(-1.5, 1.5) - dirz * lean * 1.5, rand(-0.5, 0.5), rand(-1.5, 1.5) + dirx * lean * 1.5), { r: Math.min(bx, by_, bz) * 0.5, life: 150, bounce: 0.1, friction: 0.8 });
+    made++;
+  }
+  FX.chips(B.cx, B.base + H * 0.5, B.cz, Math.round(30 * Qn), B.col, 7, 0.5, 60);
+  FX.plume(B.cx, B.base, B.cz, 12, Math.max(1.5, Math.sqrt((x1 - x0) * (z1 - z0)) / 8));
+  for (let i = 0; i < 40 * Qn + 10; i++) { const g = rand(0.45, 0.62); smoke.emit(B.cx + rand(-1, 1) * (x1 - x0) * 0.6, B.base + rand(0, 3), B.cz + rand(-1, 1) * (z1 - z0) * 0.6, rand(-5, 5), rand(0.5, 3), rand(-5, 5), rand(3, 6), rand(4, 8), g, g * 0.96, g * 0.9, 1.5, -0.2); }
+  const fp = focusPos(), dist = Math.hypot(B.cx - fp.x, B.cz - fp.z);
+  noise(2.6, 'lowpass', 180, 0.9 * volAt(B.cx, B.cz, 400)); sfx.crash(volAt(B.cx, B.cz, 300));
+  shake = Math.max(shake, clamp(1.4 - dist / 120, 0, 1));
+  if (by === 'player') { save.stats.buildings = (save.stats.buildings || 0) + 1; bus.emit('building:collapsed', { by }); }
+  for (const p of peds) if (p.state !== 'dead' && pip(p.pos.x, p.pos.z, f)) p.knock(rand(-3, 3), 4, rand(-3, 3), 200, by);
+}
+function updateDestruction(dt) {
+  for (let i = collapsing.length - 1; i >= 0; i--) {
+    const C = collapsing[i]; C.t += dt; const k = Math.min(1, C.t / C.dur), e = k * k * (3 - 2 * k), B = C.B, H = B.top - B.base;
+    for (const A of C.anims) {
+      for (let j = 0; j < A.k; j++) { const h = A.y0[j] - B.base; A.pos.setXYZ(A.a + j, A.x0[j] + C.dirx * h * e * 0.35, B.base + h * (1 - e) - e * 0.8, A.z0[j] + C.dirz * h * e * 0.35); }
+      if (A.pos.addUpdateRange) A.pos.addUpdateRange(A.a * 3, A.k * 3); A.pos.needsUpdate = true;
+    }
+    if (Math.random() < dt * 20) { const g = rand(0.45, 0.6); smoke.emit(B.cx + rand(-4, 4), B.base + H * (1 - e), B.cz + rand(-4, 4), rand(-2, 2), rand(0, 2), rand(-2, 2), rand(2, 4), rand(3, 5), g, g, g * 0.95, 1.2, -0.2); }
+    if (k >= 1) collapsing.splice(i, 1);
+  }
+  for (let i = pendingBooms.length - 1; i >= 0; i--) { const b = pendingBooms[i]; b.t -= dt; if (b.t <= 0) { pendingBooms.splice(i, 1); explosionAt(b.x, b.y, b.z, b.R, b.by); } }
 }
 // garage door + front door on the wall that faces the street, mailbox at the curb (detail zone only)
 const mailboxSpots = [];
@@ -1918,6 +1992,7 @@ class Particles {
   }
 }
 const smoke = new Particles(700, false), fire = new Particles(500, true);
+const FX = createFX({ THREE, scene, camera, heightAt: (x, z) => heightAt(x, z), smoke, fire, quality: { potato: 0.35, low: 0.6, medium: 1, high: 1.2, ultra: 1.5 }[GFX.id] || 1 }); // src/fx/fx.js
 function blood(x, y, z, n = 10) { for (let i = 0; i < n; i++) smoke.emit(x, y, z, rand(-2, 2), rand(0, 3), rand(-2, 2), rand(0.15, 0.35), rand(0.4, 0.9), 0.5, 0.03, 0.03, 0, 12); }
 function sparks(x, y, z, n = 6) { for (let i = 0; i < n; i++) fire.emit(x, y, z, rand(-4, 4), rand(0, 4), rand(-4, 4), rand(0.08, 0.18), rand(0.15, 0.35), 1, 0.75, 0.3, 0, 15); }
 const tracers = [];
@@ -2426,8 +2501,27 @@ function carCrashed(v, imp) { // a hard hit: wear, and a crunch you can hear get
   if (v.driver === 'player' && (v.crashes === 3 || v.crashes === 6 || v.crashes === 10)) notify(v.crashes === 10 ? 'This car has had it. Top speed down 20%.' : `Something's rattling. Top speed down ${v.crashes * 2}%.`, '', 2200);
 }
 function damageCar(v, amt, by, blast) {
-  if (v.dead) return; v.health -= (blast ? amt : amt * 0.2) * (v.armorMul || 1); if (by) v.lastHitBy = by; // cars shrug off crashes; explosions still wreck them
-  if (v.health <= 0) wreckCar(v);
+  if (v.dead) { if (blast && !v.exploded && amt > 40) primeCar(v, by); return; }
+  v.health -= (blast ? amt : amt * 0.2) * (v.armorMul || 1); if (by) v.lastHitBy = by; // cars shrug off crashes; explosions still wreck them
+  if (v.health <= 0) { wreckCar(v); if (blast) primeCar(v, by); }
+}
+// a wreck caught in a blast: its fuel goes up a second later and throws it again (chain reactions down a row of cars)
+function primeCar(v, by) {
+  if (v.exploded || pendingBooms.length > 14) return; v.exploded = true;
+  pendingBooms.push({ t: rand(0.5, 1.5), x: v.pos.x, y: v.pos.y + 0.8, z: v.pos.z, R: v.spec.L > 6 ? 8 : 6, by });
+  setTimeout(() => { if (!v.removed) breakCar(v); }, 600);
+}
+// blow the car apart: every wheel flies off as its own body, panels and glass scatter
+function breakCar(v) {
+  if (v.broken || !v.m) return; v.broken = true; v.m.g.updateMatrixWorld(true);
+  for (const w of v.m.wheels) {
+    if (!w.w.parent) continue; const wp = new THREE.Vector3(), wq = new THREE.Quaternion(); w.w.getWorldPosition(wp); w.w.getWorldQuaternion(wq);
+    const c = w.w.clone(); c.position.copy(wp); c.quaternion.copy(wq); c.scale.copy(w.w.getWorldScale(new THREE.Vector3())); w.w.parent.remove(w.w);
+    FX.body(c, new THREE.Vector3(rand(-8, 8), rand(6, 14), rand(-8, 8)), new THREE.Vector3(rand(-12, 12), rand(-12, 12), rand(-12, 12)), { r: v.m.wr || 0.35, life: 60, bounce: 0.45, friction: 0.35 });
+  }
+  const paint = v.m.mats[0] ? v.m.mats[0].color.getHex() : 0x333333;
+  FX.chips(v.pos.x, v.pos.y + 1, v.pos.z, 10, paint, 11, 0.45, 50); FX.chips(v.pos.x, v.pos.y + 1.2, v.pos.z, 6, 0x0e1216, 9, 0.3, 30);
+  dentCar(v, v.pos.x, v.pos.y + v.spec.H, v.pos.z, 0, -1, 0, 0.5, 2.4);
 }
 // Cars don't explode: they crumple until they won't drive. A totaled car smokes, loses a wheel and stays put.
 const _wreckCol = new THREE.Color(0x2c2a27);
@@ -3174,10 +3268,17 @@ const strikes = [];
 // ---- the blast: throws cars and people, wrecks what's close, scorches the ground
 function explosionAt(x, y, z, R, by) {
   const f = focusPos();
-  sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.2 - Math.hypot(x - f.x, z - f.z) / 70, 0, 1)); flash = Math.max(flash, 0.8);
-  for (let i = 0; i < 45; i++) fire.emit(x, y + 0.5, z, rand(-R, R) * 0.8, rand(2, 11), rand(-R, R) * 0.8, rand(1.5, 3.2), rand(0.4, 1), 1, rand(0.35, 0.7), 0.1, 2, 4);
-  for (let i = 0; i < 30; i++) smoke.emit(x, y + 1.2, z, rand(-3, 3), rand(2, 7), rand(-3, 3), rand(2, 4.5), rand(2.5, 4.5), 0.14, 0.14, 0.14, 3, -0.5);
-  decal(x, z, R * 0.45, scorchMat);
+  sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
+  FX.explosion(x, y, z, R); // fireballs, shockwave, flash, embers, smoke column, flying dirt (src/fx/fx.js)
+  decal(x, z, R * 0.55, scorchMat);
+  blastBuildings(x, z, R, by);
+  { // trees, street lights and sign posts in the blast go down
+    const g0x = Math.floor((x - R * 1.3) / PG), g1x = Math.floor((x + R * 1.3) / PG), g0z = Math.floor((z - R * 1.3) / PG), g1z = Math.floor((z + R * 1.3) / PG);
+    for (let gx = g0x; gx <= g1x; gx++) for (let gz = g0z; gz <= g1z; gz++) for (const p of propGrid.get(gx * 100000 + gz) || []) {
+      if (!p.alive) continue; const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz); if (d > R * 1.3) continue;
+      fellProp(p, dx / (d || 1), dz / (d || 1));
+    }
+  }
   for (const v of vehicles) {
     const dx = v.pos.x - x, dz = v.pos.z - z, d = Math.hypot(dx, dz); if (d > R * 1.3) continue;
     const k = clamp(1 - d / (R * 1.3), 0, 1), nx = dx / (d || 1), nz = dz / (d || 1);
@@ -3313,7 +3414,7 @@ function initExtras() {
   }
   setupDealer(); setupTravel(); setupGarage();
 }
-function updateArsenal(dt) { updateFallers(dt); updateProjectiles(dt); updateAvengers(dt); if (DEALER && DEALER.rig) DEALER.rig.g.rotation.y += Math.sin(simTime * 0.7) * dt * 0.2; }
+function updateArsenal(dt) { updateDestruction(dt); FX.update(dt); updateFallers(dt); updateProjectiles(dt); updateAvengers(dt); if (DEALER && DEALER.rig) DEALER.rig.g.rotation.y += Math.sin(simTime * 0.7) * dt * 0.2; }
 
 // ============================================================ breakables: trees, street lights and sign posts snap
 // A car at speed goes through them (losing a little speed); slow, a tree still stops you. Each one falls over where
@@ -3325,8 +3426,13 @@ const treeDead = new Set(); // collision indices of trees that have been knocked
 const fallers = [];
 const fallMat = { bark: new THREE.MeshStandardMaterial({ color: 0x5b4330, roughness: 0.9 }), leaf: new THREE.MeshStandardMaterial({ color: 0x4d6a2f, roughness: 0.9 }) };
 function breakProp(p, v) {
+  const hs = Math.hypot(v.vel.x, v.vel.y) || 1;
+  fellProp(p, v.vel.x / hs, v.vel.y / hs);
+  carCostOfProp(p, v);
+}
+// knock a prop over, falling along (dx, dz)
+function fellProp(p, dx, dz) {
   p.alive = false;
-  const hs = Math.hypot(v.vel.x, v.vel.y) || 1, dx = v.vel.x / hs, dz = v.vel.y / hs;
   const g = new THREE.Group(); g.position.set(p.x, heightAt(p.x, p.z), p.z);
   if (p.kind === 'tree') {
     treeDead.add(p.ti);
@@ -3346,6 +3452,8 @@ function breakProp(p, v) {
   }
   scene.add(g);
   fallers.push({ g, ax: dz, az: -dx, a: 0, w: p.kind === 'sign' ? 9 : 2.2, life: 90, max: p.kind === 'tree' ? 1.45 : 1.52 });
+}
+function carCostOfProp(p, v) {
   // what it costs the car
   const loss = p.kind === 'tree' ? 0.18 : p.kind === 'lamp' ? 0.1 : 0.03;
   v.vel.multiplyScalar(1 - loss); damageCar(v, p.kind === 'tree' ? 6 : 2, v.driver === 'player' ? 'player' : null);
@@ -4708,7 +4816,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { explosionAt, BLD, FX, collapseBuilding, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
