@@ -462,6 +462,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: GFX.aa, powerPreference: '
 const scaleStep = makeScaler(GFX, r => renderer.setPixelRatio(r)); // dynamic resolution
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = GFX.shadows > 0;
+renderer.debug.checkShaderErrors = /[?&]debug\b/.test(location.search); // reading shader logs back stalls every compile; ?debug turns it on
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 $('view').appendChild(renderer.domElement);
@@ -3314,7 +3315,7 @@ function explosionAt(x, y, z, R, by) {
   for (const v of vehicles) {
     const dx = v.pos.x - x, dz = v.pos.z - z, d = Math.hypot(dx, dz); if (d > R * 1.3) continue;
     const k = clamp(1 - d / (R * 1.3), 0, 1), nx = dx / (d || 1), nz = dz / (d || 1);
-    damageCar(v, k * 110, by, true);
+    damageCar(v, 170 * Math.pow(k, 1.2), by, true); // point blank wrecks anything short of a bus; the edge of the blast only dents
     v.vel.x += nx * k * 16; v.vel.y += nz * k * 16;
     launchCar(v, 4 + k * 16, rand(-1, 1) * k * 6, rand(-1, 1) * k * 8);
     if (v.driver === 'ai' && !v.dead && Math.random() < k) { const p = ejectDriver(v, false); if (p) p.scare(x, z, 'gun'); }
@@ -4871,6 +4872,7 @@ let worldReady = false;
   const sp0 = focusPos();
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
+  progress('Warming up the effects…'); await FX.warm(renderer, camera);
   worldReady = true; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
@@ -4898,7 +4900,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { explosionAt, BLD, FX, collapseBuilding, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';

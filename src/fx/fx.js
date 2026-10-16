@@ -155,6 +155,16 @@ export function createFX(o) {
     if (kind === 'wall' && Math.random() < 0.35 * Q) chips(x, y, z, 1, 0x9c9488, 3, 0.08, 6);
   }
 
+  // compile every effect material on the loading screen, so the first explosion doesn't stall on shader compiles
+  async function warm(renderer, cam) {
+    const g = new THREE.Group(), f = new THREE.Vector3(0, 0, -6).applyQuaternion(cam.quaternion).add(cam.position);
+    g.position.copy(f); g.add(new THREE.Mesh(fbG, fbMat()), new THREE.Mesh(fbG, swMat()), new THREE.Mesh(chipG, chipMat(0x4a4038)), new THREE.Mesh(chipG, new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.95 })));
+    g.add(new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })));
+    for (const L of lights) L.intensity = 0.001;
+    scene.add(g);
+    try { if (renderer.compileAsync) await renderer.compileAsync(scene, cam); else renderer.compile(scene, cam); renderer.render(scene, cam); } catch (e) { }
+    scene.remove(g); for (const L of lights) L.intensity = 0;
+  }
   function update(dt) { stepBodies(dt); stepBalls(dt); stepFlash(dt); stepPlumes(dt); stepMuzzle(dt); }
-  return { explosion, body, chips, muzzle, impact, plume, flash, fireball, ring, update, bodies, get count() { return bodies.length; } };
+  return { warm, explosion, body, chips, muzzle, impact, plume, flash, fireball, ring, update, bodies, get count() { return bodies.length; } };
 }
