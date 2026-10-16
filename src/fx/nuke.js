@@ -1,4 +1,4 @@
-// The nuke, as a picture: a white flash and a light that lights up the whole town, a fireball that swells and climbs,
+// The nuke, as a picture (drawn even past the camera's far plane, like the sky, so it towers over the horizon from anywhere in town): a white flash and a light that lights up the whole town, a fireball that swells and climbs,
 // a shockwave you can watch go out (a bright ring racing along the ground, a dust wall behind it, and the edge of a
 // pressure dome in the air), and a mushroom cloud: a churning stem and a rolling toroidal cap that cools from fire to
 // smoke over a minute and a half. All of it is a few meshes and one instanced set of billboard puffs; positions are
@@ -19,7 +19,7 @@ export function createNukeFX(THREE, scene, quality = 1) {
     vertexShader: `attribute vec4 iPos; attribute vec4 iCol; varying vec2 vUv; varying vec4 vCol; varying float vH;
       void main(){ vUv = uv; vCol = iCol; vH = iPos.y;
         vec4 mv = viewMatrix * vec4(iPos.xyz, 1.0); float a = iCol.z * 6.2831; mat2 R = mat2(cos(a), -sin(a), sin(a), cos(a));
-        mv.xy += R * position.xy * iPos.w; gl_Position = projectionMatrix * mv; }`,
+        mv.xy += R * position.xy * iPos.w; gl_Position = projectionMatrix * mv; gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99995); }`,
     fragmentShader: `varying vec2 vUv; varying vec4 vCol; varying float vH; uniform vec3 uSky;
       float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
@@ -43,7 +43,7 @@ export function createNukeFX(THREE, scene, quality = 1) {
   // ---- fireball: a sphere with a boiling emissive surface
   const fireMat = new THREE.ShaderMaterial({
     uniforms: { uT: { value: 0 }, uHeat: { value: 1 }, uA: { value: 1 } },
-    vertexShader: `varying vec3 vP; varying vec3 vN; varying vec3 vV; void main(){ vP = position; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`,
+    vertexShader: `varying vec3 vP; varying vec3 vN; varying vec3 vV; void main(){ vP = position; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.); vV = -mv.xyz; gl_Position = projectionMatrix * mv; gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99995); }`,
     fragmentShader: `uniform float uT, uHeat, uA; varying vec3 vP; varying vec3 vN; varying vec3 vV;
       float h(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
       float n(vec3 p){ vec3 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
@@ -65,7 +65,7 @@ export function createNukeFX(THREE, scene, quality = 1) {
   // ---- shockwave pieces
   const ringMat = new THREE.ShaderMaterial({
     uniforms: { uA: { value: 1 } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99995); }`,
     fragmentShader: `uniform float uA; varying vec2 vUv; void main(){ float e = 1. - abs(vUv.y * 2. - 1.); gl_FragColor = vec4(vec3(1., .86, .62) * 2.5 * pow(e, 2.), pow(e, 1.5) * uA);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -73,7 +73,7 @@ export function createNukeFX(THREE, scene, quality = 1) {
   });
   const domeMat = new THREE.ShaderMaterial({ // the pressure front: only its edge shows (fresnel), like heat shimmer catching the light
     uniforms: { uA: { value: 0.5 } },
-    vertexShader: `varying vec3 vN; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`,
+    vertexShader: `varying vec3 vN; varying vec3 vV; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.); vV = -mv.xyz; gl_Position = projectionMatrix * mv; gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99995); }`,
     fragmentShader: `uniform float uA; varying vec3 vN; varying vec3 vV; void main(){ float f = pow(1. - abs(dot(normalize(vN), normalize(vV))), 4.); gl_FragColor = vec4(vec3(1., .95, .88) * 1.6, f * uA);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -81,7 +81,7 @@ export function createNukeFX(THREE, scene, quality = 1) {
   });
   const dustMat = new THREE.ShaderMaterial({ // the dust wall the wave kicks up
     uniforms: { uA: { value: 1 }, uT: { value: 0 } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); gl_Position.z = min(gl_Position.z, gl_Position.w * 0.99995); }`,
     fragmentShader: `uniform float uA, uT; varying vec2 vUv; float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
       void main(){ float b = n(vec2(vUv.x * 90., vUv.y * 3. - uT * 2.)) * .6 + n(vec2(vUv.x * 230., vUv.y * 7.)) * .4;
@@ -123,9 +123,9 @@ export function createNukeFX(THREE, scene, quality = 1) {
       // flash + light
       if (N === live[live.length - 1]) { light.intensity = 6e5 * Math.exp(-T * 2.5) + 2e4 * Math.exp(-T * 0.15); light.position.y = y + Math.min(300, 60 + T * 20); light.color.setRGB(1, 0.95 - Math.min(0.5, T * 0.08), 0.85 - Math.min(0.7, T * 0.12)); }
       // fireball: swells to ~75 m in a couple of seconds, climbs into the cap and cools
-      const capH = 60 + 360 * ease(T, 0.09), heat = Math.max(0, 1 - T / 14), br = 12 + 75 * ease(T, 2.2) + T * 1.2;
+      const capH = 90 + 560 * ease(T, 0.085), heat = Math.max(0, 1 - T / 14), br = 14 + 95 * ease(T, 2.2) + T * 1.5;
       N.ball.position.set(x, y + Math.max(br * 0.6, Math.min(capH, 40 + T * 26)), z); N.ball.scale.set(br, br * (0.9 + Math.min(0.25, T * 0.02)), br);
-      N.ball.material.uniforms.uT.value = T; N.ball.material.uniforms.uHeat.value = heat; N.ball.material.uniforms.uA.value = T < 18 ? 1 : Math.max(0, 1 - (T - 18) / 10);
+      N.ball.material.uniforms.uT.value = T; N.ball.material.uniforms.uHeat.value = heat; N.ball.material.uniforms.uA.value = T < 4.5 ? 1 : Math.max(0, 1 - (T - 4.5) / 4.5); // hands over to the cloud: never a hard ball hanging in the sky
       N.ball.visible = N.ball.material.uniforms.uA.value > 0.01;
       // the shockwave you can see go out: ground ring, a second softer ring behind it, the dust wall and the dome edge
       const R = WAVE_SPEED * T;
@@ -136,21 +136,21 @@ export function createNukeFX(THREE, scene, quality = 1) {
       N.dust.position.set(x, y - 1, z); N.dust.scale.set(dR, dH, dR); N.dust.material.uniforms.uA.value = T < 2 ? 0.85 : Math.max(0, 0.85 - (T - 2) / 6); N.dust.material.uniforms.uT.value = T;
       for (const m of [N.ring, N.ring2, N.dome, N.dust]) m.visible = m.material.uniforms.uA.value > 0.01;
       // the mushroom: stem from the ground to the cap, a rolling torus on top, a base surge of dust going out
-      const capR = 25 + 150 * ease(T, 0.08), tube = capR * 0.5, stemR = 14 + 26 * ease(T, 0.12), fade = T < 60 ? 1 : Math.max(0, 1 - (T - 60) / 35);
+      const capR = 50 + 270 * ease(T, 0.075), tube = capR * 0.55, stemR = 26 + 48 * ease(T, 0.12), fade = T < 60 ? 1 : Math.max(0, 1 - (T - 60) / 35);
       for (const q of N.p) {
         if (n >= MAXP) break; let px, py, pz, s, h, a;
         if (q.k === 0) { // stem: puffs climbing and swirling
           if (T < 1.2) continue;
           const u = (q.f + T * 0.05) % 1, ang = q.a + T * 0.35 + u * 4, rr = stemR * (0.25 + q.r * 0.75) * (1 - u * 0.35);
-          px = x + Math.cos(ang) * rr; pz = z + Math.sin(ang) * rr; py = y + 10 + u * (capH - tube * 0.6); s = stemR * 1.5 * q.z; h = Math.max(0, heat * 1.3 - u * 0.4) * (1 - u * 0.5); a = 0.85 * fade * Math.min(1, (T - 1.2) * 0.8);
+          px = x + Math.cos(ang) * rr; pz = z + Math.sin(ang) * rr; py = y + 15 + u * (capH - tube * 0.3); s = stemR * 2.3 * q.z; h = Math.max(0, heat * 1.3 - u * 0.4) * (1 - u * 0.5); a = 0.95 * fade * Math.min(1, (T - 1.2) * 0.8);
         } else if (q.k === 1) { // cap: a vortex ring, puffs rolling over the top and tucking under
           if (T < 0.6) continue;
           const phi = q.f * 6.283 + T * 0.55, rr = capR + Math.cos(phi) * tube * q.r, ang = q.a + T * 0.04;
-          px = x + Math.cos(ang) * rr; pz = z + Math.sin(ang) * rr; py = y + capH + Math.sin(phi) * tube * 0.75 * q.r + tube * 0.25; s = tube * 1.25 * q.z; h = heat * (1.15 - q.r * 0.5) * (0.6 + 0.4 * Math.max(0, -Math.sin(phi))); a = 0.9 * fade * Math.min(1, (T - 0.6) * 0.7);
+          px = x + Math.cos(ang) * rr; pz = z + Math.sin(ang) * rr; py = y + capH + Math.sin(phi) * tube * 0.75 * q.r + tube * 0.25; s = tube * 1.9 * q.z; h = heat * (1.15 - q.r * 0.5) * (0.6 + 0.4 * Math.max(0, -Math.sin(phi))); a = 0.9 * fade * Math.min(1, (T - 0.6) * 0.7);
         } else { // base surge: a low dust doughnut rolling outward
           if (T < 0.8) continue;
-          const rr = Math.min(R * 0.75, 90 + 260 * ease(T, 0.25)) * q.r, ang = q.a + T * 0.02;
-          px = x + Math.cos(ang) * rr; pz = z + Math.sin(ang) * rr; py = y + 6 + q.s * 14 + T * 0.4; s = 30 * q.z + T * 0.8; h = 0; a = 0.55 * fade * Math.min(1, (T - 0.8)) * Math.max(0.25, 1 - T / 70);
+          const rr = Math.min(R * 0.75, 120 + 380 * ease(T, 0.22)) * q.r, ang = q.a + T * 0.02;
+          px = x + Math.cos(ang) * rr; pz = z + Math.sin(ang) * rr; py = y + 6 + q.s * 14 + T * 0.4; s = 50 * q.z + T * 1.4; h = 0; a = 0.55 * fade * Math.min(1, (T - 0.8)) * Math.max(0.25, 1 - T / 70);
         }
         P[n * 4] = px; P[n * 4 + 1] = py; P[n * 4 + 2] = pz; P[n * 4 + 3] = s;
         C[n * 4] = Math.max(0, h); C[n * 4 + 1] = a; C[n * 4 + 2] = q.s + T * 0.003 * (q.s - 0.5); C[n * 4 + 3] = 0; n++;
