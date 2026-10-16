@@ -1420,7 +1420,7 @@ function skirt(gb, p, off, lift, col, depth = 3.5) {
     E.push(x, z, heightAt(x, z) + lift - 0.05, -tz * sg, tx * sg, along / 3); // a hair under the ribbon edge, so it never shows above it
   }
   for (let i = 0; i < n - 1; i += 2) { // 6 m pieces: plenty for a face you mostly see from the side
-    const a = i * 6, b = Math.min(n - 1, i + 2) * 6; ax = E[a], az = E[a + 1], ay = E[a + 2], bx = E[b], bz = E[b + 1], by = E[b + 2];
+    const a = i * 6, b = Math.min(n - 1, i + 2) * 6, ax = E[a], az = E[a + 1], ay = E[a + 2], bx = E[b], bz = E[b + 1], by = E[b + 2];
     if (Math.max(ay - meshAt(ax + E[a + 3] * 1.2, az + E[a + 4] * 1.2), by - meshAt(bx + E[b + 3] * 1.2, bz + E[b + 4] * 1.2)) < 0.35) continue; // the ground meets the edge here: nothing to hide
     const nx = (E[a + 3] + E[b + 3]) / 2, nz = (E[a + 4] + E[b + 4]) / 2, ua = E[a + 5], ub = E[b + 5], v = depth / 3;
     const V = [[ax, ay, az, ua, 0], [bx, by, bz, ub, 0], [bx, by - depth, bz, ub, v], [ax, ay, az, ua, 0], [bx, by - depth, bz, ub, v], [ax, ay - depth, az, ua, v]];
