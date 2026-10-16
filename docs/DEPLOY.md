@@ -7,7 +7,7 @@ home-server code in `server/` is optional and currently unused.
 
 | Piece | Where | Status to check |
 |---|---|---|
-| Web config (`FIREBASE_CONFIG`) | `src/online/config.js` | Filled in (public by design). If it's `null`, the build is offline-only. |
+| Web config (`FIREBASE_CONFIG`) | `src/online/config.js` | Filled in (public by design). If it's `null`, the game reads Firebase Hosting's own `/__/firebase/init.json`, so the deployed site still goes online; served anywhere else it's offline-only. |
 | Anonymous sign-in | Firebase console → Authentication → Sign-in method → Anonymous → **Enable** | The game says "Online sign-in is switched off" until this is on. |
 | Database rules | `database.rules.json`, deployed | Must list the current server ids (`silverwood`, `elysium`, `asgard`, `avalon`, `vaeloria`) and event kinds (`boom`, `nuke`, `col`, `fell`, `ph`, `cd`, `claim`). Old rules → "The database refused us." |
 | API key restrictions | Google Cloud console → Credentials | Must allow `pw-auto-online.web.app`, `pw-auto-online.firebaseapp.com` and `localhost:8642`. |
@@ -24,8 +24,8 @@ firebase deploy --only hosting,database --project pw-auto-online
 Or let GitHub do it: `.github/workflows/firebase.yml` deploys on every push to `main` once the repo has the variable
 `FIREBASE_PROJECT` and the secret `FIREBASE_SERVICE_ACCOUNT` (Settings → Secrets and variables → Actions).
 
-**Order matters:** merge to `main` only after `FIREBASE_CONFIG` is in the branch being merged. A `main` with
-`FIREBASE_CONFIG = null` deploys a site where online play is off.
+Deploy the rules together with the site (`--only hosting,database`): a build whose server ids aren't in the deployed
+rules can't join ("The database refused us").
 
 ## Free plan headroom
 

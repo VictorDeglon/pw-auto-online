@@ -15,7 +15,7 @@ The town is built from real data: OpenStreetMap streets and buildings, USGS elev
 - **Settings:** graphics presets from *Potato* to *Ultra*, picked for your computer automatically, plus dynamic
   resolution that lowers the render scale when the frame rate drops.
 
-Online you can see other players on the minimap and the big map (M), chat (Enter), check who's on (hold Tab), and
+Online you can see other players on the minimap and the big map (M), chat (Enter), check who's on (hold L), and
 fight. Kills, deaths and busts show in the feed at the top of the screen.
 
 Everything you own (money, cars in your garage, weapons, your look, your last usernames) is saved in your browser on

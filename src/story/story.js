@@ -103,7 +103,7 @@ function laneAt(pt, ahead, awayFrom) {
 
 // ------------------------------------------------------------------ spawning helpers
 function spawnVehicle(type, model, x, z, rot, tint) {
-  const spec = ctx.CAR[type], saved = spec.model; if (model) spec.model = [model];
+  const spec = ctx.CAR[type], saved = spec.model; if (model && saved.includes(model)) spec.model = [model]; // an old model name falls back to the type's own
   let v; try { v = new ctx.Vehicle(type, x, z, rot, tint); } finally { spec.model = saved; }
   v.keep = true; v.react = -1000; v.mission = true; ctx.settleCar(v); return v;
 }
@@ -557,13 +557,13 @@ const STEPS = {
     start(s, d, m) {
       const pt = place(d.at, m); let x = pt.x + (d.dx || 0), z = pt.z + (d.dz || 0), rot = d.rot || 0;
       if (d.road) { const ne = ctx.nearestEdge(x, z, 400, () => true); if (ne) { x = ne.x; z = ne.z; rot = Math.atan2(ne.tx, ne.tz); const a = ctx.heightAt(x + ne.tx * 20, z + ne.tz * 20), b = ctx.heightAt(x - ne.tx * 20, z - ne.tz * 20); if (a > b) rot += Math.PI; } } // face downhill
-      const r = ctx.addRamp(x, z, rot, d); m.props.push({ r, d }); m.h[d.as] = { pos: { x: x + Math.sin(rot) * (d.len || 16), z: z + Math.cos(rot) * (d.len || 16) }, ramp: r };
+      const r = ctx.addRamp(x, z, rot, d); m.props.push({ r, d }); m.ramps[d.as] = { pos: { x: x + Math.sin(rot) * (d.len || 16), z: z + Math.cos(rot) * (d.len || 16) }, ramp: r }; // not in m.h: that's for people and cars
     },
   },
   jump: { // launch off a ramp and stay airborne
     start(s, d) { setObjective(d.text); s.air = 0; s.best = 0; },
     update(s, d, m, dt) {
-      const P = ctx.player, car = P.inCar, R = m.h[d.ramp]; if (!R) return true;
+      const P = ctx.player, car = P.inCar, R = m.ramps[d.ramp]; if (!R) return true;
       aimAt(m, R.pos, 'beam');
       if (!car) { setObjective('Get in a <em>car</em>.'); s.air = 0; return false; }
       setObjective(d.text);
@@ -752,7 +752,7 @@ function tryStart(def) {
 }
 function startMission(def) {
   const st = ensureSave();
-  S.m = { def, si: 0, st: null, h: {}, flags: {}, watch: [], target: null, targetKind: 'beam', targets: [], t: 0, props: [], charges: [] };
+  S.m = { def, si: 0, st: null, h: {}, flags: {}, watch: [], target: null, targetKind: 'beam', targets: [], t: 0, props: [], charges: [], ramps: {} };
   const g = CAST[def.giver] ? S.pool.get(def.giver) : null; if (g && !g.removed) S.m.h[def.giver] = g;
   if (CAST[def.giver] && !st.met.includes(def.giver)) st.met.push(def.giver);
   ctx.clearWaypoint(true);
@@ -796,7 +796,7 @@ function endMission() {
   const d = m.def.steps[m.si]; if (m.st && d && STEPS[d.do].end) STEPS[d.do].end(m.st, d, m);
   const P = ctx.player, f = ctx.focusPos();
   for (const h of Object.values(m.h)) for (const e of [].concat(h)) {
-    if (!e || e.removed) continue;
+    if (!e || e.removed || !e.pos || typeof e.remove !== 'function') continue;
     const far = hyp(e.pos.x - f.x, e.pos.z - f.z) > 100;
     if (e instanceof ctx.Vehicle) {
       e.keep = false; e.mission = false; if (e.storyAI) { e.ai = null; if (e.driver === 'thug') e.driver = null; }

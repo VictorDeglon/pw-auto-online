@@ -108,9 +108,9 @@ body.scoped #cross{opacity:.5}
 .wseg.sel path{fill:color-mix(in srgb,var(--c) 70%,#0e1528);stroke:var(--c);stroke-width:3}.wseg.sel .wicon{fill:#0e1013;color:#0e1013}
 .wcount{fill:#e9e4d6;font:700 13px var(--ui);text-anchor:middle}.wseg.sel .wcount{fill:#0e1013}
 .wshort{fill:#cfd6e2;font:600 11px var(--ui);text-anchor:middle;letter-spacing:.04em;text-transform:uppercase}.wseg.sel .wshort{fill:#0e1013}
-.wtitle{position:absolute;top:calc(50% - 250px);font:400 30px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.wtitle{position:absolute;top:calc(50% - 262px);font:400 30px/1 var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
 .wcenter{position:absolute;width:150px;text-align:center;display:flex;flex-direction:column;gap:4px}.wcenter b{font:400 22px/1.05 var(--display);letter-spacing:.04em;color:#fff}.wcenter small{font:600 13px/1.2 var(--ui);color:var(--dim)}
-.whelp{position:absolute;top:calc(50% + 232px);font:600 13px var(--ui);color:var(--dim)}
+.whelp{position:absolute;top:calc(50% - 222px);font:600 13px var(--ui);color:var(--dim)}
 /* cheat sheet (src/ui/cheats.js) */
 #cheatsheet{position:fixed;inset:0;z-index:46;display:flex;align-items:center;justify-content:center;background:rgba(6,9,16,.78);backdrop-filter:blur(3px)}#cheatsheet[hidden]{display:none}
 #cheatsheet .cs{position:relative;width:min(720px,94vw);max-height:86vh;overflow:auto;background:#0b111f;border-top:4px solid #ff4fd8;padding:18px 20px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
@@ -5589,7 +5589,7 @@ function updateHud(dt) {
   hudFx.hp = player.health; $('hplag').style.width = clamp(player.health, 0, 100) + '%';
   if (player.weapon !== hudFx.weapon) { hudFx.weapon = player.weapon; const w = $('weapon'); w.classList.remove('swap'); void w.offsetWidth; w.classList.add('swap'); }
   $('hpf').style.width = clamp(player.health, 0, 100) + '%'; $('hpf').style.background = player.health < 30 ? 'var(--blood)' : 'var(--cash)';
-  { const w = WEAPONS[player.weapon]; $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · wheel / 1-0 for weapons'; }
+  { const w = WEAPONS[player.weapon]; $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · hold Tab for weapons'; }
   $('cross').hidden = !(player.weapon > 0 && (player.aiming || player.inCar) || player.aiming);
   hudT -= dt; if (hudT > 0) return; hudT = 0.4;
   const hh = Math.floor(hour), mn = Math.floor((hour - hh) * 60);

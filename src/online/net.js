@@ -29,6 +29,15 @@ const params = new URLSearchParams(location.search);
 const EMU = params.get('emu');
 
 export function serverNow() { return Date.now() + NET.offset; }
+// on Firebase Hosting the project's web config is served at a reserved URL, so a build with FIREBASE_CONFIG = null
+// still finds its database when it's deployed there (and stays offline anywhere else)
+let _hosted;
+async function hostedConfig() {
+  if (_hosted !== undefined) return _hosted;
+  try { const r = await fetch('/__/firebase/init.json', { cache: 'no-store' }); const c = r.ok && /json/.test(r.headers.get('content-type') || '') ? await r.json() : null; _hosted = c && c.apiKey && c.databaseURL ? c : null; }
+  catch (e) { _hosted = null; }
+  return _hosted;
+}
 function withTimeout(p, ms, msg) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error(msg), { code: 'timeout' })), ms))]); }
 // what a player should read when online play fails, instead of a Firebase error code
 export function explain(e) {
@@ -42,7 +51,7 @@ export function explain(e) {
 
 export async function initNet() {
   if (NET.ready) return true;
-  const cfg = EMU ? { apiKey: 'demo-key', projectId: EMULATOR_PROJECT, databaseURL: `http://${EMU === '1' ? '127.0.0.1' : EMU}:9000?ns=${EMULATOR_PROJECT}`, authDomain: `${EMULATOR_PROJECT}.firebaseapp.com` } : FIREBASE_CONFIG;
+  const cfg = EMU ? { apiKey: 'demo-key', projectId: EMULATOR_PROJECT, databaseURL: `http://${EMU === '1' ? '127.0.0.1' : EMU}:9000?ns=${EMULATOR_PROJECT}`, authDomain: `${EMULATOR_PROJECT}.firebaseapp.com` } : FIREBASE_CONFIG || await hostedConfig();
   if (!cfg) return false;
   NET.available = true;
   if (!app) { // once per page: a failed sign-in can be retried without re-initialising
