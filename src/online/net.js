@@ -112,6 +112,7 @@ export async function leave() {
     await FB.remove(FB.ref(db, `${base}/crowd/${uid}`)); crowdArmed = false;
     await FB.remove(FB.ref(db, `${base}/names/${NET.name.toLowerCase()}`));
   } catch (e) { console.warn('[net] leave', e); }
+  disconnectHome();
   for (const id of NET.players.keys()) emit('player:remove', id);
   NET.players.clear(); NET.server = null; NET.name = null; leaveFeedRef = null;
 }
@@ -134,7 +135,9 @@ async function reclaim() {
 }
 function subscribe(base) {
   const uid = NET.uid, players = FB.ref(db, `${base}/players`);
-  const upd = s => { if (s.key === uid) return; const v = s.val(); if (!v || !v.n) return; const had = NET.players.has(s.key); NET.players.set(s.key, v); emit(had ? 'player:update' : 'player:add', { id: s.key, ...v }); };
+  const upd = s => { if (s.key === uid) return; const v = s.val(); if (!v || !v.n) return; const had = NET.players.has(s.key);
+    if (had && performance.now() - (relaySeen.get(s.key) || -1e9) < 2500) v.p = NET.players.get(s.key).p; // the home server's 15 Hz position wins over Firebase's
+    NET.players.set(s.key, v); emit(had ? 'player:update' : 'player:add', { id: s.key, ...v }); };
   subs.push(FB.onChildAdded(players, upd), FB.onChildChanged(players, upd),
     FB.onChildRemoved(players, s => { if (s.key === uid) return; NET.players.delete(s.key); emit('player:remove', s.key); })); // our own record: see reclaim()
   const since = NET.joinedAt - 5 * 60e3; // join with the last few minutes of chat
@@ -175,9 +178,12 @@ function pack(st) {
   return o;
 }
 let lastSent = '';
+let fbT = 0;
 export function sendState(st, skin) {
   if (!NET.server) return;
-  const p = pack(st), js = JSON.stringify(p) + (skin || ''); lastState = p;
+  const p = pack(st);
+  if (HOME.open) { HOME.send({ t: 's', p }); if (!skin && performance.now() - fbT < 1000) { lastState = p; return; } fbT = performance.now(); }
+  const js = JSON.stringify(p) + (skin || ''); lastState = p;
   if (js === lastSent) return; lastSent = js; // standing still costs nothing
   const u = { p, t: FB.serverTimestamp() }; if (skin && skin !== NET.skin) { u.s = skin; NET.skin = skin; }
   FB.update(FB.ref(db, `servers/${NET.server}/players/${NET.uid}`), u).catch(e => console.warn('[net] state', e.message));
@@ -204,6 +210,7 @@ export function feed(k, data = {}) {
 export function sendHit(victim, dmg, weapon) {
   if (!NET.server || !NET.players.has(victim)) return;
   const d = Math.max(1, Math.min(250, Math.round(dmg)));
+  if (HOME.open) { HOME.send({ t: 'hit', v: victim, d, w: String(weapon || '').slice(0, 24) }); return; } // the home server checks it and applies it
   FB.push(FB.ref(db, `servers/${NET.server}/hits/${victim}`), { u: NET.uid, n: NET.name, d, w: String(weapon || '').slice(0, 24), t: FB.serverTimestamp() }).catch(e => console.warn('[net] hit', e.message));
 }
 
@@ -228,5 +235,30 @@ export function sendCrowd(e) {
   FB.set(ref, { t: FB.serverTimestamp(), e: String(e).slice(0, 12000) }).catch(e => console.warn('[net] crowd', e.message));
 }
 export function clearCrowd() { if (!NET.server) return; FB.remove(FB.ref(db, `servers/${NET.server}/crowd/${NET.uid}`)).catch(() => { }); }
+
+// ---- the home game server (server/ in this repo; optional). Its address is published at config/home by the server
+// itself. When connected: positions go through it at 15 Hz, hits go to it, and it owns everyone's health.
+export const HOME = { open: false, ws: null, url: '', sid: null, retry: 0, send(o) { if (this.open && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const relaySeen = new Map();
+export async function connectHome(sid, name) {
+  disconnectHome(); HOME.sid = sid;
+  let cfg = null; try { cfg = (await FB.get(FB.ref(db, 'config/home'))).val(); } catch (e) { }
+  if (!cfg || !cfg.url || HOME.sid !== sid) return false;
+  let token; try { token = await auth.currentUser.getIdToken(); } catch (e) { return false; }
+  const ws = new WebSocket(cfg.url); HOME.ws = ws; HOME.url = cfg.url;
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', token, sid, name }));
+  ws.onmessage = ev => {
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.t === 'welcome') { HOME.open = true; HOME.retry = 0; emit('home', true); }
+    else if (m.t === 'S') { const now = performance.now(); for (const [id, p] of m.a || []) { const v = NET.players.get(id); if (!v) continue; relaySeen.set(id, now); v.p = p; emit('player:update', { id, ...v }); } }
+    else if (m.t === 'hp') emit('hp', m);
+    else if (m.t === 'snap') emit('snap', m);
+    else if (m.t === 'error') console.warn('[home]', m.m);
+  };
+  ws.onclose = () => { const was = HOME.open; HOME.open = false; if (HOME.ws === ws) HOME.ws = null; if (was) emit('home', false);
+    if (NET.server === sid && HOME.sid === sid && HOME.retry < 6) setTimeout(() => { if (NET.server === sid && !HOME.ws) connectHome(sid, name); }, 5000 * ++HOME.retry); };
+  return true;
+}
+export function disconnectHome() { HOME.sid = null; HOME.open = false; if (HOME.ws) { try { HOME.ws.close(); } catch (e) { } HOME.ws = null; } relaySeen.clear(); }
 
 export function serverName(id) { const s = SERVERS.find(s => s.id === id); return s ? s.name : id; }

@@ -137,6 +137,10 @@
           }
         }
       }
+    },
+    "config": {
+      ".read": "auth != null",
+      ".write": false
     }
   }
 }
