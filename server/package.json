@@ -1,0 +1,14 @@
+{
+  "name": "pw-auto-online-server",
+  "private": true,
+  "type": "module",
+  "description": "Poway Automobile Online home game server: health and positions",
+  "main": "server.js",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "jose": "^5.9.6",
+    "ws": "^8.18.0"
+  }
+}

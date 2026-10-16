@@ -1,5 +1,3 @@
-// TODO(build): resumed run 3. DONE: hardware, lenses, ped heads, signs, markings, culling, demoController, showroom.
-// NEXT: verify in browser (errors), screenshot rounds (4-way / T / divided), tune proportions, perf numbers, remove this note.
 // Traffic-signal hardware for every signalised intersection, modelled on Caltrans combined signal + lighting
 // standards as used across San Diego County: galvanized tapered pole on a concrete pile, mast arm over the approach
 // lanes, luminaire davit with an LED cobra head on top, 12" heads with black backplates and a yellow retroreflective
@@ -9,7 +7,8 @@
 //
 //   createSignals(THREE, ctx) -> { group, update(aspectFn, night, t, eye?), approaches, layout, stats, drawDist }
 //   ctx = { inters, edges, nodeEdges, NX, heightAt(x,z), addPoly?(flat, y0, y1), materials?: { pole, line },
-//           walkMode?: 'parallel'|'across', drawDist?: metres (default 1100), signFont?, anisotropy? }
+//           walkMode?: 'parallel'|'across', drawDist?: metres (default 1100), signFont?, anisotropy?,
+//           lineY?: paint height over heightAt (default 0.18), school?(x, z): true = school zone (yellow crosswalks) }
 //   aspectFn(ap) -> { ball: 'r'|'y'|'g'|'off'|'fr'|'fy', arrow: null|'r'|'y'|'g'|'fy', walk: 'walk'|'flash'|'dont', cd? }
 //   walk ('parallel', default) = the ped phase that runs WITH this approach's through movement (NEMA style: peds
 //   walking parallel to it). 'across' = the crosswalk on this approach's own leg. cd = optional countdown seconds
@@ -21,7 +20,7 @@ const SEC = 0.356, HWID = 0.36, HDEP = 0.24, BPM = 0.13, LENS_R = 0.15, LENS_Z =
 const ARM_Y = 7.05, POLE_H = 10.4, LUM_L = 4.6, HANG = 0.32;  // mast arm centre (head bottoms 17.4-18.6 ft clear), pole, 15 ft davit
 const SIDE_Y = 3.05, PED_Y = 2.3, POST_H = 3.05, PB_Y = 1.0;   // side heads, ped heads, Type 1-A post, push buttons
 const SIGN_H = 0.61, SIGN_WS = [1.83, 2.44, 3.05, 3.66];       // IISNS 24" tall, 6/8/10/12 ft long
-const LINE_Y = 0.18, DAY_GLOW = 0.32; // daylight halo beyond ~20 m (keeps lit lenses readable at 100+ m)
+const DAY_GLOW = 0.32; // daylight halo beyond ~20 m (keeps lit lenses readable at 100+ m)
 const GALV = [0.66, 0.68, 0.68], LUMC = [0.6, 0.62, 0.63], CAMC = [0.82, 0.81, 0.77], HOUS = [0.045, 0.045, 0.045], BLK = [0.025, 0.025, 0.025], YEL = [0.98, 0.74, 0.05];
 const LIT = [[1.15, 0.012, 0.006], [1.25, 0.42, 0], [0, 0.75, 0.4]];             // red, yellow, green (LED; kept < ~1.3 so ACES keeps them saturated)
 const DIM = [[0.055, 0.008, 0.007], [0.065, 0.038, 0.006], [0.006, 0.042, 0.034]];
@@ -30,14 +29,16 @@ const HAND = [1.3, 0.25, 0.01], PERSON = [1.1, 1.2, 1.2], GHOST = [0.05, 0.045, 
 const BALL_ON = { r: [1, 0, 0], y: [0, 1, 0], g: [0, 0, 1] };
 const ABBR = [[/\bRoad\b/g, 'Rd'], [/\bDrive\b/g, 'Dr'], [/\bStreet\b/g, 'St'], [/\bAvenue\b/g, 'Ave'], [/\bBoulevard\b/g, 'Blvd'], [/\bParkway\b/g, 'Pkwy'], [/\bLane\b/g, 'Ln'], [/\bCourt\b/g, 'Ct'], [/\bPlace\b/g, 'Pl'], [/\bCircle\b/g, 'Cir'], [/\bTerrace\b/g, 'Ter'], [/\bHighway\b/g, 'Hwy'], [/^North\b/, 'N'], [/^South\b/, 'S'], [/^East\b/, 'E'], [/^West\b/, 'W']];
 export const signName = n => ABBR.reduce((s, [re, r]) => s.replace(re, r), n || '');
-const PARTS = ['std', 'arm', 'pipe', 'box', 'found', 'h3', 'h4', 'ped', 'pb', 'reg', 'lumLens', 'lumGlow', 'ball', 'arrow', 'glow', 'glyph'];
+const PARTS = ['std', 'arm', 'pipe', 'box', 'found', 'h3', 'h4', 'ped', 'pb', 'reg', 'noU', 'lumLens', 'lumGlow', 'ball', 'arrow', 'glow', 'glyph'];
 const CAB = [0.72, 0.73, 0.71], CONC = [0.74, 0.72, 0.68], REG_W = 0.76, REG_H = 0.91; // 332L cabinet aluminium, pad, R10-12 30"x36"
 const LIVE = ['ball', 'arrow', 'glow', 'glyph']; // parts whose colours change at run time
+const NOU = 0.76; // R3-4 NO U-TURN, 30" square
 
 export function createSignals(THREE, ctx) {
   const { inters, edges, nodeEdges, NX } = ctx;
   const heightAt = ctx.heightAt || (() => 0), mats = ctx.materials || {}, walkMode = ctx.walkMode || 'parallel';
   const FONT = ctx.signFont || '"Barlow Condensed", "Arial Narrow", Arial, sans-serif';
+  const LINE_Y = ctx.lineY != null ? ctx.lineY : 0.18, school = ctx.school || (() => false), XW_SCHOOL = [0.96, 0.78, 0.08];
   const V3 = THREE.Vector3, UP = new V3(0, 1, 0);
 
   // ---------------------------------------------------------------- geometry helpers (indexed, position/normal/color)
@@ -113,6 +114,7 @@ export function createSignals(THREE, ctx) {
   { const s = new THREE.Shape(); s.moveTo(0.115, 0.026); s.lineTo(-0.015, 0.026); s.lineTo(-0.015, 0.078); s.lineTo(-0.118, 0); s.lineTo(-0.015, -0.078); s.lineTo(-0.015, -0.026); s.lineTo(0.115, -0.026); s.closePath(); G.arrow = new THREE.ShapeGeometry(s); }
   G.glow = new THREE.PlaneGeometry(1, 1);
   G.reg = new THREE.PlaneGeometry(REG_W, REG_H);
+  G.noU = new THREE.PlaneGeometry(NOU, NOU);
   G.glyph = new THREE.PlaneGeometry(1, 1);
   G.lumLens = new THREE.CircleGeometry(1, 12).rotateX(Math.PI / 2).scale(0.3, 1, 0.14).translate(-LUM_L - 0.28, POLE_H + 0.435, 0);
   G.lumGlow = new THREE.PlaneGeometry(15, 15).rotateX(-Math.PI / 2);
@@ -151,6 +153,15 @@ export function createSignals(THREE, ctx) {
     regTex.needsUpdate = true;
   };
   drawReg();
+  const nouCanvas = canvas(256, 256), nouTex = new THREE.CanvasTexture(nouCanvas); nouTex.colorSpace = THREE.SRGBColorSpace; nouTex.anisotropy = 4;
+  { // R3-4: black U-turn arrow under a red circle and slash, on white
+    const g = nouCanvas.getContext('2d'); g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = '#111'; g.lineWidth = 7; g.beginPath(); g.roundRect(8, 8, 240, 240, 16); g.stroke();
+    g.strokeStyle = '#111'; g.lineWidth = 24; g.lineCap = 'butt'; g.beginPath(); g.moveTo(160, 200); g.lineTo(160, 110); g.arc(122, 110, 38, 0, Math.PI, true); g.lineTo(84, 150); g.stroke();
+    g.fillStyle = '#111'; g.beginPath(); g.moveTo(54, 140); g.lineTo(114, 140); g.lineTo(84, 186); g.closePath(); g.fill();
+    g.strokeStyle = '#c8102e'; g.lineWidth = 20; g.beginPath(); g.arc(128, 128, 94, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(62, 62); g.lineTo(194, 194); g.stroke(); nouTex.needsUpdate = true;
+  }
 
   // ---------------------------------------------------------------- materials
   const galv = mats.pole || new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.48, metalness: 0.3 });
@@ -190,6 +201,7 @@ export function createSignals(THREE, ctx) {
   });
   glowMat.uniforms.map.value = haloTex;
   const regMat = new THREE.MeshStandardMaterial({ map: regTex, roughness: 0.5 });
+  const nouMat = new THREE.MeshStandardMaterial({ map: nouTex, roughness: 0.5 });
   const lumLensMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
   const lumGlowMat = new THREE.MeshBasicMaterial({ map: glowTex, color: 0xffe2b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
   const lineMat = mats.line || new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -10 });
@@ -311,6 +323,9 @@ export function createSignals(THREE, ctx) {
         if (g1 - g0 >= W + 0.1) c = (g0 + g1) / 2; else { c = minLat - 0.5 - W / 2; tip = c - W / 2 - 0.35; }
         sign = { lat: c, W, cell };
       }
+      // R3-4 NO U-TURN hung past the left-turn head on some arterial arms (as on Espola Rd)
+      let noU = null;
+      if (ap.leftArrow && ap.cls <= 2 && (ap.id * 2654435761 >>> 0) % 3 === 0) { noU = (sign && sign.lat < minLat ? tip + 0.1 : minLat - BPM - HWID / 2 - 0.35) - NOU / 2; tip = Math.min(tip, noU - NOU / 2 - 0.3); }
       const L = Math.max(4.6, pl - tip), fx = -F.dx, fz = -F.dz, P0 = [px, y0, pz];
       put('arm', px, y0 + ARM_Y, pz, fx, fz, L, 1, 1);
       put('box', ...loc(P0, fx, fz, -0.16, ARM_Y, 0), fx, fz, 0.07, 0.6, 0.48); // arm flange plate
@@ -326,6 +341,11 @@ export function createSignals(THREE, ctx) {
           pipe([rx, ry + REG_H / 2, rz], [rx, y0 + ARM_Y, rz], 0.025); put('box', rx, y0 + ARM_Y, rz, fx, fz, 0.08, 0.22, 0.22);
         }
         lay.heads.push({ x: hx, y: y0 + hb, z: hz, lat: h.lat, sections: h.n });
+      }
+      if (noU != null) {
+        const [ux, uz] = fromF(F, pa, noU), uy = y0 + ARM_Y - 0.24 - NOU / 2;
+        put('noU', ux, uy, uz, fx, fz); put('box', ...loc([ux, uy, uz], fx, fz, 0, 0, -0.012), fx, fz, NOU + 0.01, NOU + 0.01, 0.02, [0.5, 0.51, 0.52]);
+        pipe([ux, uy + NOU / 2, uz], [ux, y0 + ARM_Y, uz], 0.025); put('box', ux, y0 + ARM_Y, uz, fx, fz, 0.08, 0.22, 0.22);
       }
       if (sign) {
         const [sx, sz] = fromF(F, pa, sign.lat), sy = y0 + ARM_Y - 0.24 - SIGN_H / 2;
@@ -381,9 +401,10 @@ export function createSignals(THREE, ctx) {
       const dd = spans.map(([l0, l1]) => [depthAt(F, (a0 + a1) / 2, (l0 + l1) / 2, L.own), clear.ei, fromF(F, (a0 + a1) / 2, (l0 + l1) / 2)]), depth = Math.min(...dd.map(v => v[0]));
       if (ctx.debug) ctx.debug.push({ it: it.id, depth, dd, own: [...L.own], ap: L.ap && L.ap.id });
       if (depth < -1) continue; // leg runs inside the junction (odd OSM geometry)
+      const sz = school(...fromF(F, (a0 + a1) / 2, 0)), xc = sz ? XW_SCHOOL : undefined; // California: school crosswalks are yellow
       for (const [l0, l1] of spans) {
-        for (const a of [a0 + 0.15, a1 - 0.15]) strip(...fromF(F, a, l0 + 0.15), ...fromF(F, a, l1 - 0.15), 0.3);
-        if (L.cls <= 2) for (let l = l0 + 0.9; l < l1 - 0.6; l += 1.25) strip(...fromF(F, a0 + 0.3, l), ...fromF(F, a1 - 0.3, l), 0.6); // continental bars
+        for (const a of [a0 + 0.15, a1 - 0.15]) strip(...fromF(F, a, l0 + 0.15), ...fromF(F, a, l1 - 0.15), 0.3, xc);
+        if (L.cls <= 2 || sz) for (let l = l0 + 0.9; l < l1 - 0.6; l += 1.25) strip(...fromF(F, a0 + 0.3, l), ...fromF(F, a1 - 0.3, l), 0.6, xc); // continental bars
       }
       const lo = Math.min(...spans.map(s => s[0])), hi = Math.max(...spans.map(s => s[1])), ac = (a0 + a1) / 2, [cx, cz] = fromF(F, ac, (lo + hi) / 2);
       // controlling approach: 'parallel' = the perpendicular approach that has this crosswalk on its right, nearest
@@ -460,8 +481,8 @@ export function createSignals(THREE, ctx) {
 
   // ---------------------------------------------------------------- build meshes
   const group = new THREE.Group(); group.name = 'signals'; const meshes = {}, P = {};
-  const MAT = { std: galv, arm: galv, pipe: galv, box: galv, found: concrete, h3: headMat, h4: headMat, ped: headMat, pb: headMat, reg: regMat, lumLens: lumLensMat, lumGlow: lumGlowMat, ball: lensMat, arrow: lensMat, glow: glowMat, glyph: glyphMat };
-  const COLORED = new Set(['box', 'pipe', ...LIVE]), SHADOW = new Set(['std', 'arm', 'h3', 'h4', 'ped', 'box', 'pipe']);
+  const MAT = { std: galv, arm: galv, pipe: galv, box: galv, found: concrete, h3: headMat, h4: headMat, ped: headMat, pb: headMat, reg: regMat, noU: nouMat, lumLens: lumLensMat, lumGlow: lumGlowMat, ball: lensMat, arrow: lensMat, glow: glowMat, glyph: glyphMat };
+  const COLORED = new Set(['box', 'pipe', ...LIVE]), SHADOW = new Set(['std', 'arm', 'h3', 'h4', 'ped', 'box', 'pipe']); // noU/reg are thin panels: no shadow pass
   for (const k of PARTS) {
     const L = I[k], n = L.m.length / 16; if (!n) continue;
     const geo = k === 'glyph' ? G.glyph.clone() : G[k], im = new THREE.InstancedMesh(geo, MAT[k], n);

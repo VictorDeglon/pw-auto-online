@@ -2,6 +2,7 @@
 // driven by network state instead of AI, plus, while they drive, a car body that follows them. Damage you deal to
 // them is not applied here: it is sent to them (net.sendHit) and their own game applies it, so everyone agrees on
 // who is alive. Their shots arrive as a counter in their state and are replayed as tracers and sound.
+import { RESERVED } from '../reserved.js';
 import { ctx } from '../ctx.js';
 import { NET, on, unpack } from './net.js';
 import { HUMANS, ensureAvatar } from '../humans.js';
@@ -10,15 +11,23 @@ const R = new Map(); // uid -> remote
 export const REMOTES = R;
 const LERP = 12, DRAW = 650, TAG = 140; // smoothing rate; draw distance (m); name tag distance (m)
 
+// name tag with a health bar under the name; redrawn when their health changes
+function drawTag(s, text, color, hp) {
+  const { c, g, t } = s.userData; g.clearRect(0, 0, 256, 64);
+  g.font = '700 32px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const w = Math.min(250, g.measureText(text).width + 28);
+  g.fillStyle = 'rgba(10,14,22,.78)'; g.beginPath(); g.roundRect((256 - w) / 2, 6, w, 48, 10); g.fill();
+  g.fillStyle = '#fff'; g.fillText(text, 128, 26);
+  const bw = w - 20, k = Math.max(0, Math.min(1, hp / 100)); g.fillStyle = 'rgba(255,255,255,.15)'; g.fillRect(128 - bw / 2, 44, bw, 6);
+  g.fillStyle = k > 0.5 ? '#7cd36b' : k > 0.25 ? '#ffd23f' : '#ff5d5d'; g.fillRect(128 - bw / 2, 44, bw * k, 6);
+  g.fillStyle = color; g.fillRect((256 - w) / 2, 54, w, 3);
+  t.needsUpdate = true; s.userData.hp = hp;
+}
 function tagSprite(THREE, text, color) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
-  g.font = '700 34px "Barlow Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  const w = Math.min(250, g.measureText(text).width + 28);
-  g.fillStyle = 'rgba(10,14,22,.78)'; g.beginPath(); g.roundRect((256 - w) / 2, 10, w, 44, 10); g.fill();
-  g.fillStyle = color; g.fillRect((256 - w) / 2, 50, w, 4);
-  g.fillStyle = '#fff'; g.fillText(text, 128, 33);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false, transparent: true }));
+  s.userData = { c, g, t, hp: -1 }; drawTag(s, text, color, 100);
   s.scale.set(1.6, 0.4, 1); s.renderOrder = 5; return s;
 }
 const COLORS = ['#ff4fd8', '#3df2ff', '#ffd43d', '#7dff6a', '#ff8a3d', '#a98bff', '#ff5d5d', '#4dffb8'];
@@ -34,11 +43,14 @@ async function add(d) {
   if (!R.has(d.id)) { despawn(rem); return; } // left while loading
   ctx.notify(`<b style="color:${rem.color}">${esc(rem.name)}</b> is in town.`, '', 3500);
 }
-async function spawnPed(rem) {
+async function spawnPed(rem) { // keeps the old body (if any) on screen until the new one is ready
   const { THREE } = ctx;
-  let avatar = rem.skin && HUMANS.ready ? rem.skin : null;
+  let avatar = rem.skin && HUMANS.ready && !RESERVED.has(rem.skin) ? rem.skin : null; // nobody online can wear a story character's skin
   if (avatar && !(await ensureAvatar(avatar))) avatar = null;
   const p = new ctx.Ped(rem.st.x, rem.st.z, { remote: true, look: { kind: 'civ', avatar, gun: false } });
+  if (ctx.renderer && ctx.renderer.compileAsync) { // compile the new body's shaders off the frame before it shows (a skin swap used to hitch)
+    p.rig.g.visible = false; await ctx.renderer.compileAsync(p.rig.g, ctx.camera, ctx.scene).catch(() => { }); p.rig.g.visible = true;
+  }
   p.remote = rem; p.keep = true; p.isCop = false; p.personality = 'normal'; p.money = 0; p.health = 100;
   p.pos.y = rem.st.y; p.rotY = rem.st.r;
   p.ai = remoteAI;
@@ -64,8 +76,9 @@ function removeRemote(id) { const rem = R.get(id); if (!rem) return; R.delete(id
 // drives the Ped: glide toward the latest reported position; returns { speed, mode } like any ped AI
 function remoteAI(p, dt) {
   const rem = p.remote; if (!rem) return { speed: 0 };
-  const st = rem.st, k = 1 - Math.exp(-dt * LERP);
-  const dx = st.x - p.pos.x, dz = st.z - p.pos.z, far = dx * dx + dz * dz > 40 * 40;
+  const st = rem.st, k = 1 - Math.exp(-dt * LERP), age = Math.min(0.4, (performance.now() - rem.lastT) / 1000);
+  const ex = st.x + Math.sin(st.r) * st.spd * age, ez = st.z + Math.cos(st.r) * st.spd * age; // where they are by now
+  const dx = ex - p.pos.x, dz = ez - p.pos.z, far = dx * dx + dz * dz > 40 * 40;
   if (far) { p.pos.set(st.x, st.y, st.z); } // teleported / fast travel: snap
   else { p.pos.x += dx * k; p.pos.z += dz * k; p.pos.y += (st.y - p.pos.y) * k; }
   let dr = st.r - p.rotY; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); p.rotY += dr * k;
@@ -95,7 +108,7 @@ export function updateRemotes(dt) {
     p.netCar = rem.car;
     const show = d < DRAW;
     p.rig.g.visible = show && !rem.car;
-    if (rem.tag) { rem.tag.visible = d < TAG; rem.tag.position.y = rem.car ? 2.4 : 2.25; }
+    if (rem.tag) { rem.tag.visible = d < TAG; rem.tag.position.y = rem.car ? 2.4 : 2.25; const hp = st.dead ? 0 : Math.round(st.hp ?? 100); if (hp !== rem.tag.userData.hp) drawTag(rem.tag, rem.name, rem.color, hp); }
     if (rem.car) {
       const g = rem.car.g; g.visible = show;
       if (rem.tag && rem.tag.parent !== g) { g.add(rem.tag); }
@@ -110,7 +123,7 @@ export function updateRemotes(dt) {
       if (show && n > 0) {
         const fx = Math.sin(p.rotY), fz = Math.cos(p.rotY), y = p.pos.y + 1.45;
         for (let i = 0; i < n; i++) ctx.tracer(p.pos.x + fx * 0.6, y, p.pos.z + fz * 0.6, p.pos.x + fx * 60 + (Math.random() - 0.5) * 3, y + (Math.random() - 0.5) * 2, p.pos.z + fz * 60 + (Math.random() - 0.5) * 3);
-        ctx.sfx.gun(ctx.volAt(p.pos.x, p.pos.z, 160));
+        if (ctx.sfx2) ctx.sfx2.gun(st.w || 'pistol', 1, d); else ctx.sfx.gun(ctx.volAt(p.pos.x, p.pos.z, 160));
       }
     }
   }

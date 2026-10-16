@@ -16,7 +16,7 @@
 // Which roads get a curb and sidewalk is decided from building density (rural north Poway has dirt shoulders).
 
 const CELL = 4;      // raster cell (m); the raster only decides WHICH road a point belongs to, distances are exact
-export const CROWN = 0, CURB_H = 0.15, LIFT = 0.0, FLAT = 14, BENCH = 0.1;
+export const CROWN = 0, CURB_H = 0, LIFT = 0.0, FLAT = 14, BENCH = 0; // level with the ground: the terrain mesh is the road bed, roads sit a few cm on it
 const PSTEP = 4, PSIGMA = 20; // long-profile sample spacing and smoothing (m): roads ride over the 12.8 m terrain facets
 
 function segClosest(px, pz, ax, az, bx, bz, out) {
@@ -77,11 +77,11 @@ export class RoadSurface {
     }
   }
   // nearest road at (x, z) within its corridor: fills and returns this._q, or null
-  query(x, z) {
+  query(x, z, out) {
     const gx = Math.floor((x - this.x0) / CELL), gz = Math.floor((z - this.z0) / CELL);
     if (gx < 0 || gz < 0 || gx >= this.nx || gz >= this.nz) return null;
     const ri = this.cells[gz * this.nx + gx] - 1; if (ri < 0) return null;
-    const p = this.roads[ri][3], q = this._q, c = this._c; let best = 1e9, along = 0, cum = 0;
+    const p = this.roads[ri][3], q = out || this._q, c = this._c; let best = 1e9, along = 0, cum = 0;
     for (let k = 0; k < p.length - 2; k += 2) {
       segClosest(x, z, p[k], p[k + 1], p[k + 2], p[k + 3], c);
       const d = (c.x - x) * (c.x - x) + (c.z - z) * (c.z - z);
@@ -129,6 +129,19 @@ export class RoadSurface {
       P = new Float32Array(n); const R = Math.ceil(PSIGMA * 2 / PSTEP);
       for (let i = 0; i < n; i++) { let a = 0, w = 0; for (let j = -R; j <= R; j++) { const ii = Math.min(n - 1, Math.max(0, i + j)), g = Math.exp(-0.5 * (j * PSTEP / PSIGMA) ** 2); a += raw[ii] * g; w += g; } P[i] = a / w; }
       this.prof[ri] = P;
+      // junctions: each road was smoothed on its own, so where a side street meets a bigger road their heights
+      // disagreed and the surface stepped (metres, on hills) where ownership switched. Pin each end to the height of
+      // the road it runs into and taper the correction back along the street.
+      const pinL = Math.min(40, this.len[ri] * 0.45);
+      for (const end of [0, 1]) {
+        const ex = end ? p[p.length - 2] : p[0], ez = end ? p[p.length - 1] : p[1];
+        const q = this.query(ex, ez, {}); if (!q || q.road === ri) continue; // own object: the caller is still holding this._q
+        const oj = q.road, dom = this.roads[oj][2] > this.roads[ri][2] || (this.roads[oj][2] === this.roads[ri][2] && oj < ri);
+        if (!dom || q.d > this.roads[oj][2] / 2 + this.sw[oj] + 2) continue;
+        const sj = q.s, target = this.profileAt(oj, sj, terrainAt), cur = end ? P[n - 1] : P[0], dh = target - cur;
+        if (Math.abs(dh) < 0.01) continue;
+        for (let i = 0; i < n; i++) { const dist = end ? (n - 1 - i) * PSTEP : i * PSTEP; if (dist > pinL) continue; const t = dist / pinL, w = 1 - t * t * (3 - 2 * t); P[i] += dh * w; }
+      }
     }
     const x = Math.min(P.length - 1.001, Math.max(0, s / PSTEP)), i = Math.floor(x);
     return P[i] + (P[i + 1] - P[i]) * (x - i);

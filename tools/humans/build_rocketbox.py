@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Microsoft Rocketbox avatars (MIT) -> small GLBs for the browser game.
 
-  python3 tools/humans/build_rocketbox.py <Microsoft-Rocketbox checkout> <FBX2glTF binary> [--player Male_Adult_18] [--resume] [--rebuild A,B]
+  python3 tools/humans/build_rocketbox.py <Microsoft-Rocketbox checkout> <FBX2glTF binary> [--player Male_Adult_18] [--resume] [--rebuild A,B] [--clips-only]
 
 Needs from the checkout: Assets/Avatars/{Adults,Professions}/*/Export/<name>.fbx, the *color*.tga and *opacity*.tga
 textures, and the animation FBXs listed in CLIPS. (A partial clone works: `git clone --filter=blob:none
@@ -23,6 +23,11 @@ OUT = os.path.join(ROOT, 'assets', 'humans')
 CLIPS = {  # game clip name -> (folder, file stem) per sex
     'idle': ('static', '{s}_idle_neutral_01'), 'talk': ('static', '{s}_gestic_talk_neutral_01'), 'wave': ('static', '{s}_wave_01'),
     'walk': ('xy', '{s}_walk_neutral_01'), 'run': ('xy', '{s}_run_neutral_01'), 'sprint': ('xy', '{s}_run_fast_01'),
+    # crowd life and player emotes
+    'crouch': ('static', '{s}_crouch_idle'), 'cheer': ('static', '{s}_cheer_01'), 'dance': ('static', '{s}_dancing_cool'),
+    'laugh': ('static', '{s}_gestic_laugh_loud'), 'listen': ('static', '{s}_gestic_listen_accept_01'), 'talk2': ('static', '{s}_gestic_talk_excited_01'),
+    'look': ('static', '{s}_idle_look_around_01'),
+    'injured': ('xy', '{s}_run_injured'), 'stroll': ('xy', '{s}_walk_stroll_01'),
 }
 
 def read_glb(path):
@@ -95,6 +100,7 @@ def main():
     player = sys.argv[sys.argv.index('--player') + 1] if '--player' in sys.argv else 'Male_Adult_18'
     resume = '--resume' in sys.argv  # keep avatars already built (except the player and any --rebuild names)
     rebuild = set(sys.argv[sys.argv.index('--rebuild') + 1].split(',')) if '--rebuild' in sys.argv else set()
+    clips_only = '--clips-only' in sys.argv  # convert the animation clips and update the manifest, keep every avatar
     old = {a['name']: a for a in json.load(open(os.path.join(OUT, 'manifest.json')))['avatars']} if resume and os.path.exists(os.path.join(OUT, 'manifest.json')) else {}
     os.makedirs(os.path.join(OUT, 'anim'), exist_ok=True)
     roster, seen = [], set()
@@ -104,7 +110,8 @@ def main():
             if name in seen or not os.path.exists(os.path.join(d, 'Export', name + '.fbx')): continue
             seen.add(name)
             out = os.path.join(OUT, name + '.glb')
-            if resume and os.path.exists(out) and name != player and name not in rebuild: size = os.path.getsize(out)
+            if (resume or clips_only) and os.path.exists(out) and name != player and name not in rebuild: size = os.path.getsize(out)
+            elif clips_only and os.path.exists(out): size = os.path.getsize(out)
             else: size = build_avatar(fbx2gltf, d, name, 1024 if name == player else 512)
             kind = name.split('_')[0].lower() if group == 'Professions' else 'civilian'
             if kind in ('female', 'male'): kind = 'civilian' # Female_Party_* sit in both folders

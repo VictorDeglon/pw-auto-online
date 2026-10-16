@@ -62,7 +62,7 @@ export function filterTrees(trees, w) {
     const x = trees[i * 4], z = trees[i * 4 + 1]; let r = trees[i * 4 + 3] || 3; radius[i] = r;
     // roads and sidewalks: types 1-5 have a 2.2 m sidewalk ribbon starting 0.1 m off the asphalt
     roadEdgeDist(w, x, z, rd);
-    const margin = rd[1] >= 1 && rd[1] <= 5 ? 2.3 : 0.6;
+    const margin = rd[1] >= 1 && rd[1] <= 5 ? 3.5 : 2; // nothing growing in or over the road
     if (rd[0] < margin) { action[i] = DROP; if (rd[0] < 0) stats.road++; else stats.sidewalk++; continue; }
     if (r > rd[0] + 2) { radius[i] = Math.max(1.2, rd[0] + 2); stats.capped++; }
     // buildings (collision polygons)

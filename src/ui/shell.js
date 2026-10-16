@@ -6,9 +6,11 @@
 //   toMenu()                back from the pause menu to the main menu (leaves the server)
 //   wear(skin)              swap the player's avatar (resolves when loaded)
 //   gfx, setVoices(on), voices(), sens(), setSens(v)
-import { NET, initNet, watchServers, ping, join, leave, sendChat, on as onNet, serverName, validName } from '../online/net.js';
+import { NET, initNet, watchServers, ping, join, leave, sendChat, on as onNet, serverName, validName, explain } from '../online/net.js';
 import { SERVERS, MAX_PLAYERS } from '../online/config.js';
-import { HUMANS, skinList, skinLabel, ensureAvatar, makeHuman, animHuman } from '../humans.js';
+import { HUMANS, skinList, skinLabel, skinRole, ensureAvatar, makeHuman, animHuman } from '../humans.js';
+import { CATEGORIES } from '../people.js';
+import { ACHIEVEMENTS, renderAchievements, achievementCount, bump as achBump } from './achievements.js';
 import { PRESETS, ORDER, saveGfx } from '../gfx.js';
 import { remoteList, colorOf } from '../online/remote.js';
 
@@ -54,7 +56,7 @@ export function showMenu(scr) {
 }
 export function hideMenu() { $('menu').hidden = true; closeChar(); if (unwatch) { unwatch(); unwatch = null; } screen = null; }
 function open(name) {
-  for (const id of ['online', 'character', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
+  for (const id of ['online', 'character', 'achievements', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
   for (const b of document.querySelectorAll('#mnav [data-go]')) b.classList.toggle('on', b.dataset.go === name);
   if (screen === 'character' && name !== 'character') closeChar();
   if (screen === 'online' && name !== 'online' && unwatch) { unwatch(); unwatch = null; }
@@ -62,7 +64,10 @@ function open(name) {
   if (name === 'online') openServers();
   if (name === 'character') openChar();
   if (name === 'settings') openSettings();
+  if (name === 'achievements') renderAchievements($('achgrid'));
+  achSub();
 }
+export function achSub() { const e = $('achsub'); if (e) e.textContent = `${achievementCount()} / ${ACHIEVEMENTS.length}`; }
 
 // ---------------------------------------------------------------- servers
 function renderServers() {
@@ -86,7 +91,7 @@ async function openServers() {
   renderServers();
   $('netstate').textContent = 'Connecting…';
   let ok = false;
-  try { ok = await initNet(); } catch (e) { $('netstate').textContent = 'Could not reach the servers: ' + (e.code || e.message); return; }
+  try { ok = await initNet(); } catch (e) { console.warn('[net] init', e); $('netstate').textContent = explain(e) + ' '; const r = document.createElement('button'); r.className = 'mbtn small'; r.textContent = 'Try again'; r.onclick = () => openServers(); $('netstate').append(r); return; }
   if (!ok) { $('netstate').textContent = 'Online play is not set up in this build yet (no Firebase project configured). Free roam works.'; return; }
   $('netstate').textContent = H.ready() ? 'Pick a server. Same town on each, different people.' : 'Pick a server. You can join as soon as Poway finishes loading.';
   if (!unwatch) unwatch = watchServers(c => { counts = c; renderServers(); updateOnlineSub(); });
@@ -114,12 +119,12 @@ async function submitName(e) {
   if (!res.ok) { $('nameerr').textContent = res.err; return; }
   profile.name = name; profile.names[sid] = name; profile.last = sid; saveProfile();
   $('namebox').hidden = true; hideMenu();
-  chatClear(); sysChat(`Joined ${serverName(sid)} as ${name}. Enter to chat, Tab for players.`);
+  chatClear(); sysChat(`Joined ${serverName(sid)} as ${name}. Enter to chat, hold L for players.`);
   H.startOnline(sid, name);
 }
 
 // ---------------------------------------------------------------- character (skin selector) with a turntable preview
-let cv = null, cr = null, cscene = null, ccam = null, crig = null, craf = 0, sel = '', csex = '', clast = 0;
+let cv = null, cr = null, cscene = null, ccam = null, crig = null, craf = 0, sel = '', csex = '', ccat = '', clast = 0;
 function openChar() {
   const list = $('charitems');
   if (!HUMANS.manifest) { list.textContent = 'People are still loading…'; setTimeout(() => { if (screen === 'character') openChar(); }, 800); return; }
@@ -129,15 +134,17 @@ function renderSkins() {
   const q = $('charq').value.trim().toLowerCase(), list = $('charitems'); list.textContent = '';
   for (const s of skinList()) {
     if (csex && s.sex !== csex) continue;
-    if (q && !s.label.toLowerCase().includes(q)) continue;
+    if (ccat && s.category !== ccat) continue;
+    if (q && !(s.label + ' ' + s.role).toLowerCase().includes(q)) continue;
     const b = document.createElement('button'); b.textContent = s.label; b.dataset.n = s.name;
+    const r = document.createElement('small'); r.textContent = s.role; b.append(r);
     if (s.name === sel) b.classList.add('sel'); if (s.name === (profile.skin || HUMANS.player)) b.classList.add('worn');
     b.onclick = () => { sel = s.name; for (const x of list.children) x.classList.toggle('sel', x.dataset.n === sel); preview(sel); };
     list.append(b);
   }
 }
 async function preview(name) {
-  $('charname').textContent = name ? skinLabel(name) : '';
+  $('charname').textContent = name ? skinLabel(name) : ''; $('charrole').textContent = name ? skinRole(name) : '';
   $('wearbtn').disabled = !name || name === (profile.skin || HUMANS.player);
   if (!name || !HUMANS.ready) return;
   const THREE = H.THREE;
@@ -149,11 +156,17 @@ async function preview(name) {
     const floor = new THREE.Mesh(new THREE.CircleGeometry(0.8, 40), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })); floor.rotation.x = -Math.PI / 2; cscene.add(floor);
   }
   const ok = await ensureAvatar(name); if (!ok || sel !== name || screen !== 'character') return;
-  if (crig) cscene.remove(crig.g);
-  crig = makeHuman(name); if (!crig) return; cscene.add(crig.g);
-  if (!craf) { clast = performance.now(); const loop = t => { craf = requestAnimationFrame(loop); const dt = Math.min(0.05, (t - clast) / 1000); clast = t; if (crig) { crig.g.rotation.y += dt * 0.6; animHuman(crig, 0, dt, null); } cr.setSize(cv.clientWidth || 360, cv.clientHeight || 460, false); cr.render(cscene, ccam); }; craf = requestAnimationFrame(loop); }
+  const nr = makeHuman(name); if (!nr) return;
+  if (cr.compileAsync) await cr.compileAsync(nr.g, ccam, cscene).catch(() => { }); // compile off the frame, then swap
+  if (sel !== name || screen !== 'character') return;
+  if (crig) cscene.remove(crig.g); crig = nr; cscene.add(crig.g);
+  // the preview runs at 30 fps and only resizes its canvas when the box changes (setSize every frame reallocates it)
+  if (!craf) { clast = performance.now(); let cw = 0, ch = 0, acc = 0; const loop = t => { craf = requestAnimationFrame(loop); const dt = Math.min(0.1, (t - clast) / 1000); clast = t; acc += dt; if (acc < 1 / 30) return;
+    if (crig) { crig.g.rotation.y += acc * 0.6; animHuman(crig, 0, acc, null); } acc = 0;
+    const w = cv.clientWidth || 360, h = cv.clientHeight || 460; if (w !== cw || h !== ch) { cw = w; ch = h; cr.setSize(w, h, false); } cr.render(cscene, ccam); }; craf = requestAnimationFrame(loop); }
 }
 function closeChar() { if (craf) cancelAnimationFrame(craf); craf = 0; }
+export function previewOpen() { return craf !== 0 && screen === 'character'; }
 async function wear() {
   if (!sel) return; $('wearbtn').disabled = true;
   const ok = await H.wear(sel); if (!ok) { $('wearbtn').disabled = false; return; }
@@ -174,6 +187,7 @@ function openSettings() {
   }
   $('gfxnote').textContent = G.auto ? `Picked “${PRESETS[G.id].label}” for this computer. Change it if the game feels slow or looks rough.` : `Using “${PRESETS[G.id].label}”.`;
   $('dynres').checked = G.dynamic; $('voiceson').checked = H.voices();
+  for (const b of $('lookseg').children) { b.classList.toggle('on', +b.dataset.l === H.look()); b.onclick = () => { H.setLook(+b.dataset.l); openSettings(); }; }
   $('sens').value = H.sens(); $('sensv').textContent = (+H.sens()).toFixed(2) + '×';
   $('gfxapply').hidden = pick === G.id && $('dynres').checked === G.dynamic;
 }
@@ -182,8 +196,8 @@ function applyGfx() { saveGfx(pick, $('dynres').checked); location.reload(); }
 // ---------------------------------------------------------------- chat, kill feed, player list
 let chatOpen = false;
 export function isChatOpen() { return chatOpen; }
-export function openChat() { if (!NET.server) return; chatOpen = true; $('chat').classList.add('open'); $('chatform').hidden = false; $('chatin').value = ''; $('chatin').focus(); }
-export function closeChat() { chatOpen = false; $('chat').classList.remove('open'); $('chatform').hidden = true; $('chatin').blur(); }
+export function openChat() { chatOpen = true; $('chat').hidden = false; $('chatin').placeholder = NET.server ? 'Say something…' : 'Offline: nobody to talk to'; $('chat').classList.add('open'); $('chatform').hidden = false; $('chatin').value = ''; $('chatin').focus(); }
+export function closeChat() { chatOpen = false; if (!NET.server) $('chat').hidden = true; $('chat').classList.remove('open'); $('chatform').hidden = true; $('chatin').blur(); }
 function chatLine(html, cls) {
   const log = $('chatlog'), d = document.createElement('div'); d.className = 'cm ' + (cls || ''); d.innerHTML = html; log.append(d);
   while (log.children.length > 60) log.firstChild.remove();
@@ -231,6 +245,8 @@ export function initShell(hooks) {
   $('namecancel').onclick = () => { $('namebox').hidden = true; joining = null; };
   $('namebox').addEventListener('keydown', e => { if (e.code === 'Escape') { $('namebox').hidden = true; joining = null; } e.stopPropagation(); });
   $('charq').addEventListener('input', renderSkins);
+  { const cats = $('charcat'), mk = (id, label) => { const b = document.createElement('button'); b.textContent = label; b.dataset.c = id; if (id === ccat) b.classList.add('on'); b.onclick = () => { ccat = id; for (const x of cats.children) x.classList.toggle('on', x.dataset.c === id); renderSkins(); }; cats.append(b); };
+    mk('', 'Everyone'); for (const c of CATEGORIES) mk(c.id, c.label); }
   for (const b of $('charsex').children) b.onclick = () => { csex = b.dataset.s; for (const x of $('charsex').children) x.classList.toggle('on', x === b); renderSkins(); };
   $('wearbtn').onclick = wear;
   $('dynres').onchange = () => openSettings();
@@ -239,7 +255,11 @@ export function initShell(hooks) {
   $('gfxapply').onclick = applyGfx;
   $('gfxsub').textContent = `Graphics: ${PRESETS[H.gfx.id].label}`;
   if (profile.skin) $('skinsub').textContent = skinLabel(profile.skin);
-  $('chatform').addEventListener('submit', e => { e.preventDefault(); const t = $('chatin').value; if (t.trim()) sendChat(t); closeChat(); });
+  $('chatform').addEventListener('submit', async e => { // cheats are checked first and never leave this machine
+    e.preventDefault(); const t = $('chatin').value; $('chatin').value = ''; closeChat();
+    if (!t.trim()) return; if (H.cheat && await H.cheat(t)) return;
+    if (NET.server) { sendChat(t); achBump('chats'); }
+  });
   $('chatin').addEventListener('keydown', e => { e.stopPropagation(); if (e.code === 'Escape') closeChat(); });
   $('chatin').addEventListener('keyup', e => e.stopPropagation());
   onNet('chat', onChat); onNet('feed', onFeed);

@@ -3,7 +3,7 @@
 import { ctx } from './ctx.js';
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-const wrapA = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+const wrapA = a => { if (a <= Math.PI && a >= -Math.PI) return a; if (!isFinite(a)) { if (!self.__wrapBad) self.__wrapBad = new Error('wrapA ' + a).stack; return 0; } a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; }; // O(1): a runaway angle used to spin a while-loop for seconds
 
 // Point the car at (tx, tz) and drive. o.maxSpeed caps forward speed, o.stop brakes to a halt,
 // o.arrive slows down as the target gets close. Reverses out when stuck against a wall.

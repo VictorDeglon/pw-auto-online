@@ -25,7 +25,7 @@ export function buildCoverMap(THREE, opts) {
   const mk2 = mk(); mk2.fillStyle = '#fff'; mk2.fillRect(x0, z0, x1 - x0, z1 - z0); mk2.fillStyle = '#000'; mk2.strokeStyle = '#000';
   mk2.lineCap = 'round'; mk2.lineJoin = 'round';
   for (const r of opts.roads) {
-    const [, t, w, p] = r; mk2.lineWidth = w + (t >= 1 && t <= 5 ? 6.5 : 1.5);
+    const [, t, w, p] = r; mk2.lineWidth = w + (t >= 1 && t <= 5 ? 10 : 5); // the road, its sidewalk or shoulder, and a clear strip beside it
     mk2.beginPath(); mk2.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) mk2.lineTo(p[i], p[i + 1]); mk2.stroke();
   }
   const poly = p => { mk2.beginPath(); mk2.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) mk2.lineTo(p[i], p[i + 1]); mk2.closePath(); mk2.fill(); };

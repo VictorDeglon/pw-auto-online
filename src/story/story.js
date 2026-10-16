@@ -21,18 +21,19 @@
 import { ctx } from '../ctx.js';
 import { on, emit } from '../events.js';
 import { addInteract, removeInteract } from '../interact.js';
-import { police, npcFire } from '../police.js';
+import { police, npcFire, setWanted } from '../police.js';
+import { CAST_SKINS } from '../reserved.js';
 import { steerTo, driveTo, routeEdges, routePolyline, samplePolyline } from '../drive.js';
 import { CAST, LOOKS } from './cast.js';
 import { PLACES } from './places.js';
-import { MISSIONS } from './missions.js';
+import { MISSIONS, LINES } from './missions.js';
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const hyp = Math.hypot;
-const wrapA = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
+const wrapA = a => { if (a <= Math.PI && a >= -Math.PI) return a; if (!isFinite(a)) { if (!self.__wrapBad) self.__wrapBad = new Error('wrapA ' + a).stack; return 0; } a = (a + Math.PI) % (TAU); if (a < 0) a += TAU; return a - Math.PI; }; // O(1): a runaway angle used to spin a while-loop for seconds
 const $ = id => document.getElementById(id);
 const fmtT = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(1)}`; };
 const gold = 0xf0b23a;
@@ -42,9 +43,10 @@ const S = { m: null, later: [], givers: new Map(), pool: new Map(), giverT: 0, f
 export function ensureSave() {
   const st = ctx.save.story || (ctx.save.story = {});
   st.act ??= 1; st.done ||= []; st.flags ||= {}; st.best ||= {}; st.last ||= {}; st.voicemails ||= [];
-  st.trust ||= { rosa: 20, dee: 0, walt: 10 }; st.met ||= ['marco', 'rosa', 'tommy'];
+  st.trust ||= { rosa: 20, dee: 0, walt: 10 }; st.met ||= ['marco', 'rosa', 'tommy']; st.unlocks ||= []; st.props ||= [];
   return st;
 }
+export function storyUnlocked(key) { return ensureSave().unlocks.includes(key); }
 
 // ------------------------------------------------------------------ places
 const placeCache = new Map();
@@ -56,6 +58,9 @@ function place(key, m) {
   const P = PLACES[key]; if (!P) return null; let pt;
   if (P.special === 'home') pt = homeSpot();
   else if (P.special === 'sheriff') pt = { x: ctx.SHERIFF.x, z: ctx.SHERIFF.z };
+  else if (P.special === 'hospital') { const s = ctx.sidewalkNear(ctx.HOSPITAL.x, ctx.HOSPITAL.z); pt = { x: s.x, z: s.z }; }
+  else if (P.special === 'plaza') { const s = ctx.sidewalkNear(ctx.PLAZA_CENTER.x + (P.dx || 0), ctx.PLAZA_CENTER.z + (P.dz || 0)); pt = { x: s.x, z: s.z }; }
+  else if (P.special === 'summit') pt = summit(P.below || 0);
   else {
     const x = (P.lon - ctx.LON0) * ctx.KX, z = -(P.lat - ctx.LAT0) * ctx.KZ;
     if (P.snap === 'road') {
@@ -64,6 +69,14 @@ function place(key, m) {
     } else { const s = ctx.sidewalkNear(x, z); pt = { x: s.x, z: s.z }; }
   }
   placeCache.set(key, pt); return pt;
+}
+// Mt Woodson: the highest ground in the play area (the same search the fast-travel summit uses); `below` metres
+// down its gentlest road-ward side, for the ramp
+let _summit = null;
+function summit(below) {
+  if (!_summit) { const b = ctx.D.bounds; let top = null; for (let z = b[1] + 200; z < b[3] - 200; z += 60) for (let x = b[0] + 200; x < b[2] - 200; x += 60) { const h = ctx.terrainAt(x, z); if (!top || h > top.h) top = { x, z, h }; } _summit = top; }
+  if (!below) return { x: _summit.x, z: _summit.z };
+  const ne = ctx.nearestEdge(_summit.x, _summit.z, 900, () => true); return ne ? { x: ne.x, z: ne.z } : { x: _summit.x, z: _summit.z };
 }
 // The Reyes house (fictional): it uses the spawn point.
 function homeSpot() {
@@ -90,7 +103,7 @@ function laneAt(pt, ahead, awayFrom) {
 
 // ------------------------------------------------------------------ spawning helpers
 function spawnVehicle(type, model, x, z, rot, tint) {
-  const spec = ctx.CAR[type], saved = spec.model; if (model) spec.model = [model];
+  const spec = ctx.CAR[type], saved = spec.model; if (model && saved.includes(model)) spec.model = [model]; // an old model name falls back to the type's own
   let v; try { v = new ctx.Vehicle(type, x, z, rot, tint); } finally { spec.model = saved; }
   v.keep = true; v.react = -1000; v.mission = true; ctx.settleCar(v); return v;
 }
@@ -102,8 +115,8 @@ function makePed(look, x, z, o = {}) {
   p.maxHp = p.health; if (o.rot !== undefined) p.rotY = o.rot;
   return p;
 }
-function castPed(who, pt) {
-  const c = CAST[who], p = makePed(c.look, pt.x, pt.z, { invuln: true, who, voice: c.voice });
+function castPed(who, pt) { // every cast member wears their own avatar (src/reserved.js); nobody else ever does
+  const c = CAST[who], p = makePed({ ...(c.look || {}), kind: 'civ', avatar: CAST_SKINS[who] }, pt.x, pt.z, { invuln: true, who, voice: c.voice });
   if (c.home && PLACES[c.home] && hyp(place(c.home).x - pt.x, place(c.home).z - pt.z) < 30) S.pool.set(who, p);
   return p;
 }
@@ -240,6 +253,36 @@ function bailOut(v) {
   }
   v.crewOut = v.crew; v.crew = 0; v.driver = null; v.ai = null;
 }
+// a hit target: idles until spooked, then makes for their car (and drives off) or runs; armed ones shoot back
+const SPOOK = ['Somebody stop him!', 'Not like this!', 'Get away from me!', 'You don\'t know who I work for!', 'Help! HELP!'];
+function targetAI(p, dt) {
+  if (p.state !== 'ai') return null;
+  const f = ctx.focusPos(), d = hyp(f.x - p.pos.x, f.z - p.pos.z);
+  if (!p.spooked) { if (d < (p.spookR || 35) || p.health < p.maxHp) { p.spooked = true; ctx.say(p, pick(SPOOK), 'mad'); } else { if (d < 30) face(p, f.x, f.z, dt, 2); return { speed: 0, mode: p.pose || null }; } }
+  const car = p.car;
+  if (car && !car.dead && !car.removed) {
+    const dc = hyp(car.pos.x - p.pos.x, car.pos.z - p.pos.z);
+    if (dc < 2.6) { board(p, car); const away = p.fleeTo || { x: car.pos.x + (car.pos.x - f.x) * 6, z: car.pos.z + (car.pos.z - f.z) * 6 }; Object.assign(car, { driver: 'thug', ai: fleeAI, storyAI: true, dest: away, parked: false, mode: 'free', agent: null }); car.spec.vmax = 44; return { speed: 0 }; }
+    face(p, car.pos.x, car.pos.z, dt, 10); move(p, 5.4, dt); return { speed: 5.4 };
+  }
+  if (p.rig.gun.visible && d < 30 && Math.random() < dt * 0.9 && ctx.los(p.pos.x, p.pos.y + 1.5, p.pos.z, f.x, f.y + 1.2, f.z)) { face(p, f.x, f.z, dt, 20); npcFire(p.pos.x, p.pos.y + 1.45, p.pos.z, 0.25, 6); }
+  const want = Math.atan2(p.pos.x - f.x, p.pos.z - f.z) + Math.sin(ctx.simTime * 1.3 + p.seedA) * 0.45 + (p.dodge || 0);
+  p.rotY += wrapA(want - p.rotY) * Math.min(1, dt * 5);
+  if (move(p, p.runSpeed || 6, dt)) p.dodge = clamp((p.dodge || 0) + (Math.random() < 0.5 ? 1 : -1), -2, 2); else p.dodge = (p.dodge || 0) * (1 - dt * 0.7);
+  return { speed: p.runSpeed || 6 };
+}
+function fleeAI(v, dt) { // flat out for v.dest along the roads
+  if (!v.dest) return; const d = hyp(v.dest.x - v.pos.x, v.dest.z - v.pos.z);
+  if (d < 20) { steerTo(v, v.pos.x, v.pos.z, dt, { stop: true }); return; }
+  driveTo(v, v.dest.x, v.dest.z, dt, { near: 30 });
+}
+function guardAI(p, dt) { // a sentry: stands, looks around, turns toward noises (gunfire makes them hostile)
+  if (p.state !== 'ai') return null;
+  p.lookT = (p.lookT || 0) - dt; if (p.lookT <= 0) { p.lookT = rand(2, 5); p.lookTo = p.rotY + rand(-1.6, 1.6); }
+  p.rotY += wrapA(p.lookTo - p.rotY) * Math.min(1, dt * 1.5);
+  if (p.health < p.maxHp) { p.ai = hostileAI; p.aggro = true; }
+  return { speed: 0, mode: null };
+}
 function board(p, car) { const i = ctx.peds.indexOf(p); if (i >= 0) ctx.peds.splice(i, 1); p.riding = car; p.rig.g.visible = false; }
 function unboard(p) {
   const car = p.riding; p.riding = null; if (!ctx.peds.includes(p)) ctx.peds.push(p);
@@ -278,9 +321,9 @@ const STEPS = {
   loseCops: { start(s, d) { setObjective(d.text); }, update() { return police.wanted === 0; } },
   spawnCar: {
     start(s, d, m) {
-      const pt = place(d.at, m), names = PLACES[d.at] && PLACES[d.at].names;
-      const q = d.parked ? curbAt(pt, names) : laneAt(pt, d.ahead || 0, ctx.focusPos());
-      const v = spawnVehicle(d.type, d.model, q.x, q.z, q.rot, d.tint);
+      const p0 = place(d.at, m), pt = { x: p0.x + (d.dx || 0), z: p0.z + (d.dz || 0) }, names = PLACES[d.at] && PLACES[d.at].names;
+      const q = d.parked ? (d.dx || d.dz ? { x: pt.x, z: pt.z, rot: d.rot || 0 } : curbAt(pt, names)) : laneAt(pt, d.ahead || 0, ctx.focusPos());
+      const v = spawnVehicle(d.type, d.model, q.x, q.z, q.rot, d.tint); if (d.hp) v.health = d.hp;
       if (d.parked) v.parked = true; else { v.driver = 'ai'; v.mode = 'free'; }
       m.h[d.as] = v; if (d.protect) m.watch.push(() => (v.dead || v.removed) ? d.protect : null);
     },
@@ -506,8 +549,173 @@ const STEPS = {
     },
     end(s) { for (const v of s.list) { if (v.ai === rammerAI) { v.ai = null; v.driver = null; } for (const p of v.thugs || []) if (p.state !== 'dead') { p.ai = null; p.state = 'walk'; p.agent = null; p.keep = false; } } },
   },
+  // ---------------------------------------------------------------- the darker steps (storylines II-IV and Espola Road's back half)
+  heat: { start(s, d) { setWanted(d.n, 'story', { seen: true }); if (d.text) setObjective(d.text); } },
+  give: { start(s, d) { const P = ctx.player, w = ctx.WEAPONS.find(x => x.id === d.weapon); if (!w) return; P.arsenal[w.id] = Math.max(P.arsenal[w.id] | 0, d.ammo || w.give || 10); ctx.notify(`Got: <b>${w.name}</b>`, 'green', 3000); ctx.sfx.cash(); } },
+  unlock: { start(s, d) { const st = ensureSave(); if (!st.unlocks.includes(d.key)) { st.unlocks.push(d.key); ctx.unlockTravel && ctx.unlockTravel(d.key); } } },
+  prop: { // quest-only objects: ramps. keep: stays in the world for good once the mission passes
+    start(s, d, m) {
+      const pt = place(d.at, m); let x = pt.x + (d.dx || 0), z = pt.z + (d.dz || 0), rot = d.rot || 0;
+      if (d.road) { const ne = ctx.nearestEdge(x, z, 400, () => true); if (ne) { x = ne.x; z = ne.z; rot = Math.atan2(ne.tx, ne.tz); const a = ctx.heightAt(x + ne.tx * 20, z + ne.tz * 20), b = ctx.heightAt(x - ne.tx * 20, z - ne.tz * 20); if (a > b) rot += Math.PI; } } // face downhill
+      const r = ctx.addRamp(x, z, rot, d); m.props.push({ r, d }); m.ramps[d.as] = { pos: { x: x + Math.sin(rot) * (d.len || 16), z: z + Math.cos(rot) * (d.len || 16) }, ramp: r }; // not in m.h: that's for people and cars
+    },
+  },
+  jump: { // launch off a ramp and stay airborne
+    start(s, d) { setObjective(d.text); s.air = 0; s.best = 0; },
+    update(s, d, m, dt) {
+      const P = ctx.player, car = P.inCar, R = m.ramps[d.ramp]; if (!R) return true;
+      aimAt(m, R.pos, 'beam');
+      if (!car) { setObjective('Get in a <em>car</em>.'); s.air = 0; return false; }
+      setObjective(d.text);
+      const near = hyp(car.pos.x - R.pos.x, car.pos.z - R.pos.z) < 60;
+      if (car.air && (near || s.air > 0)) { s.air += dt; s.best = Math.max(s.best, s.air); setMeter(`<b>${s.air.toFixed(1)} s</b>airborne`); }
+      else if (s.air > 0) { const ok = s.air >= (d.air || 1.4); s.air = 0; if (ok) { ctx.big('AIRBORNE', `${s.best.toFixed(1)} seconds`, 'pass', 2); return true; } }
+      if (car.dead) return 'You wrecked the car.';
+      return false;
+    },
+  },
+  kill: { // a target (with guards); spooked, they run, on foot or for their car. Dead = done.
+    start(s, d, m) {
+      const c = place(d.at, m), look = d.who ? { ...(CAST[d.who].look || {}), avatar: CAST_SKINS[d.who], kind: 'civ', gun: !!d.armed } : { ...pick(LOOKS.thug), gun: !!d.armed };
+      const p = makePed(look, c.x, c.z, { ai: null, hp: d.hp || 160, who: d.who || null, voice: d.who ? CAST[d.who].voice : 1 }); ctx.collideCircle(p.pos, 0.35);
+      Object.assign(p, { ai: targetAI, runSpeed: d.speed || 6.2, seedA: rand(0, 10), spookR: d.spook || 35, invuln: false, onHurt: function () { this.spooked = true; } });
+      if (d.flee === 'car') { const q = curbAt(c, PLACES[d.at] && PLACES[d.at].names); const v = spawnVehicle(d.car || 'sports', d.model, q.x, q.z, q.rot, d.tint); v.parked = true; p.car = v; m.h[d.as + 'Car'] = v; }
+      p.fleeTo = d.to ? place(d.to, m) : null;
+      s.guards = []; for (let i = 0; i < (d.guards || 0); i++) { const a = rand(0, TAU), r = rand(3, 9), g = makePed(pick(LOOKS.thug), c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, { ai: hostileAI, money: 40 }); ctx.collideCircle(g.pos, 0.35); g.onHurt = hostileHurt; g.aggroR = d.aggro || 32; s.guards.push(g); }
+      s.p = p; s.farT = 0; m.h[d.as] = p; m.h[d.as + 'Guards'] = s.guards; setObjective(d.text);
+    },
+    update(s, d, m, dt) {
+      const p = s.p, f = ctx.focusPos();
+      if (p.riding && p.riding.dead) { ctx.killPed ? ctx.killPed(p, 'player') : (p.state = 'dead'); }
+      if (p.riding && !p.riding.dead && p.riding.health < 30) { const car = p.riding; unboard(p); p.ai = targetAI; p.spooked = true; p.car = null; car.ai = null; car.driver = null; }
+      if (p.state === 'dead' || p.health <= 0) return true;
+      const pos = p.riding ? p.riding.pos : p.pos; aimAt(m, pos, 'arrow'); m.arrowH = p.riding ? 3.6 : 2.6;
+      m.targets = s.guards.filter(g => !g.removed && g.state !== 'dead' && !g.out).map(g => g.pos);
+      const dd = hyp(pos.x - f.x, pos.z - f.z); s.farT = dd > (d.escape || 420) ? s.farT + dt : 0;
+      setMeter(p.riding ? `<b>${Math.round(dd)} m</b>They're driving. Wreck the car.` : p.spooked ? `<b>${Math.round(dd)} m</b>Don't let them get away` : '');
+      if (s.farT > 6) return d.escapeText || 'The target got away.';
+      return false;
+    },
+  },
+  carjack: { // a particular car, driving in traffic: take it
+    start(s, d, m) {
+      const pt = place(d.near || d.at, m), q = laneAt(pt, d.ahead || 0, ctx.focusPos()), v = spawnVehicle(d.type || 'sedan', d.model, q.x, q.z, q.rot, d.tint);
+      v.driver = 'ai'; const far = place(d.to || 'home', m); route(v, far); v.carjackTarget = true; m.h[d.as] = v; setObjective(d.text);
+      if (d.protect) m.watch.push(() => (v.dead || v.removed) ? d.protect : null);
+    },
+    update(s, d, m) { const v = m.h[d.as]; if (!v || v.dead) return 'The car was destroyed.'; aimAt(m, v.pos, 'arrow'); m.arrowH = 3.4; if (v.driver === 'ai' && v.mode === 'rail' && !v.agent.route) route(v, place(d.to || 'home', m)); return ctx.player.inCar === v; },
+  },
+  bomb: { // walk up to a car (or a spot) and plant a charge: stand still next to it for a moment
+    start(s, d, m) { s.t = 0; s.i = 0; s.list = d.site ? [{ site: place(d.site, m) }] : d.cars ? d.cars.map(k => m.h[k]).filter(Boolean) : [].concat(m.h[d.car]); setObjective(d.text); },
+    update(s, d, m, dt) {
+      const P = ctx.player, tgt = s.list[s.i]; if (!tgt) return true;
+      const pos = tgt.site || tgt.pos; if (!tgt.site && (tgt.dead || tgt.removed)) { s.i++; return false; }
+      aimAt(m, pos, tgt.site ? 'beam' : 'arrow'); m.arrowH = 2.6;
+      const dd = hyp(P.pos.x - pos.x, P.pos.z - pos.z), close = !P.inCar && dd < (tgt.site ? 2.5 : (tgt.spec ? tgt.spec.L / 2 + 1.2 : 2.5));
+      if (P.inCar) setObjective('Get out to plant it.'); else setObjective(d.text + (s.list.length > 1 ? ` (${s.i + 1}/${s.list.length})` : ''));
+      s.t = close ? s.t + dt : Math.max(0, s.t - dt * 2); setMeter(close ? bar(s.t / 1.6, 'Planting…') : '');
+      if (s.t >= 1.6) {
+        const THREE = ctx.THREE, b = new THREE.Mesh(ctx.boxG(0.22, 0.12, 0.3), new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xff2020, emissiveIntensity: 0.9 }));
+        if (tgt.site) { b.position.set(pos.x, ctx.heightAt(pos.x, pos.z) + 0.1, pos.z); ctx.scene.add(b); m.charges.push({ mesh: b, x: pos.x, z: pos.z, site: true }); }
+        else { b.position.set(0, -0.35, 0); tgt.m.add(b); m.charges.push({ mesh: b, car: tgt }); }
+        ctx.tone(1400, 0.08, 'square', 0.12); s.i++; s.t = 0;
+      }
+      return s.i >= s.list.length;
+    },
+  },
+  detonate: { // G sets them all off, once you're clear (and, for a hit, once the mark is in the car)
+    start(s, d) { setObjective(d.text); },
+    update(s, d, m) {
+      const f = ctx.focusPos(), w = d.mark ? m.h[d.mark] : null, ch = m.charges;
+      if (!ch.length) return true;
+      const near = Math.min(...ch.map(c => { const p = c.car ? c.car.pos : c; return hyp(p.x - f.x, p.z - f.z); }));
+      aimAt(m, ch[0].car ? ch[0].car.pos : ch[0], 'arrow');
+      if (w && !w.riding) { setObjective(d.waitText || 'Wait for the mark to get in the car.'); return false; }
+      if (near < (d.clear || 25)) { setObjective(`Get clear: <em>${Math.round((d.clear || 25) - near)} m</em> more, then press <em>G</em>.`); return false; }
+      setObjective(d.text);
+      if (!ctx.keys.has('KeyG')) return false;
+      for (const c of ch) { const p = c.car ? c.car.pos : c; ctx.explosionAt(p.x, (p.y ?? ctx.heightAt(p.x, p.z)) + 0.8, p.z, c.site ? (d.R || 14) : 9, 'player'); if (c.car) ctx.damageCar(c.car, 999, 'player', true); c.mesh.parent && c.mesh.parent.remove(c.mesh); }
+      if (w && w.riding) ctx.killPed ? ctx.killPed(w, 'player') : (w.state = 'dead');
+      m.charges.length = 0; return true;
+    },
+  },
+  chase: { // the car runs for it; stop it (wreck it or shoot it to bits) before it gets where it's going
+    start(s, d, m) { const v = m.h[d.car]; s.dest = place(d.to, m); s.farT = 0; Object.assign(v, { driver: 'thug', ai: fleeAI, storyAI: true, dest: s.dest, parked: false, mode: 'free', agent: null }); v.spec.vmax = d.vmax || 46; setObjective(d.text); },
+    update(s, d, m, dt) {
+      const v = m.h[d.car], f = ctx.focusPos(); if (!v || v.removed) return true;
+      if (v.dead || v.health < (d.stopAt || 25)) { v.ai = null; v.driver = null; return true; }
+      aimAt(m, v.pos, 'arrow'); m.arrowH = 3.6; const dd = hyp(v.pos.x - f.x, v.pos.z - f.z);
+      s.farT = dd > (d.lose || 380) ? s.farT + dt : 0; setMeter(`<b>${Math.round(dd)} m</b>${bar(v.health / 140, '')}`);
+      if (hyp(v.pos.x - s.dest.x, v.pos.z - s.dest.z) < 30) return d.failText || 'They made it.';
+      return s.farT > 7 ? (d.lostText || 'You lost them.') : false;
+    },
+  },
+  destroy: { // every vehicle under a handle wrecked
+    start(s, d) { setObjective(d.text); },
+    update(s, d, m) { const list = [].concat(m.h[d.as]).filter(Boolean), left = list.filter(v => !v.dead && !v.removed); m.targets = left.map(v => v.pos); setMeter(`<b>${left.length}</b>left`); if (left.length === 1) aimAt(m, left[0].pos, 'arrow'); return !left.length; },
+  },
+  convoy: { // n cars driving a route; `as` holds them (for destroy / chase)
+    start(s, d, m) {
+      const a = place(d.from, m), b = place(d.to, m), list = [];
+      for (let i = 0; i < d.n; i++) { const q = laneAt(a, i * 14, b), v = spawnVehicle(d.type || 'suv', d.model, q.x, q.z, q.rot, d.tint ?? 0x1c1c1e); v.health = d.hp || 160; route(v, b); v.armed = !!d.armed; list.push(v); }
+      m.h[d.as] = list;
+    },
+  },
+  defend: { // hold a spot for t seconds while waves come at you
+    start(s, d, m) { s.c = place(d.at, m); s.left = d.t; s.wave = 0; s.next = 1; s.out = 0; s.list = []; setObjective(d.text); },
+    update(s, d, m, dt) {
+      const f = ctx.focusPos(), dd = hyp(f.x - s.c.x, f.z - s.c.z); s.left -= dt; s.next -= dt;
+      if (s.next <= 0 && s.left > 6) {
+        s.next = d.every || 20; s.wave++;
+        for (let i = 0; i < (d.n || 4) + s.wave; i++) { const a = rand(0, TAU), r = rand(40, 60), p = makePed(pick(LOOKS.thug), s.c.x + Math.cos(a) * r, s.c.z + Math.sin(a) * r, { ai: hostileAI, money: 30 }); ctx.collideCircle(p.pos, 0.35); p.onHurt = hostileHurt; p.aggro = true; p.aggroR = 90; s.list.push(p); }
+        ctx.notify(`<b>Wave ${s.wave}</b>`, 'red', 1500);
+      }
+      const alive = s.list.filter(p => !p.removed && p.state !== 'dead' && !p.out); m.targets = alive.map(p => p.pos); aimAt(m, s.c, 'beam');
+      s.out = dd > (d.r || 35) ? s.out + dt : 0; if (s.out > 8) return 'You abandoned your post.';
+      setMeter(`<b>${fmtT(Math.max(0, s.left))}</b>${s.out ? '<span style="color:var(--blood)">Get back!</span>' : `hold · ${alive.length} hostiles`}`);
+      return s.left <= 0;
+    },
+    end(s) { for (const p of s.list) if (!p.removed && p.state !== 'dead') { p.ai = null; p.state = 'walk'; p.agent = null; p.keep = false; } },
+  },
+  sneak: { // get to a spot past guards without being seen for long
+    start(s, d, m) {
+      const c = place(d.at, m); s.goal = { x: c.x + (d.dx || 0), z: c.z + (d.dz || 0) }; s.list = []; s.seen = 0;
+      for (let i = 0; i < (d.guards || 3); i++) { const a = rand(0, TAU), r = rand(8, 20), p = makePed({ ...pick(LOOKS.thug), gun: true }, s.goal.x + Math.cos(a) * r, s.goal.z + Math.sin(a) * r, { ai: guardAI, money: 30 }); ctx.collideCircle(p.pos, 0.35); p.rotY = rand(0, TAU); p.onHurt = hostileHurt; s.list.push(p); }
+      m.h[d.as || 'guards'] = s.list; setObjective(d.text);
+    },
+    update(s, d, m, dt) {
+      const f = ctx.focusPos(), P = ctx.player; let spot = false;
+      for (const g of s.list) {
+        if (g.removed || g.state === 'dead' || g.out) continue;
+        const dx = f.x - g.pos.x, dz = f.z - g.pos.z, dd = Math.hypot(dx, dz), cone = (dx * Math.sin(g.rotY) + dz * Math.cos(g.rotY)) / (dd || 1);
+        const range = P.crouch ? 13 : P.inCar ? 40 : 24;
+        if (g.aggro || (dd < range && cone > 0.55 && ctx.los(g.pos.x, g.pos.y + 1.6, g.pos.z, f.x, f.y + 1.2, f.z)) || dd < 3.5) spot = true;
+      }
+      s.seen = spot ? s.seen + dt : Math.max(0, s.seen - dt * 0.5);
+      setMeter(s.seen > 0 ? bar(1 - s.seen / 1.2, 'Spotted…') : 'Unseen · crouch (C) to stay low');
+      if (s.seen > 1.2) { if (d.alarm) { for (const g of s.list) { g.ai = hostileAI; g.aggro = true; } ctx.notify('<b>They saw you.</b>', 'red', 2000); s.list.length = 0; return d.alarm === 'fight' ? false : true; } return d.failText || 'You were spotted.'; }
+      aimAt(m, s.goal, 'beam'); return hyp(f.x - s.goal.x, f.z - s.goal.z) < (d.r || 3);
+    },
+  },
+  hold: { // stay at a spot for t seconds (a photo, a download, a lock to pick)
+    start(s, d, m) { s.c = place(d.at, m); s.t = 0; setObjective(d.text); },
+    update(s, d, m, dt) { const f = ctx.focusPos(), ok = hyp(f.x - s.c.x, f.z - s.c.z) < (d.r || 6) && (!d.foot || !ctx.player.inCar); s.t = ok ? s.t + dt : Math.max(0, s.t - dt); aimAt(m, s.c, 'beam'); setMeter(bar(s.t / d.t, d.label || 'Hold position')); return s.t >= d.t; },
+  },
+  timebomb: { // reach it and defuse it (stand on it 3 s) before the clock runs out
+    start(s, d, m) { s.c = place(d.at, m); s.left = d.t; s.k = 0; setObjective(d.text); },
+    update(s, d, m, dt) {
+      s.left -= dt; const f = ctx.focusPos(), on = hyp(f.x - s.c.x, f.z - s.c.z) < 3 && !ctx.player.inCar; s.k = on ? s.k + dt : 0; aimAt(m, s.c, 'beam');
+      if (s.left <= 0) { ctx.explosionAt(s.c.x, ctx.heightAt(s.c.x, s.c.z) + 1, s.c.z, 16, 'chain'); return 'It went off.'; }
+      if (Math.floor(s.left) !== s.beep) { s.beep = Math.floor(s.left); ctx.tone(s.left < 10 ? 1500 : 1100, 0.06, 'square', 0.1); }
+      setMeter(on ? bar(s.k / 3, 'Defusing…') : `<b>${fmtT(s.left)}</b>until it blows`); return s.k >= 3;
+    },
+  },
+  turn: { // somebody you trusted pulls a gun
+    start(s, d, m) { for (const p of [].concat(m.h[d.as])) { if (!p) continue; if (S.pool.get(p.who) === p) S.pool.delete(p.who); Object.assign(p, { ai: hostileAI, invuln: false, aggro: true, aggroR: 90, onHurt: hostileHurt }); p.rig.gun.visible = true; if (ctx.equipGuns && p.rig.human) { ctx.equipGuns(p.rig); ctx.showGun(p.rig, 'pistol'); } } },
+  },
+  board: { start(s, d, m) { const p = m.h[d.as], v = m.h[d.car]; if (p && v) { board(p, v); v.parked = false; } } }, // put a story NPC into a car
   act: {
-    start(s, d) { const st = ensureSave(); st.act = Math.max(st.act, d.n + 1); s.t = 5.5; ctx.big(`ACT ${['I', 'II', 'III', 'IV'][d.n - 1]} COMPLETE`, d.title, 'mission', 5); },
+    start(s, d) { const st = ensureSave(); if (d.n) st.act = Math.max(st.act, d.n + 1); s.t = 5.5; ctx.big(d.big || `ACT ${['I', 'II', 'III', 'IV'][d.n - 1]} COMPLETE`, d.title, 'mission', 5); },
     update(s, d, m, dt) { return (s.t -= dt) <= 0; },
   },
 };
@@ -544,12 +752,12 @@ function tryStart(def) {
 }
 function startMission(def) {
   const st = ensureSave();
-  S.m = { def, si: 0, st: null, h: {}, flags: {}, watch: [], target: null, targetKind: 'beam', targets: [], t: 0 };
+  S.m = { def, si: 0, st: null, h: {}, flags: {}, watch: [], target: null, targetKind: 'beam', targets: [], t: 0, props: [], charges: [], ramps: {} };
   const g = CAST[def.giver] ? S.pool.get(def.giver) : null; if (g && !g.removed) S.m.h[def.giver] = g;
   if (CAST[def.giver] && !st.met.includes(def.giver)) st.met.push(def.giver);
   ctx.clearWaypoint(true);
-  const who = CAST[def.giver] ? CAST[def.giver].full : 'Time trial';
-  ctx.big(def.title.toUpperCase(), def.type === 'main' ? `Act ${['I', 'II', 'III', 'IV'][def.act - 1]} · ${who}` : def.type === 'trial' ? 'Time trial' : `Side job · ${who}`, 'mission', 3);
+  const who = CAST[def.giver] ? CAST[def.giver].full : 'Time trial', L = LINES[def.line || 'reyes'], line = MISSIONS.filter(d => (d.line || 'reyes') === (def.line || 'reyes') && d.type === 'main');
+  ctx.big(def.title.toUpperCase(), def.type === 'main' ? `${L.name} · ${line.indexOf(def) + 1} of ${line.length} · ${who}` : def.type === 'trial' ? 'Time trial' : `Side job · ${who}`, 'mission', 3.5);
   emit('mission:start', { id: def.id });
   for (const [, gv] of S.givers) removeInteract(gv.it); S.givers.clear();
 }
@@ -573,7 +781,7 @@ function pass() {
   ctx.sfx.job();
   for (const a of def.after || []) later(a.t, () => text(a.text[0], a.text[1]));
   emit('mission:pass', { id: def.id });
-  endMission(); ctx.persist();
+  m.passed = true; endMission(); ctx.persist();
 }
 function fail(reason, quiet) {
   const def = S.m.def;
@@ -583,10 +791,12 @@ function fail(reason, quiet) {
 }
 function endMission() {
   const m = S.m; if (!m) return;
+  for (const c of m.charges) if (c.mesh.parent) c.mesh.parent.remove(c.mesh);
+  for (const { r, d } of m.props) { if (m.passed && d.keep) { const st = ensureSave(); if (!st.props.some(q => q.id === d.keep)) st.props.push({ id: d.keep, x: r.x, z: r.z, rot: r.rot, len: r.len, wid: r.wid, h: r.h }); } else r.remove(); }
   const d = m.def.steps[m.si]; if (m.st && d && STEPS[d.do].end) STEPS[d.do].end(m.st, d, m);
   const P = ctx.player, f = ctx.focusPos();
   for (const h of Object.values(m.h)) for (const e of [].concat(h)) {
-    if (!e || e.removed) continue;
+    if (!e || e.removed || !e.pos || typeof e.remove !== 'function') continue;
     const far = hyp(e.pos.x - f.x, e.pos.z - f.z) > 100;
     if (e instanceof ctx.Vehicle) {
       e.keep = false; e.mission = false; if (e.storyAI) { e.ai = null; if (e.driver === 'thug') e.driver = null; }
@@ -631,7 +841,9 @@ function updateGivers() {
 
 // ------------------------------------------------------------------ public API
 export function initStory() {
-  ensureSave();
+  const st = ensureSave();
+  for (const q of st.props) ctx.addRamp(q.x, q.z, q.rot, q); // ramps you built along the way stay where they are
+  if (ctx.ensureAvatar) for (const n of Object.values(CAST_SKINS)) ctx.ensureAvatar(n); // load the cast's own skins in the background
   on('player:died', ({ kind }) => { if (S.m) { S.failPending = kind === 'busted' ? 'You got busted.' : 'You got wasted.'; fail(S.failPending, true); } });
   on('player:respawn', () => { if (S.failPending) { const r = S.failPending; S.failPending = null; later(0.6, () => { ctx.big('MISSION FAILED', r, 'wasted', 3.5); }); } });
 }
@@ -684,8 +896,12 @@ export function storyMapMarks() {
 // HTML for the pause menu.
 export function storyJournal() {
   const st = ensureSave(), main = MISSIONS.filter(d => d.type === 'main'), esc = s => s.replace(/</g, '&lt;');
-  let h = `<h3>Act ${['I', 'II', 'III', 'IV'][Math.min(st.act, 4) - 1]}${st.act > 1 ? ' · to be continued' : ' · Homecoming'}</h3>`;
-  h += `<p>${main.filter(d => st.done.includes(d.id)).length}/${main.length} story missions · ${st.done.filter(id => !id.startsWith('a1-')).length} side jobs and trials done</p>`;
+  let h = '<h3>Storylines</h3>';
+  for (const [id, L] of Object.entries(LINES)) { // each thread: progress, or a locked teaser until its first job opens
+    const list = main.filter(d => (d.line || 'reyes') === id), done = list.filter(d => st.done.includes(d.id)).length, open = done || list.some(available);
+    h += open ? `<p><span class="who" style="background:${L.color}"></span><b>${L.name}</b> · ${done}/${list.length}${done === list.length ? ' · complete' : ''}. ${esc(L.blurb)}</p>` : `<p style="opacity:.55">🔒 <b>${L.name}</b> · ${esc(L.blurb)}</p>`;
+  }
+  h += `<p>${st.done.filter(id => !main.some(d => d.id === id)).length} side jobs and trials done</p>`;
   if (S.m) h += `<p>On a job: <b>${S.m.def.title}</b>${objHtml ? ' · ' + objHtml : ''}</p>`;
   const avail = S.m ? [] : MISSIONS.filter(available);
   if (avail.length) h += '<h3>Open jobs</h3>' + avail.map(d => { const c = CAST[d.giver]; return `<p><span class="who" style="background:${c ? c.color : '#f3ede1'}"></span><b>${d.title}</b> · ${c ? c.name : 'time trial'} · ${esc(PLACES[d.at].note)}. ${esc(d.pitch)}</p>`; }).join('');

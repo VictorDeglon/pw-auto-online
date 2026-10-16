@@ -11,9 +11,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
+import { person, nameAll } from './people.js';
 
 const BASE = 'assets/humans/';
-export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [] }, player: null };
+import { RESERVED, SWIM } from './reserved.js';
+export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [], swim: [] }, player: null };
 
 function prep(scene) {
   // stand on y = 0, face +Z, about 1.75 m tall whatever the export units were
@@ -48,27 +50,39 @@ function stripRootMotion(clip) {
   return clip;
 }
 
+const CORE = ['idle', 'walk', 'run', 'sprint', 'talk', 'wave'];
+async function loadClip(loader, s, c) {
+  try { const g = await loader.loadAsync(`${BASE}anim/${s}_${c}.glb`); const clip = g.animations[0]; if (clip) { clip.name = c; clip.tracks = clip.tracks.filter(t => t.name.startsWith('Bip01')); HUMANS.clips[s][c] = ['walk', 'run', 'sprint', 'injured', 'stroll'].includes(c) ? stripRootMotion(clip) : clip; } }
+  catch (e) { console.warn('[humans] clip', s, c, e); }
+}
+// the rest of the clips (crouch, cheer, dance, laugh, listen, talk2, look, injured, stroll), fetched in the background
+export async function loadExtraClips() {
+  if (!HUMANS.extra || !HUMANS.extra.length) return;
+  const loader = new GLTFLoader(), list = HUMANS.extra; HUMANS.extra = [];
+  for (const c of list) await Promise.all(['m', 'f'].map(s => loadClip(loader, s, c)));
+}
+export function hasClip(r, k) { return !!(r && (r.actions[k] || (HUMANS.clips[r.sex] || {})[k])); }
 export async function loadHumans(opts = {}) {
   const loader = new GLTFLoader(), poolSize = opts.pool ?? 14;
   const res = await fetch(BASE + 'manifest.json'); if (!res.ok) throw new Error('humans manifest: HTTP ' + res.status);
   const man = await res.json(); HUMANS.manifest = man;
   const all = man.avatars, rnd = () => Math.random();
-  const police = all.filter(a => a.kind === 'police').map(a => a.name);
-  const plain = all.filter(a => a.kind === 'business').map(a => a.name);
-  const civ = all.filter(a => a.kind !== 'police' && a.kind !== 'military' && a.name !== man.player).map(a => a.name);
+  const free = a => !RESERVED.has(a.name) && !SWIM(a.name); // story / dealer skins and swimwear never join the random pools
+  const police = all.filter(a => a.kind === 'police' && free(a)).map(a => a.name);
+  const plain = all.filter(a => a.kind === 'business' && free(a)).map(a => a.name);
+  const civ = all.filter(a => a.kind !== 'police' && a.kind !== 'military' && a.name !== man.player && free(a)).map(a => a.name);
+  HUMANS.swimAll = all.filter(a => SWIM(a.name)).map(a => a.name);
   for (let i = civ.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [civ[i], civ[j]] = [civ[j], civ[i]]; }
   HUMANS.pools.civ = civ.slice(0, poolSize); HUMANS.pools.police = police; HUMANS.pools.plain = plain.filter(n => HUMANS.pools.civ.includes(n)).concat(plain.slice(0, 2));
-  const me = opts.player && all.some(a => a.name === opts.player) ? opts.player : man.player; // the skin the player picked
+  const me = opts.player && all.some(a => a.name === opts.player) && !RESERVED.has(opts.player) ? opts.player : man.player; // the skin the player picked (never a reserved one)
   const want = [...new Set([me, ...HUMANS.pools.civ, ...police, ...HUMANS.pools.plain])];
   const info = new Map(all.map(a => [a.name, a]));
   await Promise.all(want.map(async n => {
     try { const g = await loader.loadAsync(BASE + n + '.glb'); HUMANS.proto.set(n, { root: prep(g.scene), sex: (info.get(n) || {}).sex || 'm' }); }
     catch (e) { console.warn('[humans] avatar', n, e); }
   }));
-  await Promise.all(['m', 'f'].flatMap(s => man.clips.map(async c => {
-    try { const g = await loader.loadAsync(`${BASE}anim/${s}_${c}.glb`); const clip = g.animations[0]; if (clip) { clip.name = c; clip.tracks = clip.tracks.filter(t => t.name.startsWith('Bip01')); HUMANS.clips[s][c] = ['walk', 'run', 'sprint'].includes(c) ? stripRootMotion(clip) : clip; } }
-    catch (e) { console.warn('[humans] clip', s, c, e); }
-  })));
+  await Promise.all(['m', 'f'].flatMap(s => man.clips.filter(c => CORE.includes(c)).map(c => loadClip(loader, s, c))));
+  HUMANS.extra = man.clips.filter(c => !CORE.includes(c)); // crowd and emote clips: loadExtraClips() after the world is up
   for (const k of ['civ', 'police', 'plain']) HUMANS.pools[k] = HUMANS.pools[k].filter(n => HUMANS.proto.has(n));
   HUMANS.player = HUMANS.proto.has(me) ? me : HUMANS.proto.has(man.player) ? man.player : HUMANS.pools.civ[0];
   HUMANS.ready = HUMANS.proto.size > 0 && Object.keys(HUMANS.clips.m).length > 0;
@@ -90,15 +104,24 @@ export function ensureAvatar(name) {
 // every avatar a player may wear (no uniforms): [{ name, sex, group, label }]
 export function skinList() {
   if (!HUMANS.manifest) return [];
-  return HUMANS.manifest.avatars.filter(a => a.kind !== 'police' && a.kind !== 'military').map(a => ({ name: a.name, sex: a.sex, kind: a.kind, label: skinLabel(a.name) }));
+  nameAll(HUMANS.manifest.avatars);
+  return HUMANS.manifest.avatars.filter(a => !RESERVED.has(a.name)).map(a => { const p = person(a); return { name: a.name, sex: a.sex, kind: a.kind, label: p.full, role: p.role, category: p.category }; });
 }
-export function skinLabel(n) { return String(n).replace(/_/g, ' ').replace(/\b0(\d)\b/, '$1'); }
+export function skinLabel(n) {
+  const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n);
+  if (!a) return String(n).replace(/_/g, ' ');
+  nameAll(HUMANS.manifest.avatars); const p = person(a); return p.full;
+}
+export function skinRole(n) { const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n); return a ? person(a).role : ''; }
 // make the player wear this avatar from now on (it must be loaded)
-export function setPlayerAvatar(name) { if (HUMANS.proto.has(name)) HUMANS.player = name; }
+export function setPlayerAvatar(name) { if (HUMANS.proto.has(name) && !RESERVED.has(name)) HUMANS.player = name; }
+// swimwear avatars load on demand the first time you're somewhere they belong
+export function loadSwim() { if (HUMANS.swimLoading || !HUMANS.swimAll) return; HUMANS.swimLoading = true; for (const n of HUMANS.swimAll) ensureAvatar(n).then(ok => { if (ok && !HUMANS.pools.swim.includes(n)) HUMANS.pools.swim.push(n); }); }
 
 // kind: 'player' | 'police' | 'plain' (undercover) | 'civ'
 export function pickAvatar(kind) {
   if (kind === 'player') return HUMANS.player;
+  if (kind === 'swim') { const sw = HUMANS.pools.swim; if (sw.length) return sw[Math.floor(Math.random() * sw.length)]; kind = 'civ'; }
   const pool = HUMANS.pools[kind] && HUMANS.pools[kind].length ? HUMANS.pools[kind] : HUMANS.pools.civ;
   return pool[Math.floor(Math.random() * pool.length)];
 }
@@ -111,7 +134,7 @@ export function makeHuman(name, props = {}) {
   if (hand) { hand.add(armR); armR.scale.setScalar(1 / Math.max(1e-3, hand.getWorldScale(new THREE.Vector3()).x)); }
   const mixer = new THREE.AnimationMixer(inst), clips = HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? HUMANS.clips[P.sex] : HUMANS.clips.m;
   const actions = {}; for (const k in clips) { actions[k] = mixer.clipAction(clips[k]); actions[k].play(); actions[k].setEffectiveWeight(0); }
-  const r = { human: true, name, g, body, inst, mixer, actions, cur: null, armR, armL: new THREE.Group(), legL: new THREE.Group(), legR: new THREE.Group(), phase: Math.random() * 10, punch: 0, gun: props.gun || new THREE.Object3D(), phone: props.phone || new THREE.Object3D() };
+  const r = { human: true, name, sex: HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? P.sex : 'm', g, body, inst, mixer, actions, cur: null, armR, armL: new THREE.Group(), legL: new THREE.Group(), legR: new THREE.Group(), phase: Math.random() * 10, punch: 0, gun: props.gun || new THREE.Object3D(), phone: props.phone || new THREE.Object3D() };
   const holder = new THREE.Group(); holder.add(r.gun); r.gun.position.set(0, 0, 0.08); r.gun.rotation.set(0, 0, 0); g.add(holder); r.gun = holder; // placed by holdWeapon
   r.phone.position.set(0.05, 0, 0.03); armR.add(r.phone);
   setAction(r, 'idle', 0); r.mixer.setTime(Math.random() * 3);
@@ -119,7 +142,7 @@ export function makeHuman(name, props = {}) {
 }
 
 function setAction(r, k, fade = 0.25) {
-  if (!r.actions[k]) k = 'idle';
+  if (!r.actions[k]) { const c = (HUMANS.clips[r.sex] || {})[k]; if (c) { r.actions[k] = r.mixer.clipAction(c); r.actions[k].play(); r.actions[k].setEffectiveWeight(0); } else k = 'idle'; } // clips that arrived after this rig was made
   if (r.cur === k) return;
   const next = r.actions[k], prev = r.cur && r.actions[r.cur];
   next.reset(); next.setEffectiveWeight(1); next.play();
@@ -130,7 +153,10 @@ function setAction(r, k, fade = 0.25) {
 // speed in m/s; mode as in the blocky animRig ('phone', 'aim', 'hands', 'fists', 'talk', 'wave')
 export function animHuman(r, speed, dt, mode) {
   let k, ts = 1;
-  if (speed < 0.25) k = mode === 'talk' || mode === 'phone' ? 'talk' : mode === 'wave' ? 'wave' : 'idle';
+  const POSE = ['crouch', 'cheer', 'dance', 'laugh', 'listen', 'talk2', 'look'];
+  if (speed < 0.25) k = mode === 'talk' || mode === 'phone' ? 'talk' : mode === 'wave' ? 'wave' : POSE.includes(mode) && hasClip(r, mode) ? mode : 'idle';
+  else if (mode === 'injured' && speed >= 1.6 && hasClip(r, 'injured')) { k = 'injured'; ts = speed / 3; }
+  else if (mode === 'stroll' && speed < 1.5 && hasClip(r, 'stroll')) { k = 'stroll'; ts = speed / 1.05; }
   else if (speed < 2.6) { k = 'walk'; ts = speed / 1.35; }
   else if (speed < 5.2) { k = 'run'; ts = speed / 3.6; }
   else { k = 'sprint'; ts = speed / 5.6; }
