@@ -1573,8 +1573,8 @@ function mergeModel(root, scale, tint) { // flatten a GLB into one geometry with
 }
 async function loadModels() {
   const treeNames = []; // plants come from src/nature (photoscanned species), not the Kenney kit
-  const carNames = ['sedan', 'sedan-sports', 'suv', 'suv-luxury', 'hatchback-sports', 'van', 'truck', 'delivery', 'police', 'taxi', 'ambulance', 'garbage-truck', 'wheel-default', 'wheel-dark', 'wheel-truck'];
-  const res = await Promise.all([...treeNames, ...carNames].map(n => loadGLB(`assets/models/${n}.glb`)));
+  const carNames = ['van', 'truck', 'delivery', 'garbage-truck', 'wheel-default', 'wheel-dark', 'wheel-truck', 'q-sports', 'q-compact', 'q-suv', 'q-taxi', 'q-police', 'q-ambulance', 'q-bus', 'q-schoolbus'];
+  const res = await Promise.all([...treeNames, ...carNames].map(n => loadGLB(n.startsWith('q-') ? `assets/cars/${n}.glb` : `assets/models/${n}.glb`)));
   treeNames.forEach((n, i) => { if (res[i]) MODELS[n] = mergeModel(res[i], 1); });
   carNames.forEach((n, i) => { const r = res[treeNames.length + i]; if (r) MODELS[n] = r; });
   M.tree = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
@@ -2100,57 +2100,137 @@ const phoneMat = new THREE.SpriteMaterial({ map: canvasTex(64, 64, g => { g.fill
 // ============================================================ vehicles (Kenney car kit models)
 const CAR = {
   // top speeds with the drag in drivePhysics: sedan ~87 mph, SUV/pickup ~80, sports ~119, van ~68, cruiser ~113
-  sedan: { model: ['sedan', 'taxi'], vmax: 46, acc: 11, turn: 2.0 },
-  suv: { model: ['suv', 'suv-luxury'], vmax: 42, acc: 10, turn: 1.8 },
+  sedan: { model: ['q-sedan', 'q-sedan', 'q-sedan', 'q-compact', 'q-compact', 'q-taxi'], vmax: 46, acc: 11, turn: 2.0 },
+  suv: { model: ['q-suv'], vmax: 42, acc: 10, turn: 1.8 },
   pickup: { model: ['truck'], vmax: 42, acc: 10.5, turn: 1.7 },
-  sports: { model: ['sedan-sports', 'hatchback-sports'], vmax: 64, acc: 17, turn: 2.3 },
-  van: { model: ['van', 'delivery', 'ambulance', 'garbage-truck'], vmax: 36, acc: 8, turn: 1.6 },
-  police: { model: ['police'], vmax: 60, acc: 16, turn: 2.2 },
+  sports: { model: ['q-sports'], vmax: 64, acc: 17, turn: 2.3 },
+  van: { model: ['van', 'van', 'delivery', 'delivery', 'q-ambulance', 'garbage-truck'], vmax: 36, acc: 8, turn: 1.6 },
+  police: { model: ['q-police'], vmax: 60, acc: 16, turn: 2.2 },
+  bus: { model: ['q-bus', 'q-schoolbus'], vmax: 30, acc: 5, turn: 1.2 },
 };
-const CAR_TINTS = [0xffffff, 0xffffff, 0xffffff, 0xdddddd, 0xbbbbbb, 0x888888, 0xd8c8b0, 0xc0d0e0, 0xe0c0c0, 0xb0c8b0, 0x666666];
-const MSCALE = 2.3;
+// real paint colours (the Quaternius bodies take them as is; the Kenney work vehicles multiply their texture by them)
+const CAR_TINTS = [0xf2f2f0, 0xf2f2f0, 0xe8e4da, 0xb8bcc0, 0xb8bcc0, 0x8a8e93, 0x5d6166, 0x1b1c1e, 0x1b1c1e, 0x1f3354, 0x2f5f9e, 0x9e1b1b, 0x5a1a20, 0xc9b48f, 0x2c4a36, 0x7a8a99];
+// model -> source file and real size in metres (length, width, height, wheel radius). Every model is scaled to these,
+// so a sedan is a 4.8 m sedan and a garbage truck dwarfs it.
+const CAR_DIMS = {
+  // Quaternius bodies (assets/cars, no tyres). ax: the model's own axles (front z, rear z, half track), in model units
+  'q-sedan': { src: 'q-taxi', L: 4.85, W: 1.86, H: 1.46, r: 0.33, ax: [1.193, -1.246, 0.69], hide: /^Sign/ },
+  'q-taxi': { src: 'q-taxi', L: 4.85, W: 1.86, H: 1.46, r: 0.33, ax: [1.193, -1.246, 0.69], fixed: 0xf2c230 },
+  'q-compact': { src: 'q-compact', L: 4.2, W: 1.78, H: 1.5, r: 0.31, ax: [1.035, -0.961, 0.658] },
+  'q-suv': { src: 'q-suv', L: 4.85, W: 1.96, H: 1.8, r: 0.38, ax: [1.317, -1.251, 0.78] },
+  'q-sports': { src: 'q-sports', L: 4.5, W: 1.92, H: 1.24, r: 0.33, ax: [1.251, -1.256, 0.713] },
+  'q-police': { src: 'q-police', L: 5.0, W: 1.88, H: 1.56, r: 0.34, ax: [1.143, -1.153, 0.7], fixed: 0xf4f4f2 },
+  'q-ambulance': { src: 'q-ambulance', L: 6.4, W: 2.3, H: 2.8, r: 0.42, ax: [1.577, -1.433, 0.9], fixed: 0xf4f4f2 },
+  'q-bus': { src: 'q-bus', L: 12, W: 2.55, H: 3.2, r: 0.5, ax: [1.71, -1.708, 0.87], fixed: 0xe8e4da },
+  'q-schoolbus': { src: 'q-schoolbus', L: 10.8, W: 2.5, H: 3.15, r: 0.5, ax: [2.253, -2.021, 0.87], fixed: 0xf2b400 },
+  // Kenney work vehicles (assets/models, tyres included)
+  truck: { L: 5.6, W: 2.02, H: 1.9, r: 0.4 }, van: { L: 5.2, W: 2.0, H: 2.15, r: 0.36 },
+  delivery: { L: 6.5, W: 2.3, H: 2.95, r: 0.45 }, 'garbage-truck': { L: 8.6, W: 2.5, H: 3.5, r: 0.52 },
+};
+const MSCALE = 1; // dents (dentCar) are sized in model units; models are now scaled to real size per axis
 const wreckMat = new THREE.MeshStandardMaterial({ color: 0x262422, roughness: 1 });
 const carProto = new Map(); // model name -> { body: Group template, wheels: [{x,y,z,front,right}], L, W, h }
 function carTemplate(name) {
   if (carProto.has(name)) return carProto.get(name);
-  const src = MODELS[name]; if (!src) return null;
-  const body = new THREE.Group(); const wheels = [];
-  src.traverse(o => { if (o.name && o.name.startsWith('wheel') && o.parent === src.children[0] || (o.name || '').startsWith('wheel-') ) { } });
-  // Kenney kits: body node + empty wheel nodes carrying positions
-  const bodyNode = src.getObjectByName('body') || src;
-  const b = bodyNode.clone(true); b.position.set(0, bodyNode.position.y, bodyNode.position.z); body.add(b);
-  for (const nm of ['wheel-front-left', 'wheel-front-right', 'wheel-back-left', 'wheel-back-right']) {
-    const w = src.getObjectByName(nm); if (!w) continue;
-    wheels.push({ x: w.position.x, y: w.position.y, z: w.position.z, front: nm.includes('front'), right: nm.includes('right'), mesh: w.isMesh ? w : null });
+  const dim = CAR_DIMS[name] || { L: 4.8, W: 1.9, H: 1.5, r: 0.34 };
+  const src = MODELS[dim.src || name]; if (!src) return null;
+  src.updateMatrixWorld(true);
+  const body = new THREE.Group(), wheels = [];
+  const isWheel = o => /wheel/i.test(o.name || '') && o.isMesh;
+  if (dim.src) { // Quaternius (tyre-less body, grounded, +z forward): Kenney tyres go on the model's axles
+    const bb = src.clone(true); bb.traverse(o => { if (o.isMesh && dim.hide && dim.hide.test(o.material.name || '')) o.visible = false; });
+    if (dim.hide) bb.traverse(o => { if (o.isMesh && Array.isArray(o.material)) { } });
+    body.add(bb);
+    const tyre = MODELS['wheel-dark'] || MODELS['wheel-default'], [fz, rz, ht] = dim.ax;
+    for (const [z, front] of [[fz, true], [rz, false]]) for (const right of [false, true]) {
+      if (!tyre) break;
+      const mesh = tyre.clone(true); if (right) mesh.rotation.y = Math.PI;
+      wheels.push({ x: right ? -ht : ht, y: 0, z, front, right, mesh, qtyre: true });
+    }
+  } else { // Kenney: body node + wheel nodes
+    const bodyNode = src.getObjectByName('body') || src;
+    const bb = bodyNode.clone(true); bb.position.set(0, bodyNode.position.y, bodyNode.position.z); body.add(bb);
+    for (const nm of ['grill', 'door']) { const extra = src.getObjectByName(nm); if (extra) body.add(extra.clone(true)); }
+    for (const nm of ['wheel-front-left', 'wheel-front-right', 'wheel-back-left', 'wheel-back-right']) {
+      const w = src.getObjectByName(nm); if (!w) continue;
+      let mesh = w.isMesh ? w.clone() : null;
+      if (!mesh) { const wg = MODELS[name === 'truck' || name === 'garbage-truck' ? 'wheel-truck' : 'wheel-default']; if (wg) { mesh = wg.clone(true); if (nm.includes('right')) mesh.rotation.y = Math.PI; } }
+      if (mesh) { mesh.position.set(0, 0, 0); }
+      wheels.push({ x: w.position.x, y: w.position.y, z: w.position.z, front: nm.includes('front'), right: nm.includes('right'), mesh });
+    }
   }
-  for (const nm of ['grill', 'door']) { const extra = src.getObjectByName(nm); if (extra) { const e = extra.clone(true); body.add(e); } }
-  body.scale.setScalar(MSCALE); body.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(body); const wheelG = MODELS[name === 'truck' || name === 'garbage-truck' ? 'wheel-truck' : 'wheel-default'];
-  const wr = wheelG ? new THREE.Box3().setFromObject(wheelG).getSize(new THREE.Vector3()).y / 2 * MSCALE : 0.6;
-  const t = { body, wheels, L: Math.max(3.6, box.max.z - box.min.z), W: Math.max(1.6, box.max.x - box.min.x), H: Math.max(1.2, box.max.y - Math.min(0, box.min.y)), wr, wheelG };
+  const box0 = new THREE.Box3().setFromObject(body);
+  const wr0 = w => { if (!w.mesh) return 0; const b = new THREE.Box3().setFromObject(w.mesh); return (b.max.y - b.min.y) / 2; };
+  const root = new THREE.Group(); root.add(body);
+  const tw = []; let wr = 0;
+  const out = new THREE.Group(); out.add(root);
+  if (dim.src) { // body above the tyres: clearance about 0.55 r; real length / width / height
+    const clear = dim.r * 0.55, sx = dim.W / (box0.max.x - box0.min.x), sy = (dim.H - clear) / (box0.max.y - box0.min.y), sz = dim.L / (box0.max.z - box0.min.z);
+    body.scale.set(sx, sy, sz); body.position.set(-(box0.min.x + box0.max.x) / 2 * sx, clear - box0.min.y * sy, -(box0.min.z + box0.max.z) / 2 * sz);
+    for (const w of wheels) {
+      const k = dim.r / Math.max(1e-3, wr0(w)); wr = dim.r;
+      tw.push({ x: w.x * sx, y: dim.r, z: w.z * sz - (box0.min.z + box0.max.z) / 2 * sz, front: w.front, right: w.right, mesh: w.mesh, scale: [k, k, k] });
+    }
+  } else { // Kenney: tyres touch the ground; scale each axis to the real size
+    let minY = box0.min.y; for (const w of wheels) minY = Math.min(minY, w.y - wr0(w));
+    const sx = dim.W / (box0.max.x - box0.min.x), sy = dim.H / (box0.max.y - minY), sz = dim.L / (box0.max.z - box0.min.z), cx = (box0.min.x + box0.max.x) / 2, cz = (box0.min.z + box0.max.z) / 2;
+    body.scale.set(sx, sy, sz); body.position.set(-cx * sx, -minY * sy, -cz * sz);
+    const fw = wheels.filter(w => w.front), flip = fw.length > 0 && fw.reduce((a, w) => a + w.z, 0) / fw.length < cz;
+    if (flip) root.rotation.y = Math.PI;
+    out.updateMatrixWorld(true);
+    for (const w of wheels) {
+      if (!w.mesh) continue;
+      const p = new THREE.Vector3(w.x, w.y, w.z).applyMatrix4(body.matrixWorld), k = (sy + sz) / 2; wr = Math.max(wr, wr0(w) * k);
+      tw.push({ x: p.x, y: p.y, z: p.z, front: w.front, right: w.right, mesh: w.mesh, scale: [k, k, k], spinFlip: flip });
+    }
+  }
+  const t = { body: out, wheels: tw, L: dim.L, W: dim.W, H: dim.H, wr: wr || dim.r, dim };
   carProto.set(name, t); return t;
 }
 function buildCar(type, tint, model) {
   const spec = CAR[type]; const name = model && spec.model.includes(model) ? model : pick(spec.model); const T = carTemplate(name); const g = new THREE.Group();
   const mats = new Map();
   const body = T.body.clone(true);
-  body.traverse(o => { if (o.isMesh) { if (!mats.has(o.material)) { const m = o.material.clone(); m.userData.base = o.material.color.clone(); m.color = m.color.clone().multiply(hex(tint)); m.roughness = 0.45; m.metalness = 0.1; mats.set(o.material, m); } o.material = mats.get(o.material); o.castShadow = true; } });
+  const q = !!T.dim.src;
+  body.traverse(o => {
+    if (!o.isMesh) return;
+    if (!mats.has(o.material)) {
+      const src = o.material, nm = src.name || '';
+      let m;
+      if (!q || /^Body/.test(nm)) { // car paint: clear-coated
+        const fixed = q && T.dim.fixed != null && nm === 'Body';
+        m = new THREE.MeshPhysicalMaterial({ map: src.map || null, color: q ? 0xffffff : src.color, roughness: 0.32, metalness: 0.35, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.1 });
+        if (nm === 'BodyLower') { m.color.set(0x2a2b2d); m.clearcoat = 0.3; }
+        else if (fixed) m.color.set(T.dim.fixed);
+        else { m.userData.base = q ? new THREE.Color(1, 1, 1) : src.color.clone(); m.color = m.userData.base.clone().multiply(hex(tint)); }
+      } else if (/Accent|SignPlate/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: type === 'police' ? 0x1f4a2c : src.color, roughness: 0.4, metalness: 0.2 });
+      else if (/PoliceLight(Red|Blue)/.test(nm)) m = new THREE.MeshBasicMaterial({ color: /Red/.test(nm) ? 0x400000 : 0x000a40 });
+      else if (/Glass|Window/i.test(nm)) m = new THREE.MeshPhysicalMaterial({ color: 0x101418, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6 });
+      else if (/Headlight|LightFront|PoliceLightWhite/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0xfff4d8, emissive: 0xffe6b0, emissiveIntensity: 0.25, roughness: 0.2 });
+      else if (/TailLight|LightRear/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0xa01010, emissive: 0x600000, emissiveIntensity: 0.4, roughness: 0.3 });
+      else if (/Grey|TrimDark|PoliceLightBar/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.5, metalness: 0.6 });
+      else if (/^Trim$/.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.25, metalness: 0.9 });
+      else m = new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.7 });
+      m.name = nm; mats.set(src, m);
+    }
+    o.material = mats.get(o.material); o.castShadow = true;
+  });
   g.add(body);
   const wheels = [];
   for (const w of T.wheels) {
-    const piv = new THREE.Group(); piv.position.set(w.x * MSCALE, w.y * MSCALE, w.z * MSCALE); g.add(piv);
-    let wm = null;
-    if (w.mesh) { wm = w.mesh.clone(); wm.position.set(0, 0, 0); wm.scale.multiplyScalar(MSCALE); } // the model's own tyre
-    else if (T.wheelG) { wm = T.wheelG.clone(true); wm.scale.setScalar(MSCALE); if (w.right) wm.rotation.y = Math.PI; }
-    if (wm) { wm.traverse(o => { if (o.isMesh) o.castShadow = true; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front }); }
+    const piv = new THREE.Group(); piv.position.set(w.x, w.y, w.z); g.add(piv);
+    const wm = w.mesh.clone(); wm.scale.set(w.scale[0], w.scale[1], w.scale[2]); if (w.spinFlip) wm.rotation.y += Math.PI;
+    wm.traverse(o => { if (o.isMesh) o.castShadow = true; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front });
   }
   let bars = null;
-  if (type === 'police') {
-    const r = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), new THREE.MeshBasicMaterial({ color: 0x400000 })), b = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), new THREE.MeshBasicMaterial({ color: 0x000a40 }));
-    const top = new THREE.Box3().setFromObject(body).max.y; r.position.set(-0.3, top + 0.06, -0.1); b.position.set(0.3, top + 0.06, -0.1); g.add(r, b); bars = [r, b];
+  if (type === 'police') { // the Cop model's own light bar flashes; green Sheriff door bands
+    const red = [...mats.values()].find(m => /PoliceLightRed/.test(m.name)), blue = [...mats.values()].find(m => /PoliceLightBlue/.test(m.name));
+    if (red && blue) bars = [{ material: red }, { material: blue }];
+    const band = new THREE.MeshStandardMaterial({ color: 0x1f4a2c, roughness: 0.4, metalness: 0.2 });
+    for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.26), band); p.position.set(sx * (T.W / 2 + 0.012), T.H * 0.45, -0.1); p.rotation.y = sx * Math.PI / 2; g.add(p); }
   }
   scene.add(g);
-  return { g, body, wheels, bars, mats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name };
+  return { g, body, wheels, bars, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name };
 }
 const vehicles = [];
 class Vehicle {
@@ -2168,7 +2248,7 @@ class Vehicle {
     vehicles.push(this);
   }
   get fx() { return Math.sin(this.rotY); } get fz() { return Math.cos(this.rotY); }
-  remove() { if (this.ownedId) lostOwned(this); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.mats) m.dispose(); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
+  remove() { if (this.ownedId) lostOwned(this); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) m.dispose(); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
 }
 function carCircles(v) { const o = v.spec.L / 2 - v.spec.W / 2; return [v.pos.x + v.fx * o, v.pos.z + v.fz * o, v.pos.x - v.fx * o, v.pos.z - v.fz * o]; }
 const _sl = [0, 0];
