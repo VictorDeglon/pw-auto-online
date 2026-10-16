@@ -13,7 +13,7 @@
 //   crowd/<uid> = { t, e }           the people and cars a player is running for everyone near them (src/online/world.js)
 // Everything a player holds (name, presence) is removed by the server when their connection drops (onDisconnect).
 import * as FB from '../../vendor/firebase.mjs';
-import { FIREBASE_CONFIG, EMULATOR_PROJECT, SERVERS, MAX_PLAYERS, NAME_RE } from './config.js';
+import { FIREBASE_CONFIG, EMULATOR_PROJECT, SERVERS, MAX_PLAYERS, NAME_RE, HOME_SERVER_URL } from './config.js';
 
 export const NET = {
   available: false, // a Firebase project is configured (or the emulator is in use)
@@ -243,6 +243,7 @@ const relaySeen = new Map();
 export async function connectHome(sid, name) {
   disconnectHome(); HOME.sid = sid;
   let cfg = null; try { cfg = (await FB.get(FB.ref(db, 'config/home'))).val(); } catch (e) { }
+  if ((!cfg || !cfg.url) && HOME_SERVER_URL) cfg = { url: HOME_SERVER_URL };
   if (!cfg || !cfg.url || HOME.sid !== sid) return false;
   let token; try { token = await auth.currentUser.getIdToken(); } catch (e) { return false; }
   const ws = new WebSocket(cfg.url); HOME.ws = ws; HOME.url = cfg.url;

@@ -9,6 +9,10 @@
 // Web app). These values are public by design: they identify the project, they don't grant access. Access is
 // controlled by the rules file and by Anonymous sign-in, which must be enabled under Authentication > Sign-in method.
 
+// The home game server (server/), optional. Leave null to use the address the server publishes in the database
+// (config/home, needs its service-account key), or set a fixed wss:// address here (a named tunnel or a domain).
+export const HOME_SERVER_URL = null;
+
 export const FIREBASE_CONFIG = null; // paste { apiKey, authDomain, databaseURL, projectId, appId } here
 
 // Local testing against the Firebase emulators: open the game with ?emu=1 (or ?emu=host) and run
