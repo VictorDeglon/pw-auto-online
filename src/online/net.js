@@ -9,7 +9,7 @@
 //   feed/<push>   = { u, k, a, b, w, t }  join / leave / kill / death / busted / wreck
 //   hits/<victim uid>/<push> = { u, n, d, w, t }  damage another player dealt you; you apply it and delete it
 //   events/<push> = { u, k, t, ... } shared world events (explosions, collapses, felled trees, hits on shared NPCs)
-//   ruins/<building index> = { u, t, x, z }  buildings that came down (kept 30 minutes, so late joiners see them)
+//   ruins/<building index> = { u, t, x, z }  buildings that came down (kept 2 minutes, until they rebuild, so late joiners see them)
 //   crowd/<uid> = { t, e }           the people and cars a player is running for everyone near them (src/online/world.js)
 // Everything a player holds (name, presence) is removed by the server when their connection drops (onDisconnect).
 import * as FB from '../../vendor/firebase.mjs';
@@ -171,11 +171,11 @@ function subscribe(base) {
   subs.push(FB.onChildAdded(FB.ref(db, `${base}/hits/${uid}`), s => { const v = s.val(); FB.remove(s.ref); if (v) emit('hit', v); }));
   // the shared world
   subs.push(FB.onChildAdded(FB.query(FB.ref(db, `${base}/events`), FB.limitToLast(30)), s => { const v = s.val(); if (v && v.u !== uid && v.t >= NET.joinedAt - 1500) emit('event', v); }));
-  subs.push(FB.onChildAdded(FB.ref(db, `${base}/ruins`), s => { const v = s.val(); if (v && v.t > serverNow() - RUIN_MS) emit('ruin', { i: +s.key, ...v, old: v.t < NET.joinedAt }); }));
+  subs.push(FB.onChildAdded(FB.ref(db, `${base}/ruins`), s => { const v = s.val(); if (v && v.t > serverNow() - RUIN_MS) emit('ruin', { i: +s.key, ...v, old: v.t < NET.joinedAt, age: Math.max(0, (serverNow() - v.t) / 1000) }); }));
   const cr = FB.ref(db, `${base}/crowd`), cu = s => { if (s.key !== uid) emit('crowd', { id: s.key, ...s.val() }); };
   subs.push(FB.onChildAdded(cr, cu), FB.onChildChanged(cr, cu), FB.onChildRemoved(cr, s => emit('crowd:remove', s.key)));
 }
-const RUIN_MS = 30 * 60e3;
+const RUIN_MS = 2 * 60e3; // buildings rebuild after two minutes, so ruins older than that are history
 
 // delete chat and feed entries older than an hour (the rules allow anyone to, so the lists don't grow forever)
 async function prune(base) {
