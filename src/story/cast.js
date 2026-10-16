@@ -38,6 +38,41 @@ export const CAST = {
     look: { skin: '#f6d7bd', shirt: '#e07a5f', pants: '#e5e0d2', hair: '#c9a46b' },
     bio: 'HOA board president and neighborhood-app moderator. Has opinions about your trash cans. Has stronger opinions about porch pirates.',
   },
+  // ---- Sycamore Smoke
+  nina: {
+    name: 'Nina', full: 'Nina Salas', color: '#ff9f43', voice: 1.12, letter: 'N', home: 'canyonMouth',
+    bio: '29. Keeps the books at Salas Feed & Supply on Sycamore Canyon Road, which sells very little feed. Smarter than her uncle and tired of being told so. Appears in Vance\'s ledger as "S. Salas, canyon storage."',
+  },
+  salas: {
+    name: 'Sal', full: 'Salvador "Sal" Salas', color: '#c0392b', voice: 0.78,
+    bio: 'Nina\'s uncle. Thirty years moving product up the canyon, the last ten through Garrett Vance\'s barns. Gives to the church, the Little League and anyone who forgets things.',
+  },
+  cruz: {
+    name: 'Cruz', full: 'Eddie Cruz', color: '#95a5a6', voice: 1.0,
+    bio: 'Crop-duster pilot turned courier for the Coyotes, the crew pushing into Sal\'s canyon from the east. Lives at the Poway Inn. Tips well, drives worse.',
+  },
+  // ---- Clean Money
+  lang: {
+    name: 'Lang', full: 'Victoria Lang', color: '#e1c16e', voice: 1.18, letter: 'V', home: 'cityHall',
+    bio: 'Lang Development: "Building Poway\'s Tomorrow." Wants Old Poway Park rezoned and the Kirkham Way lots cleared. Paid Vance for "site security" and the Sheriff for patience.',
+  },
+  harlan: {
+    name: 'Harlan', full: 'Dale Harlan', color: '#7f8c8d', voice: 0.82,
+    bio: 'Harlan Brothers Construction. Lost the plaza bid to Lang, then found out how. Keeps receipts. Keeps bodyguards.',
+  },
+  // ---- The Lake
+  okoye: {
+    name: 'Okoye', full: 'Gunnery Sgt. (ret.) Samuel Okoye', color: '#2ecc71', voice: 0.72, letter: 'O', home: 'lakeGate',
+    bio: 'Twenty years in the Marines, now rents boats at Lake Poway. The creek went bad in spring and his dog died drinking from it. He followed the smell uphill.',
+  },
+  ray: {
+    name: 'Ray', full: 'Raymond "Cook" Dwyer', color: '#d35400', voice: 0.9,
+    bio: 'Runs a lab in the chaparral above the lake. Ex-chemistry teacher, ex-husband, ex-everything. Buys his precursors through a supply house Lang Development owns on paper.',
+  },
+  mags: {
+    name: 'Mags', full: 'Margaret "Mags" Ito', color: '#ff7eb6', voice: 1.2,
+    bio: 'Paramedic who patches up people who can\'t go to the hospital. Okoye\'s only friend. Has seen what comes out of Ray\'s lab, on skin.',
+  },
 };
 
 // Nameless people the missions spawn.

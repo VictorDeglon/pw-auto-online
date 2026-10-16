@@ -14,7 +14,8 @@ import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
 import { person, nameAll } from './people.js';
 
 const BASE = 'assets/humans/';
-export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [] }, player: null };
+import { RESERVED, SWIM } from './reserved.js';
+export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [], swim: [] }, player: null };
 
 function prep(scene) {
   // stand on y = 0, face +Z, about 1.75 m tall whatever the export units were
@@ -66,12 +67,14 @@ export async function loadHumans(opts = {}) {
   const res = await fetch(BASE + 'manifest.json'); if (!res.ok) throw new Error('humans manifest: HTTP ' + res.status);
   const man = await res.json(); HUMANS.manifest = man;
   const all = man.avatars, rnd = () => Math.random();
-  const police = all.filter(a => a.kind === 'police').map(a => a.name);
-  const plain = all.filter(a => a.kind === 'business').map(a => a.name);
-  const civ = all.filter(a => a.kind !== 'police' && a.kind !== 'military' && a.name !== man.player).map(a => a.name);
+  const free = a => !RESERVED.has(a.name) && !SWIM(a.name); // story / dealer skins and swimwear never join the random pools
+  const police = all.filter(a => a.kind === 'police' && free(a)).map(a => a.name);
+  const plain = all.filter(a => a.kind === 'business' && free(a)).map(a => a.name);
+  const civ = all.filter(a => a.kind !== 'police' && a.kind !== 'military' && a.name !== man.player && free(a)).map(a => a.name);
+  HUMANS.swimAll = all.filter(a => SWIM(a.name)).map(a => a.name);
   for (let i = civ.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [civ[i], civ[j]] = [civ[j], civ[i]]; }
   HUMANS.pools.civ = civ.slice(0, poolSize); HUMANS.pools.police = police; HUMANS.pools.plain = plain.filter(n => HUMANS.pools.civ.includes(n)).concat(plain.slice(0, 2));
-  const me = opts.player && all.some(a => a.name === opts.player) ? opts.player : man.player; // the skin the player picked
+  const me = opts.player && all.some(a => a.name === opts.player) && !RESERVED.has(opts.player) ? opts.player : man.player; // the skin the player picked (never a reserved one)
   const want = [...new Set([me, ...HUMANS.pools.civ, ...police, ...HUMANS.pools.plain])];
   const info = new Map(all.map(a => [a.name, a]));
   await Promise.all(want.map(async n => {
@@ -102,7 +105,7 @@ export function ensureAvatar(name) {
 export function skinList() {
   if (!HUMANS.manifest) return [];
   nameAll(HUMANS.manifest.avatars);
-  return HUMANS.manifest.avatars.map(a => { const p = person(a); return { name: a.name, sex: a.sex, kind: a.kind, label: p.full, role: p.role, category: p.category }; });
+  return HUMANS.manifest.avatars.filter(a => !RESERVED.has(a.name)).map(a => { const p = person(a); return { name: a.name, sex: a.sex, kind: a.kind, label: p.full, role: p.role, category: p.category }; });
 }
 export function skinLabel(n) {
   const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n);
@@ -111,11 +114,14 @@ export function skinLabel(n) {
 }
 export function skinRole(n) { const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n); return a ? person(a).role : ''; }
 // make the player wear this avatar from now on (it must be loaded)
-export function setPlayerAvatar(name) { if (HUMANS.proto.has(name)) HUMANS.player = name; }
+export function setPlayerAvatar(name) { if (HUMANS.proto.has(name) && !RESERVED.has(name)) HUMANS.player = name; }
+// swimwear avatars load on demand the first time you're somewhere they belong
+export function loadSwim() { if (HUMANS.swimLoading || !HUMANS.swimAll) return; HUMANS.swimLoading = true; for (const n of HUMANS.swimAll) ensureAvatar(n).then(ok => { if (ok && !HUMANS.pools.swim.includes(n)) HUMANS.pools.swim.push(n); }); }
 
 // kind: 'player' | 'police' | 'plain' (undercover) | 'civ'
 export function pickAvatar(kind) {
   if (kind === 'player') return HUMANS.player;
+  if (kind === 'swim') { const sw = HUMANS.pools.swim; if (sw.length) return sw[Math.floor(Math.random() * sw.length)]; kind = 'civ'; }
   const pool = HUMANS.pools[kind] && HUMANS.pools[kind].length ? HUMANS.pools[kind] : HUMANS.pools.civ;
   return pool[Math.floor(Math.random() * pool.length)];
 }

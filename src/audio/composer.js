@@ -29,6 +29,9 @@ const STYLE = {
   country: { bpm: [100, 124], swing: 0.12, scale: ['major', 'mixo'], prog: [[0, 3, 4, 0], [0, 0, 3, 4], [0, 4, 5, 3]], sev: 0, drum: 'train', bass: 'boomchick', comp: 'strum', lead: 'twang', rev: 0.2 },
   rock: { bpm: [120, 148], swing: 0, scale: ['minor'], prog: [[0, 5, 6, 6], [0, 3, 5, 4], [0, 6, 5, 6]], sev: 0, drum: 'rock', bass: 'eighth', comp: 'power', lead: 'gtr', rev: 0.18 },
   chip: { bpm: [128, 152], swing: 0, scale: ['major', 'minor'], prog: [[0, 5, 3, 4], [0, 4, 5, 3], [5, 3, 0, 4]], sev: 0, drum: 'chip', bass: 'chip', comp: 'arp', arp: true, lead: 'square', rev: 0.05 },
+  // the score (not on the radio): exploring is slow and wide open, the chase is fast, minor and relentless
+  explore: { bpm: [68, 80], swing: 0.06, scale: ['major', 'mixo', 'dorian'], prog: [[0, 4, 5, 3], [0, 3, 0, 4], [5, 3, 0, 4], [0, 5, 3, 4]], sev: 1, drum: 'soft', bass: 'soft', comp: 'pad', arp: true, lead: 'flute', rev: 0.45, sparse: true },
+  chase: { bpm: [146, 162], swing: 0, scale: ['harm', 'minor'], prog: [[0, 0, 5, 4], [0, 6, 5, 4], [0, 1, 0, 4]], sev: 0, drum: 'chase', bass: 'eighth', comp: 'power', arp: true, lead: 'saw', rev: 0.15 },
   latin: { bpm: [92, 108], swing: 0.05, scale: ['harm', 'minor'], prog: [[0, 3, 4, 0], [0, 6, 5, 4], [0, 3, 6, 2]], sev: 0, drum: 'cumbia', bass: 'tumbao', comp: 'strum', lead: 'flute', rev: 0.22 },
 };
 
@@ -112,6 +115,8 @@ export function createComposer(AC, dest) {
         if (D === 'boom') { if (i === 0 || i === 10 || (i === 7 && R() < 0.5)) I.kick(tt, 0.9); if (i === 4 || i === 12) I.snare(tt, 0.8); if (i % 2 === 0) I.hat(tt, 0.45); }
         if (D === 'train') { if (i === 0 || i === 8) I.kick(tt, 0.8); if (i === 4 || i === 12) I.snare(tt, 0.7); I.hat(tt, i % 2 ? 0.3 : 0.6); }
         if (D === 'rock') { if (i === 0 || i === 8 || i === 10 || (E > 1 && i === 6)) I.kick(tt); if (i === 4 || i === 12) I.snare(tt); if (i % 2 === 0) I.hat(tt, 0.7, E > 1); }
+        if (D === 'soft') { if (i === 0 && E > 0) I.kick(tt, 0.45); if (i === 8 && E > 1) I.kick(tt, 0.35); if ((i === 4 || i === 12) && E > 1) I.snare(tt, 0.18); if (i % 4 === 2 && E > 0) I.shaker(tt, 0.5); }
+        if (D === 'chase') { if (i === 0 || i === 6 || i === 8 || i === 11 || (E > 1 && i === 14)) I.kick(tt); if (i === 4 || i === 12) I.snare(tt, 1); if (E > 1 && (i === 15 || i === 13)) I.snare(tt, 0.35); I.hat(tt, i % 2 ? 0.45 : 0.8, i === 6 || i === 14); if (i % 4 === 0 && E > 2) I.conga(tt, 48, 0.9); }
         if (D === 'cumbia') { if (i % 8 === 0) I.kick(tt, 0.8); if (i === 4 || i === 12) I.snare(tt, 0.5); I.shaker(tt, i % 2 ? 0.6 : 1); if ([0, 3, 6, 10, 12].includes(i)) I.clave(tt); if (i === 6 || i === 7 || i === 14) I.conga(tt, i === 14 ? 64 : 60, 0.8); }
       }
       if (first && E > 0 && (S.drum === 'rock' || S.drum === 'four' || S.drum === 'funk')) I.crash(t);
@@ -136,7 +141,7 @@ export function createComposer(AC, dest) {
     if (E > 0 && name !== 'intro' && name !== 'outro') {
       const M = name === 'B' ? W.mB : name === 'C' ? (bi % 2 ? W.mA : W.mB) : W.mA, half = (bi % 2) * 8, var_ = Math.floor(bi / 2) % 2;
       for (let i = 0; i < 8; i++) {
-        if (!M.r[half + i]) continue; let len = 1; while (i + len < 8 && !M.r[half + i + len] && len < 3) len++;
+        if (!M.r[half + i]) continue; if (S.sparse && (i % 2 || W.R() < 0.35)) continue; let len = 1; while (i + len < 8 && !M.r[half + i + len] && len < 3) len++;
         const s = M.p[half + i] + (var_ && i > 5 ? 1 : 0), m = deg(d + s, 2) + (S.lead === 'square' ? 12 : 0);
         I.lead(sw(i * 2), m, step * 2 * len * 0.92, S.lead, name === 'B' ? 1 : 0.85);
       }
@@ -165,6 +170,8 @@ export function createComposer(AC, dest) {
     },
     stop() { if (timer) clearInterval(timer); timer = 0; cur = null; out.gain.cancelScheduledValues(AC.currentTime); out.gain.setTargetAtTime(0, AC.currentTime, 0.05); },
     vol: 0.5, volume(v) { api.vol = v; if (cur) out.gain.setTargetAtTime(v, AC.currentTime, 0.1); },
+    fade(v, secs) { out.gain.cancelScheduledValues(AC.currentTime); out.gain.setValueAtTime(out.gain.value, AC.currentTime); out.gain.linearRampToValueAtTime(v, AC.currentTime + secs); },
+    get level() { return out.gain.value; },
     get playing() { return !!cur; },
   };
   return api;

@@ -17,14 +17,14 @@ export function createPost(THREE, renderer, camera, level = 2) {
   }
   const U = {
     tCol: { value: null }, tDep: { value: null }, uRes: { value: new THREE.Vector2() }, uTime: { value: 0 },
-    uNear: { value: camera.near }, uFar: { value: camera.far }, uExp: { value: 1 }, uInk: { value: 1 }, uFx: { value: 1 }, uNight: { value: 0 }, uDbg: { value: 0 },
+    uNear: { value: camera.near }, uFar: { value: camera.far }, uExp: { value: 1 }, uInk: { value: 1 }, uFx: { value: 1 }, uNight: { value: 0 }, uDusk: { value: 0 }, uDbg: { value: 0 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms: U, depthTest: false, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
     fragmentShader: /* glsl */`
       precision highp float;
-      uniform sampler2D tCol, tDep; uniform vec2 uRes; uniform float uTime, uNear, uFar, uExp, uInk, uFx, uNight, uDbg; varying vec2 vUv;
+      uniform sampler2D tCol, tDep; uniform vec2 uRes; uniform float uTime, uNear, uFar, uExp, uInk, uFx, uNight, uDusk, uDbg; varying vec2 vUv;
       float lin(vec2 uv){ float d = texture2D(tDep, uv).x; float z = d * 2. - 1.; return 2. * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
       vec3 aces(vec3 x){ // three.js ACESFilmicToneMapping
         const mat3 I = mat3(.59719, .07600, .02840, .35458, .90834, .13383, .04823, .01566, .83777);
@@ -58,7 +58,10 @@ export function createPost(THREE, renderer, camera, level = 2) {
         float l = dot(t, vec3(.2126, .7152, .0722));
         t = mix(vec3(l), t, 1. + .1 * uFx);                                                        // a little more colour
         t += mix(vec3(-.006, .002, .014), vec3(.02, .01, -.012), smoothstep(.2, .8, l)) * uFx * (1. - uNight * .5); // cool shadows, warm lights
-        t = clamp((t - .5) * (1. + .04 * uFx) + .5, 0., 1.);
+        // golden hour: amber highlights, violet shadows, a touch more contrast and bloom-ish lift in the brights
+        t += mix(vec3(-.012, -.02, .03), vec3(.07, .025, -.04), smoothstep(.15, .85, l)) * uDusk * (.6 + .4 * uFx);
+        t += smoothstep(.7, 1., l) * vec3(.05, .02, -.01) * uDusk;
+        t = clamp((t - .5) * (1. + .04 * uFx + .06 * uDusk) + .5, 0., 1.);
         vec3 band = floor(t * 8. + .5) / 8.; t = mix(t, band, .08 * uFx);                          // a hint of cel shading
         t *= 1. - ink * .6;
         t *= 1. - uFx * .18 * smoothstep(.12, .6, r2 * 1.6); // vignette

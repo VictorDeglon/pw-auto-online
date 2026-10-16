@@ -144,6 +144,7 @@ function findByNid(list, id) { for (const o of list) if (o.nid === id && !o.remo
 function onEvent(ev) {
   switch (ev.k) {
     case 'boom': if (typeof ev.x === 'number') H.boom(ev.x, ev.y || 0, ev.z, ev.R || 7); break;
+    case 'nuke': if (typeof ev.x === 'number' && H.nuke) H.nuke(ev.x, ev.z); break;
     case 'col': if (typeof ev.i === 'number') H.collapse(ev.i, ev.dx || 0, ev.dz || 0); break;
     case 'fell': if (typeof ev.x === 'number') H.fell(ev.x, ev.z, ev.dx || 0, ev.dz || 1); break;
     case 'ph': if (ev.to === NET.uid) { const p = findByNid(H.peds(), ev.id); if (p) H.hurtPed(p, ev.d || 10); } break;

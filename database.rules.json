@@ -71,7 +71,7 @@
           ],
           "$id": {
             ".write": "auth != null && ((!data.exists() && newData.child('u').val() === auth.uid) || (!newData.exists() && data.child('t').val() < now - 600000))",
-            ".validate": "newData.hasChildren(['u', 'k', 't']) && newData.child('k').val().matches(/^(boom|col|fell|ph|cd|claim)$/) && newData.child('t').val() === now",
+            ".validate": "newData.hasChildren(['u', 'k', 't']) && newData.child('k').val().matches(/^(boom|nuke|col|fell|ph|cd|claim)$/) && newData.child('t').val() === now",
             "u": {
               ".validate": "newData.isString()"
             },

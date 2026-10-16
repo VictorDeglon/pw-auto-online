@@ -29,16 +29,28 @@ const params = new URLSearchParams(location.search);
 const EMU = params.get('emu');
 
 export function serverNow() { return Date.now() + NET.offset; }
+function withTimeout(p, ms, msg) { return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error(msg), { code: 'timeout' })), ms))]); }
+// what a player should read when online play fails, instead of a Firebase error code
+export function explain(e) {
+  const c = String((e && (e.code || e.message)) || e);
+  if (/operation-not-allowed|admin-restricted/.test(c)) return 'Online sign-in is switched off. In the Firebase console: Authentication > Sign-in method > Anonymous > Enable.';
+  if (/api-key|invalid-api-key|unauthorized-domain|requests-from-referer/i.test(c)) return 'This site isn\'t allowed to use the Firebase project (API key or authorized domains).';
+  if (/PERMISSION_DENIED|permission/i.test(c)) return 'The database refused us. Its rules may be out of date for this build (redeploy database.rules.json).';
+  if (/network|timeout|unavailable/i.test(c)) return 'Can\'t reach the servers right now. Check your connection and try again.';
+  return 'Could not reach the servers (' + c + ').';
+}
 
 export async function initNet() {
   if (NET.ready) return true;
   const cfg = EMU ? { apiKey: 'demo-key', projectId: EMULATOR_PROJECT, databaseURL: `http://${EMU === '1' ? '127.0.0.1' : EMU}:9000?ns=${EMULATOR_PROJECT}`, authDomain: `${EMULATOR_PROJECT}.firebaseapp.com` } : FIREBASE_CONFIG;
   if (!cfg) return false;
   NET.available = true;
-  app = FB.initializeApp(cfg, 'pao');
-  auth = FB.getAuth(app); db = FB.getDatabase(app);
-  if (EMU) { const host = EMU === '1' ? '127.0.0.1' : EMU; FB.connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true }); FB.connectDatabaseEmulator(db, host, 9000); }
-  const cred = await FB.signInAnonymously(auth);
+  if (!app) { // once per page: a failed sign-in can be retried without re-initialising
+    app = FB.initializeApp(cfg, 'pao');
+    auth = FB.getAuth(app); db = FB.getDatabase(app);
+    if (EMU) { const host = EMU === '1' ? '127.0.0.1' : EMU; FB.connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true }); FB.connectDatabaseEmulator(db, host, 9000); }
+  }
+  const cred = await withTimeout(FB.signInAnonymously(auth), 12000, 'sign-in timed out');
   NET.uid = cred.user.uid;
   FB.onValue(FB.ref(db, '.info/serverTimeOffset'), s => { NET.offset = s.val() || 0; });
   let dropped = false;
@@ -73,6 +85,10 @@ export function validName(n) { return NAME_RE.test(n || ''); }
 
 // claim the name on the server and go live; resolves { ok } or { ok: false, err }
 export async function join(sid, name, skin, state) {
+  try { return await withTimeout(joinNow(sid, name, skin, state), 15000, 'join timed out'); }
+  catch (e) { console.warn('[net] join', e); return { ok: false, err: explain(e) }; }
+}
+async function joinNow(sid, name, skin, state) {
   if (!NET.ready) return { ok: false, err: 'Not connected.' };
   if (!SERVERS.some(s => s.id === sid)) return { ok: false, err: 'Unknown server.' };
   if (!validName(name)) return { ok: false, err: 'Names are 3 to 16 letters, numbers or underscores.' };
@@ -85,7 +101,7 @@ export async function join(sid, name, skin, state) {
   for (const [k, v] of Object.entries(taken)) if (v === uid && k !== key) await FB.remove(FB.ref(db, `${base}/names/${k}`));
   let res;
   try { res = await FB.runTransaction(FB.ref(db, `${base}/names/${key}`), cur => (cur === null || cur === uid) ? uid : undefined); }
-  catch (e) { return { ok: false, err: 'Could not reach the server.' }; }
+  catch (e) { return { ok: false, err: explain(e) }; }
   if (!res.committed) return { ok: false, err: `Someone on ${serverName(sid)} is already called "${name}".` };
   const nameRef = FB.ref(db, `${base}/names/${key}`), meRef = FB.ref(db, `${base}/players/${uid}`);
   await FB.onDisconnect(nameRef).remove();

@@ -4,9 +4,12 @@
 // "where that spawned entity is right now".
 // Story bible and Acts II-IV: docs/roadmap/03-story-and-characters.md.
 
+import { LINES, LINE_MISSIONS } from './lines.js';
+export { LINES };
+
 const isNight = h => h >= 20 || h < 5;
 
-export const MISSIONS = [
+const BASE = [
   // ================================================================== ACT I · HOMECOMING
   {
     id: 'a1-homecoming', title: 'Homecoming', giver: 'rosa', at: 'home', type: 'main', act: 1,
@@ -240,3 +243,4 @@ export const MISSIONS = [
     ],
   },
 ];
+export const MISSIONS = [...BASE, ...LINE_MISSIONS];

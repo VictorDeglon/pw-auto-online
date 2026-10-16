@@ -33,7 +33,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const hyp = Math.hypot;
-const wrapA = a => { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; };
+const wrapA = a => { if (a <= Math.PI && a >= -Math.PI) return a; if (!isFinite(a)) { if (!self.__wrapBad) self.__wrapBad = new Error('wrapA ' + a).stack; return 0; } a = (a + Math.PI) % (TAU); if (a < 0) a += TAU; return a - Math.PI; }; // O(1): a runaway angle used to spin a while-loop for seconds
 const now = () => ctx.simTime;
 const lostFor = () => now() - police.lastSeen;
 const isSolid = () => police.wanted > 0 && lostFor() < 2.5;

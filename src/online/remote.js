@@ -2,6 +2,7 @@
 // driven by network state instead of AI, plus, while they drive, a car body that follows them. Damage you deal to
 // them is not applied here: it is sent to them (net.sendHit) and their own game applies it, so everyone agrees on
 // who is alive. Their shots arrive as a counter in their state and are replayed as tracers and sound.
+import { RESERVED } from '../reserved.js';
 import { ctx } from '../ctx.js';
 import { NET, on, unpack } from './net.js';
 import { HUMANS, ensureAvatar } from '../humans.js';
@@ -42,11 +43,14 @@ async function add(d) {
   if (!R.has(d.id)) { despawn(rem); return; } // left while loading
   ctx.notify(`<b style="color:${rem.color}">${esc(rem.name)}</b> is in town.`, '', 3500);
 }
-async function spawnPed(rem) {
+async function spawnPed(rem) { // keeps the old body (if any) on screen until the new one is ready
   const { THREE } = ctx;
-  let avatar = rem.skin && HUMANS.ready ? rem.skin : null;
+  let avatar = rem.skin && HUMANS.ready && !RESERVED.has(rem.skin) ? rem.skin : null; // nobody online can wear a story character's skin
   if (avatar && !(await ensureAvatar(avatar))) avatar = null;
   const p = new ctx.Ped(rem.st.x, rem.st.z, { remote: true, look: { kind: 'civ', avatar, gun: false } });
+  if (ctx.renderer && ctx.renderer.compileAsync) { // compile the new body's shaders off the frame before it shows (a skin swap used to hitch)
+    p.rig.g.visible = false; await ctx.renderer.compileAsync(p.rig.g, ctx.camera, ctx.scene).catch(() => { }); p.rig.g.visible = true;
+  }
   p.remote = rem; p.keep = true; p.isCop = false; p.personality = 'normal'; p.money = 0; p.health = 100;
   p.pos.y = rem.st.y; p.rotY = rem.st.r;
   p.ai = remoteAI;
