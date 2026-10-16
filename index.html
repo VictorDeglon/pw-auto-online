@@ -32,6 +32,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(-
 @keyframes blink{50%{color:rgba(255,255,255,.25)}}
 #rep{font:600 15px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
 #radio{margin-top:10px;font:600 15px/1.3 var(--ui);color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
+#radio.tune{animation:tuneIn .5s ease-out} @keyframes tuneIn{0%{opacity:0;filter:blur(4px);transform:translateX(12px)}40%{opacity:1;filter:blur(0)}}
 #radio small{display:block;color:var(--paper);text-transform:none;letter-spacing:.02em;font-weight:500}
 #mapwrap{left:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));width:210px}
 #minimap{width:210px;height:210px;border-radius:50%;border:3px solid rgba(0,0,0,.7);box-shadow:0 0 0 2px rgba(255,255,255,.12);display:block}
@@ -74,6 +75,33 @@ body.scoped #cross{opacity:.5}
 #bigmap{position:fixed;inset:0;z-index:20;background:#11161a;display:none;cursor:crosshair}
 #bigmap.show{display:block;animation:mapIn .25s ease-out}
 @keyframes mapIn{from{opacity:0;transform:scale(1.03)}}
+/* ---- polish: HUD motion */
+#money.pop{animation:mpop .45s cubic-bezier(.2,1.6,.4,1)} #money.pop.down{animation:mdown .45s ease-out}
+@keyframes mpop{40%{transform:scale(1.18);filter:brightness(1.4)}} @keyframes mdown{30%{transform:translateX(-6px);color:var(--blood)}60%{transform:translateX(4px)}}
+.mdelta{font:400 26px/1 var(--display);letter-spacing:.02em;-webkit-text-stroke:1px #000;paint-order:stroke fill;animation:mfly 1.4s ease-out forwards;color:var(--cash)} .mdelta.neg{color:var(--blood)}
+@keyframes mfly{0%{opacity:0;transform:translateY(-8px) scale(.8)}15%{opacity:1;transform:none}70%{opacity:1}100%{opacity:0;transform:translateY(14px)}}
+#stars span.flare{animation:sflare .7s cubic-bezier(.2,1.5,.4,1)} @keyframes sflare{0%{transform:scale(2.4) rotate(-30deg);color:#fff;text-shadow:0 0 18px #fff,0 0 30px var(--siren-b)}100%{transform:none}}
+#stars span{display:inline-block}
+#hp{position:relative;overflow:hidden} #hplag{position:absolute;inset:0 auto 0 0;background:#fff;transition:width .45s .35s ease-in;width:100%} #hpf{position:relative}
+#hp.hurt{animation:hurt .35s ease-out} @keyframes hurt{30%{box-shadow:0 0 0 2px var(--blood),0 0 14px var(--blood)}}
+.note{animation:noteIn .4s cubic-bezier(.2,1.3,.4,1)} .note.out{animation:noteOut .3s ease-in forwards}
+@keyframes noteIn{from{transform:translateX(-30px) scale(.96);opacity:0}} @keyframes noteOut{to{transform:translateX(-20px);opacity:0}}
+#big:not([hidden]) h1{animation:bigSlam .55s cubic-bezier(.2,1.3,.3,1) both} #big:not([hidden]) p{animation:bigSub .6s .25s ease-out both}
+@keyframes bigSlam{0%{transform:scale(1.9);opacity:0;filter:blur(10px)}60%{transform:scale(.97);filter:blur(0)}} @keyframes bigSub{from{opacity:0;letter-spacing:.5em}}
+.bub{animation:bubIn .25s cubic-bezier(.2,1.6,.4,1)} @keyframes bubIn{from{transform:translate(-50%,-80%) scale(.5);opacity:0}}
+#weapon.swap{animation:wswap .3s ease-out} @keyframes wswap{from{transform:translateY(-10px);opacity:0}}
+.mbtn{position:relative;overflow:hidden} .mbtn::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.18) 50%,transparent 65%);transform:translateX(-120%);transition:transform .5s;pointer-events:none} .mbtn:hover::after{transform:translateX(120%)}
+/* fast travel */
+#travel{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(6,9,16,.74);backdrop-filter:blur(3px);animation:shopin .2s ease-out}
+#travel[hidden]{display:none}
+#travel .tv{width:min(560px,92vw);max-height:86vh;overflow:auto;background:#0e1528;border-top:4px solid var(--gold);box-shadow:0 30px 80px rgba(0,0,0,.6);padding:18px 20px;animation:shoprise .28s cubic-bezier(.2,.9,.3,1.2)}
+#travel h3{margin:0 0 4px;font:400 34px/1 var(--display);letter-spacing:.05em;text-transform:uppercase} #travel .sub{color:var(--dim);font:500 15px/1.3 var(--ui);margin-bottom:12px}
+#travel button{display:flex;align-items:center;gap:12px;width:100%;text-align:left;margin:4px 0;padding:10px 12px;background:rgba(255,255,255,.03);color:var(--paper);border:0;border-left:3px solid transparent;font:600 18px/1.2 var(--ui);cursor:pointer;transition:background .15s,border-color .15s,transform .15s;animation:tvIn .35s both}
+#travel button:hover{background:rgba(255,122,47,.12);border-left-color:var(--gold);transform:translateX(4px)}
+#travel button kbd{min-width:26px;text-align:center;padding:4px 6px;background:#1b2440;border-radius:3px;font:700 14px/1 var(--ui);color:var(--gold)} #travel button small{margin-left:auto;color:var(--dim);font:600 13px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase}
+@keyframes tvIn{from{opacity:0;transform:translateX(-12px)}}
+#travel .foot{color:var(--dim);font:600 13px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;margin-top:10px}
+
 #maphere{position:absolute;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:10px;padding:8px 18px 8px 10px;background:rgba(14,18,26,.88);border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap}
 #maphere i{width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.15)} #maphere b{font:400 24px/1 var(--display);letter-spacing:.04em;text-transform:uppercase;color:var(--paper)} #maphere span{font:600 15px/1 var(--ui);color:var(--dim);letter-spacing:.04em}
 #bigmap canvas{width:100%;height:100%;display:block}
@@ -141,6 +169,7 @@ body.scoped #cross{opacity:.5}
 .linkbtn{align-self:flex-start;background:none;border:0;padding:0;font:600 14px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .linkbtn:hover{color:var(--paper)}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.row.look{margin:10px 0} .row.look>span{font:700 14px/1 var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--paper);min-width:70px} .row.look small{color:var(--dim);font:500 14px/1.3 var(--ui)}
 /* menu layout: logo + nav on the left, the active screen on the right, the 3D town orbiting behind */
 #menu{position:fixed;inset:0;z-index:30;display:grid;grid-template-columns:minmax(320px,400px) 1fr;gap:clamp(16px,4vw,56px);padding:clamp(18px,4vh,48px) clamp(16px,4vw,64px);background:linear-gradient(90deg,rgba(8,12,24,.95) 0%,rgba(8,12,24,.8) 38%,rgba(8,12,24,.35) 75%,rgba(8,12,24,.15));overflow:auto}
 .menu-col{display:flex;flex-direction:column;gap:26px;align-items:flex-start}
@@ -236,7 +265,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 <div id="mstat" class="hud" hidden></div>
 <div id="mapwrap" class="hud" hidden>
   <canvas id="minimap" width="210" height="210"></canvas>
-  <div id="bars"><div id="hp"><div id="hpf"></div></div></div>
+  <div id="bars"><div id="hp"><div id="hplag"></div><div id="hpf"></div></div></div>
 </div>
 <div id="helpline" class="hud" hidden><kbd>F</kbd> car · <kbd>E</kbd> talk / use · <kbd>R</kbd> radio · <kbd>J</kbd> courier job · <kbd>M</kbd> map · <kbd>H</kbd> horn · <kbd>K</kbd> fast travel · <kbd>N</kbd> call your car · <kbd>wheel</kbd> weapons · <kbd>G</kbd> detonate · <kbd>Y</kbd> weather · <kbd>T</kbd> +1 hour · <kbd>P</kbd> pause</div>
 <div id="street" class="hud" hidden><b id="streetname">Poway Road</b><i id="areaname">Poway</i></div>
@@ -279,7 +308,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
       <button class="mbtn" data-go="controls">Controls</button>
     </nav>
     <button class="linkbtn" id="newgame" hidden>Reset offline progress</button>
-    <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0). People: Microsoft Rocketbox (MIT). Music: Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
+    <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
   </div>
 
   <section class="screen" id="scr-online" hidden>
@@ -309,6 +338,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
     <header><h2>Settings</h2><p id="gfxnote">Graphics are picked for this computer automatically.</p></header>
     <div class="presets" id="presets"></div>
     <label class="check"><input type="checkbox" id="dynres"> Dynamic resolution <small>lowers the render scale when the frame rate drops</small></label>
+    <div class="row look"><span>Look</span><div class="seg" id="lookseg"><button data-l="2">Stylized</button><button data-l="1">Clean</button><button data-l="0">Off</button></div><small>Stylized adds ink outlines and film grain. Off is fastest.</small></div>
     <label class="check"><input type="checkbox" id="voiceson"> Character voices</label>
     <label class="range">Mouse sensitivity <input type="range" id="sens" min="0.4" max="2" step="0.05"> <output id="sensv"></output></label>
     <div class="row"><button class="mbtn primary small" id="gfxapply" hidden>Apply and reload</button></div>
@@ -391,6 +421,8 @@ import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/onl
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import * as ACH from './src/ui/achievements.js';
+import { createPost } from './src/post.js';
+import { createComposer, procSongs } from './src/audio/composer.js';
 import { buildPlaza, PLAZA_CENTER } from './src/world/plaza.js';
 import { regionAt, sectorAt, SECTOR, REGIONS, initRegionBanner, updateRegion } from './src/world/regions.js';
 import * as SHOP from './src/ui/shop.js';
@@ -474,6 +506,10 @@ $('view').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xbfd4e6, 300, 1500);
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.5, 2600);
+// the look (src/post.js): 0 off, 1 clean grade, 2 stylized (ink outlines). Default by preset, overridable in Settings.
+const POST_KEY = 'pw-auto-online-post';
+const postLevel = () => { try { const v = localStorage.getItem(POST_KEY); if (v !== null) return +v; } catch (e) { } return GFX.id === 'potato' ? 0 : GFX.id === 'low' ? 1 : 2; };
+const POST = createPost(THREE, renderer, camera, postLevel());
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 const MAXANISO = renderer.capabilities.getMaxAnisotropy();
 
@@ -2073,30 +2109,42 @@ const sfx = {
   phone: v => { tone(1336, 0.12, 'sine', 0.2 * v); tone(941, 0.12, 'sine', 0.2 * v, null, 0.15); },
   job: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.25, 'triangle', 0.25, null, i * 0.12)); },
   hit: v => { noise(0.12, 'bandpass', 1500, 0.5 * v); },
+  tune: () => { noise(0.18, 'bandpass', 2400, 0.25); tone(880, 0.05, 'sine', 0.06, 1200, 0.12); },
   achieve: tier => { const up = { b: 1, s: 1.12, g: 1.26, p: 1.5 }[tier] || 1; [523, 659, 784, 1046, 1318].forEach((f, i) => { tone(f * up, 0.32, 'triangle', 0.2, null, i * 0.07); tone(f * up * 2, 0.18, 'sine', 0.06, null, i * 0.07 + 0.02); }); noise(0.6, 'highpass', 6000, 0.12, 0.3); },
 };
-// car radio: Kevin MacLeod tracks (CC BY 4.0), grouped into two "stations"
+// car radio: 7 stations of original songs written live by src/audio/composer.js, plus two stations of Kevin MacLeod
+// tracks (CC BY 4.0). Add your own: drop MP3s in assets/music and list them in assets/music/stations.json
+// ([{ "name": "...", "tracks": [{ "title": "...", "artist": "...", "file": "x.mp3" }] }]); they're appended at boot.
 const STATIONS = [
-  { name: 'KPOW 92.1 · Poway Funk', tracks: ['Who Likes to Party', 'Funkorama', 'Dirt Rhodes', 'Cut and Run', 'Breaktime'] },
-  { name: 'Lake Poway Lounge 104.7', tracks: ['Backbay Lounge', 'Spy Glass', 'Hard Boiled', 'Local Forecast - Elevator', 'Monkeys Spinning Monkeys'] },
+  ...procSongs().map(S => ({ name: S.name, proc: true, tracks: S.songs })),
+  { name: 'KMAC 102.3 · Funk Classics', tracks: ['Who Likes to Party', 'Funkorama', 'Dirt Rhodes', 'Cut and Run', 'Breaktime'].map(t => ({ title: t, artist: 'Kevin MacLeod', file: 'assets/music/' + t.replace(/ /g, '_') + '.mp3' })) },
+  { name: 'Lake Poway Lounge 104.7', tracks: ['Backbay Lounge', 'Spy Glass', 'Hard Boiled', 'Local Forecast - Elevator', 'Monkeys Spinning Monkeys'].map(t => ({ title: t, artist: 'Kevin MacLeod', file: 'assets/music/' + t.replace(/ /g, '_') + '.mp3' })) },
 ];
-const radio = { st: 0, on: true, el: null, track: -1, vol: 0.4 };
-function radioFile(t) { return 'assets/music/' + t.replace(/ /g, '_') + '.mp3'; }
+fetch('assets/music/stations.json').then(r => r.ok ? r.json() : []).then(list => { for (const S of list || []) if (S && S.name && Array.isArray(S.tracks) && S.tracks.length) STATIONS.push({ name: String(S.name), tracks: S.tracks.filter(t => t && t.file).map(t => ({ title: String(t.title || t.file), artist: String(t.artist || ''), file: 'assets/music/' + String(t.file).replace(/^[\/.]+/, '') })) }); }).catch(() => { });
+const radio = { st: 0, on: true, el: null, track: -1, vol: 0.4, comp: null, songT: 0 };
 function radioPlay(next) {
-  const S = STATIONS[radio.st]; if (!radio.on) return;
+  const S = STATIONS[radio.st]; if (!radio.on || !S) return;
   radio.track = next ? (radio.track + 1) % S.tracks.length : (radio.track < 0 ? randi(0, S.tracks.length - 1) : radio.track);
   const t = S.tracks[radio.track];
-  if (!radio.el) { radio.el = new Audio(); radio.el.addEventListener('ended', () => radioPlay(true)); }
-  radio.el.src = radioFile(t); radio.el.volume = radio.vol; radio.el.currentTime = next ? 0 : rand(0, 60);
-  radio.el.play().catch(() => { });
-  $('radio').hidden = false; $('radio').innerHTML = `${S.name}<small>Kevin MacLeod – ${t}</small>`;
+  if (S.proc) {
+    if (radio.el) radio.el.pause();
+    if (!AC) return; if (!radio.comp) { radio.comp = createComposer(AC, master); radio.comp.onend = () => { if (radio.on && STATIONS[radio.st].proc && player.inCar) radioPlay(true); }; }
+    radio.comp.volume(radio.vol * 1.1); radio.comp.play(t, { offset: next ? 0 : rand(0, 50) });
+  } else {
+    if (radio.comp) radio.comp.stop();
+    if (!radio.el) { radio.el = new Audio(); radio.el.addEventListener('ended', () => radioPlay(true)); }
+    radio.el.src = t.file; radio.el.volume = radio.vol; radio.el.currentTime = next ? 0 : rand(0, 60);
+    radio.el.play().catch(() => { });
+  }
+  const el = $('radio'); el.hidden = false; el.innerHTML = ''; const nm = document.createElement('span'); nm.textContent = S.name; const sm = document.createElement('small'); sm.textContent = `${t.artist} – ${t.title}`; el.append(nm, sm);
+  el.classList.remove('tune'); void el.offsetWidth; el.classList.add('tune');
 }
-function radioStop() { if (radio.el) radio.el.pause(); $('radio').hidden = true; }
-function radioNext() { // cycle: station 1 -> station 2 -> off
+function radioStop() { if (radio.el) radio.el.pause(); if (radio.comp) radio.comp.stop(); $('radio').hidden = true; }
+function radioNext() { // cycle through the stations, then off
   if (!player.inCar) return;
-  if (radio.on && radio.st === STATIONS.length - 1) { radio.on = false; radioStop(); $('radio').hidden = false; $('radio').innerHTML = 'Radio off'; setTimeout(() => { if (!radio.on) $('radio').hidden = true; }, 1500); return; }
+  if (radio.on && radio.st === STATIONS.length - 1) { radio.on = false; radioStop(); $('radio').hidden = false; $('radio').textContent = 'Radio off'; setTimeout(() => { if (!radio.on) $('radio').hidden = true; }, 1500); return; }
   if (!radio.on) { radio.on = true; radio.st = 0; } else radio.st++;
-  radio.track = -1; radioPlay(false);
+  radio.track = -1; sfx.tune(); radioPlay(false);
 }
 let speakT = 0;
 function speak(text, x, z, pitch = 1) {
@@ -2111,7 +2159,7 @@ function speak(text, x, z, pitch = 1) {
 // ============================================================ HUD helpers
 function notify(text, cls = '', dur = 4500) {
   const d = document.createElement('div'); d.className = 'note ' + cls; d.innerHTML = text; $('feed').appendChild(d);
-  setTimeout(() => d.remove(), dur); while ($('feed').children.length > 5) $('feed').firstChild.remove();
+  setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 320); }, dur); while ($('feed').children.length > 5) $('feed').firstChild.remove();
 }
 let bigTimer = 0;
 function big(title, sub, cls, dur = 3.5) { $('bigt').textContent = title; $('bigs').textContent = sub || ''; $('big').className = 'hud ' + cls; $('big').hidden = false; bigTimer = dur; }
@@ -3042,7 +3090,7 @@ function setPaused(p) {
   paused = p; $('pause').classList.toggle('show', p);
   if (p) { keys.clear(); mouseDown = rightDown = false; if (document.pointerLockElement) document.exitPointerLock(); if (engine) engine.g.gain.value = 0; $('journal').innerHTML = storyJournal(); $('abandon').hidden = !storyBusy(); persist(); }
   if (p && AC) AC.suspend(); if (!p && AC) AC.resume();
-  if (radio.el) { if (p) radio.el.pause(); else if (player.inCar && radio.on) radio.el.play().catch(() => { }); }
+  if (radio.el && !STATIONS[radio.st].proc) { if (p) radio.el.pause(); else if (player.inCar && radio.on) radio.el.play().catch(() => { }); }
   if (!p) lockPointer(); // every way out of the pause menu (button, P, Esc) re-captures the mouse
 }
 $('resume').addEventListener('click', () => setPaused(false));
@@ -3431,18 +3479,19 @@ function setupTravel() {
   TRAVEL = spots.filter(s => s[1] && s[1].x > B.minx && s[1].x < B.maxx && s[1].z > B.minz && s[1].z < B.maxz).map(([name, p]) => ({ name, x: p.x, z: p.z, road: true }));
   if (top) TRAVEL.push({ name: 'The summit (highest peak, bring a car)', x: top.x, z: top.z, road: false, summit: true });
   const el = document.createElement('div'); el.id = 'travel'; el.hidden = true;
-  el.style.cssText = 'position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(10,12,16,.72);font:600 16px/1.3 var(--ui,system-ui);color:#f3efe6';
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
   // built with DOM calls, not innerHTML: names come from data and must never be parsed as markup
-  const box = document.createElement('div'); box.style.cssText = 'background:#16191f;border:1px solid #3a3f48;border-radius:10px;padding:18px 22px;min-width:min(420px,90vw)';
-  const title = document.createElement('div'); title.style.cssText = 'font-size:22px;letter-spacing:.08em;margin-bottom:10px'; title.textContent = 'FAST TRAVEL'; box.appendChild(title);
+  const box = document.createElement('div'); box.className = 'tv';
+  const title = document.createElement('h3'); title.textContent = 'Fast travel'; box.appendChild(title);
+  const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = 'Skip the drive. Your car comes with you.'; box.appendChild(sub);
   TRAVEL.forEach((t, i) => {
     const b = document.createElement('button'); b.dataset.i = i;
-    b.style.cssText = 'display:block;width:100%;text-align:left;margin:4px 0;padding:8px 10px;background:#232831;color:inherit;border:1px solid #333a44;border-radius:6px;font:inherit;cursor:pointer';
-    const k = document.createElement('kbd'); k.style.cssText = 'display:inline-block;min-width:1.4em;opacity:.7'; k.textContent = keys[i] || '';
-    b.append(k, ' ' + t.name); box.appendChild(b);
+    b.style.animationDelay = (i * 0.025) + 's';
+    const k = document.createElement('kbd'); k.textContent = keys[i] || '';
+    const rg = document.createElement('small'); rg.textContent = regionAt(t.x, t.z).name + ' · ' + sectorAt(t.x, t.z);
+    b.append(k, t.name, rg); box.appendChild(b);
   });
-  const foot = document.createElement('div'); foot.style.cssText = 'opacity:.6;font-size:13px;margin-top:8px'; foot.textContent = 'K or Esc to close'; box.appendChild(foot);
+  const foot = document.createElement('div'); foot.className = 'foot'; foot.textContent = 'K or Esc to close'; box.appendChild(foot);
   el.appendChild(box);
   el.addEventListener('click', e => { const b = e.target.closest('button'); if (b) travelTo(+b.dataset.i); });
   document.body.appendChild(el);
@@ -4684,7 +4733,7 @@ function stepPullOver(v, dt) { // kinematic: ease toward the kerb spot, straight
     const want = d > 5 ? Math.atan2(dx, dz) : P.road;
     v.rotY += wrapA(want - v.rotY) * Math.min(1, dt * (d > 5 ? 1.6 : 2.5));
     P.sp = Math.max(0, Math.min(P.sp, Math.sqrt(2 * 2.4 * Math.max(0, d - 0.4)) + 0.3)) ; if (d < 0.6 || P.t > 15) P.sp = 0;
-    v.fx = Math.sin(v.rotY); v.fz = Math.cos(v.rotY); v.pos.x += v.fx * P.sp * dt; v.pos.z += v.fz * P.sp * dt; v.speed = P.sp; v.braking = P.sp < 6;
+    v.pos.x += v.fx * P.sp * dt; v.pos.z += v.fz * P.sp * dt; v.speed = P.sp; v.braking = P.sp < 6;
     v.ind = v.ind || 1; settleCar(v, dt);
     if (P.sp === 0) { P.parked = true; P.out = rand(0.8, 2); v.braking = false; }
   } else if ((P.out -= dt) <= 0) {
@@ -4974,10 +5023,17 @@ function updateGps(dt) {
 }
 
 // ============================================================ HUD
-let hudT = 0, lastStreet = '';
+let hudT = 0, lastStreet = ''; const hudFx = { money: null, wanted: 0, hp: 100, weapon: -1 };
 function updateHud(dt) {
   const st = $('stars').children; for (let i = 0; i < 5; i++) st[i].classList.toggle('on', i < police.wanted);
-  $('money').textContent = '$' + Math.max(0, Math.round(save.money)).toLocaleString();
+  { const m = Math.round(save.money); if (hudFx.money === null) { hudFx.money = m; $('money').textContent = '$' + Math.max(0, m).toLocaleString(); }
+    if (m !== hudFx.money) { const d = m - hudFx.money, el = $('money'); hudFx.money = m; el.textContent = '$' + Math.max(0, m).toLocaleString(); el.classList.remove('pop', 'down'); void el.offsetWidth; el.classList.add('pop'); if (d < 0) el.classList.add('down');
+      if (Math.abs(d) >= 5) { const f = document.createElement('div'); f.className = 'mdelta' + (d < 0 ? ' neg' : ''); f.textContent = (d > 0 ? '+$' : '-$') + Math.abs(d).toLocaleString(); el.after(f); setTimeout(() => f.remove(), 1400); } } }
+  if (police.wanted > hudFx.wanted) { const st = $('stars').children; for (let i = hudFx.wanted; i < police.wanted && i < 5; i++) { st[i].classList.remove('flare'); void st[i].offsetWidth; st[i].classList.add('flare'); } }
+  hudFx.wanted = police.wanted;
+  if (player.health < hudFx.hp - 0.5) { const h = $('hp'); h.classList.remove('hurt'); void h.offsetWidth; h.classList.add('hurt'); }
+  hudFx.hp = player.health; $('hplag').style.width = clamp(player.health, 0, 100) + '%';
+  if (player.weapon !== hudFx.weapon) { hudFx.weapon = player.weapon; const w = $('weapon'); w.classList.remove('swap'); void w.offsetWidth; w.classList.add('swap'); }
   $('hpf').style.width = clamp(player.health, 0, 100) + '%'; $('hpf').style.background = player.health < 30 ? 'var(--blood)' : 'var(--cash)';
   { const w = WEAPONS[player.weapon]; $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · wheel / 1-0 for weapons'; }
   $('cross').hidden = !(player.weapon > 0 && (player.aiming || player.inCar) || player.aiming);
@@ -5010,11 +5066,11 @@ function tick(rdt) {
     updateWeather(rdt * 0.3); updatePopulation(rdt); trafficPre(rdt); updateVehicles(rdt); updatePeds(rdt); smoke.update(rdt); fire.update(rdt);
     sigT -= rdt; if (sigT <= 0) { sigT = 0.3; updateSignals(); }
     visT -= rdt; if (visT <= 0) { visT = 1; updateChunkVisibility(cx, cz); }
-    renderer.render(scene, camera); return;
+    POST.render(scene, camera, nightAmount); return;
   }
   // the mouse must stay captured during gameplay: if the lock was lost any way at all, pause (Resume re-locks)
   if (canLock && !paused && !mapOpen && !travelOpen && !locked && !SHELL.isChatOpen() && performance.now() - lockAskT > 900) setPaused(true);
-  if (paused || mapOpen || travelOpen) { renderer.render(scene, camera); return; }
+  if (paused || mapOpen || travelOpen) { POST.render(scene, camera, nightAmount); return; }
   timeScale = player.dead ? 0.35 : 1;
   const dt = rdt * timeScale; simTime += dt;
   updatePlayer(dt); updateArsenal(dt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
@@ -5031,7 +5087,7 @@ function tick(rdt) {
   repT += dt; if (repT > 30) { repT = 0; if (police.wanted === 0 && save.rep < 0) save.rep += 1; }
   saveT -= rdt; if (saveT <= 0) { saveT = 10; persist(); }
   if (online) netTick(rdt);
-  renderer.render(scene, camera);
+  POST.render(scene, camera, nightAmount);
 }
 
 // ============================================================ boot
@@ -5213,6 +5269,7 @@ SHELL.initShell({
   THREE, gfx: GFX, ready: () => worldReady, state: () => netState(),
   startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin,
   voices: () => voices, setVoices: on => { voices = on; persist(); },
+  look: () => POST.level, setLook: n => { POST.setLevel(n); try { localStorage.setItem(POST_KEY, String(n)); } catch (e) { } },
   sens: () => SENS, setSens: v => { SENS = v; try { localStorage.setItem(INPUT_KEY, JSON.stringify({ sens: v })); } catch (e) { } },
 });
 

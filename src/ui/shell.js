@@ -181,6 +181,7 @@ function openSettings() {
   }
   $('gfxnote').textContent = G.auto ? `Picked “${PRESETS[G.id].label}” for this computer. Change it if the game feels slow or looks rough.` : `Using “${PRESETS[G.id].label}”.`;
   $('dynres').checked = G.dynamic; $('voiceson').checked = H.voices();
+  for (const b of $('lookseg').children) { b.classList.toggle('on', +b.dataset.l === H.look()); b.onclick = () => { H.setLook(+b.dataset.l); openSettings(); }; }
   $('sens').value = H.sens(); $('sensv').textContent = (+H.sens()).toFixed(2) + '×';
   $('gfxapply').hidden = pick === G.id && $('dynres').checked === G.dynamic;
 }
