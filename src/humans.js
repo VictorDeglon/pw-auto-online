@@ -73,21 +73,41 @@ export async function loadHumans(opts = {}) {
   const civ = all.filter(a => a.kind !== 'police' && a.kind !== 'military' && a.name !== man.player && free(a)).map(a => a.name);
   HUMANS.swimAll = all.filter(a => SWIM(a.name)).map(a => a.name);
   for (let i = civ.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [civ[i], civ[j]] = [civ[j], civ[i]]; }
-  HUMANS.pools.civ = civ.slice(0, poolSize); HUMANS.pools.police = police; HUMANS.pools.plain = plain.filter(n => HUMANS.pools.civ.includes(n)).concat(plain.slice(0, 2));
+  const pools = { civ: civ.slice(0, poolSize), police };
+  pools.plain = plain.filter(n => pools.civ.includes(n)).concat(plain.slice(0, 2));
   const me = opts.player && all.some(a => a.name === opts.player) && !RESERVED.has(opts.player) ? opts.player : man.player; // the skin the player picked (never a reserved one)
-  const want = [...new Set([me, ...HUMANS.pools.civ, ...police, ...HUMANS.pools.plain])];
-  const info = new Map(all.map(a => [a.name, a]));
-  await Promise.all(want.map(async n => {
-    try { const g = await loader.loadAsync(BASE + n + '.glb'); HUMANS.proto.set(n, { root: prep(g.scene), sex: (info.get(n) || {}).sex || 'm' }); }
-    catch (e) { console.warn('[humans] avatar', n, e); }
-  }));
+  const want = [...new Set([me, ...pools.civ, ...police, ...pools.plain])];
+  // opts.crowd === false: only the player's avatar now; loadCrowd() fetches everyone else after the loading screen,
+  // and until then buildRig() falls back to the blocky people
+  const now = opts.crowd === false ? [me] : want;
+  HUMANS.crowd = pools; HUMANS.later = want.filter(n => !now.includes(n));
+  await Promise.all(now.map(n => loadAvatar(loader, n)));
   await Promise.all(['m', 'f'].flatMap(s => man.clips.filter(c => CORE.includes(c)).map(c => loadClip(loader, s, c))));
   HUMANS.extra = man.clips.filter(c => !CORE.includes(c)); // crowd and emote clips: loadExtraClips() after the world is up
-  for (const k of ['civ', 'police', 'plain']) HUMANS.pools[k] = HUMANS.pools[k].filter(n => HUMANS.proto.has(n));
+  fillPools(HUMANS.later.length ? me : null); // the player's own skin stays out of the crowd until the crowd is in
   HUMANS.player = HUMANS.proto.has(me) ? me : HUMANS.proto.has(man.player) ? man.player : HUMANS.pools.civ[0];
   HUMANS.ready = HUMANS.proto.size > 0 && Object.keys(HUMANS.clips.m).length > 0;
   console.info('[humans]', HUMANS.proto.size, 'avatars,', Object.keys(HUMANS.clips.m).length + Object.keys(HUMANS.clips.f).length, 'clips; player', HUMANS.player);
   return HUMANS.ready;
+}
+
+async function loadAvatar(loader, n) {
+  const a = HUMANS.manifest.avatars.find(x => x.name === n);
+  try { const g = await loader.loadAsync(BASE + n + '.glb'); HUMANS.proto.set(n, { root: prep(g.scene), sex: (a || {}).sex || 'm' }); }
+  catch (e) { console.warn('[humans] avatar', n, e); }
+}
+function fillPools(skip) {
+  for (const k of ['civ', 'police', 'plain']) HUMANS.pools[k] = (HUMANS.crowd[k] || []).filter(n => HUMANS.proto.has(n) && n !== skip);
+}
+// the rest of the people (locals, deputies), after loadHumans({ crowd: false }); each joins its pool as it arrives.
+// Resolves to how many were fetched.
+export async function loadCrowd() {
+  const list = HUMANS.later || []; HUMANS.later = [];
+  if (!HUMANS.crowd || !list.length) return 0;
+  const loader = new GLTFLoader();
+  await Promise.all(list.map(n => loadAvatar(loader, n).then(() => fillPools(null))));
+  console.info('[humans] crowd in:', HUMANS.proto.size, 'avatars');
+  return list.length;
 }
 
 // load one more avatar on demand (a skin someone picked); resolves true when makeHuman(name) will work

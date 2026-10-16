@@ -175,6 +175,7 @@ async function wear() {
 
 // ---------------------------------------------------------------- settings
 let pick = null;
+const clockLabel = h => { const m = Math.round(h * 60) % 1440, hh = Math.floor(m / 60); return `${(hh + 11) % 12 + 1}:${String(m % 60).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'}`; };
 function openSettings() {
   const G = H.gfx; pick = pick || G.id;
   const box = $('presets'); box.textContent = '';
@@ -189,6 +190,10 @@ function openSettings() {
   $('dynres').checked = G.dynamic; $('voiceson').checked = H.voices();
   for (const b of $('lookseg').children) { b.classList.toggle('on', +b.dataset.l === H.look()); b.onclick = () => { H.setLook(+b.dataset.l); openSettings(); }; }
   $('sens').value = H.sens(); $('sensv').textContent = (+H.sens()).toFixed(2) + '×';
+  const sky = H.sky(); $('skylock').checked = sky.lock; $('skyset').classList.toggle('off', !sky.lock);
+  $('skyhour').value = sky.hour; $('skyhourv').textContent = clockLabel(sky.hour);
+  const wx = $('skywx'); wx.textContent = '';
+  for (const [k, name] of H.weathers()) { const b = document.createElement('button'); b.textContent = name; b.classList.toggle('on', k === sky.weather); b.onclick = () => { H.setSky({ weather: k }); openSettings(); }; wx.append(b); }
   $('gfxapply').hidden = pick === G.id && $('dynres').checked === G.dynamic;
 }
 function applyGfx() { saveGfx(pick, $('dynres').checked); location.reload(); }
@@ -197,7 +202,9 @@ function applyGfx() { saveGfx(pick, $('dynres').checked); location.reload(); }
 let chatOpen = false;
 export function isChatOpen() { return chatOpen; }
 export function openChat() { chatOpen = true; $('chat').hidden = false; $('chatin').placeholder = NET.server ? 'Say something…' : 'Offline: nobody to talk to'; $('chat').classList.add('open'); $('chatform').hidden = false; $('chatin').value = ''; $('chatin').focus(); }
-export function closeChat() { chatOpen = false; if (!NET.server) $('chat').hidden = true; $('chat').classList.remove('open'); $('chatform').hidden = true; $('chatin').blur(); }
+let chatClosedT = -1e9;
+export function chatClosedAgo() { return performance.now() - chatClosedT; } // ms since the chat box closed
+export function closeChat() { const was = chatOpen; chatOpen = false; if (was) { chatClosedT = performance.now(); if (H && H.chatClosed) H.chatClosed(); } if (!NET.server) $('chat').hidden = true; $('chat').classList.remove('open'); $('chatform').hidden = true; $('chatin').blur(); }
 function chatLine(html, cls) {
   const log = $('chatlog'), d = document.createElement('div'); d.className = 'cm ' + (cls || ''); d.innerHTML = html; log.append(d);
   while (log.children.length > 60) log.firstChild.remove();
@@ -252,6 +259,8 @@ export function initShell(hooks) {
   $('dynres').onchange = () => openSettings();
   $('voiceson').onchange = () => H.setVoices($('voiceson').checked);
   $('sens').oninput = () => { H.setSens(+$('sens').value); $('sensv').textContent = (+$('sens').value).toFixed(2) + '×'; };
+  $('skylock').onchange = () => { H.setSky({ lock: $('skylock').checked }); openSettings(); };
+  $('skyhour').oninput = () => { H.setSky({ hour: +$('skyhour').value }); $('skyhourv').textContent = clockLabel(+$('skyhour').value); };
   $('gfxapply').onclick = applyGfx;
   $('gfxsub').textContent = `Graphics: ${PRESETS[H.gfx.id].label}`;
   if (profile.skin) $('skinsub').textContent = skinLabel(profile.skin);

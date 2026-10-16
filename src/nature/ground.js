@@ -38,6 +38,28 @@ export async function loadGround(THREE, renderer, base = 'assets/nature/') {
   return { alb, nrm };
 }
 
+// 1x1 stand-in layers (each layer's mean colour, flat normals) so the terrain can be drawn before loadGround finishes:
+// with the mean as the layer colour the detail term is 1 and the ground shows the plain photo colour
+export function groundStandIn(THREE) {
+  const n = GROUND_LAYERS.length, a = new Uint8Array(n * 4), b = new Uint8Array(n * 4);
+  const srgb = v => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+  GROUND_LAYERS.forEach((k, i) => { a.set([...MEANS[k].map(srgb), 128], i * 4); b.set([128, 128, 255, 255], i * 4); });
+  const tex = (data, srgbSpace) => {
+    const t = new THREE.DataArrayTexture(data, 1, 1, n); t.format = THREE.RGBAFormat; t.type = THREE.UnsignedByteType;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+    if (srgbSpace) t.colorSpace = THREE.SRGBColorSpace;
+    t.needsUpdate = true; return t;
+  };
+  return { alb: tex(a, true), nrm: tex(b, false), users: [] };
+}
+// swap the real layers in for the stand-ins on every material already using this ground (no shader rebuild)
+export function setGround(ground, real) {
+  const old = [ground.alb, ground.nrm];
+  ground.alb = real.alb; ground.nrm = real.nrm;
+  for (const u of ground.users || []) { u.gAlb.value = real.alb; u.gNrm.value = real.nrm; }
+  for (const t of old) if (t && t !== real.alb && t !== real.nrm) t.dispose();
+}
+
 // shared GLSL: noise + the layer sampler
 const COMMON = /* glsl */`
 uniform highp sampler2DArray gAlb; uniform highp sampler2DArray gNrm;
@@ -78,6 +100,7 @@ export function groundPatch(ground, opts = {}) {
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
   };
+  (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader

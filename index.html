@@ -251,7 +251,8 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 .preset{display:flex;flex-direction:column;gap:6px;text-align:left;padding:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);color:var(--paper);cursor:pointer;font:inherit}
 .preset b{font:400 22px/1 var(--display);letter-spacing:.04em;text-transform:uppercase} .preset span{font:500 13px/1.3 var(--ui);color:var(--dim)}
 .preset.on{border-color:var(--gold);background:rgba(255,122,47,.12)} .preset .tag{align-self:flex-start;font:700 11px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;background:var(--sage);color:#06231f;padding:3px 6px}
-.check,.range{display:flex;align-items:center;gap:10px;font:600 17px/1.2 var(--ui)} .check small{color:var(--dim);font-weight:500} .range input{flex:0 1 240px;accent-color:var(--gold)} .check input{accent-color:var(--gold);width:18px;height:18px}
+.check,.range{display:flex;align-items:center;gap:10px;font:600 17px/1.2 var(--ui)} .check small{color:var(--dim);font-weight:500} .range input{flex:0 1 240px;accent-color:var(--gold)}
+.skyset{margin:4px 0 6px 28px;transition:opacity .2s}.skyset.off{opacity:.45}.seg.wrap{flex-wrap:wrap}.seg.wrap button{padding:8px 11px;font-size:12px} .check input{accent-color:var(--gold);width:18px;height:18px}
 /* name prompt */
 .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(5,8,16,.7);backdrop-filter:blur(3px)}
 .modal-card{display:flex;flex-direction:column;gap:12px;width:min(420px,92vw);background:#0e1528;border-top:4px solid var(--gold);padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -380,6 +381,11 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
     <div class="row look"><span>Look</span><div class="seg" id="lookseg"><button data-l="2">Stylized</button><button data-l="1">Clean</button><button data-l="0">Off</button></div><small>Stylized adds ink outlines and film grain. Off is fastest.</small></div>
     <label class="check"><input type="checkbox" id="voiceson"> Character voices</label>
     <label class="range">Mouse sensitivity <input type="range" id="sens" min="0.4" max="2" step="0.05"> <output id="sensv"></output></label>
+    <label class="check"><input type="checkbox" id="skylock"> Lock my time and weather <small>on your screen only. Online, everyone else keeps the server's shared time and weather.</small></label>
+    <div class="skyset" id="skyset">
+      <label class="range">Time <input type="range" id="skyhour" min="0" max="23.75" step="0.25"> <output id="skyhourv"></output></label>
+      <div class="row look"><span>Weather</span><div class="seg wrap" id="skywx"></div></div>
+    </div>
     <div class="row"><button class="mbtn primary small" id="gfxapply" hidden>Apply and reload</button></div>
   </section>
 
@@ -459,7 +465,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
-import { loadGround, groundPatch } from './src/nature/ground.js';
+import { loadGround, groundPatch, groundStandIn, setGround } from './src/nature/ground.js';
 import { filterTrees } from './src/world/treeFilter.js';
 import { RoadSurface } from './src/world/roadsurface.js';
 import { loadVegetation, Vegetation, natureUniforms } from './src/nature/vegetation.js';
@@ -473,9 +479,9 @@ import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
-import { HUMANS, loadHumans, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll } from './src/humans.js';
+import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
-import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome } from './src/online/net.js';
+import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
@@ -852,19 +858,59 @@ function slopeAt(x, z, out) { // gradient dy/dx, dy/dz
 // ============================================================ asset loading
 const loadState = { done: 0, total: 0 };
 let buildN = 0; // the loading bar: downloads fill 0-62 %, then each world-building step moves it on
+// Bytes for the loading screen. Images are streamed (fetchBlobURL), so their size is known as soon as they start and
+// every chunk counts; everything else (scripts, models, JSON) is counted from resource timing when it finishes.
+// DL.on goes false when the loading screen is done: later downloads (loadLater) don't touch it.
+const DL = { on: true, done: 0, total: 0, shown: 0, streamed: new Set(), msg: '' };
+try {
+  new PerformanceObserver(list => {
+    if (!DL.on) return;
+    for (const e of list.getEntries()) { if (!/^https?:/.test(e.name) || DL.streamed.has(e.name)) continue; const b = e.encodedBodySize || e.transferSize || 0; DL.done += b; DL.total += b; }
+  }).observe({ type: 'resource', buffered: true });
+} catch (e) { /* no resource timing: only the streamed images count */ }
+async function fetchBlobURL(url) {
+  DL.streamed.add(new URL(url, location.href).href);
+  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+  const count = DL.on, len = +r.headers.get('content-length') || 0; if (count) DL.total += len;
+  const parts = [], rd = r.body.getReader(); let got = 0;
+  for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (count) DL.done += value.length; }
+  if (count) DL.total += got - len; // no length header, or a compressed one
+  return URL.createObjectURL(new Blob(parts, { type: r.headers.get('content-type') || '' }));
+}
+function showProgress() {
+  if (!DL.on) return;
+  if (buildN) { SHELL.bootProgress(0.62 + 0.36 * Math.min(1, buildN / 12), DL.msg); return; }
+  DL.shown = Math.max(DL.shown, DL.total ? DL.done / DL.total : 0); // new downloads raise the total; the bar never goes back
+  const mb = b => (b / 1048576).toFixed(1);
+  SHELL.bootProgress(0.02 + 0.6 * DL.shown, DL.total ? `${DL.msg} ${Math.min(99, Math.floor(DL.shown * 100))}% · ${mb(DL.done)} of ${mb(DL.total)} MB` : DL.msg);
+}
+const progTimer = setInterval(() => { if (DL.on) showProgress(); else clearInterval(progTimer); }, 250); // streams move between progress() calls
 function progress(msg) {
-  const dl = loadState.total ? loadState.done / loadState.total : 0;
-  if (loadState.total && loadState.done >= loadState.total && !/Loading/.test(msg)) buildN++;
-  SHELL.bootProgress(buildN ? 0.62 + 0.36 * Math.min(1, buildN / 12) : 0.02 + 0.6 * dl, msg);
+  if (!DL.on) return;
+  if (loadState.total && loadState.done >= loadState.total && !/Loading|Reading/.test(msg)) buildN++;
+  DL.msg = msg; showProgress();
 }
 const texLoader = new THREE.TextureLoader(), gltfLoader = new GLTFLoader();
+// a 1x1 stand-in so a material compiles with its map from the start and the real image can be swapped in later
+function holdTex(hex) {
+  const t = new THREE.DataTexture(new Uint8Array([(hex >> 16) & 255, (hex >> 8) & 255, hex & 255, 255]), 1, 1);
+  t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t;
+}
+const isHold = t => !t || !!t.isDataTexture;
 function loadTex(url, srgb = true, repeat = true) {
   loadState.total++;
-  return new Promise(res => texLoader.load(url, t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, MAXANISO); loadState.done++; progress('Loading textures…'); res(t); }, undefined, () => { loadState.done++; res(null); }));
+  return fetchBlobURL(url)
+    .then(src => new Promise((res, rej) => texLoader.load(src, t => { URL.revokeObjectURL(src); res(t); }, undefined, e => { URL.revokeObjectURL(src); rej(e); })))
+    .then(t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, MAXANISO); return t; },
+      e => { console.warn('[load]', url, e && e.message || e); return null; })
+    .finally(() => { loadState.done++; progress('Loading textures…'); });
 }
 function loadImage(url) {
   loadState.total++;
-  return new Promise(res => { const im = new Image(); im.onload = () => { loadState.done++; res(im); }; im.onerror = () => { loadState.done++; res(null); }; im.src = url; });
+  return fetchBlobURL(url)
+    .then(src => new Promise((res, rej) => { const im = new Image(); im.onload = () => { URL.revokeObjectURL(src); res(im); }; im.onerror = () => { URL.revokeObjectURL(src); rej(new Error('bad image')); }; im.src = src; }))
+    .catch(e => { console.warn('[load]', url, e && e.message || e); return null; })
+    .finally(() => { loadState.done++; });
 }
 function loadGLB(url) {
   loadState.total++;
@@ -939,14 +985,13 @@ function waterMat(color, scale, strength) {
 }
 async function loadAssets() {
   const T = 'assets/tex/';
-  loadState.total++;
-  const [asphalt, asphaltN, concrete, stucco, stuccoN, plaster, painted, clay, clayN, shingle, brick, cwall, gplaster, ground] = await Promise.all([
+  const ground = groundStandIn(THREE); // the real close-up ground layers swap in after the loading screen (loadLater)
+  const [asphalt, asphaltN, concrete, stucco, stuccoN, plaster, painted, clay, clayN, shingle, brick, cwall, gplaster] = await Promise.all([
     loadTex(T + 'asphalt_02_diff.jpg'), loadTex(T + 'asphalt_02_nor_gl.jpg', false), loadTex(T + 'concrete_pavement_02_diff.jpg'),
     loadTex(T + 'white_stucco_diff.jpg'), loadTex(T + 'white_stucco_nor_gl.jpg', false), loadTex(T + 'yellow_plaster_diff.jpg'),
     loadTex(T + 'painted_concrete_diff.jpg'), loadTex(T + 'clay_roof_tiles_03_diff.jpg'), loadTex(T + 'clay_roof_tiles_03_nor_gl.jpg', false),
     loadTex(T + 'grey_roof_tiles_diff.jpg'),
     loadTex(T + 'brick_wall_02_diff.jpg'), loadTex(T + 'concrete_wall_008_diff.jpg'), loadTex(T + 'grey_plaster_02_diff.jpg'),
-    loadGround(THREE, renderer).finally(() => { loadState.done++; }),
   ]);
   Object.assign(TX, { asphalt, asphaltN, concrete, stucco, stuccoN, plaster, painted, clay, clayN, shingle, brick, cwall, gplaster, ground });
   const [hw, hwE] = wallComposite(stucco, [{ x: 1.2, y: 1.7, w: 1.1, h: 1.1 }, { x: 3.0, y: 1.7, w: 1.1, h: 1.1 }], 0.35);
@@ -976,15 +1021,15 @@ async function loadAssets() {
   M.terrainShader = photoBias => groundPatch(ground, { photoBias });
   M.terrain = [];
   const gm = AER.ground;
-  if (gm) {
+  if (gm) { // the aerial photo tiles stream in after the loading screen (loadGroundPhotos); till then, plain ground colour
     for (let j = 0; j < gm.gny; j++) for (let i = 0; i < gm.gnx; i++) {
-      const t = await loadTex(`assets/ground/g_${i}_${j}.jpg`, true, false);
-      if (t) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO); }
-      const m = new THREE.MeshStandardMaterial({ map: t, roughness: 1, color: t ? 0xffffff : 0x8a8260 });
+      const m = new THREE.MeshStandardMaterial({ map: holdTex(0x8a8260), roughness: 1 });
       m.onBeforeCompile = M.terrainShader(1.5); M.terrain.push(m);
     }
   }
-  M.roofPhoto = [0, 1, 2].map(() => new THREE.MeshStandardMaterial({ roughness: 0.95, color: 0xffffff }));
+  // roof photos come later too (loadLater); with stand-ins here, buildings are still built with their photo roofs
+  TX.roofs = [holdTex(0x8c8a86), holdTex(0x8c8a86)];
+  M.roofPhoto = [0, 1, 2].map(i => new THREE.MeshStandardMaterial({ map: TX.roofs[i] || null, roughness: 0.95, color: 0xffffff }));
   M.poolWater = new THREE.MeshStandardMaterial({ color: 0x3fb0e6, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.8 });
   M.poolWall = new THREE.MeshStandardMaterial({ color: 0xcfe6f2, roughness: 0.6 });
   M.coping = new THREE.MeshStandardMaterial({ map: concrete, roughness: 0.9, color: 0xe8e2d4, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
@@ -1975,6 +2020,37 @@ async function loadModels() {
   M.tree = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
 }
 
+// Trees, shrubs and grass (src/nature). Runs after the loading screen, once the plants and the aerial photo (which says
+// where the grass grows) are in (loadLater). Trees join the collision grid and the breakable props like everything else.
+async function plantNature() {
+  if (!NATURE.lib || NATURE.veg) return;
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  const w = { roads: D.roads, roadSegGrid, RSG, ckey, cgrid, CELL, polys, pools: D.pools || [], areas: mapAreas, areaBins: mapBins, AB: MB,
+    exclude: window.GTP_NATURE_EXCLUDE || [], heightAt, groundAt, slopeAt, reject: offLimits };
+  const filt = filterTrees(D.trees, w); NATURE.filter = filt.stats;
+  NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
+  const placed = assignPlants(D, filt, makeContext(D, w), NATURE.veg); NATURE.counts = placed.counts;
+  for (let i = 0; i < placed.trees.length; i += 2) { const ti = treeC.length / 2; treeC.push(placed.trees[i], placed.trees[i + 1]); gridAdd(placed.trees[i], placed.trees[i + 1], placed.trees[i], placed.trees[i + 1], 't', ti); addProp({ kind: 'tree', x: placed.trees[i], z: placed.trees[i + 1], ti, veg: placed.refs[i / 2], alive: true }); }
+  if (GRASS_Q > 0) {
+    await tick();
+    const drawPhoto = ctx => { // every aerial ground tile at its place in game coordinates
+      if (!AER.ground) return;
+      for (let j = 0; j < AER.ground.gny; j++) for (let i = 0; i < AER.ground.gnx; i++) {
+        const t = M.terrain[j * AER.ground.gnx + i]; if (!t || isHold(t.map)) continue; // a tile still loading
+        const a = aerInv(i * 4096, j * 4096, [0, 0]), b = aerInv((i + 1) * 4096, (j + 1) * 4096, [0, 0]);
+        ctx.drawImage(t.map.image, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+      }
+    };
+    try {
+      NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas });
+      NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
+    } catch (e) { console.error('[nature] cover map', e); }
+  }
+  NATURE.veg.build();
+  if (NATURE.cover) NATURE.gc = new GroundCover(THREE, scene, NATURE.cover, groundAt, NATURE.U, { quality: GRASS_Q });
+  console.info('[nature] trees', filt.stats, placed.counts, 'extra shrubs', NATURE.shrubs, 'ground cover instances', NATURE.gc ? NATURE.gc.instances : 0);
+}
+
 async function buildWorld() {
   const tick = () => new Promise(r => setTimeout(r, 0));
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -2098,33 +2174,6 @@ async function buildWorld() {
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
   progress('Digging ' + (D.pools || []).length.toLocaleString() + ' pools…'); await tick();
   for (const p of (D.pools || [])) if (!PHS.phsSkip(p[0], p[1])) addPool(p); // PHS
-  progress('Planting ' + (D.trees.length / 4).toLocaleString() + ' trees and shrubs…'); await tick();
-  if (NATURE.lib) {
-    const w = { roads: D.roads, roadSegGrid, RSG, ckey, cgrid, CELL, polys, pools: D.pools || [], areas: mapAreas, areaBins: mapBins, AB: MB,
-      exclude: window.GTP_NATURE_EXCLUDE || [], heightAt, groundAt, slopeAt, reject: offLimits };
-    const filt = filterTrees(D.trees, w); NATURE.filter = filt.stats;
-    NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
-    const placed = assignPlants(D, filt, makeContext(D, w), NATURE.veg); NATURE.counts = placed.counts;
-    for (let i = 0; i < placed.trees.length; i += 2) { const ti = treeC.length / 2; treeC.push(placed.trees[i], placed.trees[i + 1]); gridAdd(placed.trees[i], placed.trees[i + 1], placed.trees[i], placed.trees[i + 1], 't', ti); addProp({ kind: 'tree', x: placed.trees[i], z: placed.trees[i + 1], ti, veg: placed.refs[i / 2], alive: true }); }
-    if (GRASS_Q > 0) {
-      progress('Growing grass and brush…'); await tick();
-      const drawPhoto = ctx => { // every aerial ground tile at its place in game coordinates
-        if (!AER.ground) return;
-        for (let j = 0; j < AER.ground.gny; j++) for (let i = 0; i < AER.ground.gnx; i++) {
-          const t = M.terrain[j * AER.ground.gnx + i]; if (!t || !t.map || !t.map.image) continue;
-          const a = aerInv(i * 4096, j * 4096, [0, 0]), b = aerInv((i + 1) * 4096, (j + 1) * 4096, [0, 0]);
-          ctx.drawImage(t.map.image, a[0], a[1], b[0] - a[0], b[1] - a[1]);
-        }
-      };
-      try {
-        NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas });
-        NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
-      } catch (e) { console.error('[nature] cover map', e); }
-    }
-    NATURE.veg.build();
-    if (NATURE.cover) NATURE.gc = new GroundCover(THREE, scene, NATURE.cover, groundAt, NATURE.U, { quality: GRASS_Q });
-    console.info('[nature] trees', filt.stats, placed.counts, 'extra shrubs', NATURE.shrubs, 'ground cover instances', NATURE.gc ? NATURE.gc.instances : 0);
-  }
   progress('Posting street signs…'); await tick();
   buildSignAtlas(); buildSigns(); buildMailboxes(); buildKitMeshes();
   // ---- parking lots: stalls painted in every mapped lot (src/world/parking.js)
@@ -2633,7 +2682,6 @@ const CAR_DIMS = {
   delivery: { L: 6.5, W: 2.3, H: 2.95, r: 0.45 }, 'garbage-truck': { L: 8.6, W: 2.5, H: 3.5, r: 0.52 },
 };
 for (const d of Object.values(CAR_DIMS)) for (const k of ['L', 'W', 'H', 'r']) if (typeof d[k] === 'number') d[k] *= CAR_SCALE;
-const MSCALE = 1; // dents (dentCar) are sized in model units; models are now scaled to real size per axis
 const wreckMat = new THREE.MeshStandardMaterial({ color: 0x262422, roughness: 1 });
 const carProto = new Map(); // model name -> { body: Group template, wheels: [{x,y,z,front,right}], L, W, h }
 function carTemplate(name) {
@@ -2995,26 +3043,45 @@ function wreckCar(v) {
   if (byPlayer && v.isCop) crime('assault', x, z, 3);
   bus.emit('car:destroyed', { vehicle: v, byPlayer });
 }
-// Push the body in around a world point: a crumple zone made from the car's own mesh.
-const _dM = new THREE.Matrix4(), _dP = new THREE.Vector3(), _dD = new THREE.Vector3();
+// Damage shows as scorch marks on the paint, never by bending the model: a soft, see-through black mark where the hit
+// landed, found by casting a ray at the body and stuck to the car (v.m.g, which is never scaled) so it moves with it.
+// dentCar keeps its name for its callers and still counts toward the bent axle; depth and radius set the mark's size and darkness.
+const SCORCH = (() => {
+  const tex = [0, 1, 2].map(() => {
+    const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+    for (let i = 0; i < 9; i++) {
+      const x = 64 + rand(-22, 22), y = 64 + rand(-22, 22), r = rand(16, 44), gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(6,5,4,0.6)'); gr.addColorStop(0.55, 'rgba(12,10,8,0.28)'); gr.addColorStop(1, 'rgba(20,18,16,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  });
+  const mats = [0.45, 0.7, 0.95].flatMap(o => tex.map(map => new THREE.MeshBasicMaterial({ map, transparent: true, opacity: o, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 })));
+  return { geo: new THREE.PlaneGeometry(1, 1), mats, ray: new THREE.Raycaster(), o: new THREE.Vector3(), d: new THREE.Vector3(), n: new THREE.Vector3(), z: new THREE.Vector3(0, 0, 1) };
+})();
+function scorchHit(v, wx, wy, wz, dx, dy, dz) { // where a hit from (dx,dy,dz) inward lands on the body, or null
+  const S = SCORCH, cast = () => { S.o.set(wx, wy, wz).addScaledVector(S.d, -3); S.ray.set(S.o, S.d); S.ray.far = 7; return S.ray.intersectObject(v.m.body, true).find(h => h.face) || null; };
+  S.d.set(dx, dy, dz); let hit = S.d.lengthSq() > 1e-6 ? (S.d.normalize(), cast()) : null;
+  if (!hit) { S.d.set(v.pos.x - wx, v.pos.y + v.spec.H * 0.5 - wy, v.pos.z - wz); if (S.d.lengthSq() < 1e-6) S.d.set(0, -1, 0); S.d.normalize(); hit = cast(); }
+  return hit;
+}
 function dentCar(v, wx, wy, wz, dx, dy, dz, depth, radius) {
   if (depth < 0.02 || !v.m || v.removed) return;
-  if (v.dentTotal > 1.6) depth *= 0.35; v.dentTotal += depth; // already crushed: dents stop piling up
+  if (v.dentTotal > 1.6) depth *= 0.35; v.dentTotal += depth; // still counted: the handling (bent axle) gets worse
+  scorchCar(v, wx, wy, wz, dx, dy, dz, depth, radius);
+}
+function scorchCar(v, wx, wy, wz, dx, dy, dz, depth, radius) {
+  if (!v.m || v.removed) return;
   v.m.g.updateMatrixWorld(true);
-  v.m.body.traverse(o => {
-    if (!o.isMesh) return;
-    if (!o.userData.ownGeo) { o.geometry = o.geometry.clone(); o.userData.ownGeo = true; } // the template mesh is shared
-    _dM.copy(o.matrixWorld).invert(); const sc = o.matrixWorld.getMaxScaleOnAxis();
-    const p = _dP.set(wx, wy, wz).applyMatrix4(_dM), d = _dD.set(dx, dy, dz).transformDirection(_dM);
-    const pos = o.geometry.attributes.position, rl = radius / sc, dl = depth / sc; let moved = false;
-    for (let i = 0; i < pos.count; i++) {
-      const ex = pos.getX(i) - p.x, ey = pos.getY(i) - p.y, ez = pos.getZ(i) - p.z, dd = Math.sqrt(ex * ex + ey * ey + ez * ez);
-      if (dd >= rl) continue;
-      const w = 1 - dd / rl, k = w * w * dl * (0.7 + 0.6 * Math.abs(Math.sin(i * 12.9898)));
-      pos.setXYZ(i, pos.getX(i) + d.x * k, pos.getY(i) + d.y * k, pos.getZ(i) + d.z * k); moved = true;
-    }
-    if (moved) { pos.needsUpdate = true; o.geometry.computeVertexNormals(); }
-  });
+  const hit = scorchHit(v, wx, wy, wz, dx, dy, dz); if (!hit) return;
+  const S = SCORCH; S.n.copy(hit.face.normal).transformDirection(hit.object.matrixWorld); if (S.n.dot(S.d) > 0) S.n.negate();
+  const marks = v.marks || (v.marks = []), heavy = depth > 0.25 ? 2 : depth > 0.08 ? 1 : 0;
+  const m = marks.length >= 16 ? marks.shift() : new THREE.Mesh(S.geo, S.mats[0]); // past 16 the oldest mark moves
+  if (m.parent) m.parent.remove(m);
+  m.material = S.mats[heavy * 3 + Math.floor(Math.random() * 3)];
+  const s = clamp(radius * 0.45 + depth * 1.6, 0.3, 1.6); m.scale.set(s, s, 1);
+  m.position.copy(hit.point).addScaledVector(S.n, 0.015); m.quaternion.setFromUnitVectors(S.z, S.n); m.rotateZ(rand(0, TAU));
+  m.updateMatrix(); v.m.g.attach(m); marks.push(m);
 }
 // ---- flying parts: wheels that come off, paint and glass chips
 const debris = [];
@@ -3061,7 +3128,7 @@ class Ped {
     this.undercover = this.isCop && Math.random() < 0.2; // plain-clothes deputies
     const look = opts.look ? opts.look : this.isCop ? { kind: this.undercover ? 'plain' : 'police', skin: pick(SKIN), shirt: '#b8a77a', sleeve: '#b8a77a', pants: '#2c4430', hair: pick(HAIR), hat: '#2c4430', gun: true }
       : { kind: swimZone(x, z) ? 'swim' : 'civ', skin: pick(SKIN), shirt: pick(SHIRT), pants: pick(PANTS), hair: pick(HAIR), hat: Math.random() < 0.15 ? pick(['#c8423b', '#1f2a44', '#e5e0d2', '#d9a441']) : null };
-    this.rig = buildRig(look); scene.add(this.rig.g);
+    this.rig = buildRig(look); scene.add(this.rig.g); this.look = look; // look: upgradePeds() rebuilds a blocky rig once the crowd is in
     this.pos = new THREE.Vector3(x, heightAt(x, z), z); this.rotY = rand(0, TAU); this.vel = new THREE.Vector3(); this.air = 0;
     this.health = this.isCop ? 120 : 100; this.state = 'walk'; this.agent = opts.agent || null; this.speed = 0; this.timer = 0;
     this.walkMul = rand(0.85, 1.2); this.personality = this.isCop ? 'cop' : pick(['normal', 'normal', 'normal', 'coward', 'coward', 'tough', 'tough', 'karen']);
@@ -3377,6 +3444,22 @@ const weather = { key: 'clear', cloud: 0.06, rain: 0, fog: 0, haze: 0, storm: 0,
 let hour = clock.hour; // time of day; the calendar date lives in src/clock.js
 let flash = 0, shake = 0, lightningT = 5;
 function setWeather(k, quiet) { weather.key = k; weather.nextT = rand(180, 360); if (!quiet) notify('Weather: ' + WEATHERS[k].name, '', 2500); }
+const pickWeather = r => r < 0.35 ? 'clear' : r < 0.55 ? 'sunny' : r < 0.67 ? 'cloudy' : r < 0.75 ? 'overcast' : r < 0.84 ? 'fog' : r < 0.92 ? 'rain' : r < 0.96 ? 'storm' : 'santaana';
+// ---- whose time and weather. Online, every game on a server works the hour and the weather out from the server clock
+// and the server's name, so everyone there shares one sky without sending anything. "Lock my time and weather"
+// (Settings) overrides that on this screen only. Offline and unlocked, the hour runs and the weather wanders on its own.
+const SKY_KEY = 'pao.sky';
+const SKY = (() => {
+  try { const s = JSON.parse(localStorage.getItem(SKY_KEY) || '{}'); return { lock: !!s.lock, hour: Number.isFinite(s.hour) ? s.hour : 17.5, weather: WEATHERS[s.weather] ? s.weather : 'clear' }; }
+  catch (e) { return { lock: false, hour: 17.5, weather: 'clear' }; }
+})();
+const saveSky = () => { try { localStorage.setItem(SKY_KEY, JSON.stringify(SKY)); } catch (e) { } };
+const skyHash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); return ((h ^ (h >>> 12)) >>> 0) / 4294967296; };
+const SKY_SLOT = 270e3; // one shared weather lasts 4.5 real minutes
+function sharedSky(sid, t) { // 1 game hour per real minute, each server at its own time of day
+  return { hour: (t / 60000 + skyHash(sid) * 24) % 24, weather: pickWeather(skyHash(sid + ':' + Math.floor(t / SKY_SLOT))) };
+}
+let skyMode = ''; // 'lock' | 'shared' | 'own'
 const RAIN_N = 6000;
 const rainGeo = new THREE.BufferGeometry(); const rainPos = new Float32Array(RAIN_N * 6);
 for (let i = 0; i < RAIN_N; i++) { const x = rand(-40, 40), y = rand(0, 35), z = rand(-40, 40); rainPos.set([x, y, z, x, y - 0.7, z], i * 6); }
@@ -3390,13 +3473,18 @@ const C = {
 const sunDir = new THREE.Vector3();
 let nightAmount = 0;
 function updateWeather(dt) {
-  weather.nextT -= dt;
-  if (weather.nextT <= 0) { const r = Math.random(); setWeather(r < 0.35 ? 'clear' : r < 0.55 ? 'sunny' : r < 0.67 ? 'cloudy' : r < 0.75 ? 'overcast' : r < 0.84 ? 'fog' : r < 0.92 ? 'rain' : r < 0.96 ? 'storm' : 'santaana'); }
+  const mode = SKY.lock ? 'lock' : online && NET.server ? 'shared' : 'own';
+  if (mode === 'lock') { if (weather.key !== SKY.weather) setWeather(SKY.weather, true); }
+  else if (mode === 'shared') { const s = sharedSky(NET.server, serverNow()); if (weather.key !== s.weather) setWeather(s.weather, skyMode !== 'shared'); } // a change while you're on is announced
+  else { weather.nextT -= dt; if (weather.nextT <= 0) setWeather(pickWeather(Math.random())); }
   const W = WEATHERS[weather.key], k = 1 - Math.exp(-dt * 0.15);
   weather.cloud = lerp(weather.cloud, W.cloud, k); weather.rain = lerp(weather.rain, W.rain, k); weather.fog = lerp(weather.fog, W.fog, k);
   weather.haze = lerp(weather.haze, W.haze || 0, k); weather.storm = lerp(weather.storm, W.storm || 0, k);
   weather.wet = clamp(weather.wet + (weather.rain > 0.15 ? dt * 0.05 : -dt * 0.008), 0, 1);
-  hour += dt / 60 * (1 - 0.55 * skyU.dusk.value); if (hour >= 24) { hour -= 24; clock.addDays(1); } // golden hour lingers
+  if (mode === 'lock') hour = SKY.hour;
+  else if (mode === 'shared') { const h = sharedSky(NET.server, serverNow()).hour; if (h < hour - 12) clock.addDays(1); hour = h; }
+  else { hour += dt / 60 * (1 - 0.55 * skyU.dusk.value); if (hour >= 24) { hour -= 24; clock.addDays(1); } } // golden hour lingers
+  skyMode = mode;
   const ph = (hour - 6) / 12 * Math.PI;
   sunDir.set(Math.cos(ph), Math.sin(ph) * 0.94, Math.sin(ph) * 0.34).normalize();
   const sy = sunDir.y, day = smooth(-0.08, 0.25, sy), dusk = Math.exp(-sy * sy * 40) * (1 - weather.cloud * 0.7), night = 1 - day;
@@ -3628,8 +3716,11 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyZ' && player.aiming) { scope = (scope + 1) % 3; tone(scope ? 1300 : 900, 0.04, 'square', 0.15); }
   if (e.code === 'KeyB' && !player.inCar && !player.dead) { const E = ['wave', 'cheer', 'dance', 'laugh']; emote = E[(E.indexOf(emote) + 1) % E.length]; emoteT = emote === 'dance' ? 8 : 3.5; if (emote === 'dance') ACH.bump('danced'); }
   if (e.code === 'KeyK') toggleTravel();
-  if (e.code === 'KeyY' && !online) setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weather.key) + 1) % WEATHER_ORDER.length]);
-  if (e.code === 'KeyT' && !online) { if (e.shiftKey) clock.addDays(1); else { hour += 1; if (hour >= 24) { hour -= 24; clock.addDays(1); } } }
+  // Y / T: next weather / +1 hour. With the lock on they move the lock (online too: it's this screen only);
+  // online without it the sky is the server's
+  if (e.code === 'KeyY' && (SKY.lock || !online)) { const k = WEATHER_ORDER[(WEATHER_ORDER.indexOf(weather.key) + 1) % WEATHER_ORDER.length]; if (SKY.lock) { SKY.weather = k; saveSky(); } setWeather(k); }
+  if (e.code === 'KeyT' && SKY.lock) { SKY.hour = (SKY.hour + 1) % 24; saveSky(); }
+  else if (e.code === 'KeyT' && !online) { if (e.shiftKey) clock.addDays(1); else { hour += 1; if (hour >= 24) { hour -= 24; clock.addDays(1); } } }
   if (e.code === 'KeyV') { voices = !voices; notify('Voices ' + (voices ? 'on' : 'off'), '', 1500); if (!voices && window.speechSynthesis) speechSynthesis.cancel(); }
 });
 addEventListener('keyup', e => {
@@ -3657,7 +3748,8 @@ addEventListener('mousemove', e => {
 });
 document.addEventListener('pointerlockchange', () => {
   const was = locked; locked = document.pointerLockElement === cv;
-  if (was && !locked && running && !mapOpen && !travelOpen && !SHELL.isChatOpen()) setPaused(true);
+  // not for the cheat sheet (it frees the mouse to be clicked) or a chat that just closed (Esc in chat also drops the lock)
+  if (was && !locked && running && !mapOpen && !travelOpen && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 600) setPaused(true);
 });
 // ---- one menu at a time. openMenu() names the one that's up; closeMenus(keep) shuts every other one.
 function openMenu() { return shopOpen ? 'shop' : garageOpen ? 'garage' : mapOpen ? 'map' : travelOpen ? 'travel' : (typeof CHEAT !== 'undefined' && CHEAT.open) ? 'cheats' : (typeof WHEEL !== 'undefined' && WHEEL.open) ? 'wheel' : null; }
@@ -4226,17 +4318,12 @@ function hideSignFaces(x, z) {
 }
 
 // ============================================================ beat-up look
-// Every hard crash crumples the body a little more all over (on top of the local dents) and dulls the paint.
+// Every hard crash dulls the paint a little more and leaves a couple of scorch marks somewhere on the body
+// (the model itself is never bent: see scorchCar).
 function batter(v, amount) {
   if (!v.m || v.removed) return;
   v.batter = (v.batter || 0) + amount; if (v.batter > 1.6) return; // past this it's just a wreck
-  v.m.body.traverse(o => {
-    if (!o.isMesh) return;
-    if (!o.userData.ownGeo) { o.geometry = o.geometry.clone(); o.userData.ownGeo = true; }
-    const pos = o.geometry.attributes.position, s = 0.035 * amount / MSCALE;
-    for (let i = 0; i < pos.count; i++) { const h = Math.sin(i * 91.7 + v.batter * 13) * 0.5 + 0.5; if (h < 0.55) continue; pos.setXYZ(i, pos.getX(i) + (Math.random() - 0.5) * s, pos.getY(i) - Math.random() * s * 1.4, pos.getZ(i) + (Math.random() - 0.5) * s); }
-    pos.needsUpdate = true; o.geometry.computeVertexNormals();
-  });
+  for (let i = 0; i < 2; i++) { const a = rand(0, TAU); scorchCar(v, v.pos.x + Math.cos(a) * v.spec.L * 0.5, v.pos.y + rand(0.4, v.spec.H), v.pos.z + Math.sin(a) * v.spec.L * 0.5, -Math.cos(a), -0.3, -Math.sin(a), 0.03 + 0.05 * amount, 0.8); }
   for (const m of v.m.mats) { m.color.lerp(_dirt, 0.07 * amount); m.roughness = Math.min(0.95, m.roughness + 0.06 * amount); }
 }
 const _dirt = new THREE.Color(0x4a4339);
@@ -5531,7 +5618,7 @@ const groundImgs = []; // {img, x0, z0, x1, z1} in game coords (approximate rect
 function prepMapImages() {
   if (!AER.ground) return;
   for (let j = 0; j < AER.ground.gny; j++) for (let i = 0; i < AER.ground.gnx; i++) {
-    const t = M.terrain[j * AER.ground.gnx + i]; if (!t || !t.map || !t.map.image) continue;
+    const t = M.terrain[j * AER.ground.gnx + i]; if (!t || isHold(t.map)) continue; // a tile still loading
     const a = aerInv(i * 4096, j * 4096, [0, 0]), b = aerInv((i + 1) * 4096, (j + 1) * 4096, [0, 0]);
     groundImgs.push({ img: t.map.image, x0: a[0], z0: a[1], x1: b[0], z1: b[1] });
   }
@@ -5745,8 +5832,9 @@ function tick(rdt) {
     drawFrame(); return;
   }
   // the mouse must stay captured during gameplay: if the lock was lost any way at all, pause (Resume re-locks)
-  if (canLock && !paused && !mapOpen && !travelOpen && !locked && !SHELL.isChatOpen() && performance.now() - lockAskT > 900) setPaused(true);
-  if (paused || mapOpen || travelOpen) { drawFrame(); return; }
+  if (canLock && !paused && !mapOpen && !travelOpen && !locked && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 1500 && performance.now() - lockAskT > 900) setPaused(true);
+  // the cheat sheet freezes everything this game runs (online, the other players carry on) without the pause menu over it
+  if (paused || mapOpen || travelOpen || CHEAT.open) { drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
@@ -5771,22 +5859,23 @@ function tick(rdt) {
 let worldReady = false;
 (async () => {
   progress('Reading the elevation map…');
-  const tim = await loadImage('assets/terrain.png');
+  const timP = loadImage('assets/terrain.png');
+  // the other downloads the world needs start now too, so they arrive while the elevation map and roads are processed.
+  // The ground and roof photos, the close-up ground layers, the plants and the crowd come after the loading screen (loadLater).
+  const assetsP = Promise.all([loadAssets(), loadModels(),
+    loadHumans({ pool: GFX.pool, player: SHELL.profile.skin, crowd: false }).catch(e => console.warn('[humans] not loaded, keeping the blocky people', e))]);
+  assetsP.catch(() => {}); // awaited below; this only keeps an early failure from being reported as unhandled
+  const tim = await timP;
   if (tim) { const c = document.createElement('canvas'); c.width = tim.width; c.height = tim.height; const g = c.getContext('2d'); g.drawImage(tim, 0, 0); terData = g.getImageData(0, 0, tim.width, tim.height).data; terW = tim.width; terH = tim.height; }
   else { terData = new Uint8ClampedArray(4 * 4 * 4).fill(128); terW = terH = 4; }
   buildHeightGrid();
   progress('Grading the roads…'); await new Promise(r => setTimeout(r, 0));
   ROADS = new RoadSurface(D.roads, D.buildings);
-  progress('Loading textures, photos and models…');
-  const roofUrls = ['assets/roofs0.jpg', 'assets/roofs1.jpg'];
-  TX.roofs = await Promise.all(roofUrls.map(u => loadTex(u, true, false)));
-  for (const t of TX.roofs) if (t) { t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO); }
+  progress('Loading textures and models…');
   if (ZONE) {
     if (ZONE.dem) { const zi = await loadImage('assets/zone/dem.png'); if (zi) buildZoneGrid(zi); }
   }
-  await Promise.all([loadAssets(), loadModels(), loadVegetation(THREE, gltfLoader, renderer).then(l => { NATURE.lib = l; }, e => console.error('[nature] vegetation assets', e)),
-    loadHumans({ pool: GFX.pool, player: SHELL.profile.skin }).catch(e => console.warn('[humans] not loaded, keeping the blocky people', e))]);
-  M.roofPhoto.forEach((m, i) => { m.map = TX.roofs[i] || null; m.needsUpdate = true; });
+  await assetsP;
   M.zoneTiles = [];
   if (ZONE) {
     progress('Loading the detail-zone photo tiles…');
@@ -5832,10 +5921,48 @@ let worldReady = false;
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Warming up the effects…'); await FX.warm(renderer, camera); await NUKE_FX.warm(renderer, camera);
-  worldReady = true; last = performance.now();
+  worldReady = true; DL.on = false; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
+  loadLater();
 })().catch(err => { SHELL.bootFail('Failed to build the world: ' + err.message); console.error(err); });
+// ---- after the loading screen: what it no longer waits for, most visible first. A step that fails logs and the rest go on.
+async function loadLater() {
+  const t0 = performance.now();
+  const step = async (name, f) => { try { await f(); } catch (e) { console.warn('[later]', name, e); } };
+  await step('ground photos', loadGroundPhotos);
+  await step('crowd', async () => { if (await loadCrowd()) upgradePeds(); });
+  await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); });
+  await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
+  await step('roof photos', loadRoofPhotos);
+  console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's');
+}
+async function loadGroundPhotos() {
+  const gm = AER.ground; if (!gm) return;
+  await Promise.all(M.terrain.map(async (m, k) => {
+    const t = await loadTex(`assets/ground/g_${k % gm.gnx}_${Math.floor(k / gm.gnx)}.jpg`, true, false); if (!t) return;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO);
+    const old = m.map; m.map = t; if (old && old.isDataTexture) old.dispose();
+  }));
+  groundImgs.length = 0; prepMapImages(); // the minimap and the big map draw the photo too
+}
+async function loadRoofPhotos() {
+  const ts = await Promise.all(['assets/roofs0.jpg', 'assets/roofs1.jpg'].map(u => loadTex(u, true, false)));
+  ts.forEach((t, i) => {
+    if (!t) return; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO);
+    const old = TX.roofs[i]; TX.roofs[i] = t; M.roofPhoto[i].map = t; if (old && old.isDataTexture) old.dispose();
+  });
+}
+// people who spawned as blocky stand-ins before the crowd's avatars arrived get their real bodies (busy ones keep theirs)
+function upgradePeds() {
+  for (const p of peds) {
+    if (p.removed || p.rig.human || !p.look || !['walk', 'roam', 'idle', 'group', 'call'].includes(p.state)) continue;
+    const nr = buildRig(p.look); if (!nr.human) continue;
+    const old = p.rig; nr.g.position.copy(old.g.position); nr.g.rotation.copy(old.g.rotation); nr.g.visible = old.g.visible;
+    if (p.marker) { old.g.remove(p.marker); nr.g.add(p.marker); }
+    scene.remove(old.g); p.rig = nr; scene.add(nr.g);
+  }
+}
 // Put the player back where the save left them (and in the same car), with their health, ammo, weather and settings.
 function restoreSave() {
   voices = save.settings.voices !== false; radio.st = clamp(save.settings.radio | 0, 0, STATIONS.length - 1); radio.on = save.settings.radioOn !== false;
@@ -5859,7 +5986,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, cheat: { handle: t => CHEAT.handle(t), CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
@@ -5980,6 +6107,8 @@ SHELL.initShell({
   voices: () => voices, setVoices: on => { voices = on; persist(); },
   look: () => POST.level, setLook: n => { POST.setLevel(n); try { localStorage.setItem(POST_KEY, String(n)); } catch (e) { } },
   sens: () => SENS, setSens: v => { SENS = v; try { localStorage.setItem(INPUT_KEY, JSON.stringify({ sens: v })); } catch (e) { } },
+  sky: () => ({ ...SKY }), setSky: p => { Object.assign(SKY, p); saveSky(); }, weathers: () => WEATHER_ORDER.map(k => [k, WEATHERS[k].name]),
+  chatClosed: () => { if (running && !paused && !mapOpen && !travelOpen && !CHEAT.open && !document.pointerLockElement) lockPointer(); }, // take the mouse back
 });
 
 </script>
