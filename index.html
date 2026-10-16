@@ -423,6 +423,7 @@ import { createFX } from './src/fx/fx.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
 import { createComposer, procSongs } from './src/audio/composer.js';
+import { createSfx2 } from './src/audio/sfx2.js';
 import { buildPlaza, PLAZA_CENTER } from './src/world/plaza.js';
 import { regionAt, sectorAt, SECTOR, REGIONS, initRegionBanner, updateRegion } from './src/world/regions.js';
 import * as SHOP from './src/ui/shop.js';
@@ -2068,7 +2069,7 @@ const decals = [];
 function decal(x, z, r, mat) { const m = new THREE.Mesh(decalG, mat); m.position.set(x, heightAt(x, z) + 0.2, z); m.scale.setScalar(r); scene.add(m); decals.push({ m, t: 90 }); if (decals.length > 40) { const d = decals.shift(); scene.remove(d.m); } }
 
 // ============================================================ audio + radio
-let AC = null, master = null, noiseBuf = null, engine = null, siren = null, rainSnd = null;
+let AC = null, master = null, noiseBuf = null, engine = null, siren = null, rainSnd = null, S2 = null; // S2: src/audio/sfx2.js
 let voices = true;
 function initAudio() {
   if (AC) return;
@@ -2082,6 +2083,12 @@ function initAudio() {
   siren = { o: mk('triangle', 800), g: AC.createGain() }; siren.g.gain.value = 0; siren.o.connect(siren.g).connect(master); siren.o.start();
   const rs = AC.createBufferSource(); rs.buffer = noiseBuf; rs.loop = true; const rf = AC.createBiquadFilter(); rf.type = 'bandpass'; rf.frequency.value = 1400; rf.Q.value = 0.4;
   rainSnd = AC.createGain(); rainSnd.gain.value = 0; rs.connect(rf).connect(rainSnd).connect(master); rs.start();
+  try { S2 = createSfx2(AC, master); } catch (e) { console.warn('sfx2', e); }
+}
+{ // menu sounds: a tick on hover, a click on press
+  const SEL = '.mbtn, #travel button, .shop-list button, .preset, .chips button, .seg button, #mnav button'; let over = null;
+  document.addEventListener('pointerover', e => { const b = e.target.closest && e.target.closest(SEL); if (b !== over) { over = b; if (b && S2 && !b.disabled) S2.ui('tick'); } });
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest(SEL); if (b && S2) S2.ui(b.disabled ? 'back' : 'click'); }, true);
 }
 function noise(dur, type, freq, gain, delay = 0) {
   if (!AC || gain <= 0.01) return; const t = AC.currentTime + delay;
@@ -2099,7 +2106,7 @@ function volAt(x, z, range = 90) { const p = focusPos(); return clamp(1 - Math.h
 const sfx = {
   gun: v => { noise(0.18, 'highpass', 900, 0.9 * v); noise(0.35, 'lowpass', 300, 0.8 * v); },
   punch: v => { tone(110, 0.12, 'sine', 0.7 * v, 50); noise(0.08, 'lowpass', 900, 0.5 * v); },
-  crash: v => { noise(0.5, 'lowpass', 700, 0.9 * v); noise(0.25, 'highpass', 2500, 0.3 * v); },
+  crash: v => { if (S2) return S2.crunch(v); noise(0.5, 'lowpass', 700, 0.9 * v); noise(0.25, 'highpass', 2500, 0.3 * v); },
   clank: v => { tone(rand(150, 230), 0.16, 'square', 0.22 * v, 70); tone(rand(900, 1400), 0.07, 'triangle', 0.12 * v, null, 0.03); noise(0.35, 'bandpass', 1800, 0.25 * v); },
   whoosh: v => { noise(0.6, 'bandpass', 500, 0.35 * v); },
   boom: v => { noise(1.6, 'lowpass', 220, 1.2 * v); tone(60, 1.2, 'sine', 0.9 * v, 25); },
@@ -3269,7 +3276,7 @@ function playerShoot() {
     const d = _sd.clone().add(_sp.set(rand(-spread, spread), rand(-spread, spread), rand(-spread, spread))).normalize();
     const hit = hitscan(o, d, w.range, player.inCar ? 'player' : null), hp = o.clone().addScaledVector(d, hit.t);
     if (k < 3) tracer(muzzle.x, muzzle.y, muzzle.z, hp.x, hp.y, hp.z);
-    if (hit.wall) FX.impact(hp.x, hp.y, hp.z, 'wall'); else if (hit.ground) { FX.impact(hp.x, hp.y, hp.z, 'ground'); if (k === 0 && Math.random() < 0.3) decal(hp.x, hp.z, 0.12, holeMat); }
+    if (hit.wall) { FX.impact(hp.x, hp.y, hp.z, 'wall'); if (S2 && k === 0 && Math.random() < 0.22) S2.ricochet(0.5); } else if (hit.ground) { FX.impact(hp.x, hp.y, hp.z, 'ground'); if (k === 0 && Math.random() < 0.3) decal(hp.x, hp.z, 0.12, holeMat); }
     if (hit.ped && k === 0) { hitMarker(hit.head); if (hit.head) ACH.bump('headshots'); }
     if (hit.ped) {
       const p = hit.ped, dmg = (hit.head ? Math.max(150, w.dmg[1] * 2) : rand(w.dmg[0], w.dmg[1])) * dmgMul(w), wasCop = p.isCop;
@@ -3285,7 +3292,7 @@ function playerShoot() {
   }
   FX.muzzle(muzzle, _sd, !!w.pellets || w.id === 'sniper' || w.id === 'minigun');
   cam.pitch = clamp(cam.pitch - ((HOLD[w.id] || {}).kick ?? 0.5) * 0.012 * (player.aiming ? 0.6 : 1), -0.35, 1.25); shake = Math.max(shake, w.id === 'sniper' || w.pellets ? 0.12 : 0.04);
-  sfx.gun(w.id === 'sniper' || w.id === 'shotgun' ? 1.4 : w.id === 'minigun' || w.id === 'smg' ? 0.6 : 1);
+  if (S2) S2.gun(w.id, 1); else sfx.gun(w.id === 'sniper' || w.id === 'shotgun' ? 1.4 : w.id === 'minigun' || w.id === 'smg' ? 0.6 : 1);
   crime('gunfire', player.pos.x, player.pos.z, 1);
 }
 
@@ -3303,7 +3310,7 @@ function launchProjectile(kind, from, dir) {
   const m = new THREE.Mesh(kind === 'rocket' ? projGeo.rocket : projGeo.ball, projMat[kind] || projMat.grenade);
   m.position.copy(from); if (kind === 'rocket') m.lookAt(from.clone().add(dir)); scene.add(m);
   projs.push({ kind, m, vel, t: 0, fuse: kind === 'grenade' ? 2.4 : kind === 'flare' ? 1.6 : 99, stuck: null });
-  sfx.gun(kind === 'rocket' ? 1.3 : 0.5); if (!thrown) fire.emit(from.x, from.y, from.z, 0, 0, 0, 1, 0.1, 1, 0.7, 0.3);
+  if (S2) S2.gun(kind === 'rocket' ? 'rocket' : 'gl', 1); else sfx.gun(kind === 'rocket' ? 1.3 : 0.5); if (!thrown) fire.emit(from.x, from.y, from.z, 0, 0, 0, 1, 0.1, 1, 0.7, 0.3);
 }
 function detonateStickies() {
   let n = 0;
@@ -3356,7 +3363,7 @@ const strikes = [];
 function explosionAt(x, y, z, R, by) {
   if (by === 'player' && WEAPONS[player.weapon] && WEAPONS[player.weapon].proj) R *= 1 + 0.1 * upLv(WEAPONS[player.weapon], 'dmg'); // bigger charges
   const f = focusPos();
-  sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
+  if (S2) S2.boom(R, 1, Math.hypot(x - f.x, z - f.z)); else sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
   if (by === 'player' || by === 'chain') bus.emit('explosion', { x, z, R });
   FX.explosion(x, y, z, R); // fireballs, shockwave, flash, embers, smoke column, flying dirt (src/fx/fx.js)
   decal(x, z, R * 0.55, scorchMat);
@@ -3897,7 +3904,8 @@ function updatePlayer(dt) {
     carHitWorld(v); boundsClamp(v.pos); settleCar(v, dt);
     player.pos.set(v.pos.x, v.pos.y, v.pos.z); player.rotY = v.rotY;
     if (mouseDown && player.weapon > 0 && player.shootCd <= 0) playerShoot();
-    if (engine) { const sp = Math.abs(v.speed); engine.o.frequency.value = 45 + sp * 3.2 + (thr ? 10 : 0); engine.o2.frequency.value = 22 + sp * 1.6; engine.f.frequency.value = 350 + sp * 25 + thr * 200; engine.g.gain.value = v.dead ? 0 : 0.09 + thr * 0.04; }
+    if (S2) { const sp = Math.abs(v.speed), lat = Math.abs(v.vel.x * v.fz - v.vel.y * v.fx); S2.engine(v.speed, thr, !v.dead); S2.screech(!v.air && !v.dead && sp > 4 ? clamp((lat - 2.5) / 6, 0, 1) + (keys.has('Space') && sp > 8 ? 0.5 : 0) : 0); S2.wind(clamp((sp - 22) / 40, 0, 1) + (v.air ? 0.35 : 0)); }
+    else if (engine) { const sp = Math.abs(v.speed); engine.o.frequency.value = 45 + sp * 3.2 + (thr ? 10 : 0); engine.o2.frequency.value = 22 + sp * 1.6; engine.f.frequency.value = 350 + sp * 25 + thr * 200; engine.g.gain.value = v.dead ? 0 : 0.09 + thr * 0.04; }
     return;
   }
   const fwdX = -Math.sin(cam.yaw), fwdZ = -Math.cos(cam.yaw), rtX = Math.cos(cam.yaw), rtZ = -Math.sin(cam.yaw);
@@ -3928,6 +3936,9 @@ function updatePlayer(dt) {
   player.evasive = player.rollT > 0 || player.slideT > 0;
   if (player.aiming || (mouseDown && player.weapon > 0)) player.rotY = Math.atan2(fwdX, fwdZ);
   player.speed = speed;
+  if (S2) { S2.engine(0, 0, false); S2.screech(0); S2.wind(0);
+    if (!player.dead && player.air <= 0.01 && speed > 0.6) { player.stepD = (player.stepD || 0) + speed * dt; const stride = speed > 5 ? 1.7 : speed > 2.5 ? 1.45 : 1.1;
+      if (player.stepD > stride) { player.stepD = 0; S2.step(ROADS && ROADS.onRoad(player.pos.x, player.pos.z, 0.2) ? 'asphalt' : areaKindAt(player.pos.x, player.pos.z) === 1 ? 'grass' : 'dirt', speed > 5 ? 1 : 0.7); } } }
   if (keys.has('Space') && player.air <= 0.001) player.vy = 5.2;
   player.vy -= 15 * dt; player.air = Math.max(0, player.air + player.vy * dt); if (player.air <= 0) player.vy = 0;
   collideCircle(player.pos, 0.35); boundsClamp(player.pos);
@@ -4536,7 +4547,7 @@ function copShot(x, y, z, acc, dmg) {
   const d = hyp(P.x - x, P.z - z);
   const moving = player.inCar ? player.inCar.vel.length() > 8 : player.speed > 4;
   const chance = acc <= 0 ? 0 : clamp(acc - d * 0.008 - (moving ? 0.15 : 0), 0.05, 0.85); // acc 0 = deliberate miss
-  sfx.gun(volAt(x, z, 120) * 0.8); fire.emit(x, y, z, 0, 0, 0, 0.5, 0.06, 1, 0.8, 0.4);
+  if (S2) S2.gun('npc', 0.9, d); else sfx.gun(volAt(x, z, 120) * 0.8); fire.emit(x, y, z, 0, 0, 0, 0.5, 0.06, 1, 0.8, 0.4);
   const hit = Math.random() < chance;
   if (hit) { tracer(x, y, z, P.x, tgtY, P.z); hurtPlayer(dmg, 'gun'); if (!player.inCar) blood(P.x, tgtY, P.z, 6); }
   else tracer(x, y, z, P.x + rand(-2, 2), tgtY + rand(-1, 1), P.z + rand(-2, 2));
@@ -5181,7 +5192,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
