@@ -167,6 +167,9 @@ input[type=search],#namein,#chatin{font:600 18px/1 var(--ui);color:var(--paper);
 input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--gold)}
 .seg{display:flex} .seg button{font:700 14px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase;background:#0b1222;color:var(--dim);border:1px solid #2b3550;padding:10px 14px;cursor:pointer} .seg button.on{background:var(--gold);color:#1a0d02;border-color:var(--gold)}
 .charitems{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:52vh;overflow:auto;padding-right:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px} .chips button{font:700 13px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:7px 12px;cursor:pointer;transition:all .15s} .chips button.on{color:#1a0d02;background:var(--gold);border-color:var(--gold)} .chips button:hover{color:var(--paper)}
+.charrole{font:600 14px/1 var(--ui);letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-top:-4px}
+.charitems button small{display:block;font:600 11px/1.2 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-top:2px}
 .charitems button{font:600 15px/1.2 var(--ui);text-align:left;color:var(--paper);background:rgba(255,255,255,.04);border:1px solid transparent;padding:8px 10px;cursor:pointer}
 .charitems button:hover{background:rgba(255,255,255,.08)} .charitems button.sel{border-color:var(--gold);background:rgba(255,122,47,.12)} .charitems button.worn::after{content:" ●";color:var(--gold)}
 /* settings */
@@ -278,9 +281,10 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
   <section class="screen" id="scr-character" hidden>
     <header><h2>Character</h2><p>Pick who you play as. Other players see this look online.</p></header>
     <div class="charwrap">
-      <div class="charview"><canvas id="charcv" width="360" height="460"></canvas><div class="charname" id="charname"></div><button class="mbtn primary small" id="wearbtn">Wear this</button></div>
+      <div class="charview"><canvas id="charcv" width="360" height="460"></canvas><div class="charname" id="charname"></div><div class="charrole" id="charrole"></div><button class="mbtn primary small" id="wearbtn">Wear this</button></div>
       <div class="charlist">
-        <div class="chartools"><input id="charq" type="search" placeholder="Search" autocomplete="off"><div class="seg" id="charsex"><button data-s="" class="on">All</button><button data-s="m">Men</button><button data-s="f">Women</button></div></div>
+        <div class="chartools"><input id="charq" type="search" placeholder="Search names or jobs" autocomplete="off"><div class="seg" id="charsex"><button data-s="" class="on">All</button><button data-s="m">Men</button><button data-s="f">Women</button></div></div>
+        <div class="chips" id="charcat"></div>
         <div class="charitems" id="charitems"></div>
       </div>
     </div>
@@ -522,6 +526,8 @@ function terrainRaw(lat, lon) {
 const CELLPX = 12.8; // metres per height cell (80 cells per 1024 m chunk)
 let HG = null, HGW = 0, HGH = 0, HBASE = 0; // heights relative to HBASE (so the lowest point of town sits near y=0)
 const _tmpA = [0, 0], _tmpB = [0, 0];
+const RELIEF = 1.12; let HMEAN = 0; // terrain relief exaggeration (1 = true to the DEM)
+function exag(raw) { return HMEAN + (raw - HMEAN) * RELIEF; }
 function buildHeightGrid() {
   HGW = Math.floor(AER.W / CELLPX) + 1; HGH = Math.floor(AER.H / CELLPX) + 1;
   HG = new Float32Array(HGW * HGH);
@@ -537,8 +543,10 @@ function buildHeightGrid() {
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= HGW || jj >= HGH) continue; const w = (di || dj) ? 1 : 2; s += HG[jj * HGW + ii] * w; c += w; }
     sm[j * HGW + i] = s / c;
   }
-  HG = sm; HBASE = mn - 2;
-  for (let i = 0; i < HG.length; i++) HG[i] -= HBASE;
+  HG = sm;
+  // relief exaggeration: hills a little taller, valleys a little deeper, about the town's mean height
+  let sum = 0; for (let i = 0; i < HG.length; i++) sum += HG[i]; HMEAN = sum / HG.length; HBASE = exag(mn) - 2;
+  for (let i = 0; i < HG.length; i++) HG[i] = HMEAN + (HG[i] - HMEAN) * RELIEF - HBASE;
 }
 // ---- detail zone: 1 m DEM around a residential block, sampled on a 4 m mesh grid in zone-pixel space (0.5 m px)
 const ZONE = D.zone || null;
@@ -558,7 +566,7 @@ function zoneInv(px, py, out) {
 function inCore(x, z, margin = 0) { if (!ZONE) return false; zonePx(x, z, _tmpZ); return _tmpZ[0] >= ZONE.core0 + margin && _tmpZ[0] < ZONE.core1 - margin && _tmpZ[1] >= ZONE.core0 + margin && _tmpZ[1] < ZONE.core1 - margin; }
 function coarseHeightAt(x, z) {
   aerPx(x, z, _tmpB); const px = _tmpB[0] / CELLPX, py = _tmpB[1] / CELLPX;
-  if (px < 0 || py < 0 || px >= HGW - 1 || py >= HGH - 1) { const lat = LAT0 - z / KZ, lon = LON0 + x / KX; return terrainRaw(lat, lon) - HBASE; }
+  if (px < 0 || py < 0 || px >= HGW - 1 || py >= HGH - 1) { const lat = LAT0 - z / KZ, lon = LON0 + x / KX; return exag(terrainRaw(lat, lon)) - HBASE; }
   const i = Math.floor(px), j = Math.floor(py), fx = px - i, fy = py - j;
   const h00 = HG[j * HGW + i], h10 = HG[j * HGW + i + 1], h01 = HG[(j + 1) * HGW + i], h11 = HG[(j + 1) * HGW + i + 1];
   if (fx > fy) return h00 + (h10 - h00) * fx + (h11 - h10) * fy;
@@ -656,7 +664,7 @@ function buildZoneGrid(img) { // terrarium-encoded DEM at 2 m (4 zone px); we ke
 function heightAtUnused(x, z) {
   aerPx(x, z, _tmpB); const px = _tmpB[0] / CELLPX, py = _tmpB[1] / CELLPX;
   if (px < 0 || py < 0 || px >= HGW - 1 || py >= HGH - 1) { // outside town: raw terrain
-    const lat = LAT0 - z / KZ, lon = LON0 + x / KX; return terrainRaw(lat, lon) - HBASE;
+    const lat = LAT0 - z / KZ, lon = LON0 + x / KX; return exag(terrainRaw(lat, lon)) - HBASE;
   }
   const i = Math.floor(px), j = Math.floor(py), fx = px - i, fy = py - j;
   const h00 = HG[j * HGW + i], h10 = HG[j * HGW + i + 1], h01 = HG[(j + 1) * HGW + i], h11 = HG[(j + 1) * HGW + i + 1];

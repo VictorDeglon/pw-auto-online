@@ -8,7 +8,8 @@
 //   gfx, setVoices(on), voices(), sens(), setSens(v)
 import { NET, initNet, watchServers, ping, join, leave, sendChat, on as onNet, serverName, validName } from '../online/net.js';
 import { SERVERS, MAX_PLAYERS } from '../online/config.js';
-import { HUMANS, skinList, skinLabel, ensureAvatar, makeHuman, animHuman } from '../humans.js';
+import { HUMANS, skinList, skinLabel, skinRole, ensureAvatar, makeHuman, animHuman } from '../humans.js';
+import { CATEGORIES } from '../people.js';
 import { PRESETS, ORDER, saveGfx } from '../gfx.js';
 import { remoteList, colorOf } from '../online/remote.js';
 
@@ -119,7 +120,7 @@ async function submitName(e) {
 }
 
 // ---------------------------------------------------------------- character (skin selector) with a turntable preview
-let cv = null, cr = null, cscene = null, ccam = null, crig = null, craf = 0, sel = '', csex = '', clast = 0;
+let cv = null, cr = null, cscene = null, ccam = null, crig = null, craf = 0, sel = '', csex = '', ccat = '', clast = 0;
 function openChar() {
   const list = $('charitems');
   if (!HUMANS.manifest) { list.textContent = 'People are still loading…'; setTimeout(() => { if (screen === 'character') openChar(); }, 800); return; }
@@ -129,15 +130,17 @@ function renderSkins() {
   const q = $('charq').value.trim().toLowerCase(), list = $('charitems'); list.textContent = '';
   for (const s of skinList()) {
     if (csex && s.sex !== csex) continue;
-    if (q && !s.label.toLowerCase().includes(q)) continue;
+    if (ccat && s.category !== ccat) continue;
+    if (q && !(s.label + ' ' + s.role).toLowerCase().includes(q)) continue;
     const b = document.createElement('button'); b.textContent = s.label; b.dataset.n = s.name;
+    const r = document.createElement('small'); r.textContent = s.role; b.append(r);
     if (s.name === sel) b.classList.add('sel'); if (s.name === (profile.skin || HUMANS.player)) b.classList.add('worn');
     b.onclick = () => { sel = s.name; for (const x of list.children) x.classList.toggle('sel', x.dataset.n === sel); preview(sel); };
     list.append(b);
   }
 }
 async function preview(name) {
-  $('charname').textContent = name ? skinLabel(name) : '';
+  $('charname').textContent = name ? skinLabel(name) : ''; $('charrole').textContent = name ? skinRole(name) : '';
   $('wearbtn').disabled = !name || name === (profile.skin || HUMANS.player);
   if (!name || !HUMANS.ready) return;
   const THREE = H.THREE;
@@ -231,6 +234,8 @@ export function initShell(hooks) {
   $('namecancel').onclick = () => { $('namebox').hidden = true; joining = null; };
   $('namebox').addEventListener('keydown', e => { if (e.code === 'Escape') { $('namebox').hidden = true; joining = null; } e.stopPropagation(); });
   $('charq').addEventListener('input', renderSkins);
+  { const cats = $('charcat'), mk = (id, label) => { const b = document.createElement('button'); b.textContent = label; b.dataset.c = id; if (id === ccat) b.classList.add('on'); b.onclick = () => { ccat = id; for (const x of cats.children) x.classList.toggle('on', x.dataset.c === id); renderSkins(); }; cats.append(b); };
+    mk('', 'Everyone'); for (const c of CATEGORIES) mk(c.id, c.label); }
   for (const b of $('charsex').children) b.onclick = () => { csex = b.dataset.s; for (const x of $('charsex').children) x.classList.toggle('on', x === b); renderSkins(); };
   $('wearbtn').onclick = wear;
   $('dynres').onchange = () => openSettings();
