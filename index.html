@@ -72,7 +72,10 @@ body.scoped #cross{opacity:.5}
 #helpline{left:244px;bottom:calc(20px + env(safe-area-inset-bottom,0px));font:600 14px/1.4 var(--ui);color:var(--dim);letter-spacing:.04em;max-width:40vw}
 #helpline kbd{font:700 13px var(--ui);color:var(--paper);background:rgba(0,0,0,.5);padding:0 5px;border-radius:2px}
 #bigmap{position:fixed;inset:0;z-index:20;background:#11161a;display:none;cursor:crosshair}
-#bigmap.show{display:block}
+#bigmap.show{display:block;animation:mapIn .25s ease-out}
+@keyframes mapIn{from{opacity:0;transform:scale(1.03)}}
+#maphere{position:absolute;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));display:flex;align-items:center;gap:10px;padding:8px 18px 8px 10px;background:rgba(14,18,26,.88);border-radius:999px;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap}
+#maphere i{width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.15)} #maphere b{font:400 24px/1 var(--display);letter-spacing:.04em;text-transform:uppercase;color:var(--paper)} #maphere span{font:600 15px/1 var(--ui);color:var(--dim);letter-spacing:.04em}
 #bigmap canvas{width:100%;height:100%;display:block}
 #bigmap .legend{position:absolute;left:20px;top:calc(16px + env(safe-area-inset-top,0px));font:600 16px/1.4 var(--ui);color:var(--dim);pointer-events:none;text-shadow:0 1px 2px #000}
 #mapclose{position:absolute;right:20px;top:calc(16px + env(safe-area-inset-top,0px));font-size:22px;padding:10px 20px 8px}
@@ -242,7 +245,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 <div id="objective" class="hud" hidden></div>
 <div id="prompt" class="hud" hidden></div>
 
-<div id="bigmap"><canvas id="bigmapc"></canvas><div class="legend"><b>Poway</b>Scroll to zoom · drag to pan · click to set a waypoint (click a label to go there) · right-click to clear</div><button class="mbtn primary small" id="mapclose">Close map <kbd>M</kbd></button></div>
+<div id="bigmap"><canvas id="bigmapc"></canvas><div id="maphere"></div><div class="legend"><b>Poway</b>Scroll to zoom · drag to pan · click to set a waypoint (click a label to go there) · right-click to clear</div><button class="mbtn primary small" id="mapclose">Close map <kbd>M</kbd></button></div>
 
 <!-- boot: the loading screen while Poway is built -->
 <div id="boot">
@@ -388,6 +391,8 @@ import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/onl
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import * as ACH from './src/ui/achievements.js';
+import { buildPlaza, PLAZA_CENTER } from './src/world/plaza.js';
+import { regionAt, sectorAt, SECTOR, REGIONS, initRegionBanner, updateRegion } from './src/world/regions.js';
 import * as SHOP from './src/ui/shop.js';
 import { initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
 
@@ -1471,8 +1476,9 @@ function blastBuildings(x, z, R, by) {
     else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
   }
 }
+let PLAZA = null; // Carmel Mountain Plaza storefronts (src/world/plaza.js)
 function collapseBuilding(B, dirx, dirz, by) {
-  if (B.dead) return; B.dead = true; polys[B.poly].dead = true;
+  if (B.dead) return; B.dead = true; polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
   for (const [g, a, e] of B.ranges) {
     const m = g._mesh; if (!m) continue; const pos = m.geometry.attributes.position, k = e - a, y0 = new Float32Array(k), x0 = new Float32Array(k), z0 = new Float32Array(k);
@@ -2369,7 +2375,7 @@ function bodyDrop(v) { // distance from the box centre down to its lowest corner
   return v.spec.W / 2 * Math.abs(sr * cp) + v.spec.H / 2 * Math.abs(cr * cp) + v.spec.L / 2 * Math.abs(sp);
 }
 function launchCar(v, vy, pitchV, rollV) {
-  if (v.mode === 'rail') { v.mode = 'free'; v.vel.set(v.fx * v.speed, v.fz * v.speed); v.agent = null; v.crashed = true; }
+  if (v.mode === 'rail' || v.kerb) { v.mode = 'free'; v.vel.set(v.fx * v.speed, v.fz * v.speed); v.agent = null; v.crashed = true; v.kerb = null; }
   v.air = true; v.airT = 0; v.bounces = 0; v.vy = Math.max(v.vy, vy); v.pitchV += pitchV; v.rollV += rollV; v.pos.y += 0.05;
 }
 // Wheels-down landing: keep every bit of speed, face along it, and if a road is right there and roughly in line,
@@ -2934,6 +2940,7 @@ function roamSpot(cx, cz, rmin, rmax, tries = 14) {
 function spawnPed(px, pz, rmin, rmax) {
   if (Math.random() < 0.55) { // a third-plus of the town is out in parks, plazas and yards rather than walking the kerb
     const sp = roamSpot(px, pz, rmin, rmax);
+    if (sp && Math.random() < 0.3) { spawnGroupAt(sp.x, sp.z, randi(2, 3)); return; }
     if (sp) { const p = new Ped(sp.x, sp.z); p.home = sp; p.state = 'roam'; p.goal = null; if (save.rep < -60 && Math.random() < 0.25) p.knowsYou = true; return; }
   }
   const ne = randomEdgeNear(px, pz, rmin, rmax, e => e.t >= 1 && e.t <= 5); if (!ne) return;
@@ -2943,6 +2950,7 @@ function spawnPed(px, pz, rmin, rmax) {
   if (save.rep < -60 && Math.random() < 0.25) p.knowsYou = true;
 }
 // ============================================================ jobs + waypoint
+let lastLeft = null; // the car the player last got out of: nobody else drives off in it
 let job = null, waypoint = null, gps = null, gpsT = 0;
 const beamMat = new THREE.MeshBasicMaterial({ color: 0xf0b23a, transparent: true, opacity: 0.35, depthWrite: false });
 const wpMat = new THREE.MeshBasicMaterial({ color: 0xb06cff, transparent: true, opacity: 0.3, depthWrite: false });
@@ -3054,7 +3062,7 @@ function toggleCar() {
     collideCircle(player.pos, 0.35); player.pos.y = heightAt(player.pos.x, player.pos.z); player.air = 0;
     player.rotY = v.rotY; v.driver = null; player.inCar = null; player.rig.g.visible = true; cam.dist = 6.5;
     if (engine) engine.g.gain.value = 0; radioStop();
-    bus.emit('car:exit', { vehicle: v });
+    bus.emit('car:exit', { vehicle: v }); lastLeft = v;
     return;
   }
   const v = nearestCar(4.5); if (!v) return;
@@ -3415,6 +3423,7 @@ function setupTravel() {
     ['Kirkham Way business park', ll(32.934851, -117.039283)],
     ['High Valley', ll(32.991156, -117.019497)],
     ['Sycamore Canyon', ll(32.942884, -116.986458)],
+    ['Carmel Mountain Plaza · AMC', PLAZA_CENTER],
   ];
   // the 11th: the highest ground in the play area, for driving off a mountain
   let top = null;
@@ -3467,7 +3476,8 @@ function initExtras() {
   SHOP.initShop({ weapons: WEAPONS, money: () => save.money, spend: n => { if (save.money < n) { tone(200, 0.08, 'square', 0.2); return false; } save.money -= n; return true; },
     arsenal: player.arsenal, upgrades: save.upgrades, owned, maxOf, stats: weaponStats, notify, sfx, close: closeShop,
     onBuy: (kind, w, k, lv) => { bus.emit('shop:buy', { kind, weapon: w.id, upgrade: k, level: lv }); if (kind === 'buy') player.weapon = WEAPONS.indexOf(w); persist(); } });
-  setupDealer(); setupTravel(); setupGarage();
+  setupDealer(); setupTravel(); setupGarage(); initRegionBanner();
+  try { PLAZA = buildPlaza({ THREE, scene, BLD, POIS, heightAt, addInteract, notify, sfx, hour: () => hour, inCar: () => player.inCar }); } catch (e) { console.warn('plaza:', e); }
   ACH.initAchievements({ save, persist, bus, sfx, probe: () => {
     const v = player.inCar; return { mph: v ? Math.abs(v.speed || 0) * 2.237 : 0, airT: v && v.air ? v.airT : 0, wanted: police.wanted, inCar: !!v, hour,
       garage: garageList().length, ownedAll: WEAPONS.every((w, i) => !w.id || w.id === 'fists' || owned(i)) }; } });
@@ -4374,12 +4384,13 @@ function updateVehicles(dt) {
       v.wreckT = Math.max(0, v.wreckT - dt); v.smokeT -= dt;
       if (v.smokeT <= 0 && dP < 250) { v.smokeT = 0.05 + (30 - v.wreckT) * 0.02; const c = 0.1 + (30 - v.wreckT) * 0.012; smoke.emit(v.pos.x + v.fx * 1.7, v.pos.y + 1.1, v.pos.z + v.fz * 1.7, rand(-.3, .3), rand(1.2, 2.4), rand(-.3, .3), 1, 2.2, c, c, c, 2, -0.3); }
     } else if (!v.dead && v.health < 45) { v.smokeT -= dt; if (v.smokeT <= 0) { v.smokeT = 0.08 + v.health / 300; const c = v.health < 20 ? 0.12 : 0.5; smoke.emit(v.pos.x + v.fx * 1.8, v.pos.y + 1.1, v.pos.z + v.fz * 1.8, rand(-.3, .3), rand(1, 2), rand(-.3, .3), 0.8, 1.8, c, c, c, 1.5, -0.3); } }
-    if (v.mode !== 'rail' || v === player.inCar) { // light flags for cars not driven by the traffic AI
+    if ((v.mode !== 'rail' && !v.kerb) || v === player.inCar) { // light flags for cars not driven by the traffic AI
       const fs = v.vel.x * v.fx + v.vel.y * v.fz, live = !v.parked && !v.dead && (v.driver || v.crashed);
       v.braking = live && (v === player.inCar ? fs > 0.5 && (keys.has('KeyS') || keys.has('ArrowDown') || keys.has('Space')) : (v.pfs || 0) - fs > dt * 1.5 && fs > 0.3);
       v.ind = 0; v.hazard = !!(live && v.crashed && v !== player.inCar); v.pfs = fs;
     }
-    if (v === player.inCar) { }
+    if (v === player.inCar) { if (v.kerb) { v.kerb = null; v.mode = 'free'; } }
+    else if (v.kerb && !v.dead) stepPullOver(v, dt);
     else if (v.mode === 'rail' && v.agent && !v.dead) updateRailCar(v, dt);
     else if (v.ai && !v.dead && v.driver && v.driver !== 'player') v.ai(v, dt); // deputies (src/police.js), mission cars (src/story)
     else {
@@ -4511,14 +4522,22 @@ function updatePeds(dt) {
         break;
       }
       case 'idle': p.timer -= dt; if (p.timer <= 0) p.state = p.home ? 'roam' : 'walk'; break;
+      case 'group': { // stand in a loose circle, face the middle, take turns talking (crowd life, below)
+        const G = p.group; if (!G) { p.state = p.home ? 'roam' : 'walk'; break; }
+        const dx = p.slot.x - p.pos.x, dz = p.slot.z - p.pos.z, d = Math.hypot(dx, dz);
+        if (d > 0.25) { speed = Math.min(1.3 * p.walkMul, d * 2); p.rotY += wrapA(Math.atan2(dx, dz) - p.rotY) * Math.min(1, dt * 6); p.pos.x += Math.sin(p.rotY) * speed * dt; p.pos.z += Math.cos(p.rotY) * speed * dt; if (collideCircle(p.pos, 0.3)) p.slot = { x: p.pos.x, z: p.pos.z }; }
+        else { p.rotY += wrapA(Math.atan2(G.x - p.pos.x, G.z - p.pos.z) - p.rotY) * Math.min(1, dt * 3); mode = p.pose === 'idle' ? null : p.pose; }
+        break;
+      }
+      case 'tocar': speed = stepToCar(p, dt); collideCircle(p.pos, 0.3); break;
       case 'roam': { // amble between spots near home, pausing; never onto the road
-        if (!p.goal) { p.goal = roamSpot(p.home.x, p.home.z, 3, 22, 6) || p.home; p.stuck = 0; }
+        if (!p.goal) { p.goal = (p.campus ? campusSpot(p.home.x, p.home.z, 3, 30) : roamSpot(p.home.x, p.home.z, 3, 22, 6)) || p.home; p.stuck = 0; }
         const dx = p.goal.x - p.pos.x, dz = p.goal.z - p.pos.z, d = Math.hypot(dx, dz);
         if (d < 0.8) { p.goal = null; p.state = 'idle'; p.timer = rand(2, 9); break; }
         speed = 1.15 * p.walkMul;
         p.rotY += wrapA(Math.atan2(dx, dz) - p.rotY) * Math.min(1, dt * 4);
         const nx = p.pos.x + Math.sin(p.rotY) * speed * dt, nz = p.pos.z + Math.cos(p.rotY) * speed * dt;
-        if (offLimits(nx, nz, 0.5)) { p.goal = null; break; } // the path crosses a street: pick another spot
+        if (offLimits(nx, nz, 0.5)) { p.goal = null; if (p.campus) { p.state = 'idle'; p.timer = rand(1, 3); } break; } // the path crosses a street: pick another spot
         p.pos.x = nx; p.pos.z = nz;
         if (collideCircle(p.pos, 0.35) && (p.stuck += dt) > 1.5) p.goal = null;
         p.anger = Math.max(0, p.anger - dt * 4); if (p.anger < 40) p.setMarker(null); else p.setMarker(angryMat);
@@ -4578,6 +4597,166 @@ function updatePeds(dt) {
     if (!p.remote) { _fs.center.set(p.pos.x, p.pos.y + 1, p.pos.z); p.rig.g.visible = dP < GFX.pedDraw && _frus.intersectsSphere(_fs); } // entity culling
     if (dP < 120 && p.rig.g.visible) animRig(p.rig, speed, dt, p.state === 'dead' || p.state === 'down' ? null : mode);
   }
+}
+
+// ============================================================ crowd life
+// People who stop and talk in small groups, drivers who pull over and walk off, people who walk to a parked car and
+// drive away, and Poway High full of students on school days. Runs a few times a second near the player only.
+const CHAT = {
+  open: ['Did you see that?', 'So anyway…', 'No way. Seriously?', 'Okay, okay, listen.', 'You will not believe this.', 'Long time no see!'],
+  town: ['They are repaving Poway Road again.', 'The lake was packed this weekend.', 'Iron Mountain at sunrise. Worth it.', 'Old Poway Park has the train running Saturday.',
+    'Traffic on the 67 was brutal.', 'That new place by the Regal is good.', 'My neighbor got his car stolen. Again.', 'Saw three cop cars on Community Road.',
+    'Sixty-five dollars for a car wash?', 'Somebody drove off the overlook. Somehow they were fine.'],
+  school: ['Did you do the APUSH reading?', 'Titans by twenty, easy.', 'Practice got moved to six.', 'The quad is so hot today.', 'Who is driving to In-N-Out?',
+    'Did you hear what happened in chem?', 'I have a test fifth period.', 'Is the gym open after school?'],
+  back: ['Ha! Right?', 'Mm-hm.', 'No way.', 'Totally.', 'Wait, really?', 'Ugh, same.', 'Stop.', 'For real.'],
+};
+const groups = []; let crowdT = 0, campusT = 0;
+const freePed = p => !p.removed && !p.isCop && !p.ai && !p.remote && !p.keep && !p.group && !p.car2 && p.anger < 40 && p.callT <= 0 && (p.state === 'roam' || p.state === 'idle' || p.state === 'walk');
+function formGroup(members, life) {
+  let cx = 0, cz = 0; for (const p of members) { cx += p.pos.x; cz += p.pos.z; } cx /= members.length; cz /= members.length;
+  if (offLimits(cx, cz, 0.6)) return null;
+  const n = members.length, r = 0.7 + n * 0.14, a0 = rand(0, TAU);
+  const G = { m: members, x: cx, z: cz, t: life, spk: 0, spkT: rand(1.5, 3), lineT: rand(1, 4), campus: members.some(p => p.campus) };
+  members.forEach((p, i) => { p.group = G; p.state = 'group'; p.agent = null; p.goal = null; p.slot = { x: cx + Math.sin(a0 + i * TAU / n) * r, z: cz + Math.cos(a0 + i * TAU / n) * r }; p.pose = 'listen'; });
+  groups.push(G); return G;
+}
+function endGroup(G) {
+  for (const p of G.m) if (p.group === G) { p.group = null; if (p.state === 'group') { p.state = p.home ? 'roam' : 'walk'; p.agent = null; p.goal = null; } }
+  groups.splice(groups.indexOf(G), 1);
+}
+function updateGroups(dt, f) {
+  for (const G of groups.slice()) {
+    G.t -= dt;
+    for (const p of G.m) if (p.group === G && (p.removed || p.state !== 'group')) p.group = null;
+    G.m = G.m.filter(p => p.group === G);
+    if (G.t <= 0 || G.m.length < 2) { endGroup(G); continue; }
+    G.spkT -= dt;
+    if (G.spkT <= 0) { // the next person talks; the rest listen, nod, sometimes laugh
+      G.spk = (G.spk + 1 + randi(0, G.m.length - 2)) % G.m.length; G.spkT = rand(2.5, 5.5);
+      G.m.forEach((p, i) => { p.pose = i === G.spk ? pick(['talk', 'talk', 'talk2']) : Math.random() < 0.18 ? 'laugh' : pick(['listen', 'listen', 'idle']); });
+    }
+    G.lineT -= dt;
+    if (G.lineT <= 0) { // overheard lines only near the player, so the screen isn't full of bubbles
+      G.lineT = rand(4, 9); const sp = G.m[G.spk], d = hyp(G.x - f.x, G.z - f.z);
+      if (sp && d < 30 && !player.inCar) { const set = Math.random() < 0.25 ? CHAT.open : G.campus ? CHAT.school : CHAT.town; say(sp, pick(set), '', d < 14 && Math.random() < 0.4); }
+      else if (sp && d < 30 && Math.random() < 0.5) say(sp, pick(CHAT.back), '', false);
+    }
+  }
+}
+function tryGroups(f) {
+  if (groups.length >= Math.max(2, Math.round(GFX.peds / 7))) return;
+  const near = peds.filter(p => freePed(p) && hyp(p.pos.x - f.x, p.pos.z - f.z) < 140);
+  for (let t = 0; t < 4 && near.length > 1; t++) {
+    const a = pick(near), mates = near.filter(q => q !== a && hyp(q.pos.x - a.pos.x, q.pos.z - a.pos.z) < 9).slice(0, randi(1, 3));
+    if (mates.length && formGroup([a, ...mates], rand(14, 40))) return;
+  }
+}
+// a lone ped near the player can also call over a friend: spawn 1-3 people who walk up and form a group
+function spawnGroupAt(x, z, n, campus) {
+  const ms = [];
+  for (let i = 0; i < n; i++) { const a = rand(0, TAU), r = rand(0.8, 1.6), px = x + Math.sin(a) * r, pz = z + Math.cos(a) * r; const p = new Ped(px, pz); p.home = { x, z }; p.state = 'roam'; p.campus = !!campus; ms.push(p); }
+  return formGroup(ms, rand(25, 70));
+}
+
+// ---- cars: pull over and get out; walk up and drive off
+function carSide(v, out) { // the kerb side of the car, from where it sits on its street
+  const ne = nearestEdge(v.pos.x, v.pos.z, 30, e => e.t <= 5); if (!ne) return null;
+  let sx = v.pos.x - ne.x, sz = v.pos.z - ne.z; const L = Math.hypot(sx, sz);
+  if (L < 0.3) { sx = v.fz; sz = -v.fx; } else { sx /= L; sz /= L; }
+  return { ne, sx, sz, w: edges[ne.e].w };
+}
+function startPullOver(v) {
+  const S = carSide(v); if (!S || edges[S.ne.e].t < 3) return false;
+  const sp = Math.max(4, v.speed), d = clamp(sp * sp / (2 * 2.4), 10, 40);
+  const ax = v.pos.x + v.fx * d, az = v.pos.z + v.fz * d, ne2 = nearestEdge(ax, az, 30, e => e.t <= 5); if (!ne2) return false;
+  const n2 = { x: -ne2.tz, z: ne2.tx }, sg = Math.sign(n2.x * S.sx + n2.z * S.sz) || 1, o = (edges[ne2.e].w / 2 - 1.15) * sg;
+  const tx = ne2.x + n2.x * o, tz = ne2.z + n2.z * o; if (hyp(tx - v.pos.x, tz - v.pos.z) < 6) return false;
+  for (const o2 of vehicles) if (o2 !== v && hyp(o2.pos.x - tx, o2.pos.z - tz) < 6) return false; // the spot is taken
+  v.kerb = { tx, tz, sp, road: Math.atan2(ne2.tx * Math.sign(ne2.tx * v.fx + ne2.tz * v.fz || 1), ne2.tz * Math.sign(ne2.tx * v.fx + ne2.tz * v.fz || 1)), t: 0, out: 0 };
+  v.mode = 'pull'; v.agent = null; v.ind = Math.sign(v.fz * S.sx - v.fx * S.sz) || 1;
+  return true;
+}
+function stepPullOver(v, dt) { // kinematic: ease toward the kerb spot, straighten up, stop, driver gets out
+  const P = v.kerb; P.t += dt;
+  const dx = P.tx - v.pos.x, dz = P.tz - v.pos.z, d = Math.hypot(dx, dz);
+  if (!P.parked) {
+    const want = d > 5 ? Math.atan2(dx, dz) : P.road;
+    v.rotY += wrapA(want - v.rotY) * Math.min(1, dt * (d > 5 ? 1.6 : 2.5));
+    P.sp = Math.max(0, Math.min(P.sp, Math.sqrt(2 * 2.4 * Math.max(0, d - 0.4)) + 0.3)) ; if (d < 0.6 || P.t > 15) P.sp = 0;
+    v.fx = Math.sin(v.rotY); v.fz = Math.cos(v.rotY); v.pos.x += v.fx * P.sp * dt; v.pos.z += v.fz * P.sp * dt; v.speed = P.sp; v.braking = P.sp < 6;
+    v.ind = v.ind || 1; settleCar(v, dt);
+    if (P.sp === 0) { P.parked = true; P.out = rand(0.8, 2); v.braking = false; }
+  } else if ((P.out -= dt) <= 0) {
+    v.kerb = null; v.mode = 'free'; v.parked = true; v.ind = 0; v.vel.set(0, 0); v.speed = 0;
+    if (v.driver === 'ai') { const p = ejectDriver(v, false); p.state = 'idle'; p.timer = rand(0.6, 1.5); p.home = roamOk(p.pos.x + v.fz * 3, p.pos.z - v.fx * 3) ? { x: p.pos.x, z: p.pos.z } : null; p.ownCar = v; v.owner = p; v.react = -1000; }
+  }
+}
+function startToCar(p, v) { p.state = 'tocar'; p.car2 = v; p.agent = null; p.goal = null; p.timer = 25; v.claimed = p; }
+function stepToCar(p, dt) { // walk to the driver's door, open it, get in, drive off
+  const v = p.car2;
+  if (!v || v.removed || v.dead || !v.parked || v.driver || v === player.inCar || v.claimed !== p || (p.timer -= dt) <= 0) { if (v && v.claimed === p) v.claimed = null; p.car2 = null; p.state = p.home ? 'roam' : 'walk'; return 0; }
+  const side = (v.spec.W / 2 + 0.55), door = { x: v.pos.x - v.fz * side + v.fx * 0.4, z: v.pos.z + v.fx * side + v.fz * 0.4 };
+  const dx = door.x - p.pos.x, dz = door.z - p.pos.z, d = Math.hypot(dx, dz);
+  if (d > 0.45) { p.rotY += wrapA(Math.atan2(dx, dz) - p.rotY) * Math.min(1, dt * 6); const s = Math.min(1.5 * p.walkMul, d * 3); p.pos.x += Math.sin(p.rotY) * s * dt; p.pos.z += Math.cos(p.rotY) * s * dt; return s; }
+  p.rotY += wrapA(v.rotY - p.rotY) * Math.min(1, dt * 6); p.inT = (p.inT || 0) + dt;
+  if (p.inT > 0.7) { // in, door shut, engine on
+    v.claimed = null; p.remove(); sfx.clank(volAt(v.pos.x, v.pos.z, 40) * 0.5);
+    const ne = nearestEdge(v.pos.x, v.pos.z, 30, e => e.t <= 5);
+    v.parked = false; v.driver = 'ai'; v.angerAt = null; v.react = -1000;
+    if (ne) { v.agent = agentFromNearest(ne, v.fx, v.fz); v.mode = 'rail'; v.speed = 0; v.tid = 0; } else { v.mode = 'free'; v.resume = 2; }
+  }
+  return 0;
+}
+function tryCars(f) {
+  if (Math.random() < 0.45) { // someone pulls over (residential and collector streets, not on a highway, not at a junction)
+    const parked = vehicles.filter(v => v.parked).length;
+    if (parked < 18) { const c = vehicles.filter(v => v.mode === 'rail' && v.driver === 'ai' && !v.keep && !v.dead && v.speed > 3 && !v.J && v.spec.L < 7 && (() => { const d = hyp(v.pos.x - f.x, v.pos.z - f.z); return d > 35 && d < 170; })());
+      if (c.length) startPullOver(pick(c)); }
+  }
+  if (Math.random() < 0.5) { // someone walks to a parked car and leaves
+    const cars = vehicles.filter(v => v.parked && !v.driver && !v.mine && !v.keep && !v.dead && !v.isCop && !v.claimed && !v.ownedId && v !== lastLeft && hyp(v.pos.x - f.x, v.pos.z - f.z) < 150);
+    for (const v of cars) {
+      const own = v.owner && !v.owner.removed && freePed(v.owner) ? v.owner : null; // the driver who parked it comes back first
+      const p = own && (Math.random() < 0.35) ? own : peds.find(q => freePed(q) && !q.campus && hyp(q.pos.x - v.pos.x, q.pos.z - v.pos.z) < 22 && Math.random() < 0.3);
+      if (p) { startToCar(p, v); break; }
+    }
+  }
+}
+
+// ---- Poway High: students between classes, at lunch, after school
+function campusSpot(cx, cz, rmin, rmax) {
+  const poly = PHS.excludePoly(); if (!poly) return null;
+  for (let t = 0; t < 16; t++) {
+    const a = rand(0, TAU), r = rand(rmin, rmax), x = cx + Math.sin(a) * r, z = cz + Math.cos(a) * r;
+    if (!PHS.phsSkip(x, z) || offLimits(x, z, 1)) continue; _rp.set(x, 0, z); if (collideCircle(_rp, 0.6, true)) continue;
+    return { x, z };
+  }
+  return null;
+}
+let campusC = null;
+function campusWant() {
+  const h = hour, school = clock.isSchoolDay;
+  const k = !school ? (h > 9 && h < 18 ? 0.15 : 0) : h >= 7.2 && h < 15.5 ? 1 : h >= 15.5 && h < 18.5 ? 0.45 : h >= 6.6 && h < 7.2 ? 0.4 : 0;
+  return Math.round(k * GFX.peds * 0.9);
+}
+function updateCampus(f) {
+  const poly = PHS.excludePoly(); if (!poly) return;
+  if (!campusC) { let x = 0, z = 0; const n = poly.length / 2; for (let i = 0; i < n; i++) { x += poly[i * 2]; z += poly[i * 2 + 1]; } campusC = { x: x / n, z: z / n, r: 0 }; for (let i = 0; i < n; i++) campusC.r = Math.max(campusC.r, hyp(poly[i * 2] - campusC.x, poly[i * 2 + 1] - campusC.z)); }
+  const d = hyp(f.x - campusC.x, f.z - campusC.z); if (d > campusC.r + 220) return;
+  const now = peds.filter(p => p.campus && !p.removed).length, want = campusWant();
+  for (let i = 0; i < 3 && now + i < want; i++) {
+    const sp = campusSpot(campusC.x, campusC.z, 0, campusC.r); if (!sp) continue;
+    if (hyp(sp.x - f.x, sp.z - f.z) < 18 && inView(sp.x, sp.z)) continue; // nobody pops into existence in front of you
+    if (Math.random() < 0.55) { spawnGroupAt(sp.x, sp.z, randi(2, 4), true); i += 2; }
+    else { const p = new Ped(sp.x, sp.z); p.home = sp; p.state = 'roam'; p.campus = true; }
+  }
+  if (now > want + 4) { const p = peds.find(q => q.campus && !q.group && hyp(q.pos.x - f.x, q.pos.z - f.z) > 60); if (p) p.remove(); } // the bell rang: they head home
+}
+function updateCrowd(dt) {
+  const f = focusPos(); updateGroups(dt, f);
+  crowdT -= dt; if (crowdT > 0) return; crowdT = 0.6;
+  tryGroups(f); tryCars(f); updateCampus(f);
 }
 
 // ============================================================ police manager
@@ -4646,7 +4825,8 @@ function drawMinimap() {
   const gx0 = Math.floor((f.x - span) / MB), gx1 = Math.floor((f.x + span) / MB), gz0 = Math.floor((f.z - span) / MB), gz1 = Math.floor((f.z + span) / MB);
   const seenR = new Set();
   for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const c = mapBins.get(ckey(gx, gz)); if (!c) continue; c.r.forEach(i => seenR.add(i)); }
-  mctx.lineCap = mctx.lineJoin = 'round';
+  mctx.lineCap = mctx.lineJoin = 'round'; mctx.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
+  for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; mctx.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; mctx.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? mctx.lineTo(r.p[k], r.p[k + 1]) : mctx.moveTo(r.p[k], r.p[k + 1]); mctx.stroke(); }
   for (const pass of [1, 0]) for (const i of seenR) {
     const r = mapRoads[i]; if ((r.t <= 3) !== !!pass) continue;
     mctx.strokeStyle = roadStyle(r.t); mctx.lineWidth = Math.max(r.w * 0.6, 2 * mpp);
@@ -4698,12 +4878,44 @@ function drawBigMap() {
   g.fillStyle = '#11161a'; g.fillRect(0, 0, W, H);
   g.save(); g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-v.cx, -v.cz);
   g.imageSmoothingEnabled = true; drawAerial(g, 1);
+  // half real, half cartoon: the photo underneath, pushed warmer and flatter, each region washed in its own colour
+  g.globalCompositeOperation = 'soft-light'; g.fillStyle = 'rgba(255,214,150,.55)'; g.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
+  g.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = g.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1300); gr.addColorStop(0, r.col + '55'); gr.addColorStop(1, r.col + '00'); g.fillStyle = gr; g.fillRect(r.x - 1300, r.z - 1300, 2600, 2600); }
+  g.globalCompositeOperation = 'source-over';
   g.lineCap = g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(18,22,28,.9)'; // ink outline under every road
+  for (const r of mapRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; g.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
   for (const pass of [0, 1]) for (const r of mapRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; g.strokeStyle = roadStyle(r.t); g.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
   if (gps && gps.length > 2) { g.strokeStyle = job ? '#f0b23a' : '#b06cff'; g.lineWidth = Math.max(3 * v.mpp, 3); g.setLineDash([6 * v.mpp, 4 * v.mpp]); g.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? g.lineTo(gps[k], gps[k + 1]) : g.moveTo(gps[k], gps[k + 1]); g.stroke(); g.setLineDash([]); }
   drawPoliceMap(g, v.mpp);
   g.restore();
   const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
+  { // 1 km sector grid, labelled along the top and left edges like a paper street atlas
+    g.save(); g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = dpr; g.setLineDash([4 * dpr, 6 * dpr]);
+    g.font = `700 ${12 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let c = 0; c <= SECTOR.cols; c++) { const [x] = toS(SECTOR.x0 + c * SECTOR.size, 0); if (x < -50 || x > W + 50) continue; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    for (let r = 0; r <= SECTOR.rows; r++) { const [, y] = toS(0, SECTOR.z0 + r * SECTOR.size); if (y < -50 || y > H + 50) continue; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    g.setLineDash([]);
+    const tag = (t, x, y) => { g.fillStyle = 'rgba(14,18,26,.82)'; g.fillRect(x - 13 * dpr, y - 10 * dpr, 26 * dpr, 20 * dpr); g.fillStyle = '#f3ede1'; g.fillText(t, x, y + dpr); };
+    for (let c = 0; c < SECTOR.cols; c++) { const [x] = toS(SECTOR.x0 + (c + 0.5) * SECTOR.size, 0); if (x > 20 && x < W - 20) tag(String.fromCharCode(65 + c), x, 74 * dpr); }
+    for (let r = 0; r < SECTOR.rows; r++) { const [, y] = toS(0, SECTOR.z0 + (r + 0.5) * SECTOR.size); if (y > 90 * dpr && y < H - 20) tag(String(r + 1), 18 * dpr, y); }
+    g.restore();
+  }
+  { // region names: big, inked, a little tilted, fading out as you zoom in on the streets
+    const a = clamp((v.mpp - 1.6) / 2.5, 0, 1); if (a > 0.02) {
+      g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+      for (const r of REGIONS) {
+        const [x, y] = toS(r.x, r.z); if (x < -200 || y < -60 || x > W + 200 || y > H + 60) continue;
+        const fs = clamp(24 - v.mpp * 0.4, 15, 26) * dpr * (r.district === 'Poway' ? 1 : 0.85);
+        g.save(); g.translate(x, y); g.rotate(((r.x * 13 + r.z * 7) % 7 - 3) * 0.012);
+        g.font = `400 ${fs}px Anton, Impact, sans-serif`; const t = r.name.toUpperCase();
+        g.lineWidth = 5 * dpr; g.strokeStyle = 'rgba(12,14,20,.85)'; g.strokeText(t, 0, 0); g.fillStyle = '#f3ede1'; g.fillText(t, 0, 0);
+        g.fillStyle = r.col; g.fillRect(-fs * 1.2, fs * 0.62, fs * 2.4, 3 * dpr);
+        g.restore();
+      }
+      g.restore();
+    }
+  }
   g.font = `600 ${13 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'center';
   for (const p of LANDMARKS) {
     if (v.mpp > 9 && !(p.type === 'water' || p.type === 'hospital' || p.type === 'police' || /High School|Community Park|Old Poway/.test(p.name))) continue;
@@ -4718,6 +4930,18 @@ function drawBigMap() {
   if (job) pin(job.x, job.z, '#f0b23a', job.name);
   for (const r of remoteBlips()) pin(r.x, r.z, r.color, r.name + (r.dead ? ' (down)' : ''));
   for (const b of storyMapMarks()) if (b.label) pin(b.x, b.z, b.color, b.label);
+  { // vignette, where-you-are card, scale bar, compass
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(6,8,14,.55)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    const rg = regionAt(f.x, f.z), sec = sectorAt(f.x, f.z); $('maphere').innerHTML = `<i style="background:${rg.col}"></i><b>${rg.name}</b><span>${rg.district} · sector ${sec} · ${streetAt(f.x, f.z) || ''}</span>`;
+    const want = 120 * v.mpp, steps = [50, 100, 200, 250, 500, 1000, 2000], m = steps.find(s => s >= want * 0.6) || 2000, px = m / v.mpp * dpr, bx = W - px - 30 * dpr, by = H - 40 * dpr;
+    g.fillStyle = 'rgba(14,18,26,.85)'; g.fillRect(bx - 10 * dpr, by - 26 * dpr, px + 20 * dpr, 40 * dpr);
+    g.fillStyle = '#f3ede1'; g.fillRect(bx, by, px, 4 * dpr); g.fillStyle = '#f0b23a'; g.fillRect(bx, by, px / 2, 4 * dpr);
+    g.font = `700 ${13 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'right'; g.fillStyle = '#f3ede1'; g.fillText(m >= 1000 ? m / 1000 + ' km' : m + ' m', bx + px, by - 8 * dpr);
+    const cx = W - 52 * dpr, cy = 120 * dpr, cr = 24 * dpr; g.save(); g.translate(cx, cy);
+    g.fillStyle = 'rgba(14,18,26,.85)'; g.beginPath(); g.arc(0, 0, cr + 8 * dpr, 0, TAU); g.fill();
+    g.fillStyle = '#d4302f'; g.beginPath(); g.moveTo(0, -cr); g.lineTo(7 * dpr, 0); g.lineTo(-7 * dpr, 0); g.fill(); g.fillStyle = '#f3ede1'; g.beginPath(); g.moveTo(0, cr); g.lineTo(7 * dpr, 0); g.lineTo(-7 * dpr, 0); g.fill();
+    g.font = `400 ${14 * dpr}px Anton, Impact`; g.textAlign = 'center'; g.fillStyle = '#f3ede1'; g.fillText('N', 0, -cr - 12 * dpr); g.restore();
+  }
 }
 function fmtDist(d) { return d >= 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m'; }
 function setWaypoint(x, z, name) {
@@ -4763,7 +4987,7 @@ function updateHud(dt) {
   $('rep').textContent = repLabel();
   const f = focusPos(), s = streetAt(f.x, f.z);
   if (s && s !== lastStreet) { lastStreet = s; $('streetname').textContent = s; }
-  $('areaname').textContent = areaAt(f.x, f.z);
+  const rg = updateRegion(f.x, f.z, 0.4, !running || player.dead); $('areaname').textContent = `${rg.name} · ${sectorAt(f.x, f.z)}`;
 }
 
 // ============================================================ main loop
@@ -4794,9 +5018,10 @@ function tick(rdt) {
   timeScale = player.dead ? 0.35 : 1;
   const dt = rdt * timeScale; simTime += dt;
   updatePlayer(dt); updateArsenal(dt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
-  updatePeds(dt); if (online) updateRemotes(dt); updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
+  updatePeds(dt); updateCrowd(dt); if (online) updateRemotes(dt); updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
   PHS.updatePHS(dt, focusPos()); // PHS
+  if (PLAZA) PLAZA.update(focusPos(), nightAmount);
   sigT -= dt; if (sigT <= 0) { sigT = 0.3; updateSignals(); }
   smoke.update(dt); fire.update(dt);
   for (let i = tracers.length - 1; i >= 0; i--) { tracers[i].t -= dt; if (tracers[i].t <= 0) { scene.remove(tracers[i].l); tracers[i].l.geometry.dispose(); tracers.splice(i, 1); } }
@@ -4900,7 +5125,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
