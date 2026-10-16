@@ -4,7 +4,7 @@
     ".write": false,
     "servers": {
       "$sid": {
-        ".validate": "$sid.matches(/^(silverwood|emberfall|stormhaven|moonhollow|frostvale)$/)",
+        ".validate": "$sid.matches(/^(silverwood|elysium|asgard|avalon|vaeloria)$/)",
         "names": {
           ".read": "auth != null",
           "$name": {

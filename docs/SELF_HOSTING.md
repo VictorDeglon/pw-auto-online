@@ -3,6 +3,25 @@
 Answers for the session setting up the home server. Host details (machine name, user, paths) are left out on
 purpose: the repo is public. Fill them in locally.
 
+## 0. Connection data (everything the box needs)
+
+| Item | Value |
+|---|---|
+| Game servers (rooms) | `silverwood`, `elysium`, `asgard`, `avalon`, `vaeloria`. Display names: Silverwood, Elysium, Asgard, Avalon, Vaeloria. They must match `src/online/config.js`, `database.rules.json` and `server/server.js`. |
+| Firebase project id | Victor's new project. Firebase console → Project settings → General. |
+| Database URL | Top of the Realtime Database page, e.g. `https://<project-id>-default-rtdb.firebaseio.com`. |
+| Web config (`FIREBASE_CONFIG`) | Public. Victor pastes it to the cloud session, which commits it to `src/online/config.js`. The box doesn't need it. |
+| Service-account key | Firebase console → Project settings → Service accounts → Generate new private key. Saved as `server/sa.json` on the box only. Also stored as the GitHub Actions secret `FIREBASE_SERVICE_ACCOUNT` (for hosting deploys). |
+| Local port | `127.0.0.1:8787`: WebSocket at `/`, JSON status at `GET /`. |
+| Public address | Cloudflare quick tunnel `wss://*.trycloudflare.com`, published to `config/home` in the database. Or a fixed `wss://` hostname via `HOME_SERVER_URL`. |
+| Hosting | Moving to Firebase Hosting (`https://<project-id>.web.app`), deployed by `.github/workflows/firebase.yml`. GitHub Pages stops once the repo goes private. |
+
+Install command, run on the box from the copied `server/` folder:
+
+```bash
+./install.sh <project-id> <database-url>        # with sa.json beside it
+```
+
 ## 1. What the box does: option (c), an authoritative game server
 
 The box runs `server/server.js`, a small Node server in this repo. It is **not** the Firebase emulators and it does

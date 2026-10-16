@@ -27,7 +27,7 @@ import { createRemoteJWKSet, jwtVerify, decodeJwt } from 'jose';
 import admin from 'firebase-admin';
 
 const PORT = +(process.env.PORT || 8787), PROJECT = process.env.FIREBASE_PROJECT || '', EMU = process.env.ALLOW_EMULATOR === '1';
-const SERVERS = ['silverwood', 'emberfall', 'stormhaven', 'moonhollow', 'frostvale'];
+const SERVERS = ['silverwood', 'elysium', 'asgard', 'avalon', 'vaeloria']; // must match src/online/config.js and database.rules.json
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace('T', ' '), ...a);
 
 // ---------------------------------------------------------------- Firebase (admin: bypasses the rules)
