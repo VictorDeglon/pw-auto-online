@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Car Showroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--ink:#0e1013;--paper:#f3ede1;--dim:#a9a395;--gold:#f0b23a}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);color:var(--paper);font:500 14px/1.35 'Arial Narrow',Arial,sans-serif}
+#hud{position:fixed;left:12px;top:10px;max-width:min(620px,calc(100vw - 24px));background:rgba(14,16,19,.78);padding:8px 12px;border-left:4px solid var(--gold);pointer-events:none;white-space:pre-wrap}
+#hud b{color:var(--gold)}
+#keys{position:fixed;right:12px;bottom:10px;color:var(--dim);background:rgba(14,16,19,.6);padding:4px 10px}
+</style>
+<div id="hud">Building cars…</div>
+<div id="keys">0-9 camera · [ ] car · L night · B brake · I indicator · H hazard · R reverse · Space pause · drag to orbit</div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
+const { createCarKit } = await import('../src/carkit.js?v=' + Date.now()); // cache-bust while iterating
+const Q = new URLSearchParams(location.search), $ = id => document.getElementById(id);
+
+// ---- renderer / scene, lit like the game at mid-morning
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement); renderer.info.autoReset = false;
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(Q.has('fov') ? +Q.get('fov') : 45, innerWidth / innerHeight, 0.1, 800);
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x8a7b5a, 1.15); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.7); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 1, far: 200 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+scene.add(sun, sun.target);
+
+// ---- asphalt ground with lane paint
+function asphaltTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'), im = g.createImageData(512, 512);
+  for (let i = 0; i < 512 * 512; i++) { const v = 58 + Math.random() * 26 + (Math.random() < 0.02 ? 30 : 0); im.data.set([v, v * 0.98, v * 0.95, 255], i * 4); }
+  g.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(40, 40); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ map: asphaltTex(), roughness: 0.92, color: 0x9a9a9a }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const paintM = new THREE.MeshStandardMaterial({ color: 0xe8e6de, roughness: 0.8 });
+for (let i = -8; i <= 8; i++) { const s = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 5.4), paintM); s.rotation.x = -Math.PI / 2; s.position.set(i * 3.2 + 1.6, 0.005, 0); s.receiveShadow = true; scene.add(s); }
+
+// ---- cars
+const kit = createCarKit(THREE, { renderer, BGU });
+const PAINTS = [0xf4f4f1, 0x0d0e10, 0xb4b8bc, 0x9e1a1a, 0x2f5d9a, 0x5d6166, 0xe9e7e0, 0x1b2c4e, 0xc9b99a, 0xb59a52, 0x3c3f44, 0x15171b];
+const only = Q.get('only'), cars = [], list = [];
+for (const [type, vs] of Object.entries(kit.types)) for (const vn of vs) if (!only || only.split(',').some(o => o === type || o === type + '/' + vn)) list.push([type, vn]);
+const t0 = performance.now();
+list.forEach(([type, vn], i) => {
+  const ph = Q.has('paint') ? parseInt(Q.get('paint'), 16) : type === 'sports' ? 0xb8962e : type === 'police' ? null : PAINTS[i % PAINTS.length];
+  const m = kit.build(type, ph, vn); m.g.position.set((i - (list.length - 1) / 2) * 3.2, 0, 0); scene.add(m.g);
+  m.g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  cars.push(Object.assign(m, { type, vn, st: kit.stats(type, vn) }));
+});
+const buildMs = performance.now() - t0;
+
+// ---- cameras: 0 front 3/4 overview, 1 rear 3/4 overview, 2 side row, 3 chase (game), 4 front 3/4 close, 5 rear 3/4 close, 6 side close, 7 top, 8 low front, 9 wheel close
+const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+let ci = Math.min(cars.length - 1, +(Q.get('car') || 0)), cam = +(Q.get('cam') || 0);
+function setCam(n = cam, k = ci) {
+  cam = n; ci = (k + cars.length) % cars.length; const c = cars[ci], x = c.g.position.x, L = c.L, H = c.st.H, span = Math.max(8, cars.length * 3.2);
+  const V = {
+    0: [[span * 0.32, span * 0.22 + 2, span * 0.62], [0, 0.8, 0]], 1: [[-span * 0.32, span * 0.22 + 2, -span * 0.62], [0, 0.8, 0]],
+    2: [[0, 1.2, span * 0.75 + 4], [0, 0.8, 0]], 3: [[x, 3.4, -L / 2 - 6.5], [x, 1.1, L]],
+    4: [[x + 3.6, 1.55, L / 2 + 3.6], [x, H * 0.55, 0.2]], 5: [[x - 3.6, 1.65, -L / 2 - 3.4], [x, H * 0.55, -0.2]],
+    6: [[x + 7.5, 1.0, 0], [x, H * 0.48, 0]], 7: [[x, 9, 0.01], [x, 0, 0]], 8: [[x + 1.4, 0.55, L / 2 + 2.4], [x, 0.6, L / 2 - 0.4]],
+    9: [[x + 2.1, 0.5, c.wheels[0].piv.position.z + 0.9], [x + 0.8, c.wr, c.wheels[0].piv.position.z]],
+  }[n] || [[span * 0.32, span * 0.22 + 2, span * 0.62], [0, 0.8, 0]];
+  camera.position.set(...V[0]); controls.target.set(...V[1]); controls.update();
+}
+setCam();
+
+// ---- lighting / lamp state
+const st = { night: Q.get('night') === '1', brake: Q.get('brake') === '1', ind: +(Q.get('ind') || 0), hazard: Q.get('hazard') === '1', reverse: Q.get('reverse') === '1', paused: Q.get('pause') === '1', spin: Q.get('spin') !== '0' };
+function applyEnv() {
+  const n = st.night;
+  hemi.intensity = n ? 0.35 : 1.15; hemi.color.set(n ? 0x1c2638 : 0xd5e6f5); hemi.groundColor.set(n ? 0x14110c : 0x8a7b5a);
+  sun.intensity = n ? 0.25 : 2.7; sun.color.set(n ? 0x8fa6d8 : 0xfff1d6); sun.position.set(n ? -40 : 60, n ? 60 : 80, n ? -30 : 45);
+  scene.background = new THREE.Color(n ? 0x070b14 : 0xbfd8ee); scene.fog = new THREE.Fog(n ? 0x070b14 : 0xbfd8ee, 120, 600);
+  renderer.toneMappingExposure = n ? 1.2 : 0.95; kit.setEnv && kit.setEnv(n ? 0.12 : 1);
+}
+applyEnv();
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (/^[0-9]$/.test(k)) setCam(+k); else if (k === '[') setCam(cam, ci - 1); else if (k === ']') setCam(cam, ci + 1);
+  else if (k === 'l') { st.night = !st.night; applyEnv(); } else if (k === 'b') st.brake = !st.brake; else if (k === 'i') st.ind = st.ind ? (st.ind > 0 ? -1 : 0) : 1;
+  else if (k === 'h') st.hazard = !st.hazard; else if (k === 'r') st.reverse = !st.reverse; else if (k === ' ') st.paused = !st.paused;
+});
+
+// ---- loop
+let simT = 0, last = performance.now(), fps = 60, frames = 0, fpsT = 0;
+const sirenOn = Q.get('siren') !== '0';
+function frame(dt) {
+  simT += dt;
+  for (const c of cars) {
+    c.lights.update({ brake: st.brake, ind: st.ind, hazard: st.hazard, head: st.night ? 1 : 0, reverse: st.reverse, t: simT });
+    if (st.spin) for (const w of c.wheels) { w.w.rotation.x = simT * 2.2; if (w.front) w.piv.rotation.y = Math.sin(simT * 0.6) * 0.25; }
+    if (c.bars) { const on = sirenOn && Math.floor(simT * 6) % 2 === 0; c.bars[0].material.color.setHex(sirenOn ? (on ? 0xff2020 : 0x300000) : 0x400000); c.bars[1].material.color.setHex(sirenOn ? (!on ? 0x2050ff : 0x000830) : 0x000a40); }
+  }
+  controls.update(); renderer.info.reset(); renderer.render(scene, camera);
+}
+function hud() {
+  const c = cars[ci], i = renderer.info.render;
+  $('hud').innerHTML = `<b>CAR SHOWROOM</b>  ${cars.length} cars · build ${buildMs.toFixed(0)} ms · ${fps.toFixed(0)} fps · ${i.calls} calls · ${(i.triangles / 1000).toFixed(1)}k tris\n` +
+    `cam ${cam} · car ${ci}: <b>${c.type}/${c.vn}</b>  L ${c.L.toFixed(2)} W ${c.W.toFixed(2)} H ${c.st.H.toFixed(2)} wr ${c.wr.toFixed(3)} · ${(c.st.tris / 1000).toFixed(1)}k tris · ${c.st.calls} calls\n` +
+    (st.night ? 'night ' : 'day ') + (st.brake ? 'brake ' : '') + (st.ind ? 'ind ' + st.ind + ' ' : '') + (st.hazard ? 'hazard ' : '') + (st.reverse ? 'reverse' : '');
+}
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; frames++; fpsT += dt; if (fpsT > 0.5) { fps = frames / fpsT; frames = 0; fpsT = 0; hud(); }
+  frame(st.paused ? 0 : dt); requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop); hud();
+window.__show = { THREE, kit, cars, scene, camera, renderer, controls, st, setCam, applyEnv, frame, step: (n = 1, dt = 1 / 60) => { for (let k = 0; k < n; k++) frame(dt); } };
+</script>

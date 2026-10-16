@@ -1,0 +1,85 @@
+{
+ "species": {
+  "oak": {
+   "atlas": "imp/oak",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    1,
+    1
+   ],
+   "variants": [
+    {
+     "name": "oak",
+     "lod": null,
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0515,
+      1.6863,
+      0.9212
+     ],
+     "radius": 2.926,
+     "height": 3.407,
+     "width": 4.208
+    }
+   ]
+  },
+  "olive": {
+   "atlas": "imp/olive",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    1,
+    1
+   ],
+   "variants": [
+    {
+     "name": "olive",
+     "lod": null,
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0331,
+      2.4934,
+      -0.1747
+     ],
+     "radius": 3.178,
+     "height": 5.027,
+     "width": 4.818
+    }
+   ]
+  },
+  "scruboak": {
+   "atlas": "imp/scruboak",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    1,
+    1
+   ],
+   "variants": [
+    {
+     "name": "scruboak",
+     "lod": null,
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.6737,
+      1.2941,
+      0.213
+     ],
+     "radius": 2.071,
+     "height": 2.615,
+     "width": 2.972
+    }
+   ]
+  }
+ }
+}

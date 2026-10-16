@@ -1,0 +1,12 @@
+{
+ "x0": -39.5,
+ "y0": 663.5,
+ "cell": 1.0,
+ "rows": 704,
+ "cols": 481,
+ "north_up": true,
+ "z": "NAVD88 metres (GEOID18)",
+ "frame": "campus local frame (see build_phs.py)",
+ "source": "USGS 3DEP CA_SanDiegoCo_D24 LiDAR, flown 2024-11, public domain",
+ "note": "class 2 mean per 1 m cell, nearest-filled, 3x3 smoothed"
+}

@@ -1,0 +1,72 @@
+{
+  "_about": "Hand-curated campus details that public map data lacks. Positions are WGS84 lat/lon; build_phs.py snaps doors and wall signs to the nearest building wall. Every entry carries a source and confidence so estimated items can be replaced by surveyed ones.",
+  "colors": {},
+  "doors": [],
+  "gates": [],
+  "fences": [],
+  "signs": [],
+  "preview_views": [
+    {
+      "name": "espola_titan",
+      "lat": 32.99628,
+      "lon": -117.02312,
+      "look_lat": 32.997,
+      "look_lon": -117.02445,
+      "eye_m": 1.7,
+      "look_up_m": 3.0
+    },
+    {
+      "name": "titan_way",
+      "lat": 32.99618,
+      "lon": -117.0264,
+      "look_lat": 32.9974,
+      "look_lon": -117.026,
+      "eye_m": 1.7,
+      "look_up_m": 3.0
+    },
+    {
+      "name": "stadium",
+      "x": 300,
+      "y": 430,
+      "eye_m": 2.0,
+      "look_x": 366,
+      "look_y": 462,
+      "look_up_m": 5.0
+    },
+    {
+      "name": "under_bleachers",
+      "x": 368,
+      "y": 446,
+      "eye_m": 1.6,
+      "look_x": 369,
+      "look_y": 475,
+      "look_up_m": 1.6
+    },
+    {
+      "name": "stadium_aerial",
+      "x": 235,
+      "y": 360,
+      "eye_m": 70,
+      "look_x": 320,
+      "look_y": 460,
+      "look_up_m": 0
+    },
+    {
+      "name": "carport",
+      "x": 40,
+      "y": 120,
+      "eye_m": 1.8,
+      "look_x": 70,
+      "look_y": 150,
+      "look_up_m": 3.0
+    }
+  ],
+  "field": {
+    "center_logo": "P",
+    "center_logo_color": "white",
+    "center_logo_size": 7.0,
+    "endzone_south": "",
+    "endzone_north": "",
+    "_source": "SANDAG 2023 aerial: block 'P' at midfield, plain end zones, 'POWAY TITANS' along the track"
+  }
+}

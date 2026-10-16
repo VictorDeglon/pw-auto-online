@@ -1,0 +1,8 @@
+{
+  "xmin": -40.8, "ymin": -40.8, "xmax": 441.6, "ymax": 664.8,
+  "pixel_size_m": 0.2,
+  "frame": "campus local frame: metres east/north of lat 32.99612, lon -117.0280522 (tmerc, k=1, WGS84)",
+  "source": "SANDAG / SanGIS regional imagery partnership 2023 9-inch orthomosaic (Nearmap capture, January 2023), exported from https://geo.sandag.org/image/rest/services/Hosted/SD2023/ImageServer and resampled to 0.2 m in the local frame",
+  "license": "Public domain per SANDAG metadata for the 9-inch product (archived: https://web.archive.org/web/20260219113048/https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer/info/metadata). Get written confirmation from SANDAG/SanGIS before any commercial release.",
+  "attribution": "Aerial imagery: SANDAG / SanGIS (Nearmap), 2023"
+}

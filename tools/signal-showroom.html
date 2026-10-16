@@ -1,0 +1,213 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Signal Showroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+:root{--ink:#0e1013;--paper:#f3ede1;--dim:#a9a395;--gold:#f0b23a}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);color:var(--paper);font:500 15px/1.35 'Barlow Condensed','Arial Narrow',sans-serif}
+#hud{position:fixed;left:12px;top:10px;max-width:min(560px,calc(100vw - 24px));background:rgba(14,16,19,.78);padding:8px 12px;border-left:4px solid var(--gold);pointer-events:none;white-space:pre-wrap}
+#hud b{color:var(--gold);font-weight:700;letter-spacing:.04em}
+#keys{position:fixed;right:12px;bottom:10px;color:var(--dim);background:rgba(14,16,19,.6);padding:4px 10px}
+</style>
+<div id="hud">Loading Poway data…</div>
+<div id="keys">N / P intersection · C camera · L night · Space pause · drag to orbit</div>
+<script src="../poway-data.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildIntersections, laneOffset, lanesPerDir, arrivalDir } from '../src/roadnet.js';
+const { createSignals, demoController } = await import('../src/signals.js?v=' + Date.now()); // cache-bust while iterating
+
+const D = window.POWAY_DATA, Q = new URLSearchParams(location.search), $ = id => document.getElementById(id);
+// ---- road graph, same as index.html
+const NAMES = D.names, NX = D.nodes, nodeCount = NX.length / 2;
+const edges = D.edges.map((e, i) => {
+  const pts = Float32Array.from(e[6]); const n = pts.length / 2; const cum = new Float32Array(n);
+  for (let k = 1; k < n; k++) cum[k] = cum[k - 1] + Math.hypot(pts[k * 2] - pts[k * 2 - 2], pts[k * 2 + 1] - pts[k * 2 - 1]);
+  return { i, a: e[0], b: e[1], t: e[2], w: e[3], ow: !!e[4], name: NAMES[e[5]] || '', pts, cum, len: Math.max(cum[n - 1], 0.1), mph: e[7] || 0 };
+});
+const nodeEdges = Array.from({ length: nodeCount }, () => []);
+for (const e of edges) { nodeEdges[e.a].push(e.i); nodeEdges[e.b].push(e.i); }
+const ckey = (gx, gz) => (gx + 4000) * 10000 + (gz + 4000);
+const lightNodes = new Map();
+{
+  const NG = 60, ng = new Map();
+  for (let n = 0; n < nodeCount; n++) { const k = ckey(Math.floor(NX[n * 2] / NG), Math.floor(NX[n * 2 + 1] / NG)); let c = ng.get(k); if (!c) { c = []; ng.set(k, c); } c.push(n); }
+  for (const [sx, sz] of (D.signals || [])) {
+    let best = -1, bd = 28;
+    for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) for (const n of (ng.get(ckey(Math.floor(sx / NG) + ix, Math.floor(sz / NG) + iz)) || [])) {
+      if (nodeEdges[n].length < 3) continue; const d = Math.hypot(NX[n * 2] - sx, NX[n * 2 + 1] - sz); if (d < bd) { bd = d; best = n; }
+    }
+    if (best >= 0 && !lightNodes.has(best)) lightNodes.set(best, { off: 0, maxW: Math.max(...nodeEdges[best].map(i => edges[i].w)) });
+  }
+}
+const R = buildIntersections({ edges, nodeEdges, NX, lightNodes, names: NAMES });
+
+// ---- pick the intersection
+const pickers = {
+  big: it => it.nodes.length === 4 && it.approaches.length === 4,
+  t: it => it.nodes.length === 1 && it.approaches.length === 3,
+  '4way': it => it.nodes.length === 1 && it.approaches.length === 4,
+};
+let it = Q.has('i') ? R.list[+Q.get('i')] : null;
+const pk = Q.get('pick') || (Q.get('big') === '1' ? 'big' : null);
+if (!it && pk) { const c = R.list.filter(pickers[pk] || (() => true)); it = c[Math.min(c.length - 1, +(Q.get('n') || 0))]; }
+it = it || R.list.find(pickers['4way']);
+
+// ---- renderer / scene, lit like the game at mid-morning
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(+(Q.get('fov') || 60), innerWidth / innerHeight, 0.3, 2600);
+const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x8a7b5a, 1.15); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffebd1, 2.6); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -90, right: 90, top: 90, bottom: -90, near: 1, far: 700 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05;
+scene.add(sun, sun.target);
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+
+// ---- roads near the intersection: flat ribbons with sidewalks and lane lines
+const cx = it.cx, cz = it.cz, RAD = 260, inSet = new Set(it.nodes);
+const gp = [], gc = [];
+function quad(a, b, c, d, y, col) { for (const p of [a, b, c, a, c, d]) { gp.push(p[0], y, p[1]); gc.push(...col); } }
+function ribbon(p, off0, off1, y, col, trim0 = 0, trim1 = 0, dash = 0, gap = 0) {
+  const n = p.length / 2; let acc = 0; const tot = []; for (let i = 0; i < n - 1; i++) { tot.push(acc); acc += Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]); }
+  for (let i = 0; i < n - 1; i++) {
+    const ax = p[i * 2], az = p[i * 2 + 1], bx = p[i * 2 + 2], bz = p[i * 2 + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
+    const tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
+    const pieces = dash ? [] : [[0, L]];
+    if (dash) for (let s = Math.ceil(tot[i] / (dash + gap)) * (dash + gap) - tot[i]; s < L; s += dash + gap) pieces.push([s, Math.min(L, s + dash)]);
+    for (let [s0, s1] of pieces) {
+      s0 = Math.max(s0, trim0 - tot[i]); s1 = Math.min(s1, acc - trim1 - tot[i]); if (s1 <= s0) continue;
+      const P = (s, o) => [ax + tx * s + nx * o, az + tz * s + nz * o];
+      quad(P(s0, off0), P(s0, off1), P(s1, off1), P(s1, off0), y, col);
+    }
+  }
+}
+const crossAt = (n, dx, dz) => { let c = 0; for (const fi of nodeEdges[n]) { const f = edges[fi], [fx, fz] = arrivalDir(f, n); if (Math.abs(fx * dx + fz * dz) < 0.75) c = Math.max(c, f.w / 2); } return c; };
+for (const e of edges) {
+  let near = false; for (let k = 0; k < e.pts.length; k += 2) if (Math.hypot(e.pts[k] - cx, e.pts[k + 1] - cz) < RAD) { near = true; break; }
+  if (!near) continue; const p = e.pts, ROAD = [0.07, 0.07, 0.075], WALK = [0.4, 0.39, 0.36], W = [0.9, 0.9, 0.88], Y = [0.86, 0.66, 0.1];
+  ribbon(p, -e.w / 2, e.w / 2, 0.14, e.t === 5 ? [0.42, 0.42, 0.42] : ROAD);
+  const internal = inSet.has(e.a) && inSet.has(e.b) && e.len < 45; if (internal) continue;
+  if (e.t >= 1 && e.t <= 5) { ribbon(p, e.w / 2 - 0.1, e.w / 2 + 2.1, 0.12, WALK); ribbon(p, -e.w / 2 - 2.1, -e.w / 2 + 0.1, 0.12, WALK); }
+  const tr = n => { if (!inSet.has(n)) return 0; const [dx, dz] = arrivalDir(e, n); return crossAt(n, dx, dz) + 2.5 + 0.4; };
+  const t0 = tr(e.a), t1 = tr(e.b), m = lanesPerDir(e);
+  if (e.ow) {
+    ribbon(p, -e.w / 2 + 0.2, -e.w / 2 + 0.32, 0.18, Y, t0, t1); ribbon(p, e.w / 2 - 0.32, e.w / 2 - 0.2, 0.18, W, t0, t1);
+    for (let i = 0; i < m - 1; i++) { const o = (laneOffset(e, i) + laneOffset(e, i + 1)) / 2; ribbon(p, o - 0.06, o + 0.06, 0.18, W, t0, t1, 3.6, 8.4); }
+  } else {
+    if (e.t <= 3 && e.w >= 9) { ribbon(p, 0.06, 0.18, 0.18, Y, t0, t1); ribbon(p, -0.18, -0.06, 0.18, Y, t0, t1); }
+    for (let i = 0; i < m - 1; i++) { const o = (laneOffset(e, i) + laneOffset(e, i + 1)) / 2; for (const s of [1, -1]) ribbon(p, s * o - 0.06, s * o + 0.06, 0.18, W, t0, t1, 3.6, 8.4); }
+  }
+}
+for (const n of it.nodes) { // junction box: fill the area between the carriageway ends
+  const r = Math.max(...nodeEdges[n].map(i => edges[i].w)) / 2 + 2, x = NX[n * 2], z = NX[n * 2 + 1];
+  for (let k = 0; k < 24; k++) { const a0 = k / 24 * Math.PI * 2, a1 = (k + 1) / 24 * Math.PI * 2; gp.push(x, 0.13, z, x + Math.cos(a1) * r, 0.13, z + Math.sin(a1) * r, x + Math.cos(a0) * r, 0.13, z + Math.sin(a0) * r); gc.push(0.07, 0.07, 0.075, 0.07, 0.07, 0.075, 0.07, 0.07, 0.075); }
+}
+{
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(gp, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(gc, 3)); g.computeVertexNormals();
+  const n = g.attributes.normal; for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 })); m.receiveShadow = true; scene.add(m);
+  const gr = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2).translate(cx, 0, cz), new THREE.MeshStandardMaterial({ color: 0x9b916f, roughness: 1 })); gr.receiveShadow = true; scene.add(gr);
+}
+
+// ---- signals for ALL 117 intersections (perf numbers), the camera looks at one
+await document.fonts.load('600 64px "Barlow Condensed"').catch(() => { });
+const t0 = performance.now();
+const debug = [], sig = createSignals(THREE, { inters: R, edges, nodeEdges, NX, heightAt: () => 0, materials: {}, debug });
+const buildMs = performance.now() - t0;
+scene.add(sig.group);
+const ctrl = demoController(R);
+
+// scale props: box cars at the stop line of every approach lane, a pedestrian at each pole
+{
+  const carG = new THREE.BoxGeometry(1.85, 1.45, 4.7).translate(0, 0.73 + 0.14, 0), carM = new THREE.MeshStandardMaterial({ color: 0x7d8890, roughness: 0.5 });
+  const pedG = new THREE.CylinderGeometry(0.2, 0.2, 1.75, 8).translate(0, 0.875 + 0.12, 0), pedM = new THREE.MeshStandardMaterial({ color: 0x5a4a3a });
+  if (Q.get('props') !== '0') for (const ap of it.approaches) for (let l = 0; l < ap.lanes; l++) {
+    const o = laneOffset(edges[ap.ei], l), x = ap.stopX - ap.dx * 3 + -ap.dz * o, z = ap.stopZ - ap.dz * 3 + ap.dx * o;
+    const c = new THREE.Mesh(carG, carM); c.position.set(x, 0, z); c.rotation.y = Math.atan2(ap.dx, ap.dz); c.castShadow = true; scene.add(c);
+    const L = sig.layout.get(ap.id); if (l === 0 && L) { const p = new THREE.Mesh(pedG, pedM); p.position.set(L.pole[0] + 0.8, 0, L.pole[2] + 0.5); p.castShadow = true; scene.add(p); }
+  }
+}
+
+// ---- cameras
+const controls = new OrbitControls(camera, renderer.domElement); controls.target.set(cx, 3, cz);
+let camMode = Q.get('cam') || 'over';
+function setCam(mode, ai = +(Q.get('a') || 0)) {
+  camMode = mode; const ap = it.approaches[ai % it.approaches.length], e = edges[ap.ei];
+  if (mode === 'driver') {
+    // walk back along the approach edge's polyline from the stop line, so curved approaches keep the camera on the road
+    const lane = Math.min(1, ap.lanes - 1), o = laneOffset(e, lane), back = +(Q.get('back') || 60);
+    const pts = []; for (let k = 0; k < e.pts.length; k += 2) pts.push([e.pts[k], e.pts[k + 1]]); if (e.a === ap.node) pts.reverse();
+    let d = back + ap.setback, x = pts[pts.length - 1][0], z = pts[pts.length - 1][1], tx = ap.dx, tz = ap.dz;
+    for (let k = pts.length - 1; k > 0 && d > 0; k--) {
+      const [ax, az] = pts[k], [bx, bz] = pts[k - 1], L = Math.hypot(bx - ax, bz - az); if (L < 1e-3) continue;
+      tx = (ax - bx) / L; tz = (az - bz) / L; const u = Math.min(d, L); x = ax - tx * u; z = az - tz * u; d -= u;
+    }
+    if (d > 0) { x -= tx * d; z -= tz * d; }
+    camera.position.set(x - tz * o, 1.2, z + tx * o);
+    controls.target.set(ap.stopX + ap.dx * (ap.setback + 6) - ap.dz * o, +(Q.get('ly') || 3.6), ap.stopZ + ap.dz * (ap.setback + 6) + ap.dx * o);
+  } else if (mode === 'corner') {
+    const L = sig.layout.get(ap.id); const [px, , pz] = L.pole; const vx = px - cx, vz = pz - cz, l = Math.hypot(vx, vz) || 1;
+    camera.position.set(px + vx / l * 9, 1.7, pz + vz / l * 9); controls.target.set(cx, 5, cz);
+  } else if (mode === 'close') {
+    const L = sig.layout.get(ap.id), h = L.heads[L.heads.length - 1];
+    camera.position.set(h.x - ap.dx * 9 + ap.dz * 2.5, h.y - 0.8, h.z - ap.dz * 9 - ap.dx * 2.5); controls.target.set(h.x, h.y + 0.4, h.z);
+  } else {
+    let span = 20; for (const ap2 of it.approaches) span = Math.max(span, Math.hypot(ap2.stopX - cx, ap2.stopZ - cz));
+    camera.position.set(cx - 0.55 * span - 10, 0.75 * span + 14, cz + 0.95 * span + 14); controls.target.set(cx, 2, cz);
+  }
+  controls.update();
+}
+setCam(camMode);
+let night = Q.get('night') === '1' ? 1 : 0, paused = Q.has('t'), simT = +(Q.get('t') || 0);
+function applyLight() {
+  sun.position.set(cx + 160, 260, cz + 120); sun.target.position.set(cx, 0, cz);
+  sun.intensity = night ? 0.25 : 2.6; sun.color.set(night ? 0x8fa6d8 : 0xffebd1);
+  hemi.intensity = night ? 0.5 : 1.15; hemi.color.set(night ? 0x1c2638 : 0xd5e6f5); hemi.groundColor.set(night ? 0x14110c : 0x8a7b5a);
+  scene.background = new THREE.Color(night ? 0x070b14 : 0xbfd8ee); scene.fog = new THREE.Fog(night ? 0x070b14 : 0xbfd8ee, 300, 1500);
+  renderer.toneMappingExposure = night ? 1.2 : 0.95;
+}
+applyLight();
+
+// ---- HUD
+function hud() {
+  const s = sig.stats, info = renderer.info.render;
+  const aps = it.approaches.map((a, k) => `${k}: ${a.name || '(unnamed)'} → x ${a.crossName || '—'} · ${a.lanes}${a.oneway ? ' one-way' : ''} lanes · w ${a.width} · axis ${a.axis}${a.leftArrow ? ' · FYA' : ''} · arm ${sig.layout.get(a.id).armLen.toFixed(1)} m`).join('\n');
+  $('hud').innerHTML = `<b>#${it.id}</b> · ${it.nodes.length} node(s) · ${it.approaches.length} approaches · cam ${camMode}${night ? ' · night' : ''} · t ${simT.toFixed(1)}\n${aps}\n<b>City-wide</b> ${s.intersections} intersections · ${s.approaches} approaches · ${s.poles} mast-arm poles · ${s.posts} posts · ${s.crosswalks} crosswalks · ${s.signs} signs\n${Object.entries(s.instances).map(([k, v]) => k + ' ' + v).join(' · ')}\nsignal draw calls ${s.drawCalls} (+${s.shadowCalls} shadow) · ${Math.round(s.triangles / 1000)}k tris · built in ${buildMs.toFixed(0)} ms\nframe: ${info.calls} calls · ${Math.round(info.triangles / 1000)}k tris`;
+}
+
+let last = performance.now(), hudT = 0;
+function render() { sig.update(ctrl(simT), night, simT); renderer.render(scene, camera); }
+function loop(now) {
+  requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (renderer.domElement.clientWidth !== innerWidth || renderer.domElement.clientHeight !== innerHeight) dispatchEvent(new Event('resize'));
+  if (!paused) simT += dt; controls.update(); render();
+  hudT -= dt; if (hudT <= 0) { hudT = 0.5; hud(); }
+}
+requestAnimationFrame(loop); render(); hud();
+if (Q.get('hud') === '0') { $('hud').style.display = $('keys').style.display = 'none'; }
+
+const go = d => { const p = new URLSearchParams(location.search); p.delete('pick'); p.delete('big'); p.set('i', (it.id + d + R.list.length) % R.list.length); location.search = p; };
+addEventListener('keydown', e => {
+  if (e.key === 'n') go(1); else if (e.key === 'p') go(-1);
+  else if (e.key === 'l') { night = 1 - night; applyLight(); }
+  else if (e.key === 'c') setCam({ over: 'driver', driver: 'corner', corner: 'close', close: 'over' }[camMode] || 'over');
+  else if (e.key === ' ') paused = !paused;
+});
+// dev helper: render at a fixed size and POST a JPEG to a local collector (used for iteration screenshots when the pane is hidden)
+async function shot(name, w = 1200, h = 800, url = 'http://127.0.0.1:8791/?n=') {
+  const ow = innerWidth, oh = innerHeight; renderer.setPixelRatio(1); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); render();
+  const blob = await new Promise(r => renderer.domElement.toBlob(r, 'image/jpeg', 0.88));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(ow, oh); camera.aspect = ow / oh; camera.updateProjectionMatrix(); render();
+  return fetch(url + name, { method: 'POST', body: blob }).then(r => r.text());
+}
+function look(p, t, fov = camera.fov) { camera.fov = fov; camera.updateProjectionMatrix(); camera.position.set(...p); controls.target.set(...t); controls.update(); render(); }
+window.__sr = { debug, shot, look, THREE, renderer, scene, camera, controls, sig, R, it, edges, ctrl, render, hud, setCam, setT: t => { simT = t; paused = true; render(); hud(); }, setNight: n => { night = n; applyLight(); render(); }, get t() { return simT; } };
+</script>

@@ -1,0 +1,214 @@
+[
+ {
+  "id": "carport_w1",
+  "kind": "solar_carport",
+  "x": 59,
+  "y": 150,
+  "l": 62,
+  "w": 13,
+  "rot_deg": 0,
+  "h": 4.2,
+  "confidence": "position/size estimated from the 2023 SANDAG aerial (+-2-3 m); height assumed"
+ },
+ {
+  "id": "portable_1",
+  "kind": "portable",
+  "x": 118,
+  "y": 367,
+  "l": 12.2,
+  "w": 7.3,
+  "rot_deg": 90,
+  "h": 3.9,
+  "confidence": "position/size estimated from the 2023 SANDAG aerial (+-2-3 m); height assumed"
+ },
+ {
+  "id": "canopy_al",
+  "kind": "canopy",
+  "x": 344,
+  "y": 267,
+  "l": 20,
+  "w": 8,
+  "rot_deg": 90,
+  "h": 3.6,
+  "details": "curved metal canopy",
+  "confidence": "position/size estimated from the 2023 SANDAG aerial (+-2-3 m); height assumed"
+ },
+ {
+  "id": "scoreboard_n",
+  "kind": "scoreboard",
+  "x": 349,
+  "y": 549,
+  "l": 7.3,
+  "h": 9,
+  "facing_deg": 200,
+  "confidence": "position/size estimated from the 2023 SANDAG aerial (+-2-3 m); height assumed"
+ },
+ {
+  "id": "cont_1",
+  "kind": "container",
+  "x": 240,
+  "y": 540,
+  "l": 6.06,
+  "w": 2.44,
+  "rot_deg": 0,
+  "confidence": "position/size estimated from the 2023 SANDAG aerial (+-2-3 m); height assumed"
+ },
+ {
+  "id": "tennis_fence",
+  "kind": "fence",
+  "h": 3.66,
+  "polyline": [
+   [
+    20,
+    318
+   ],
+   [
+    102,
+    318
+   ],
+   [
+    102,
+    400
+   ],
+   [
+    20,
+    400
+   ],
+   [
+    20,
+    318
+   ]
+  ],
+  "confidence": "position/size estimated from the 2023 SANDAG aerial (+-2-3 m); height assumed"
+ },
+ {
+  "id": "home_stands",
+  "kind": "bleachers",
+  "x": 367.5,
+  "y": 455,
+  "l": 82,
+  "w": 17,
+  "rot_deg": 90,
+  "rows": 22,
+  "front_h": 1.1,
+  "back_h": 4.9,
+  "aisles": [
+   -30,
+   -9,
+   10,
+   23
+  ],
+  "press_box": {
+   "l": 10,
+   "w": 3.0,
+   "h": 3.0,
+   "along": 0,
+   "text": "POWAY TITANS"
+  },
+  "zone_name": "Under the Home Bleachers",
+  "source": "USGS 3DEP 2024 LiDAR surface + SANDAG 2023 aerial",
+  "confidence": "footprint and heights measured (LiDAR profile 1.2 m front to 4.8 m back); rows/aisles from aerial"
+ },
+ {
+  "id": "visitor_stands",
+  "kind": "bleachers",
+  "x": 266.5,
+  "y": 454.5,
+  "l": 59,
+  "w": 12,
+  "rot_deg": 90,
+  "rows": 15,
+  "front_h": 1.0,
+  "back_h": 4.3,
+  "aisles": [
+   -17.5,
+   -4.5,
+   9.5,
+   23.5
+  ],
+  "zone_name": "Under the Visitor Bleachers",
+  "source": "USGS 3DEP 2024 LiDAR surface + SANDAG 2023 aerial",
+  "confidence": "footprint and heights measured (LiDAR 1.4 m front to 4.3 m back); rows/aisles from aerial"
+ },
+ {
+  "id": "light_0",
+  "kind": "light_pole",
+  "x": 362.2,
+  "y": 502.8,
+  "h": 24.5,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_1",
+  "kind": "light_pole",
+  "x": 361.0,
+  "y": 416.0,
+  "h": 24.5,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "inferred from aerial shadow"
+ },
+ {
+  "id": "light_2",
+  "kind": "light_pole",
+  "x": 256.8,
+  "y": 493.8,
+  "h": 24.5,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_3",
+  "kind": "light_pole",
+  "x": 258.8,
+  "y": 456.8,
+  "h": 24.5,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_4",
+  "kind": "light_pole",
+  "x": 271.2,
+  "y": 422.8,
+  "h": 24.5,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_5",
+  "kind": "light_pole",
+  "x": 165.8,
+  "y": 528.2,
+  "h": 24.4,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_6",
+  "kind": "light_pole",
+  "x": 205.8,
+  "y": 528.8,
+  "h": 24.4,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_7",
+  "kind": "light_pole",
+  "x": 142.2,
+  "y": 459.2,
+  "h": 24.4,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ },
+ {
+  "id": "light_8",
+  "kind": "light_pole",
+  "x": 141.8,
+  "y": 500.8,
+  "h": 24.4,
+  "source": "USGS 3DEP 2024 LiDAR tall-structure peaks",
+  "confidence": "position/height measured"
+ }
+]

@@ -1,0 +1,791 @@
+{
+ "source": "Microsoft Rocketbox Avatar Library (MIT), github.com/microsoft/Microsoft-Rocketbox",
+ "player": "Male_Adult_18",
+ "clips": [
+  "idle",
+  "run",
+  "sprint",
+  "talk",
+  "walk",
+  "wave"
+ ],
+ "avatars": [
+  {
+   "name": "Female_Adult_01",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 627600
+  },
+  {
+   "name": "Female_Adult_02",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 537580
+  },
+  {
+   "name": "Female_Adult_03",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 737044
+  },
+  {
+   "name": "Female_Adult_04",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 689996
+  },
+  {
+   "name": "Female_Adult_05",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 646960
+  },
+  {
+   "name": "Female_Adult_06",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 553996
+  },
+  {
+   "name": "Female_Adult_07",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 614580
+  },
+  {
+   "name": "Female_Adult_08",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 609608
+  },
+  {
+   "name": "Female_Adult_09",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 644052
+  },
+  {
+   "name": "Female_Adult_10",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 448840
+  },
+  {
+   "name": "Female_Adult_11",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 665092
+  },
+  {
+   "name": "Female_Adult_12",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 623488
+  },
+  {
+   "name": "Female_Adult_13",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 649300
+  },
+  {
+   "name": "Female_Adult_14",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 666256
+  },
+  {
+   "name": "Female_Adult_15",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 726820
+  },
+  {
+   "name": "Female_Adult_16",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 292752
+  },
+  {
+   "name": "Female_Adult_17",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 619204
+  },
+  {
+   "name": "Female_Party_01",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 813680
+  },
+  {
+   "name": "Female_Party_02",
+   "group": "Adults",
+   "sex": "f",
+   "kind": "civilian",
+   "bytes": 756416
+  },
+  {
+   "name": "Male_Adult_01",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 515196
+  },
+  {
+   "name": "Male_Adult_02",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 542024
+  },
+  {
+   "name": "Male_Adult_03",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 523644
+  },
+  {
+   "name": "Male_Adult_04",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 544968
+  },
+  {
+   "name": "Male_Adult_05",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 532360
+  },
+  {
+   "name": "Male_Adult_06",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 598016
+  },
+  {
+   "name": "Male_Adult_07",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 453876
+  },
+  {
+   "name": "Male_Adult_08",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 487256
+  },
+  {
+   "name": "Male_Adult_09",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 476332
+  },
+  {
+   "name": "Male_Adult_10",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 473392
+  },
+  {
+   "name": "Male_Adult_11",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 363064
+  },
+  {
+   "name": "Male_Adult_12",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 377720
+  },
+  {
+   "name": "Male_Adult_13",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 364640
+  },
+  {
+   "name": "Male_Adult_14",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 370320
+  },
+  {
+   "name": "Male_Adult_15",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 470552
+  },
+  {
+   "name": "Male_Adult_16",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 453500
+  },
+  {
+   "name": "Male_Adult_17",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 388252
+  },
+  {
+   "name": "Male_Adult_18",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 470084
+  },
+  {
+   "name": "Male_Adult_19",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 482312
+  },
+  {
+   "name": "Male_Adult_20",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 442116
+  },
+  {
+   "name": "Male_Adult_21",
+   "group": "Adults",
+   "sex": "m",
+   "kind": "civilian",
+   "bytes": 498316
+  },
+  {
+   "name": "Business_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "business",
+   "bytes": 650476
+  },
+  {
+   "name": "Business_Female_02",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "business",
+   "bytes": 718376
+  },
+  {
+   "name": "Business_Female_03",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "business",
+   "bytes": 632312
+  },
+  {
+   "name": "Business_Female_04",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "business",
+   "bytes": 598632
+  },
+  {
+   "name": "Business_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 494192
+  },
+  {
+   "name": "Business_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 452520
+  },
+  {
+   "name": "Business_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 487120
+  },
+  {
+   "name": "Business_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 376220
+  },
+  {
+   "name": "Business_Male_05",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 383444
+  },
+  {
+   "name": "Business_Male_06",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 430120
+  },
+  {
+   "name": "Business_Male_07",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "business",
+   "bytes": 368644
+  },
+  {
+   "name": "Chef_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "chef",
+   "bytes": 459412
+  },
+  {
+   "name": "Construction_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "construction",
+   "bytes": 580536
+  },
+  {
+   "name": "Construction_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 971616
+  },
+  {
+   "name": "Construction_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 448528
+  },
+  {
+   "name": "Construction_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 679372
+  },
+  {
+   "name": "Construction_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 720500
+  },
+  {
+   "name": "Construction_Male_05",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 432032
+  },
+  {
+   "name": "Construction_Male_06",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 684068
+  },
+  {
+   "name": "Construction_Male_07",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 530236
+  },
+  {
+   "name": "Construction_Male_08",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "construction",
+   "bytes": 569300
+  },
+  {
+   "name": "Delivery_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "delivery",
+   "bytes": 461904
+  },
+  {
+   "name": "Fire_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "fire",
+   "bytes": 1087472
+  },
+  {
+   "name": "Fire_Female_02",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "fire",
+   "bytes": 1041180
+  },
+  {
+   "name": "Fire_Female_03",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "fire",
+   "bytes": 1076884
+  },
+  {
+   "name": "Fire_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 606280
+  },
+  {
+   "name": "Fire_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 680364
+  },
+  {
+   "name": "Fire_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 607896
+  },
+  {
+   "name": "Fire_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 1128100
+  },
+  {
+   "name": "Fire_Male_05",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 618116
+  },
+  {
+   "name": "Fire_Male_06",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 546676
+  },
+  {
+   "name": "Fire_Male_07",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "fire",
+   "bytes": 1117120
+  },
+  {
+   "name": "Gardener_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "gardener",
+   "bytes": 508216
+  },
+  {
+   "name": "Medical_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "medical",
+   "bytes": 597212
+  },
+  {
+   "name": "Medical_Female_02",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "medical",
+   "bytes": 681480
+  },
+  {
+   "name": "Medical_Female_03",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "medical",
+   "bytes": 523468
+  },
+  {
+   "name": "Medical_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "medical",
+   "bytes": 594912
+  },
+  {
+   "name": "Medical_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "medical",
+   "bytes": 561456
+  },
+  {
+   "name": "Medical_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "medical",
+   "bytes": 535972
+  },
+  {
+   "name": "Medical_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "medical",
+   "bytes": 547248
+  },
+  {
+   "name": "Medical_Male_05",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "medical",
+   "bytes": 609072
+  },
+  {
+   "name": "Military_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "military",
+   "bytes": 835608
+  },
+  {
+   "name": "Military_Female_02",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "military",
+   "bytes": 833420
+  },
+  {
+   "name": "Military_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "military",
+   "bytes": 1093344
+  },
+  {
+   "name": "Military_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "military",
+   "bytes": 580260
+  },
+  {
+   "name": "Military_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "military",
+   "bytes": 1281144
+  },
+  {
+   "name": "Military_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "military",
+   "bytes": 1261656
+  },
+  {
+   "name": "Military_Male_05",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "military",
+   "bytes": 537840
+  },
+  {
+   "name": "Military_Male_06",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "military",
+   "bytes": 519316
+  },
+  {
+   "name": "Pilot_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "pilot",
+   "bytes": 540272
+  },
+  {
+   "name": "Pilot_Female_02",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "pilot",
+   "bytes": 552280
+  },
+  {
+   "name": "Pilot_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "pilot",
+   "bytes": 480580
+  },
+  {
+   "name": "Pilot_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "pilot",
+   "bytes": 493708
+  },
+  {
+   "name": "Pilot_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "pilot",
+   "bytes": 502716
+  },
+  {
+   "name": "Police_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "police",
+   "bytes": 1270588
+  },
+  {
+   "name": "Police_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 608604
+  },
+  {
+   "name": "Police_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 861232
+  },
+  {
+   "name": "Police_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 740148
+  },
+  {
+   "name": "Police_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 921160
+  },
+  {
+   "name": "Police_Male_05",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 409844
+  },
+  {
+   "name": "Police_Male_06",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 396340
+  },
+  {
+   "name": "Police_Male_07",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "police",
+   "bytes": 407400
+  },
+  {
+   "name": "Security_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "security",
+   "bytes": 621464
+  },
+  {
+   "name": "Security_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "security",
+   "bytes": 565288
+  },
+  {
+   "name": "Sports_Female_01",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "sports",
+   "bytes": 518156
+  },
+  {
+   "name": "Sports_Female_02",
+   "group": "Professions",
+   "sex": "f",
+   "kind": "sports",
+   "bytes": 595448
+  },
+  {
+   "name": "Sports_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "sports",
+   "bytes": 379468
+  },
+  {
+   "name": "Sports_Male_02",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "sports",
+   "bytes": 434100
+  },
+  {
+   "name": "Sports_Male_03",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "sports",
+   "bytes": 586356
+  },
+  {
+   "name": "Sports_Male_04",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "sports",
+   "bytes": 468372
+  },
+  {
+   "name": "Wood_Male_01",
+   "group": "Professions",
+   "sex": "m",
+   "kind": "wood",
+   "bytes": 394488
+  }
+ ]
+}

@@ -1,0 +1,56 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "servers": {
+      "$sid": {
+        ".validate": "$sid.matches(/^(silverwood|emberfall|stormhaven|moonhollow|frostvale)$/)",
+        "names": {
+          ".read": "auth != null",
+          "$name": {
+            ".write": "auth != null && (!data.exists() || data.val() === auth.uid)",
+            ".validate": "$name.matches(/^[a-z0-9_]{3,16}$/) && newData.val() === auth.uid"
+          }
+        },
+        "players": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['n', 's', 't']) && newData.child('n').isString() && newData.child('n').val().matches(/^[A-Za-z0-9_]{3,16}$/) && root.child('servers').child($sid).child('names').child(newData.child('n').val().toLowerCase()).val() === auth.uid",
+            "n": { ".validate": "newData.isString()" },
+            "s": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "t": { ".validate": "newData.val() === now" },
+            "p": { ".validate": "newData.hasChildren(['x', 'z'])" },
+            "$other": { ".validate": "$other.matches(/^(n|s|t|p)$/)" }
+          }
+        },
+        "chat": {
+          ".read": "auth != null",
+          ".indexOn": ["t"],
+          "$id": {
+            ".write": "auth != null && ((!data.exists() && newData.child('u').val() === auth.uid) || (!newData.exists() && data.child('t').val() < now - 3600000))",
+            ".validate": "newData.hasChildren(['u', 'n', 'm', 't']) && newData.child('m').isString() && newData.child('m').val().length >= 1 && newData.child('m').val().length <= 160 && newData.child('n').isString() && newData.child('n').val().length <= 16 && newData.child('t').val() === now"
+          }
+        },
+        "feed": {
+          ".read": "auth != null",
+          ".indexOn": ["t"],
+          "$id": {
+            ".write": "auth != null && ((!data.exists() && newData.child('u').val() === auth.uid) || (!newData.exists() && data.child('t').val() < now - 3600000))",
+            ".validate": "newData.hasChildren(['u', 'k', 't']) && newData.child('k').val().matches(/^(join|leave|kill|death|busted|wreck)$/) && (!newData.child('a').exists() || newData.child('a').val().length <= 16) && (!newData.child('b').exists() || newData.child('b').val().length <= 16) && (!newData.child('w').exists() || newData.child('w').val().length <= 24) && newData.child('t').val() === now"
+          }
+        },
+        "hits": {
+          "$victim": {
+            ".read": "auth != null && auth.uid === $victim",
+            ".write": "auth != null && auth.uid === $victim && !newData.exists()",
+            "$id": {
+              ".write": "auth != null && ((!data.exists() && newData.child('u').val() === auth.uid) || (!newData.exists() && auth.uid === $victim))",
+              ".validate": "newData.hasChildren(['u', 'n', 'd', 't']) && newData.child('d').isNumber() && newData.child('d').val() > 0 && newData.child('d').val() <= 250 && newData.child('n').val().length <= 16 && (!newData.child('w').exists() || newData.child('w').val().length <= 24) && newData.child('t').val() === now"
+            }
+          }
+        }
+      }
+    }
+  }
+}

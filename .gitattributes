@@ -1,0 +1,21 @@
+# Normalize all text to LF in the repo (index.html arrived with mixed CRLF/LF and branches diverged).
+* text=auto eol=lf
+*.glb binary
+*.gltf -text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ktx2 binary
+*.bin binary
+*.npy binary
+*.npz binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.hdr binary
+*.exr binary
+*.blend binary
+*.laz binary
+*.tif binary
+*.pdf binary

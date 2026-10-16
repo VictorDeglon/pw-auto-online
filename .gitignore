@@ -1,0 +1,8 @@
+.DS_Store
+build/
+__pycache__/
+*.pyc
+*.blend1
+node_modules/
+.firebase/
+*.log
