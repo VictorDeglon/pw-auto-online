@@ -183,10 +183,14 @@ export function buildPlaza(o) {
       group.visible = Math.hypot(f.x - C.x, f.z - C.z) < 1500;
       mats.sign.emissiveIntensity = 0.12 + night * 1.1; mats.glass.emissiveIntensity = night * 0.35; mats.light.color.setScalar(0.55 + night * 0.45);
     },
-    onCollapse(B) { // its storefronts go with it
-      const r = ranges.get(B); if (!r) return;
-      for (const k in r) { const m = meshes[k]; if (!m) continue; const pos = m.geometry.attributes.position; for (const [a, e] of r[k]) { for (let i = a; i < e; i++) pos.setXYZ(i, 0, -1000, 0); if (pos.addUpdateRange) pos.addUpdateRange(a * 3, (e - a) * 3); } pos.needsUpdate = true; }
-      ranges.delete(B);
+    onCollapse(B) { // its storefronts go with it (kept aside, so they come back when the building is rebuilt)
+      const r = ranges.get(B); if (!r || r.saved) return; r.saved = {};
+      for (const k in r) { if (k === 'saved') continue; const m = meshes[k]; if (!m) continue; const pos = m.geometry.attributes.position; r.saved[k] = r[k].map(([a, e]) => pos.array.slice(a * 3, e * 3)); for (const [a, e] of r[k]) { for (let i = a; i < e; i++) pos.setXYZ(i, 0, -1000, 0); if (pos.addUpdateRange) pos.addUpdateRange(a * 3, (e - a) * 3); } pos.needsUpdate = true; }
+    },
+    onRepair(B) {
+      const r = ranges.get(B); if (!r || !r.saved) return;
+      for (const k in r.saved) { const m = meshes[k]; if (!m) continue; const pos = m.geometry.attributes.position; r[k].forEach(([a, e], j) => { pos.array.set(r.saved[k][j], a * 3); if (pos.addUpdateRange) pos.addUpdateRange(a * 3, (e - a) * 3); }); pos.needsUpdate = true; }
+      r.saved = null;
     },
   };
 }

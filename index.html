@@ -473,13 +473,14 @@ import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
-import { HUMANS, loadHumans, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim } from './src/humans.js';
+import { HUMANS, loadHumans, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
+import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
 import { createComposer, procSongs } from './src/audio/composer.js';
@@ -1622,7 +1623,7 @@ function blastBuildings(x, z, R, by) {
     let d = 1e9; const f = B.flat, n = f.length / 2;
     if (pip(x, z, f)) d = 0; else for (let i = 0, j = n - 1; i < n; j = i++) { const q = segClosest(x, z, f[j * 2], f[j * 2 + 1], f[i * 2], f[i * 2 + 1]); d = Math.min(d, Math.hypot(q[0] - x, q[1] - z)); }
     if (d > R * 1.6) continue;
-    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6));
+    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6)); B.hurtAt = simTime;
     if (B.hp <= 0 && by === 'net') B.hp = 1;
     else if (B.hp <= 0) { const dx = B.cx - x, dz = B.cz - z, L = Math.hypot(dx, dz) || 1; collapseBuilding(B, dx / L, dz / L, by); }
     else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
@@ -1637,8 +1638,10 @@ function busyAt(x, z) {
   if (clock.isSchoolDay && hour > 7 && hour < 15.5) bump(860, -4260, 600, 0.45);
   return Math.min(1, b);
 }
-function collapseBuilding(B, dirx, dirz, by, instant) { // instant: already rubble when you arrived (online ruins)
+const REBUILD_S = 120; // a collapsed building stands back up two minutes later (online ruins expire on the same clock)
+function collapseBuilding(B, dirx, dirz, by, instant, lite) { // instant: already rubble when you arrived (online ruins); lite: no flying blocks (a nuke flattens dozens)
   if (B.dead) return; B.dead = true; polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
+  B.repairAt = simTime + REBUILD_S; B.fall = { dirx, dirz };
   if (online && by !== 'net') { sendEvent('col', { i: B.i, dx: dirx, dz: dirz }); setRuin(B.i, B.cx, B.cz); }
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
   for (const [g, a, e] of B.ranges) {
@@ -1646,8 +1649,9 @@ function collapseBuilding(B, dirx, dirz, by, instant) { // instant: already rubb
     for (let i = 0; i < k; i++) { x0[i] = pos.getX(a + i); y0[i] = pos.getY(a + i); z0[i] = pos.getZ(a + i); }
     anims.push({ pos, a, k, x0, y0, z0 });
   }
-  collapsing.push({ B, t: instant ? dur : 0, dur, dirx, dirz, anims });
+  B.anims = anims; collapsing.push({ B, t: instant ? dur : 0, dur, dirx, dirz, anims });
   if (instant) return;
+  if (lite) { FX.plume(B.cx, B.base, B.cz, 10, 1.5); for (const p of peds) if (p.state !== 'dead' && pip(p.pos.x, p.pos.z, B.flat)) p.knock(rand(-3, 3), 4, rand(-3, 3), 200, by); return; }
   // the building's mass as tumbling blocks, upper floors first
   const f = B.flat, n = f.length / 2; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   for (let i = 0; i < n; i++) { x0 = Math.min(x0, f[i * 2]); x1 = Math.max(x1, f[i * 2]); z0 = Math.min(z0, f[i * 2 + 1]); z1 = Math.max(z1, f[i * 2 + 1]); }
@@ -1682,7 +1686,33 @@ function updateDestruction(dt) {
     if (Math.random() < dt * 20) { const g = rand(0.45, 0.6); smoke.emit(B.cx + rand(-4, 4), B.base + H * (1 - e), B.cz + rand(-4, 4), rand(-2, 2), rand(0, 2), rand(-2, 2), rand(2, 4), rand(3, 5), g, g, g * 0.95, 1.2, -0.2); }
     if (k >= 1) collapsing.splice(i, 1);
   }
+  // rebuilding: two minutes after it fell, a building rises back out of its rubble (or after it took damage and didn't fall, it's patched)
+  updateRepairs(dt);
   for (let i = pendingBooms.length - 1; i >= 0; i--) { const b = pendingBooms[i]; b.t -= dt; if (b.t <= 0) { pendingBooms.splice(i, 1); explosionAt(b.x, b.y, b.z, b.R, b.by); } }
+}
+const rebuilding = []; let repairScanT = 0;
+function updateRepairs(dt) {
+  repairScanT -= dt;
+  if (repairScanT <= 0) {
+    repairScanT = 1;
+    for (const B of BLD) {
+      if (!B.dead) { if (B.hp < B.hp0 && B.hurtAt != null && simTime - B.hurtAt > REBUILD_S) { B.hp = B.hp0; B.smoking = false; B.hurtAt = null; } continue; }
+      if (B.repairing || B.repairAt == null || simTime < B.repairAt || !B.anims) continue;
+      if (collapsing.some(c => c.B === B)) continue;
+      const inside = (x, z) => pip(x, z, B.flat); // never rebuild on top of someone
+      if ((!player.inCar && inside(player.pos.x, player.pos.z)) || vehicles.some(v => inside(v.pos.x, v.pos.z))) { B.repairAt = simTime + 5; continue; }
+      B.repairing = true; rebuilding.push({ B, t: 0, dur: 3.2 });
+      for (let i = 0; i < 12; i++) { const g = rand(0.55, 0.7); smoke.emit(B.cx + rand(-5, 5), B.base + rand(0, 2), B.cz + rand(-5, 5), rand(-2, 2), rand(0.5, 2), rand(-2, 2), rand(3, 5), rand(3, 5), g, g * 0.97, g * 0.92, 1, -0.2); }
+    }
+  }
+  for (let i = rebuilding.length - 1; i >= 0; i--) {
+    const R = rebuilding[i], B = R.B; R.t += dt; const k = Math.min(1, R.t / R.dur), e = 1 - k * k * (3 - 2 * k), { dirx, dirz } = B.fall;
+    for (const A of B.anims) {
+      for (let j = 0; j < A.k; j++) { const h = A.y0[j] - B.base; if (k >= 1) A.pos.setXYZ(A.a + j, A.x0[j], A.y0[j], A.z0[j]); else A.pos.setXYZ(A.a + j, A.x0[j] + dirx * h * e * 0.35, B.base + h * (1 - e) - e * 0.8, A.z0[j] + dirz * h * e * 0.35); }
+      if (A.pos.addUpdateRange) A.pos.addUpdateRange(A.a * 3, A.k * 3); A.pos.needsUpdate = true;
+    }
+    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
+  }
 }
 // garage door + front door on the wall that faces the street, mailbox at the curb (detail zone only)
 const mailboxSpots = [];
@@ -2305,8 +2335,45 @@ class Particles {
   }
 }
 const smoke = new Particles(700, false), fire = new Particles(500, true);
+const NUKE_FX = createNukeFX(THREE, scene, { potato: 0.35, low: 0.55, medium: 0.8, high: 1, ultra: 1 }[GFX.id] || 0.8); // the nuke's flash, shockwave and mushroom cloud (src/fx/nuke.js)
 const FX = createFX({ THREE, scene, camera, heightAt: (x, z) => heightAt(x, z), smoke, fire, quality: { potato: 0.35, low: 0.6, medium: 1, high: 1.2, ultra: 1.5 }[GFX.id] || 1 }); // src/fx/fx.js
-function blood(x, y, z, n = 10) { for (let i = 0; i < n; i++) smoke.emit(x, y, z, rand(-2, 2), rand(0, 3), rand(-2, 2), rand(0.15, 0.35), rand(0.4, 0.9), 0.5, 0.03, 0.03, 0, 12); }
+function blood(x, y, z, n = 10, dir) { // droplets; with a direction (the bullet's) most of them spray out the far side
+  for (let i = 0; i < n; i++) { const k = dir && i < n * 0.7 ? rand(3, 7) : 0, r = rand(0.35, 0.6);
+    smoke.emit(x, y, z, (dir ? dir.x * k : 0) + rand(-2, 2), (dir ? dir.y * k : 0) + rand(0, 3), (dir ? dir.z * k : 0) + rand(-2, 2), rand(0.1, 0.3), rand(0.5, 1), r, 0.015, 0.015, 0, 12); }
+  for (let i = 0; i < Math.min(6, n / 3); i++) smoke.emit(x, y, z, rand(-0.6, 0.6), rand(0.2, 0.8), rand(-0.6, 0.6), rand(0.25, 0.5), rand(0.3, 0.6), 0.45, 0.04, 0.04, 1.5, 0); // a red mist
+}
+// ---- gore: splats and pools are irregular (drawn once into a few canvas textures), pools spread out under a body,
+// people hit hard stagger, people caught in a blast can catch fire, and burned bodies are charred
+const SPLAT_TEX = [0, 1, 2, 3, 4, 5].map(v => {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), R = () => Math.random();
+  g.fillStyle = v < 3 ? '#5b0a0a' : '#4a0707';
+  const blob = (x, y, r) => { g.beginPath(); const n = 14; for (let i = 0; i <= n; i++) { const a = i / n * Math.PI * 2, rr = r * (0.75 + R() * 0.45); g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.fill(); };
+  const big = v < 3; // 0-2: pools (one fat body, lobes, satellites); 3-5: spatter (a streak of drops)
+  if (big) { blob(64, 64, 30); for (let i = 0; i < 6; i++) { const a = R() * 6.28, d = 18 + R() * 16; blob(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 8 + R() * 12); } for (let i = 0; i < 14; i++) { const a = R() * 6.28, d = 40 + R() * 20; blob(64 + Math.cos(a) * d, 64 + Math.sin(a) * d, 1.5 + R() * 3.5); } }
+  else { const a = R() * 6.28; for (let i = 0; i < 26; i++) { const d = R() * 56, w = (R() - 0.5) * 18; blob(64 + Math.cos(a) * d - Math.sin(a) * w * (d / 56), 64 + Math.sin(a) * d + Math.cos(a) * w * (d / 56), (1 - d / 70) * (2 + R() * 7)); } }
+  const grd = g.createRadialGradient(56, 56, 2, 64, 64, 60); grd.addColorStop(0, 'rgba(160,30,30,0.35)'); grd.addColorStop(1, 'rgba(0,0,0,0)'); g.globalCompositeOperation = 'source-atop'; g.fillStyle = grd; g.fillRect(0, 0, 128, 128); // a wet sheen
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -7, polygonOffsetUnits: -14 });
+});
+const splatG = new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2), pools = [], _bleedD = new THREE.Vector3();
+function splat(x, z, r, pool, grow) { // a splat on the ground; a pool can spread out over `grow` seconds
+  const m = new THREE.Mesh(splatG, SPLAT_TEX[pool ? randi(0, 2) : randi(3, 5)]); m.position.set(x, heightAt(x, z) + 0.2, z); m.rotation.y = rand(0, TAU);
+  m.scale.setScalar(grow ? r * 0.15 : r); scene.add(m); decals.push({ m, t: 90 }); if (decals.length > 70) { const d = decals.shift(); scene.remove(d.m); }
+  if (grow) pools.push({ m, r, t: 0, dur: grow });
+}
+function bleed(p, amt, dir) { // a hit: spray along the shot, a few splats behind the victim
+  const d = dir || _bleedD.set(rand(-1, 1), 0.2, rand(-1, 1)).normalize();
+  blood(p.pos.x, p.pos.y + 1.25, p.pos.z, Math.min(28, 6 + amt / 2.5), d);
+  const n = amt > 60 ? 3 : amt > 25 ? 2 : 1; for (let i = 0; i < n; i++) { const k = rand(0.6, 2.6); splat(p.pos.x + d.x * k + rand(-0.3, 0.3), p.pos.z + d.z * k + rand(-0.3, 0.3), rand(0.25, 0.55), false); }
+}
+function ignitePed(p, by) { if (p.remote || p.puppet || p.invuln || p.state === 'dead' || p.burn > 0) return; p.burn = rand(5, 8); p.burnBy = by; p.burnDir = rand(0, TAU); p.talk && p.talk('flee'); }
+function charPed(p) { // burned: the body goes dark (its own copy of the materials, so nobody else changes)
+  if (p.charred) return; p.charred = true;
+  p.rig.g.traverse(o => { if (!o.isMesh || !o.material) return; const cp = m => { const c = m.clone(); if (c.color) c.color.multiplyScalar(0.16); if (c.emissive) c.emissive.setRGB(0.05, 0.015, 0); return c; }; o.material = Array.isArray(o.material) ? o.material.map(cp) : cp(o.material); });
+}
+function updateGore(dt) {
+  for (let i = pools.length - 1; i >= 0; i--) { const P = pools[i]; P.t += dt; const k = Math.min(1, P.t / P.dur); P.m.scale.setScalar(P.r * (0.15 + 0.85 * (1 - (1 - k) * (1 - k)))); if (k >= 1 || !P.m.parent) pools.splice(i, 1); }
+}
 function sparks(x, y, z, n = 6) { for (let i = 0; i < n; i++) fire.emit(x, y, z, rand(-4, 4), rand(0, 4), rand(-4, 4), rand(0.08, 0.18), rand(0.15, 0.35), 1, 0.75, 0.3, 0, 15); }
 const tracers = [];
 const tracerMat = new THREE.LineBasicMaterial({ color: 0xffe9a0, transparent: true, opacity: 0.9 });
@@ -2315,7 +2382,6 @@ function tracer(ax, ay, az, bx, by, bz) {
   const l = new THREE.Line(g, tracerMat); scene.add(l); tracers.push({ l, t: 0.06 });
 }
 const decalG = new THREE.CircleGeometry(1, 12).rotateX(-Math.PI / 2);
-const bloodMat = new THREE.MeshBasicMaterial({ color: 0x5a0d0d, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -7, polygonOffsetUnits: -14 });
 const scorchMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -7, polygonOffsetUnits: -14 });
 const decals = [];
 function decal(x, z, r, mat) { const m = new THREE.Mesh(decalG, mat); m.position.set(x, heightAt(x, z) + 0.2, z); m.scale.setScalar(r); scene.add(m); decals.push({ m, t: 90 }); if (decals.length > 40) { const d = decals.shift(); scene.remove(d.m); } }
@@ -3023,14 +3089,14 @@ class Ped {
     if (this.remote) { remoteHurt(this, amt, by); return; }
     if (this.puppet) { puppetHurt(this, amt, by); return; }
     if (this.state === 'dead' || this.invuln) return;
-    this.health -= amt; blood(this.pos.x, this.pos.y + 1.2, this.pos.z, Math.min(20, amt / 3));
+    this.health -= amt; bleed(this, amt, this.hitDir); if (this.hitDir) { const L = Math.hypot(this.hitDir.x, this.hitDir.z) || 1; this.staggerDir = { x: this.hitDir.x / L, z: this.hitDir.z / L }; } this.hitDir = null;
     if (by === 'player') { this.anger = 100; this.target = 'player'; }
     if (this.health <= 0) { killPed(this, by); return; }
     if (this.ai && this.onHurt) { this.onHurt(amt, by, flying); return; }
     if (!flying) {
       if (this.isCop) { if (by === 'player') { this.state = 'cop'; } return; }
-      if (amt >= 25 && Math.random() < 0.5) { this.state = 'down'; this.timer = rand(2, 4); }
-      else this.decide(by);
+      if (amt >= 25 && Math.random() < 0.35) { this.state = 'down'; this.timer = rand(2, 4); }
+      else { if (amt >= 12) this.stagger = rand(0.45, 0.9); this.decide(by); } // knocked off balance, then they run (limping if badly hurt)
     }
   }
   decide(by) {
@@ -3055,7 +3121,8 @@ function remoteHurt(p, amt, by) {
 }
 function killPed(p, by) {
   if (p.state === 'dead' || p.remote) return;
-  p.state = 'dead'; p.health = 0; p.timer = 0; p.setMarker(null); decal(p.pos.x, p.pos.z, rand(0.8, 1.3), bloodMat); blood(p.pos.x, p.pos.y + 1, p.pos.z, 25);
+  p.state = 'dead'; p.health = 0; p.timer = 0; p.setMarker(null); splat(p.pos.x + rand(-0.3, 0.3), p.pos.z + rand(-0.3, 0.3), rand(1.1, 1.8), true, rand(7, 12)); blood(p.pos.x, p.pos.y + 1, p.pos.z, 25, p.hitDir || null);
+  if (p.burn > 0) { p.burn = 0; charPed(p); p.smolder = 8; }
   if (p.money > 0) spawnPickup('cash', p.pos.x + rand(-0.5, 0.5), p.pos.z + rand(-0.5, 0.5), p.money);
   if (p.isCop && Math.random() < 0.6) spawnPickup('ammo', p.pos.x + 0.6, p.pos.z, 12);
   if (by === 'player') {
@@ -3165,26 +3232,41 @@ function updateCheats(dt) {
   if (JET.on) JET.cd -= dt;
 }
 // ---- the nuke: a siren and a countdown for everyone near, then a white-out, a ring of blasts and a mushroom cloud
-const NUKE_R = 95;
 function nukeAt(x, z, mine, who) {
   if (mine && online) sendEvent('nuke', { x, z });
   const f = focusPos(), d = hyp(x - f.x, z - f.z);
   if (d < 900) { big('NUCLEAR STRIKE', mine ? (who ? `on ${who} · 5 seconds` : '5 seconds') : 'Incoming. Run.', 'wasted', 4.5); for (let i = 0; i < 5; i++) setTimeout(() => tone(880, 0.5, 'sawtooth', 0.12, 440), i * 1000); }
-  setTimeout(() => nukeBlast(x, z, mine), 5000);
+  NUKE_WAVES.push({ pending: true, at: simTime + 5, x, z, mine }); // counted in game time, so pausing doesn't set it off early
 }
 function nukeBlast(x, z, mine) {
-  const y = heightAt(x, z), by = mine ? 'player' : 'net';
-  flash = 4; shake = 2;
-  explosionAt(x, y + 1, z, 20, mine ? 'player' : 'chain');
-  for (let ring = 1; ring <= 3; ring++) for (let k = 0; k < 6 + ring * 3; k++) {
-    const a = k / (6 + ring * 3) * TAU + ring, r = ring * 26;
-    setTimeout(() => explosionAt(x + Math.cos(a) * r, heightAt(x + Math.cos(a) * r, z + Math.sin(a) * r) + 1, z + Math.sin(a) * r, 16, 'chain'), ring * 160 + k * 25);
+  const y = heightAt(x, z), f = focusPos(), d = hyp(f.x - x, f.z - z);
+  NUKE_FX.spawn(x, y, z); // the picture: flash, fireball, the shockwave you can watch go out, the mushroom cloud (src/fx/nuke.js)
+  flash = Math.max(flash, d < 2500 ? 5 : 2); shake = 2.5;
+  explosionAt(x, y + 1, z, 20, mine ? 'player' : 'chain'); // the fire, the crater, the bang
+  for (let k = 0; k < 6; k++) { const a = k / 6 * TAU, r = 22; pendingBooms.push({ t: 0.15 + k * 0.05, x: x + Math.cos(a) * r, y: heightAt(x + Math.cos(a) * r, z + Math.sin(a) * r) + 1, z: z + Math.sin(a) * r, R: 16, by: 'chain' }); }
+  noise(7, 'lowpass', 70, 1.4 * clamp(1.2 - d / 3000, 0.3, 1.2), d / 340); // the rumble arrives at the speed of sound
+  NUKE_WAVES.push({ x, z, t0: simTime, r: 0, by: mine ? 'player' : 'net', mine, n: 0 });
+}
+// the blast rides the visible ring: everything it reaches is hit as the ring passes, not all at once
+const NUKE_WAVES = [], NUKE_KILL = 150, NUKE_REACH = 420;
+function updateNukeWaves() {
+  for (let i = NUKE_WAVES.length - 1; i >= 0; i--) {
+    const W = NUKE_WAVES[i]; if (W.pending) { if (simTime >= W.at) { NUKE_WAVES.splice(i, 1); nukeBlast(W.x, W.z, W.mine); } continue; }
+    const r0 = W.r, r1 = (simTime - W.t0) * NUKE_WAVE_SPEED; W.r = r1;
+    const hitBand = (px, pz) => { const d = hyp(px - W.x, pz - W.z); return d >= r0 && d < r1 ? d : -1; };
+    for (const v of vehicles) { const d = hitBand(v.pos.x, v.pos.z); if (d < 0 || d > NUKE_REACH) continue; const k = 1 - d / NUKE_REACH, nx = (v.pos.x - W.x) / (d || 1), nz = (v.pos.z - W.z) / (d || 1);
+      damageCar(v, d < NUKE_KILL ? 999 : 160 * k, W.by, true); v.vel.x += nx * 40 * k; v.vel.y += nz * 40 * k; launchCar(v, 6 + 22 * k, rand(-6, 6) * k, rand(-8, 8) * k); }
+    for (const p of peds) { if (p.remote) continue; const d = hitBand(p.pos.x, p.pos.z); if (d < 0 || d > NUKE_REACH) continue; const k = 1 - d / NUKE_REACH; p.knock((p.pos.x - W.x) / (d || 1) * 30 * k, 6 + 14 * k, (p.pos.z - W.z) / (d || 1) * 30 * k, d < NUKE_KILL ? 999 : 140 * k, W.by); }
+    { const pp = player.inCar ? player.inCar.pos : player.pos, d = hitBand(pp.x, pp.z);
+      if (d >= 0 && d < NUKE_REACH && !CH.god) { const k = 1 - d / NUKE_REACH; if (d < NUKE_KILL) { if (player.inCar) damageCar(player.inCar, 999, W.by, true); hurtPlayer(999, 'explosion'); } else { hurtPlayer(70 * k, 'explosion'); if (!player.inCar) { player.knock = 1; player.vy = 8 * k; player.air = Math.max(player.air, 0.3); player.fling = [(pp.x - W.x) / d * 25 * k, (pp.z - W.z) / d * 25 * k]; } } }
+      if (d >= 0 && d < 900) shake = Math.max(shake, 1.6 * (1 - d / 900)); }
+    // trees, poles and signs go flat; buildings inside ~160 m come down (the nearest ones in pieces, the rest as dust)
+    { const R0 = Math.max(0, r0), R1 = Math.min(r1, 260);
+      if (R1 > R0) { const g0x = Math.floor((W.x - R1) / PG), g1x = Math.floor((W.x + R1) / PG), g0z = Math.floor((W.z - R1) / PG), g1z = Math.floor((W.z + R1) / PG);
+        for (let gx = g0x; gx <= g1x; gx++) for (let gz = g0z; gz <= g1z; gz++) for (const q of propGrid.get(gx * 100000 + gz) || []) { if (!q.alive) continue; const d = hyp(q.x - W.x, q.z - W.z); if (d >= R0 && d < R1) fellProp(q, (q.x - W.x) / (d || 1), (q.z - W.z) / (d || 1)); } }
+      if (W.mine || !online) for (const B of buildingsNear(W.x, W.z, Math.min(r1, 160))) { const d = hyp(B.cx - W.x, B.cz - W.z); if (d < r0 || d >= r1) continue; const L = d || 1; collapseBuilding(B, (B.cx - W.x) / L, (B.cz - W.z) / L, W.by === 'net' ? 'net' : 'player', false, W.n++ > 6); } }
+    if (r1 > Math.max(NUKE_REACH, 900)) NUKE_WAVES.splice(i, 1);
   }
-  for (let k = 0; k < 14; k++) setTimeout(() => smoke.emit(x + rand(-6, 6), y + 10 + k * 9, z + rand(-6, 6), rand(-1, 1), 3, rand(-1, 1), 14 + k * 1.8, 9, 0.35, 0.3, 0.28, 1), 200 + k * 140); // the stem and cap
-  for (const v of vehicles) if (hyp(v.pos.x - x, v.pos.z - z) < NUKE_R) { damageCar(v, 999, by, true); launchCar(v, 18, rand(-6, 6), rand(-6, 6)); }
-  for (const p of peds) { const d = hyp(p.pos.x - x, p.pos.z - z); if (d < NUKE_R && !p.remote) p.knock((p.pos.x - x) / (d || 1) * 20, 14, (p.pos.z - z) / (d || 1) * 20, 999, by); }
-  const f = player.inCar ? player.inCar.pos : player.pos, pd = hyp(f.x - x, f.z - z);
-  if (pd < NUKE_R && !CH.god) { if (player.inCar) damageCar(player.inCar, 999, by, true); hurtPlayer(999, 'explosion'); }
 }
 // ---- fighter jet: flies where the camera looks, W/S throttle, A/D roll, click fires missiles, F bails out
 function jetModel() {
@@ -3790,7 +3872,7 @@ function playerShoot() {
     if (hit.ped && k === 0) { hitMarker(hit.head); if (hit.head) ACH.bump('headshots'); }
     if (CH.boom && k === 0 && hit.t < w.range - 1) explosionAt(hp.x, hp.y, hp.z, 4.5, 'player');
     if (hit.ped) {
-      const p = hit.ped, dmg = (hit.head ? Math.max(150, w.dmg[1] * 2) : rand(w.dmg[0], w.dmg[1])) * dmgMul(w), wasCop = p.isCop;
+      const p = hit.ped, dmg = (hit.head ? Math.max(150, w.dmg[1] * 2) : rand(w.dmg[0], w.dmg[1])) * dmgMul(w), wasCop = p.isCop; p.hitDir = d;
       if (w.push && p.state !== 'dead') p.knock(d.x * w.push, 3, d.z * w.push, dmg, 'player'); else p.damage(dmg, 'player');
       if (p.state !== 'dead') crime('assault', p.pos.x, p.pos.z, wasCop ? 3 : 2, p);
     } else if (hit.car) {
@@ -3897,7 +3979,8 @@ function explosionAt(x, y, z, R, by) {
   }
   for (const p of peds) {
     const dx = p.pos.x - x, dz = p.pos.z - z, d = Math.hypot(dx, dz);
-    if (d < R) { const k = 1 - d / R; p.knock(dx / (d || 1) * 14 * k, 6 + 10 * k, dz / (d || 1) * 14 * k, k * 220, by); }
+    if (d < R) { const k = 1 - d / R; p.knock(dx / (d || 1) * 14 * k, 6 + 10 * k, dz / (d || 1) * 14 * k, k * 220, by); if (Math.random() < 0.25 + 0.4 * k) ignitePed(p, by); else if (p.state === 'dead' && Math.random() < 0.5) charPed(p); }
+    else if (d < R * 1.5 && Math.random() < 0.3) ignitePed(p, by);
     else if (d < 70 && p.state !== 'dead') p.scare(x, z, 'gun');
   }
   if (!player.inCar && !player.dead) { const d = Math.hypot(player.pos.x - x, player.pos.z - z); if (d < R) { hurtPlayer((1 - d / R) * 95, 'explosion'); player.knock = 1; } }
@@ -4967,7 +5050,7 @@ function trafficSim(sec, dt = 1 / 30) { // headless: traffic, peds and populatio
 // ============================================================ updates: vehicles
 let trafficT = 0;
 
-const _cog = new THREE.Vector3();
+const _cog = new THREE.Vector3(), DAMAGED_CAR_S = 300;
 function updateVehicles(dt) {
   const f = focusPos(); updateDebris(dt);
   for (const v of vehicles.slice()) {
@@ -4977,6 +5060,15 @@ function updateVehicles(dt) {
     if (v.mode === 'rail' && v.driver === 'ai' && !v.keep && dP > 300 && !inView(v.pos.x, v.pos.z)) { v.remove(); continue; }
     if (v.mode === 'rail' && !v.keep && v.stopT > 90 && !(v.J && v.jk === 'sig') && dP > 60 && !inView(v.pos.x, v.pos.z)) { TS.stuckGone++; v.remove(); continue; }
     if (v.mine && !v.keep && v !== player.inCar && dP > 900) { v.remove(); continue; }
+    // damaged cars are cleared five minutes after they were first hurt (wrecks included; yours go back to the garage,
+    // repaired). Out of sight it just goes; in plain view it gets 30 more seconds, then leaves in a puff of smoke.
+    if (!v.puppet) {
+      if (v.dead || v.health < 99) { if (v.hurtAt == null) v.hurtAt = simTime; } else v.hurtAt = null;
+      if (v.hurtAt != null && v !== player.inCar && !v.keep && !v.mission && simTime - v.hurtAt > DAMAGED_CAR_S) {
+        const seen = dP < 250 && inView(v.pos.x, v.pos.z);
+        if (!seen || simTime - v.hurtAt > DAMAGED_CAR_S + 30) { if (seen) for (let k = 0; k < 8; k++) smoke.emit(v.pos.x + rand(-1.5, 1.5), v.pos.y + rand(0, 1), v.pos.z + rand(-1.5, 1.5), rand(-1, 1), rand(0.5, 2), rand(-1, 1), rand(2, 3), rand(2, 4), 0.7, 0.7, 0.7, 1, -0.2); v.remove(); continue; }
+      }
+    }
     if (v.dead) { // a wreck: thick smoke at first, thinning to a wisp
       v.wreckT = Math.max(0, v.wreckT - dt); v.smokeT -= dt;
       if (v.smokeT <= 0 && dP < 250) { v.smokeT = 0.05 + (30 - v.wreckT) * 0.02; const c = 0.1 + (30 - v.wreckT) * 0.012; smoke.emit(v.pos.x + v.fx * 1.7, v.pos.y + 1.1, v.pos.z + v.fz * 1.7, rand(-.3, .3), rand(1.2, 2.4), rand(-.3, .3), 1, 2.2, c, c, c, 2, -0.3); }
@@ -5106,8 +5198,26 @@ function updatePeds(dt) {
       p.callT -= dt;
       if (p.callT <= 0) { p.state = 'call'; p.timer = rand(3.5, 5); p.talk('call'); p.setMarker(phoneMat); sfx.phone(volAt(p.pos.x, p.pos.z, 40)); }
     }
-    const air = p.ai && p.state !== 'dead' && p.state !== 'fly' && p.state !== 'down' ? p.ai(p, dt) : null;
+    const hurtState = p.state === 'dead' || p.state === 'fly' || p.state === 'down';
+    if (p.burn > 0 && p.state !== 'dead') { // on fire: flames off the body, damage, and blind panic
+      p.burn -= dt; if (p.burn <= 0) charPed(p);
+      if (dP < 160) for (let k = 0; k < 2; k++) fire.emit(p.pos.x + rand(-0.3, 0.3), p.pos.y + rand(0.2, 1.7) + (p.state === 'fly' ? p.air : 0), p.pos.z + rand(-0.3, 0.3), rand(-0.4, 0.4), rand(1.5, 3), rand(-0.4, 0.4), rand(0.25, 0.55), rand(0.35, 0.6), 1, rand(0.35, 0.6), 0.1, -0.4, -2);
+      if (dP < 160 && Math.random() < dt * 6) smoke.emit(p.pos.x, p.pos.y + 1.9, p.pos.z, rand(-0.3, 0.3), rand(1.5, 2.5), rand(-0.3, 0.3), rand(0.4, 0.7), rand(1.5, 2.5), 0.08, 0.07, 0.07, 1.2, -0.3);
+      p.health -= 11 * dt; if (p.health <= 0) { killPed(p, p.burnBy); continue; }
+      if (Math.random() < dt * 0.8) p.talk('flee');
+    }
+    if (p.smolder > 0) { p.smolder -= dt; if (dP < 120 && Math.random() < dt * 5) smoke.emit(p.pos.x + rand(-0.4, 0.4), p.pos.y + 0.3, p.pos.z + rand(-0.4, 0.4), 0, rand(0.8, 1.6), 0, rand(0.3, 0.5), rand(1.5, 2.5), 0.12, 0.11, 0.1, 1, -0.2); }
+    const air = p.ai && !hurtState && !(p.burn > 0) ? p.ai(p, dt) : null;
     if (air) { speed = air.speed || 0; mode = air.mode || null; }
+    else if (p.burn > 0 && !hurtState) { // run blind, swerving; now and then drop and roll
+      p.burnDir += rand(-2.5, 2.5) * dt; p.rotY += wrapA(p.burnDir - p.rotY) * Math.min(1, dt * 5); speed = 5.6;
+      p.pos.x += Math.sin(p.rotY) * speed * dt; p.pos.z += Math.cos(p.rotY) * speed * dt; if (collideCircle(p.pos, 0.35)) p.burnDir += 2;
+      if (Math.random() < dt * 0.35) { p.state = 'down'; p.timer = rand(0.8, 1.5); }
+    }
+    else if (p.stagger > 0 && !hurtState) { // knocked off balance: a few steps back along the hit
+      p.stagger -= dt; const hd = p.staggerDir || (p.staggerDir = { x: rand(-1, 1), z: rand(-1, 1) }); speed = 1.6;
+      p.pos.x += hd.x * 1.6 * dt; p.pos.z += hd.z * 1.6 * dt; collideCircle(p.pos, 0.35); if (p.stagger <= 0) p.staggerDir = null;
+    }
     else switch (p.state) {
       case 'walk': {
         if (!p.agent) { const ne = nearestEdge(p.pos.x, p.pos.z, 60, e => e.t >= 1 && e.t <= 5); if (!ne) { p.state = 'idle'; p.timer = 5; break; } p.agent = agentFromNearest(ne, Math.sin(p.rotY), Math.cos(p.rotY), true); }
@@ -5145,6 +5255,7 @@ function updatePeds(dt) {
       case 'flee': {
         const [fx, fz] = p.fleeFrom; let dx = p.pos.x - fx, dz = p.pos.z - fz; const d = Math.hypot(dx, dz) || 1;
         speed = p.personality === 'coward' ? 6 : 5;
+        if (p.health < 55) { speed *= 0.6; mode = 'injured'; if (Math.random() < dt * 1.5) splat(p.pos.x + rand(-0.2, 0.2), p.pos.z + rand(-0.2, 0.2), rand(0.12, 0.25), false); } // limping, leaving a trail
         const want = Math.atan2(dx / d, dz / d) + Math.sin(simTime * 2 + p.walkMul * 10) * 0.4;
         p.rotY += wrapA(want - p.rotY) * Math.min(1, dt * 6);
         p.pos.x += Math.sin(p.rotY) * speed * dt; p.pos.z += Math.cos(p.rotY) * speed * dt;
@@ -5177,7 +5288,8 @@ function updatePeds(dt) {
         break;
       }
       case 'fly': {
-        p.vel.y -= 15 * dt; p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.air += p.vel.y * dt; p.rig.body.rotation.x -= dt * 8;
+        p.vel.y -= 15 * dt; p.pos.x += p.vel.x * dt; p.pos.z += p.vel.z * dt; p.air += p.vel.y * dt; p.rig.body.rotation.x -= dt * (4 + (p.seed || 0.5) * 5); p.rig.body.rotation.z += dt * ((p.seed || 0.5) - 0.5) * 6;
+        if (Math.random() < dt * 8 && p.health < 60) blood(p.pos.x, p.pos.y + p.air + 1, p.pos.z, 3);
         collideCircle(p.pos, 0.3, false);
         if (p.air <= 0 && p.vel.y < 0) { p.air = 0; p.vel.set(0, 0, 0); if (p.health > 0) { p.state = 'down'; p.timer = rand(2.5, 5); } else { p.state = 'dead'; p.timer = 0; } }
         break;
@@ -5189,12 +5301,22 @@ function updatePeds(dt) {
       }
       case 'dead': break;
     }
-    if (p.state !== 'dead' && p.state !== 'down' && p.state !== 'fly') { p.rig.body.rotation.x = 0; p.rig.body.position.y = 0; }
-    else if (p.state === 'dead' || p.state === 'down') { p.rig.body.rotation.x = -Math.PI / 2; p.rig.body.position.y = 0.15; }
+    if (p.seed == null) p.seed = Math.random();
+    if (p.state !== 'dead' && p.state !== 'down' && p.state !== 'fly') { p.rig.body.rotation.set(0, 0, 0); p.rig.body.position.y = 0; p.posed = false; }
+    else if (p.state === 'dead' || p.state === 'down') { const sd = p.seed; p.rig.body.rotation.set(sd < 0.5 ? -Math.PI / 2 : Math.PI / 2, 0, (sd - 0.5) * 1.1); p.rig.body.position.y = 0.17; } // face down or face up, a little onto one side
     p.pos.y = heightAt(p.pos.x, p.pos.z) + (p.state === 'fly' ? p.air : 0);
     p.rig.g.position.copy(p.pos); p.rig.g.rotation.y = p.rotY;
     if (!p.remote) { _fs.center.set(p.pos.x, p.pos.y + 1, p.pos.z); p.rig.g.visible = dP < GFX.pedDraw && _frus.intersectsSphere(_fs); } // entity culling
-    if (dP < 120 && p.rig.g.visible) animRig(p.rig, speed, dt, p.state === 'dead' || p.state === 'down' ? null : mode);
+    if (dP < 120 && p.rig.g.visible) {
+      const lying = p.state === 'dead' || p.state === 'down';
+      if (!(lying && p.posed)) animRig(p.rig, speed, dt, lying ? null : mode); // a body that's down holds its heap: no clip resets it
+      if (p.rig.human) { // limbs: windmilling in the air, a heap on the ground, flapping when on fire, thrown out when hit
+        if (p.state === 'fly') ragdoll(p.rig, 'flail', simTime, p.seed);
+        else if (lying) { if (!p.posed) { ragdoll(p.rig, 'crumple', 0, p.seed); p.posed = true; } }
+        else if (p.burn > 0) ragdoll(p.rig, 'burn', simTime, p.seed);
+        else if (p.stagger > 0) ragdoll(p.rig, 'stagger', simTime, p.seed);
+      }
+    }
   }
 }
 
@@ -5627,14 +5749,14 @@ function tick(rdt) {
   if (paused || mapOpen || travelOpen) { drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
-  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); updateArsenal(dt); updateCheats(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
+  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
   PHS.updatePHS(dt, focusPos()); // PHS
   if (PLAZA) PLAZA.update(focusPos(), nightAmount);
   if (PARK && !WORLD.following) PARK.update(dt, focusPos());
   sigT -= rdt; if (sigT <= 0) { sigT = 0.1; updateSignals(); }
-  smoke.update(dt); fire.update(dt);
+  smoke.update(dt); fire.update(dt); NUKE_FX.update(rdt, skyU.horizon.value);
   for (let i = tracers.length - 1; i >= 0; i--) { tracers[i].t -= dt; if (tracers[i].t <= 0) { scene.remove(tracers[i].l); tracers[i].l.geometry.dispose(); tracers.splice(i, 1); } }
   updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap();
   const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); }
@@ -5709,7 +5831,7 @@ let worldReady = false;
   const sp0 = focusPos();
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
-  progress('Warming up the effects…'); await FX.warm(renderer, camera);
+  progress('Warming up the effects…'); await FX.warm(renderer, camera); await NUKE_FX.warm(renderer, camera);
   worldReady = true; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
@@ -5737,7 +5859,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, cheat: { handle: t => CHEAT.handle(t), CH, JET, WW, RW, closeMenus, SCORE }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, cheat: { handle: t => CHEAT.handle(t), CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
@@ -5848,7 +5970,7 @@ initWorld({
   nuke: (x, z) => nukeAt(x, z, false),
   boom: (x, y, z, R) => { const f = focusPos(); if (Math.hypot(x - f.x, z - f.z) < 1500) explosionAt(x, y, z, R, 'net'); },
   collapse: (i, dx, dz) => { const B = BLD[i]; if (B && !B.dead) collapseBuilding(B, dx, dz, 'net'); },
-  ruin: (i, old) => { const B = BLD[i]; if (B && !B.dead) collapseBuilding(B, 0, 1, 'net', old); },
+  ruin: (i, old, age) => { const B = BLD[i]; if (B && !B.dead) { collapseBuilding(B, 0, 1, 'net', old); if (age > 0) B.repairAt = simTime + Math.max(3, REBUILD_S - age); } },
   fell: (x, z, dx, dz) => { const c = propGrid.get(pkey(x, z)) || []; let best = null, bd = 2; for (const p of c) { const d = Math.hypot(p.x - x, p.z - z); if (p.alive && d < bd) { bd = d; best = p; } } if (best) fellProp(best, dx, dz, true); },
   hurtPed: (p, d) => p.damage(d, 'net'), damageCar: (v, d, blast) => damageCar(v, d, 'net', blast),
 });

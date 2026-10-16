@@ -8,7 +8,7 @@
 // applies it; the next snapshot shows the result to everyone. Walk 320 m away and your own town comes back.
 //
 // Destruction. Explosions, collapses and felled trees are events (events/<push>) every game replays; collapsed
-// buildings are also kept in ruins/<index> for 30 minutes so someone joining later sees the same rubble.
+// buildings are also kept in ruins/<index> for 2 minutes (until they rebuild) so someone joining later sees the same rubble.
 //   initWorld(hooks)  updateWorld(dt)  WORLD.following (uid | null)  puppetHurt(p, dmg, by)  puppetCarDamage(v, d, blast)
 import { NET, on, sendEvent, sendCrowd, clearCrowd } from './net.js';
 
@@ -27,7 +27,7 @@ export function initWorld(hooks) {
   on('crowd', c => { WORLD.crowds.set(c.id, { t: c.t, e: c.e, at: performance.now() }); WORLD.stats.recv++; WORLD.stats.bytes += (c.e || '').length; if (c.id === WORLD.following) applyCrowd(c.e); });
   on('crowd:remove', id => { WORLD.crowds.delete(id); if (id === WORLD.following) stopFollowing(); });
   on('event', onEvent);
-  on('ruin', r => H.ruin(r.i, r.old));
+  on('ruin', r => H.ruin(r.i, r.old, r.age));
 }
 export function resetWorld() { stopFollowing(); WORLD.crowds.clear(); WORLD.leading = false; claimed.clear(); }
 

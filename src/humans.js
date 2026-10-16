@@ -214,3 +214,40 @@ export function holdWeapon(r, dirW, o = {}) {
   H.quaternion.setFromUnitVectors(_z, _b);
   r.recoil = Math.max(0, kick - (o.dt ?? 1 / 60) * 8); // decays in time, not per frame
 }
+
+// ---- hurt bodies: limbs posed procedurally on top of the last clip frame (Rocketbox has no ragdoll or death clips).
+//   kind 'flail'   thrown through the air: arms and legs windmilling
+//        'crumple' lying where they fell: knees bent, arms splayed, a different heap for each person (seed)
+//        'burn'    on fire: arms flapping around the head while the legs keep running
+//        'stagger' hit and off balance: arms thrown out
+// Directions are in the body's own frame (+z forward, +x its left, +y up) and turned into world space here.
+const _bq = new THREE.Quaternion(), _bd = new THREE.Vector3();
+function limbs(r) {
+  if (r.limbs) return r.limbs; const n = s => r.inst.getObjectByName(s), B = bones(r);
+  r.limbs = { ...B, lt: n('Bip01_L_Thigh'), lc: n('Bip01_L_Calf'), lft: n('Bip01_L_Foot'), rt: n('Bip01_R_Thigh'), rc: n('Bip01_R_Calf'), rft: n('Bip01_R_Foot') };
+  return r.limbs;
+}
+export function ragdoll(r, kind, t = 0, seed = 0) {
+  if (!r || !r.human) return; const L = limbs(r); if (!L.lu || !L.ru) return;
+  r.g.updateMatrixWorld(true); r.body.getWorldQuaternion(_bq);
+  const aim = (bone, tip, x, y, z) => { if (!bone || !tip) return; _bd.set(x, y, z).normalize().applyQuaternion(_bq); swing(bone, tip, _bd); };
+  const s = seed * 10, S = Math.sin, C = Math.cos, h = k => { const v = Math.sin(seed * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // seeded 0..1
+  if (kind === 'flail') {
+    aim(L.lu, L.lf, 0.75, 0.4 + 0.5 * S(t * 11 + s), 0.4 * C(t * 9 + s)); aim(L.lf, L.lh, 0.45, 0.6 + 0.4 * S(t * 13 + s * 2), 0.6 * S(t * 10 + s));
+    aim(L.ru, L.rf, -0.75, 0.4 + 0.5 * S(t * 10 + s + 2), 0.4 * C(t * 8 + s + 1)); aim(L.rf, L.rh, -0.45, 0.6 + 0.4 * S(t * 12 + s), 0.6 * S(t * 11 + s + 3));
+    aim(L.lt, L.lc, 0.22, -0.7, 0.6 * S(t * 9 + s)); aim(L.lc, L.lft, 0.12, -0.6, -0.5 + 0.5 * S(t * 9 + s + 1.2));
+    aim(L.rt, L.rc, -0.22, -0.7, -0.6 * S(t * 9 + s)); aim(L.rc, L.rft, -0.12, -0.6, -0.5 - 0.5 * S(t * 9 + s + 1.2));
+  } else if (kind === 'crumple') {
+    aim(L.lu, L.lf, 0.9, -0.3 + h(1) * 1.1, -0.4 + h(2) * 0.9); aim(L.lf, L.lh, 0.5 + h(3) * 0.4, -0.2 + h(4) * 0.9, -0.6 + h(5) * 1.2);
+    aim(L.ru, L.rf, -0.9, -0.3 + h(6) * 1.1, -0.4 + h(7) * 0.9); aim(L.rf, L.rh, -0.5 - h(8) * 0.4, -0.2 + h(9) * 0.9, -0.6 + h(10) * 1.2);
+    const bend = h(11) > 0.5; // one knee drawn up, the other leg out
+    aim(L.lt, L.lc, 0.2 + h(12) * 0.3, -0.9, bend ? 0.7 : 0.1); aim(L.lc, L.lft, 0.1, -0.6, bend ? -0.85 : 0.05);
+    aim(L.rt, L.rc, -0.15 - h(13) * 0.3, -0.95, bend ? 0.05 : 0.6); aim(L.rc, L.rft, -0.1, -0.7, bend ? 0.1 : -0.8);
+  } else if (kind === 'burn') {
+    aim(L.lu, L.lf, 0.7, 0.55 + 0.35 * S(t * 14 + s), 0.3 + 0.3 * C(t * 12)); aim(L.lf, L.lh, 0.1, 0.9, 0.3 * S(t * 15 + s));
+    aim(L.ru, L.rf, -0.7, 0.55 + 0.35 * S(t * 13 + s + 1), 0.3 + 0.3 * C(t * 11 + 1)); aim(L.rf, L.rh, -0.1, 0.9, 0.3 * S(t * 16 + s + 2));
+  } else if (kind === 'stagger') {
+    aim(L.lu, L.lf, 0.95, 0.15 + 0.25 * S(t * 7 + s), 0.15); aim(L.lf, L.lh, 0.8, 0.3, 0.4);
+    aim(L.ru, L.rf, -0.95, 0.15 + 0.25 * S(t * 7 + s + 2), 0.15); aim(L.rf, L.rh, -0.8, 0.3, 0.4);
+  }
+}
