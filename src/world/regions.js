@@ -34,6 +34,7 @@ export const REGIONS = [
   { id: 'high-country', name: 'High Country West', district: 'San Diego', x: -4490, z: -5170, col: '#a07a60', tag: 'Ridges and canyons' },
   { id: 'westwood', name: 'Westwood', district: 'San Diego', x: -3925, z: -6440, col: '#80a0b0', tag: 'Webb Park and the west side' },
   { id: 'rolling-hills', name: 'Rolling Hills', district: 'San Diego', x: -5330, z: -3440, col: '#90b070', tag: 'Hills, as advertised' },
+  { id: 'cm-plaza', name: 'Carmel Mountain Plaza', district: 'San Diego', x: -4300, z: -2350, col: '#e05050', tag: 'The AMC, and every store you need' },
   { id: 'carmel-mountain', name: 'Carmel Mountain Ranch', district: 'San Diego', x: -5260, z: -760, col: '#b07a9a', tag: 'The plaza and the 56' },
   { id: 'sabre-springs', name: 'Sabre Springs', district: 'San Diego', x: -4030, z: 1830, col: '#6a90c0', tag: 'Creekside and South Creek' },
   { id: 'penasquitos', name: 'Rancho Peñasquitos', district: 'San Diego', x: -5430, z: 2880, col: '#c0906a', tag: 'Black Mountain\'s shadow' },

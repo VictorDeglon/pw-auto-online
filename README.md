@@ -66,6 +66,26 @@ names claimed one at a time, chat length limits, and so on).
 
 The game also runs on GitHub Pages; only the database has to be on Firebase.
 
+### Launching on Firebase (automatic deploys)
+
+Once steps 1 to 4 are done, every push to `main` can deploy the site and the rules by itself
+([`.github/workflows/firebase.yml`](.github/workflows/firebase.yml)):
+
+1. In the Firebase console, **Project settings → Service accounts → Generate new private key**. That downloads a JSON
+   key. It is a secret: never commit it.
+2. On GitHub, **Settings → Secrets and variables → Actions**:
+   - **Secrets → New repository secret**: name `FIREBASE_SERVICE_ACCOUNT`, value: paste the whole JSON file.
+   - **Variables → New repository variable**: name `FIREBASE_PROJECT`, value: your project id (shown under Project
+     settings → General).
+3. **Actions → Deploy to Firebase → Run workflow** (or push to `main`). When it finishes, the game is live at
+   `https://<project id>.web.app`.
+
+Until the secret and variable exist, the workflow runs and does nothing.
+
+**Hosting bandwidth:** a first visit downloads roughly 100 to 150 MB (people, ground, terrain, music, Poway High). The
+free Spark plan allows 360 MB of hosting downloads a day, about three new players. GitHub Pages (100 GB a month)
+is the better host on a free budget; keep Firebase for the database only, or move to Blaze for hosting.
+
 **Limits on the free plan:** 100 simultaneous connections (20 per server here) and 10 GB of downloads a month. Each
 player sends about 6 small updates a second while moving and nothing while standing still. A few friends playing in
 the evenings fits easily; a busy public server would need the pay-as-you-go Blaze plan (set a budget alert).

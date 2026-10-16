@@ -8,6 +8,9 @@
 //   chat/<push>   = { u, n, m, t }   last hour kept; anyone may delete older messages
 //   feed/<push>   = { u, k, a, b, w, t }  join / leave / kill / death / busted / wreck
 //   hits/<victim uid>/<push> = { u, n, d, w, t }  damage another player dealt you; you apply it and delete it
+//   events/<push> = { u, k, t, ... } shared world events (explosions, collapses, felled trees, hits on shared NPCs)
+//   ruins/<building index> = { u, t, x, z }  buildings that came down (kept 30 minutes, so late joiners see them)
+//   crowd/<uid> = { t, e }           the people and cars a player is running for everyone near them (src/online/world.js)
 // Everything a player holds (name, presence) is removed by the server when their connection drops (onDisconnect).
 import * as FB from '../../vendor/firebase.mjs';
 import { FIREBASE_CONFIG, EMULATOR_PROJECT, SERVERS, MAX_PLAYERS, NAME_RE } from './config.js';
@@ -106,6 +109,7 @@ export async function leave() {
   try {
     if (leaveFeedRef) { await FB.onDisconnect(leaveFeedRef).cancel(); await FB.set(leaveFeedRef, { u: uid, k: 'leave', a: NET.name, t: FB.serverTimestamp() }); }
     await FB.remove(FB.ref(db, `${base}/players/${uid}`));
+    await FB.remove(FB.ref(db, `${base}/crowd/${uid}`)); crowdArmed = false;
     await FB.remove(FB.ref(db, `${base}/names/${NET.name.toLowerCase()}`));
   } catch (e) { console.warn('[net] leave', e); }
   for (const id of NET.players.keys()) emit('player:remove', id);
@@ -137,11 +141,20 @@ function subscribe(base) {
   subs.push(FB.onChildAdded(FB.query(FB.ref(db, `${base}/chat`), FB.limitToLast(40)), s => { const v = s.val(); if (v && v.t >= since) emit('chat', { id: s.key, ...v, mine: v.u === uid }); }));
   subs.push(FB.onChildAdded(FB.query(FB.ref(db, `${base}/feed`), FB.limitToLast(20)), s => { const v = s.val(); if (v && v.t >= NET.joinedAt - 2000) emit('feed', { id: s.key, ...v, mine: v.u === uid }); }));
   subs.push(FB.onChildAdded(FB.ref(db, `${base}/hits/${uid}`), s => { const v = s.val(); FB.remove(s.ref); if (v) emit('hit', v); }));
+  // the shared world
+  subs.push(FB.onChildAdded(FB.query(FB.ref(db, `${base}/events`), FB.limitToLast(30)), s => { const v = s.val(); if (v && v.u !== uid && v.t >= NET.joinedAt - 1500) emit('event', v); }));
+  subs.push(FB.onChildAdded(FB.ref(db, `${base}/ruins`), s => { const v = s.val(); if (v && v.t > serverNow() - RUIN_MS) emit('ruin', { i: +s.key, ...v, old: v.t < NET.joinedAt }); }));
+  const cr = FB.ref(db, `${base}/crowd`), cu = s => { if (s.key !== uid) emit('crowd', { id: s.key, ...s.val() }); };
+  subs.push(FB.onChildAdded(cr, cu), FB.onChildChanged(cr, cu), FB.onChildRemoved(cr, s => emit('crowd:remove', s.key)));
 }
+const RUIN_MS = 30 * 60e3;
 
 // delete chat and feed entries older than an hour (the rules allow anyone to, so the lists don't grow forever)
 async function prune(base) {
   const cut = serverNow() - 3600e3 - 60e3;
+  for (const [k, age] of [['events', 600e3], ['ruins', RUIN_MS]]) {
+    try { const old = await FB.get(FB.query(FB.ref(db, `${base}/${k}`), FB.orderByChild('t'), FB.endAt(serverNow() - age - 60e3))); const ids = []; old.forEach(c => { ids.push(c.key); }); for (const id of ids) await FB.remove(FB.ref(db, `${base}/${k}/${id}`)); } catch (e) { }
+  }
   for (const k of ['chat', 'feed']) {
     try {
       const old = await FB.get(FB.query(FB.ref(db, `${base}/${k}`), FB.orderByChild('t'), FB.endAt(cut)));
@@ -193,5 +206,27 @@ export function sendHit(victim, dmg, weapon) {
   const d = Math.max(1, Math.min(250, Math.round(dmg)));
   FB.push(FB.ref(db, `servers/${NET.server}/hits/${victim}`), { u: NET.uid, n: NET.name, d, w: String(weapon || '').slice(0, 24), t: FB.serverTimestamp() }).catch(e => console.warn('[net] hit', e.message));
 }
+
+// ---- the shared world. k: boom | col | fell | ph (hit a shared ped) | cd (damage a shared car) | claim (took a shared car)
+const EV_NUM = ['x', 'y', 'z', 'R', 'dx', 'dz', 'd', 'i'];
+export function sendEvent(k, data = {}) {
+  if (!NET.server) return;
+  const o = { u: NET.uid, k, t: FB.serverTimestamp() };
+  for (const f of EV_NUM) if (typeof data[f] === 'number' && isFinite(data[f])) o[f] = Math.round(data[f] * 100) / 100;
+  if (data.id) o.id = String(data.id).slice(0, 12); if (data.to) o.to = String(data.to).slice(0, 40); if (data.b) o.b = 1;
+  FB.push(FB.ref(db, `servers/${NET.server}/events`), o).catch(e => console.warn('[net] event', e.message));
+}
+export function setRuin(i, x, z) {
+  if (!NET.server) return;
+  FB.set(FB.ref(db, `servers/${NET.server}/ruins/${i | 0}`), { u: NET.uid, t: FB.serverTimestamp(), x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100 }).catch(() => { });
+}
+let crowdArmed = false;
+export function sendCrowd(e) {
+  if (!NET.server) return;
+  const ref = FB.ref(db, `servers/${NET.server}/crowd/${NET.uid}`);
+  if (!crowdArmed) { crowdArmed = true; FB.onDisconnect(ref).remove().catch(() => { crowdArmed = false; }); }
+  FB.set(ref, { t: FB.serverTimestamp(), e: String(e).slice(0, 12000) }).catch(e => console.warn('[net] crowd', e.message));
+}
+export function clearCrowd() { if (!NET.server) return; FB.remove(FB.ref(db, `servers/${NET.server}/crowd/${NET.uid}`)).catch(() => { }); }
 
 export function serverName(id) { const s = SERVERS.find(s => s.id === id); return s ? s.name : id; }

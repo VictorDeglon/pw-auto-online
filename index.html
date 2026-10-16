@@ -416,7 +416,8 @@ import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
 import { HUMANS, loadHumans, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
-import { NET, on as onNet, sendState, sendHit, feed as netFeed } from './src/online/net.js';
+import { NET, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin } from './src/online/net.js';
+import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
@@ -923,7 +924,7 @@ const chunks = new Map();
 function chunkAt(x, z) {
   const k = Math.floor(x / CHUNK) + ',' + Math.floor(z / CHUNK);
   let c = chunks.get(k);
-  if (!c) { c = { cx: (Math.floor(x / CHUNK) + 0.5) * CHUNK, cz: (Math.floor(z / CHUNK) + 0.5) * CHUNK, wall: [new GB(true), new GB(true), new GB(true), new GB(true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), facade: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } }; chunks.set(k, c); }
+  if (!c) { c = { cx: (Math.floor(x / CHUNK) + 0.5) * CHUNK, cz: (Math.floor(z / CHUNK) + 0.5) * CHUNK, wall: [new GB(true), new GB(true), new GB(true), new GB(true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), facade: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), skirt: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } }; chunks.set(k, c); }
   return c;
 }
 
@@ -1404,6 +1405,30 @@ function ribbon(gb, p, width, off, lift, col, texW) {
     groundTri(gb, R[i * 2], R[i * 2 + 1], R[i * 2 + 2], R[i * 2 + 3], L[i * 2 + 2], L[i * 2 + 3], lift, col, [uw, V[i]], [uw, V[i + 1]], [0, V[i + 1]]);
   }
 }
+// a vertical face hanging off a ribbon's outer edge down into the ground: where the terrain falls away beside a road
+// (the mesh is pushed under every road, and on slopes that pulls the ground next to it down too) the road reads as an
+// embankment instead of a plank floating over a gap
+function skirt(gb, p, off, lift, col, depth = 3.5) {
+  const n = p.length / 2; if (n < 2) return; const E = [], sg = Math.sign(off) || 1; let along = 0;
+  for (let i = 0; i < n; i++) {
+    let tx = 0, tz = 0;
+    if (i > 0) { const dx = p[i * 2] - p[i * 2 - 2], dz = p[i * 2 + 1] - p[i * 2 - 1], l = Math.hypot(dx, dz) || 1; tx += dx / l; tz += dz / l; along += l; }
+    if (i < n - 1) { const dx = p[i * 2 + 2] - p[i * 2], dz = p[i * 2 + 3] - p[i * 2 + 1], l = Math.hypot(dx, dz) || 1; tx += dx / l; tz += dz / l; }
+    const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+    let sc = 1; if (i > 0 && i < n - 1) { const dx = p[i * 2] - p[i * 2 - 2], dz = p[i * 2 + 1] - p[i * 2 - 1], l = Math.hypot(dx, dz) || 1; sc = 1 / Math.max(0.5, (-tz) * (-dz / l) + tx * (dx / l)); }
+    const x = p[i * 2] - tz * off * sc, z = p[i * 2 + 1] + tx * off * sc;
+    E.push(x, z, heightAt(x, z) + lift - 0.05, -tz * sg, tx * sg, along / 3); // a hair under the ribbon edge, so it never shows above it
+  }
+  for (let i = 0; i < n - 1; i += 2) { // 6 m pieces: plenty for a face you mostly see from the side
+    const a = i * 6, b = Math.min(n - 1, i + 2) * 6; ax = E[a], az = E[a + 1], ay = E[a + 2], bx = E[b], bz = E[b + 1], by = E[b + 2];
+    if (Math.max(ay - meshAt(ax + E[a + 3] * 1.2, az + E[a + 4] * 1.2), by - meshAt(bx + E[b + 3] * 1.2, bz + E[b + 4] * 1.2)) < 0.35) continue; // the ground meets the edge here: nothing to hide
+    const nx = (E[a + 3] + E[b + 3]) / 2, nz = (E[a + 4] + E[b + 4]) / 2, ua = E[a + 5], ub = E[b + 5], v = depth / 3;
+    const V = [[ax, ay, az, ua, 0], [bx, by, bz, ub, 0], [bx, by - depth, bz, ub, v], [ax, ay, az, ua, 0], [bx, by - depth, bz, ub, v], [ax, ay - depth, az, ua, v]];
+    // wind it to face outward
+    const ux = bx - ax, uz = bz - az, out = (-uz) * nx + ux * nz > 0; const ord = out ? [0, 2, 1, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
+    for (const k of ord) { const q = V[k]; gb.p.push(q[0], q[1], q[2]); gb.n.push(nx, 0, nz); gb.c.push(col[0], col[1], col[2]); gb.uv.push(q[3], q[4]); }
+  }
+}
 function dashes(gb, p, width, off, lift, col, dash, gap, trim) {
   const n = p.length / 2; let total = 0;
   for (let i = 0; i < n - 1; i++) total += Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]);
@@ -1489,7 +1514,7 @@ function addBuilding(b) {
   const ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) ranges.push([g, a, e]); }
   let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
   const B = { ranges, flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false };
-  B.hp0 = B.hp; BLD.push(B); bldOfPoly.set(poly, B);
+  B.hp0 = B.hp; B.i = BLD.length; BLD.push(B); bldOfPoly.set(poly, B);
 }
 // ---- destruction: every building knows its vertex ranges in the chunk meshes, so it can come down
 const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [];
@@ -1509,20 +1534,23 @@ function blastBuildings(x, z, R, by) {
     if (pip(x, z, f)) d = 0; else for (let i = 0, j = n - 1; i < n; j = i++) { const q = segClosest(x, z, f[j * 2], f[j * 2 + 1], f[i * 2], f[i * 2 + 1]); d = Math.min(d, Math.hypot(q[0] - x, q[1] - z)); }
     if (d > R * 1.6) continue;
     B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6));
-    if (B.hp <= 0) { const dx = B.cx - x, dz = B.cz - z, L = Math.hypot(dx, dz) || 1; collapseBuilding(B, dx / L, dz / L, by); }
+    if (B.hp <= 0 && by === 'net') B.hp = 1;
+    else if (B.hp <= 0) { const dx = B.cx - x, dz = B.cz - z, L = Math.hypot(dx, dz) || 1; collapseBuilding(B, dx / L, dz / L, by); }
     else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
   }
 }
 let PLAZA = null; // Carmel Mountain Plaza storefronts (src/world/plaza.js)
-function collapseBuilding(B, dirx, dirz, by) {
+function collapseBuilding(B, dirx, dirz, by, instant) { // instant: already rubble when you arrived (online ruins)
   if (B.dead) return; B.dead = true; polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
+  if (online && by !== 'net') { sendEvent('col', { i: B.i, dx: dirx, dz: dirz }); setRuin(B.i, B.cx, B.cz); }
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
   for (const [g, a, e] of B.ranges) {
     const m = g._mesh; if (!m) continue; const pos = m.geometry.attributes.position, k = e - a, y0 = new Float32Array(k), x0 = new Float32Array(k), z0 = new Float32Array(k);
     for (let i = 0; i < k; i++) { x0[i] = pos.getX(a + i); y0[i] = pos.getY(a + i); z0[i] = pos.getZ(a + i); }
     anims.push({ pos, a, k, x0, y0, z0 });
   }
-  collapsing.push({ B, t: 0, dur, dirx, dirz, anims });
+  collapsing.push({ B, t: instant ? dur : 0, dur, dirx, dirz, anims });
+  if (instant) return;
   // the building's mass as tumbling blocks, upper floors first
   const f = B.flat, n = f.length / 2; let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   for (let i = 0; i < n; i++) { x0 = Math.min(x0, f[i * 2]); x1 = Math.max(x1, f[i * 2]); z0 = Math.min(z0, f[i * 2 + 1]); z1 = Math.max(z1, f[i * 2 + 1]); }
@@ -1786,6 +1814,7 @@ async function buildWorld() {
     const [ni, t, w, p0] = r; const p = densify(p0, 3); const n = p.length / 2; // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
     const ch = chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1]);
     if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.12, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.12, [0.85, 0.84, 0.8], 3); }
+    { const e = t >= 1 && t <= 5 ? w / 2 + 2.1 : w / 2, lf = t >= 1 && t <= 5 ? 0.12 : 0.14; skirt(ch.skirt, p, e, lf, [0.52, 0.47, 0.4]); skirt(ch.skirt, p, -e, lf, [0.52, 0.47, 0.4]); }
     ribbon(ch.road, p, w, 0, 0.14, t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1], 7);
     if (t <= 3 && w >= 9) {
       dashes(ch.line, p, 0.16, 0.14, 0.18, [0.85, 0.66, 0.12], 1, 0, 9); dashes(ch.line, p, 0.16, -0.14, 0.18, [0.85, 0.66, 0.12], 1, 0, 9);
@@ -1866,9 +1895,9 @@ async function buildWorld() {
     const grp = ch.group; grp.position.set(0, 0, 0); scene.add(grp);
     ch.wall.forEach((gb, i) => { const m = gb.mesh(M.walls[i], true); if (m) grp.add(m); });
     ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true); if (m) grp.add(m); }); ch.roofP = null;
-    { const m = ch.facade.mesh(M.facade, false); if (m) grp.add(m); ch.facade = null; }
-    for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
-      const m = ch[key].mesh(mat, sh); if (m) grp.add(m); ch[key] = null;
+    { const m = ch.facade.mesh(M.facade, false); if (m) { m.userData.lod = 1; grp.add(m); } ch.facade = null; }
+    for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['skirt', M.side, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
+      const m = ch[key].mesh(mat, sh); if (m) { if (LOD_KEYS.has(key)) m.userData.lod = 1; grp.add(m); } ch[key] = null;
     }
     for (const [gi, gb] of ch.roofGs) { const mat = M.terrain[gi]; const m = gb.mesh(mat ? new THREE.MeshStandardMaterial({ map: mat.map, roughness: 0.95 }) : M.roofShingle, true); if (m) grp.add(m); }
     ch.wall = null; ch.roofGs = null;
@@ -2012,9 +2041,20 @@ function updateSignals() {
   }
 }
 // chunk visibility by distance (saves draw calls far away)
+// chunk LOD: whole chunks past the view distance are hidden; past LOD_NEAR the small stuff (sidewalks, lane lines,
+// facade details, pools) goes too, and only chunks near you cast shadows. Most of the draw calls were far detail.
+const LOD_KEYS = new Set(['side', 'line', 'pool', 'poolWall', 'coping', 'skirt']), LOD_NEAR = { potato: 380, low: 520, medium: 680, high: 850, ultra: 1100 }[GFX.id] || 680, SHADOW_NEAR = 520;
 function updateChunkVisibility(fx, fz) {
-  for (const ch of chunks.values()) { const d = hyp(ch.cx - fx, ch.cz - fz); ch.group.visible = d < GFX.view + 400; } // entity culling: whole chunks past the view distance
+  let shown = 0, detail = 0;
+  for (const ch of chunks.values()) {
+    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120; ch.group.visible = vis; if (!vis) continue; shown++;
+    const near = d < LOD_NEAR, sh = d < SHADOW_NEAR; if (near) detail++;
+    if (ch.lodNear === near && ch.shNear === sh) continue; ch.lodNear = near; ch.shNear = sh;
+    for (const m of ch.group.children) { if (m.userData.lod) m.visible = near; if (m.userData.cast === undefined) m.userData.cast = m.castShadow; m.castShadow = m.userData.cast && sh; }
+  }
+  CHUNK_STATS.shown = shown; CHUNK_STATS.detail = detail;
 }
+const CHUNK_STATS = { shown: 0, detail: 0 };
 
 // ============================================================ particles
 class Particles {
@@ -2226,8 +2266,8 @@ const HAIR = ['#2a1d14', '#4b3020', '#8c6a3c', '#c9a46b', '#1a1a1a', '#9a9a9a'];
 function buildRig(o) {
   if (HUMANS.ready && o.human !== false) { // Rocketbox people (src/humans.js); the blocky rig below is the fallback
     const gun = new THREE.Mesh(pedGeo.gun, lam('#1a1a1a')), phone = new THREE.Mesh(pedGeo.phone, lam('#111'));
-    const r = makeHuman((o.avatar && HUMANS.proto.has(o.avatar) && o.avatar) || pickAvatar(o.kind || 'civ'), { gun, phone });
-    if (r) { gun.visible = !!o.gun; phone.visible = false; return r; }
+    const an = (o.avatar && HUMANS.proto.has(o.avatar) && o.avatar) || pickAvatar(o.kind || 'civ'), r = makeHuman(an, { gun, phone });
+    if (r) { r.avatar = an; gun.visible = !!o.gun; phone.visible = false; return r; }
   }
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const hip = 0.92, mk = (geo, mat, x, y, z, parent = body) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
@@ -2581,6 +2621,7 @@ function carCrashed(v, imp) { // a hard hit: wear, and a crunch you can hear get
   if (v.driver === 'player' && (v.crashes === 3 || v.crashes === 6 || v.crashes === 10)) notify(v.crashes === 10 ? 'This car has had it. Top speed down 20%.' : `Something's rattling. Top speed down ${v.crashes * 2}%.`, '', 2200);
 }
 function damageCar(v, amt, by, blast) {
+  if (v.puppet) { if (by !== 'net') puppetCarDamage(v, blast ? amt : amt * 0.2, blast); return; }
   if (v.dead) { if (blast && !v.exploded && amt > 40) primeCar(v, by); return; }
   v.health -= (blast ? amt : amt * 0.2) * (v.armorMul || 1); if (by) v.lastHitBy = by; // cars shrug off crashes; explosions still wreck them
   if (v.health <= 0) { wreckCar(v); if (blast) primeCar(v, by); }
@@ -2702,12 +2743,14 @@ class Ped {
   talk(kind, cls) { if (this.sayCd > 0) return; this.sayCd = 3.5; say(this, pick(LINES[kind]), cls ?? (this.isCop ? 'cop' : (kind === 'greet' ? '' : 'mad'))); }
   knock(vx, vy, vz, dmg, by) {
     if (this.remote) { remoteHurt(this, dmg, by); return; }
+    if (this.puppet) { puppetHurt(this, dmg, by); return; }
     if (this.state === 'dead' || this.invuln) return;
     this.vel.set(vx, vy, vz); this.state = 'fly'; this.timer = 0; this.air = 0.01;
     this.damage(dmg, by, true);
   }
   damage(amt, by, flying) {
     if (this.remote) { remoteHurt(this, amt, by); return; }
+    if (this.puppet) { puppetHurt(this, amt, by); return; }
     if (this.state === 'dead' || this.invuln) return;
     this.health -= amt; blood(this.pos.x, this.pos.y + 1.2, this.pos.z, Math.min(20, amt / 3));
     if (by === 'player') { this.anger = 100; this.target = 'player'; }
@@ -3121,6 +3164,7 @@ function toggleCar() {
     return;
   }
   const v = nearestCar(4.5); if (!v) return;
+  if (v.puppet) { const drv = v.puppet.fl & 4; claimPuppetCar(v); if (drv && !v.dead) v.driver = 'ai'; }
   const stolen = v.driver === 'ai' || v.driver === 'cop' || (v.parked && !v.mine);
   if (v.driver === 'ai' || v.driver === 'cop') {
     const wasCop = v.driver === 'cop';
@@ -3365,6 +3409,7 @@ function explosionAt(x, y, z, R, by) {
   const f = focusPos();
   if (S2) S2.boom(R, 1, Math.hypot(x - f.x, z - f.z)); else sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
   if (by === 'player' || by === 'chain') bus.emit('explosion', { x, z, R });
+  if (online && by === 'player') sendEvent('boom', { x, y, z, R });
   FX.explosion(x, y, z, R); // fireballs, shockwave, flash, embers, smoke column, flying dirt (src/fx/fx.js)
   decal(x, z, R * 0.55, scorchMat);
   blastBuildings(x, z, R, by);
@@ -3556,8 +3601,8 @@ function breakProp(p, v) {
   carCostOfProp(p, v);
 }
 // knock a prop over, falling along (dx, dz)
-function fellProp(p, dx, dz) {
-  p.alive = false; if (p.kind === 'tree') ACH.bump('trees'); else if (p.kind === 'lamp') ACH.bump('lamps');
+function fellProp(p, dx, dz, fromNet) {
+  if (!p.alive) return; p.alive = false; if (online && !fromNet) sendEvent('fell', { x: p.x, z: p.z, dx, dz }); if (p.kind === 'tree') ACH.bump('trees'); else if (p.kind === 'lamp') ACH.bump('lamps');
   const g = new THREE.Group(); g.position.set(p.x, heightAt(p.x, p.z), p.z);
   if (p.kind === 'tree') {
     treeDead.add(p.ti);
@@ -4450,6 +4495,7 @@ function updateVehicles(dt) {
       v.ind = 0; v.hazard = !!(live && v.crashed && v !== player.inCar); v.pfs = fs;
     }
     if (v === player.inCar) { if (v.kerb) { v.kerb = null; v.mode = 'free'; } }
+    else if (v.puppet) { } // a shared car: src/online/world.js moves it
     else if (v.kerb && !v.dead) stepPullOver(v, dt);
     else if (v.mode === 'rail' && v.agent && !v.dead) updateRailCar(v, dt);
     else if (v.ai && !v.dead && v.driver && v.driver !== 'player') v.ai(v, dt); // deputies (src/police.js), mission cars (src/story)
@@ -4816,12 +4862,14 @@ function updateCampus(f) {
 function updateCrowd(dt) {
   const f = focusPos(); updateGroups(dt, f);
   crowdT -= dt; if (crowdT > 0) return; crowdT = 0.6;
+  if (WORLD.following) return;
   tryGroups(f); tryCars(f); updateCampus(f);
 }
 
 // ============================================================ police manager
 function updatePopulation(dt) {
   trafficT -= dt; if (trafficT > 0) return; trafficT = 0.25;
+  if (WORLD.following) return; // the leader's people and cars are shown instead (src/online/world.js)
   const f = focusPos();
   const hf = hour < 5 || hour >= 23 ? 0.45 : (hour >= 7 && hour < 9) || (hour >= 16 && hour < 18.5) ? 1.15 : 1;
   const wantCars = Math.round(TRAFFIC_N * hf * (1 - nightAmount * 0.25)), wantPeds = Math.round(GFX.peds * (1 - nightAmount * 0.5) * (1 - weather.rain * 0.45));
@@ -5085,7 +5133,7 @@ function tick(rdt) {
   timeScale = player.dead ? 0.35 : 1;
   const dt = rdt * timeScale; simTime += dt;
   updatePlayer(dt); updateArsenal(dt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
-  updatePeds(dt); updateCrowd(dt); if (online) updateRemotes(dt); updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
+  updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
   PHS.updatePHS(dt, focusPos()); // PHS
   if (PLAZA) PLAZA.update(focusPos(), nightAmount);
@@ -5155,7 +5203,7 @@ let worldReady = false;
     LINES, buildRig, buildCar, equipGuns, showGun, lam, boxG, canvasTex, heliLight, M, save, persist, weather, setWeather, setWaypoint, clearWaypoint, clock, cam, bus,
   });
   Object.defineProperties(ctx, {
-    simTime: { get: () => simTime }, nightAmount: { get: () => nightAmount }, paused: { get: () => paused }, running: { get: () => running },
+    sfx2: { get: () => S2 }, simTime: { get: () => simTime }, nightAmount: { get: () => nightAmount }, paused: { get: () => paused }, running: { get: () => running },
     hour: { get: () => hour, set: h => { hour = h; } }, siren: { get: () => siren }, job: { get: () => job }, mapOpen: { get: () => mapOpen },
     spawnPt: { get: () => spawnPt }, HOSPITAL: { get: () => HOSPITAL }, SHERIFF: { get: () => SHERIFF },
   });
@@ -5192,7 +5240,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
@@ -5220,7 +5268,7 @@ function beginPlay() {
   if (player.inCar && radio.on) radioPlay(false);
 }
 function startOffline() {
-  if (online) { SHELL.leaveServer(); clearRemotes(); online = false; }
+  if (online) { SHELL.leaveServer(); clearRemotes(); resetWorld(); online = false; }
   const was = running; beginPlay(); $('pausesrv').textContent = 'FREE ROAM';
   if (was) return;
   if (hadSave && save.player) notify(`Welcome back to Poway. Progress restored: <b>$${Math.round(save.money).toLocaleString()}</b>, ${clock.label()}.`, 'green', 6000);
@@ -5228,7 +5276,7 @@ function startOffline() {
   if (save.rep < -60) notify(`Locals remember you. Reputation: ${repLabel()}.`, 'red', 7000);
 }
 function startOnline(sid, name) {
-  clearRemotes(); online = true; lastHit = null;
+  clearRemotes(); resetWorld(); online = true; lastHit = null;
   ACH.addTo('servers', sid);
   beginPlay(); SHELL.serverBadge(); $('pausesrv').textContent = NET.server ? name.toUpperCase() : 'ONLINE';
   if (job) { job = null; jobBeam.visible = false; $('job').hidden = true; }
@@ -5236,7 +5284,7 @@ function startOnline(sid, name) {
   notify(`You're on <b>${sid.replace(/^./, c => c.toUpperCase())}</b> as <b>${name}</b>. Other players show on the map. <b>Enter</b> to chat, hold <b>Tab</b> for the player list.`, 'green', 8000);
 }
 async function toMenu(screen) {
-  if (online) { await SHELL.leaveServer(); clearRemotes(); online = false; }
+  if (online) { await SHELL.leaveServer(); clearRemotes(); resetWorld(); online = false; }
   persist(); running = false; if (paused) { paused = false; $('pause').classList.remove('show'); }
   if (document.pointerLockElement) document.exitPointerLock();
   showHud(false); radioStop(); if (engine) engine.g.gain.value = 0;
@@ -5276,6 +5324,23 @@ bus.on('player:died', ({ kind, src }) => {
   lastHit = null; sendState(netState());
 });
 initRemotes();
+initWorld({
+  focus: () => focusPos(), peds: () => peds, vehicles: () => vehicles, playerCar: () => player.inCar, notify,
+  avatarIndex: a => a || '', avatarName: a => a || null, carTypeIndex: t => Object.keys(CAR).indexOf(t), carTypeName: i => Object.keys(CAR)[i] || null,
+  modelIndex: (t, m) => Math.max(0, CAR[t].model.indexOf(m)), modelName: (t, i) => CAR[t].model[i] || CAR[t].model[0],
+  makePuppetPed: (x, z, avatar) => { const p = new Ped(x, z, { look: { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; return p; },
+  makePuppetCar: (type, x, z, r, tint, model) => { const v = new Vehicle(type, x, z, r, tint, model); v.keep = true; v.mode = 'puppet'; settleCar(v); return v; },
+  settle: (v, dt) => settleCar(v, dt), wreck: v => wreckCar(v),
+  clearAmbient: () => { // stop running our own town here: the leader's people and cars take over
+    for (const p of peds.slice()) if (!p.remote && !p.puppet && !p.isCop && !p.ai && !p.keep && !p.story) p.remove();
+    for (const v of vehicles.slice()) if (!v.puppet && !v.mine && !v.keep && !v.isCop && !v.ownedId && !v.dispatched && v !== player.inCar && !v.story) v.remove();
+  },
+  boom: (x, y, z, R) => { const f = focusPos(); if (Math.hypot(x - f.x, z - f.z) < 1500) explosionAt(x, y, z, R, 'net'); },
+  collapse: (i, dx, dz) => { const B = BLD[i]; if (B && !B.dead) collapseBuilding(B, dx, dz, 'net'); },
+  ruin: (i, old) => { const B = BLD[i]; if (B && !B.dead) collapseBuilding(B, 0, 1, 'net', old); },
+  fell: (x, z, dx, dz) => { const c = propGrid.get(pkey(x, z)) || []; let best = null, bd = 2; for (const p of c) { const d = Math.hypot(p.x - x, p.z - z); if (p.alive && d < bd) { bd = d; best = p; } } if (best) fellProp(best, dx, dz, true); },
+  hurtPed: (p, d) => p.damage(d, 'net'), damageCar: (v, d, blast) => damageCar(v, d, 'net', blast),
+});
 SHELL.initShell({
   THREE, gfx: GFX, ready: () => worldReady, state: () => netState(),
   startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin,

@@ -7,22 +7,24 @@
 export function createPost(THREE, renderer, camera, level = 2) {
   const size = new THREE.Vector2();
   let rt = null;
+  // ink reads the depth texture, and a multisampled target's depth isn't reliably resolved into one: no MSAA then
+  // (the outlines hide most of the jaggies anyway); clean mode keeps 4x MSAA
   function makeTarget() {
     renderer.getDrawingBufferSize(size);
-    const t = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: renderer.capabilities.isWebGL2 ? 4 : 0 });
+    const t = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: renderer.capabilities.isWebGL2 && level < 2 ? 4 : 0 });
     t.depthTexture = new THREE.DepthTexture(size.x, size.y); t.depthTexture.type = THREE.UnsignedIntType;
     return t;
   }
   const U = {
     tCol: { value: null }, tDep: { value: null }, uRes: { value: new THREE.Vector2() }, uTime: { value: 0 },
-    uNear: { value: camera.near }, uFar: { value: camera.far }, uExp: { value: 1 }, uInk: { value: 1 }, uFx: { value: 1 }, uNight: { value: 0 },
+    uNear: { value: camera.near }, uFar: { value: camera.far }, uExp: { value: 1 }, uInk: { value: 1 }, uFx: { value: 1 }, uNight: { value: 0 }, uDbg: { value: 0 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms: U, depthTest: false, depthWrite: false,
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
     fragmentShader: /* glsl */`
       precision highp float;
-      uniform sampler2D tCol, tDep; uniform vec2 uRes; uniform float uTime, uNear, uFar, uExp, uInk, uFx, uNight; varying vec2 vUv;
+      uniform sampler2D tCol, tDep; uniform vec2 uRes; uniform float uTime, uNear, uFar, uExp, uInk, uFx, uNight, uDbg; varying vec2 vUv;
       float lin(vec2 uv){ float d = texture2D(tDep, uv).x; float z = d * 2. - 1.; return 2. * uNear * uFar / (uFar + uNear - z * (uFar - uNear)); }
       vec3 aces(vec3 x){ // three.js ACESFilmicToneMapping
         const mat3 I = mat3(.59719, .07600, .02840, .35458, .90834, .13383, .04823, .01566, .83777);
@@ -44,30 +46,33 @@ export function createPost(THREE, renderer, camera, level = 2) {
           float d0 = lin(vUv);
           if (d0 < 160.) {
             float dl = lin(vUv - vec2(px.x, 0.)), dr = lin(vUv + vec2(px.x, 0.)), dd = lin(vUv - vec2(0., px.y)), du = lin(vUv + vec2(0., px.y));
-            float e = max(max(abs(dl - d0), abs(dr - d0)), max(abs(dd - d0), abs(du - d0))) / max(d0, 1.);
-            ink = smoothstep(.04, .14, e) * (1. - smoothstep(60., 160., d0)) * uInk;
+            // the depth Laplacian: ~0 on any flat or tilted surface (ground seen at a grazing angle, a wall, a curved
+            // torso), large only where depth jumps. Outline the nearer side only, so lines are one pixel and sit on
+            // the object in front.
+            float lap = (dl + dr + dd + du - 4. * d0) / max(d0, 1.);
+            ink = smoothstep(.06, .2, lap) * (1. - smoothstep(60., 160., d0)) * uInk;
           }
         }
-        vec3 t = aces(col);
-        // grade: saturation, split tone, gentle cel banding, contrast
+        vec3 t = srgb(aces(col));
+        // grade, in display space where small offsets look the same in the darks as in the lights
         float l = dot(t, vec3(.2126, .7152, .0722));
-        t = mix(vec3(l), t, 1.14);
-        t += mix(vec3(-.012, .006, .03), vec3(.035, .016, -.02), smoothstep(.15, .75, l)) * (1. - uNight * .5);
-        vec3 band = floor(t * 7. + .5) / 7.; t = mix(t, band, .1 * uFx);
-        t = clamp((t - .5) * 1.05 + .5, 0., 1.);
-        t *= 1. - ink * .75;
-        t *= 1. - uFx * .32 * smoothstep(.08, .55, r2 * 1.6); // vignette
-        t = srgb(t);
+        t = mix(vec3(l), t, 1. + .1 * uFx);                                                        // a little more colour
+        t += mix(vec3(-.006, .002, .014), vec3(.02, .01, -.012), smoothstep(.2, .8, l)) * uFx * (1. - uNight * .5); // cool shadows, warm lights
+        t = clamp((t - .5) * (1. + .04 * uFx) + .5, 0., 1.);
+        vec3 band = floor(t * 8. + .5) / 8.; t = mix(t, band, .08 * uFx);                          // a hint of cel shading
+        t *= 1. - ink * .6;
+        t *= 1. - uFx * .18 * smoothstep(.12, .6, r2 * 1.6); // vignette
         t += (h(vUv * uRes) - .5) * .035 * uFx; // grain, after the curve so it reads in the darks too
         gl_FragColor = vec4(t, 1.);
+        if (uDbg > 0.) { float d0 = lin(vUv), dr = lin(vUv + vec2(px.x, 0.)); gl_FragColor = vec4(d0 / 50., abs(dr - d0) / max(d0, 1.) * 10., texture2D(tDep, vUv).x, 1.); }
       }`,
   });
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
   const pscene = new THREE.Scene(); pscene.add(quad); const pcam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  function setLevel(n) { level = n; U.uInk.value = n >= 2 ? 1 : 0; U.uFx.value = n >= 1 ? 1 : 0; if (!n && rt) { rt.dispose(); rt = null; } }
+  function setLevel(n) { const msaa = (level < 2) !== (n < 2); level = n; U.uInk.value = n >= 2 ? 1 : 0; U.uFx.value = n >= 1 ? 1 : 0; if ((!n || msaa) && rt) { rt.dispose(); rt = null; } }
   setLevel(level);
   return {
-    get level() { return level; }, setLevel,
+    get level() { return level; }, setLevel, U,
     render(scene, cam, night = 0) {
       if (!level) { renderer.render(scene, cam); return; }
       renderer.getDrawingBufferSize(size);
