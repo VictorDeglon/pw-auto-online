@@ -416,7 +416,7 @@ import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
 import { HUMANS, loadHumans, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
-import { NET, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin } from './src/online/net.js';
+import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
@@ -647,8 +647,9 @@ let ROADS = null; // src/world/roadsurface.js: the built surface (crowned asphal
 // exists, the mesh itself (so feet, wheels, grass and houses sit on the ground you see, not on a smooth function the
 // 12.8 m triangles only approximate); before that, the road bed / terrain the mesh is built from
 let MESH_READY = false;
+const ROAD_TOP = 0.03; // asphalt sits this far above the ground mesh (the road IS the ground; this just keeps it on top)
 function heightAt(x, z) {
-  if (MESH_READY && !(ROADS && ROADS.onRoad(x, z, 0.3))) { const g = meshAt(x, z); if (g !== null) return g; }
+  if (MESH_READY) { const g = meshAt(x, z); if (g !== null) return g + (ROADS && ROADS.onRoad(x, z, 0) ? ROAD_TOP : 0); }
   return builtAt(x, z);
 }
 function builtAt(x, z) {
@@ -908,9 +909,10 @@ function tri(gb, a, b, c, ca, cb, cc, ua, ub, uc, hx, hy, hz) {
   if (gb.uv) gb.uv.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
 }
 // ground-hugging triangle: y per vertex from the terrain + lift; uv optional (per vertex [u,v])
+function drapeAt(x, z) { const g = MESH_READY ? meshAt(x, z) : null; return g !== null ? g : builtAt(x, z); }
 function groundTri(gb, ax, az, bx, bz, cx, cz, lift, col, ua, ub, uc) {
   if ((bz - az) * (cx - ax) - (bx - ax) * (cz - az) < 0) { let t = bx; bx = cx; cx = t; t = bz; bz = cz; cz = t; t = ub; ub = uc; uc = t; }
-  const ay = heightAt(ax, az) + lift, by = heightAt(bx, bz) + lift, cy = heightAt(cx, cz) + lift;
+  const ay = drapeAt(ax, az) + lift, by = drapeAt(bx, bz) + lift, cy = drapeAt(cx, cz) + lift;
   gb.p.push(ax, ay, az, bx, by, bz, cx, cy, cz);
   const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
   let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
@@ -924,7 +926,7 @@ const chunks = new Map();
 function chunkAt(x, z) {
   const k = Math.floor(x / CHUNK) + ',' + Math.floor(z / CHUNK);
   let c = chunks.get(k);
-  if (!c) { c = { cx: (Math.floor(x / CHUNK) + 0.5) * CHUNK, cz: (Math.floor(z / CHUNK) + 0.5) * CHUNK, wall: [new GB(true), new GB(true), new GB(true), new GB(true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), facade: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), skirt: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } }; chunks.set(k, c); }
+  if (!c) { c = { cx: (Math.floor(x / CHUNK) + 0.5) * CHUNK, cz: (Math.floor(z / CHUNK) + 0.5) * CHUNK, wall: [new GB(true), new GB(true), new GB(true), new GB(true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), facade: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } }; chunks.set(k, c); }
   return c;
 }
 
@@ -1405,30 +1407,6 @@ function ribbon(gb, p, width, off, lift, col, texW) {
     groundTri(gb, R[i * 2], R[i * 2 + 1], R[i * 2 + 2], R[i * 2 + 3], L[i * 2 + 2], L[i * 2 + 3], lift, col, [uw, V[i]], [uw, V[i + 1]], [0, V[i + 1]]);
   }
 }
-// a vertical face hanging off a ribbon's outer edge down into the ground: where the terrain falls away beside a road
-// (the mesh is pushed under every road, and on slopes that pulls the ground next to it down too) the road reads as an
-// embankment instead of a plank floating over a gap
-function skirt(gb, p, off, lift, col, depth = 3.5) {
-  const n = p.length / 2; if (n < 2) return; const E = [], sg = Math.sign(off) || 1; let along = 0;
-  for (let i = 0; i < n; i++) {
-    let tx = 0, tz = 0;
-    if (i > 0) { const dx = p[i * 2] - p[i * 2 - 2], dz = p[i * 2 + 1] - p[i * 2 - 1], l = Math.hypot(dx, dz) || 1; tx += dx / l; tz += dz / l; along += l; }
-    if (i < n - 1) { const dx = p[i * 2 + 2] - p[i * 2], dz = p[i * 2 + 3] - p[i * 2 + 1], l = Math.hypot(dx, dz) || 1; tx += dx / l; tz += dz / l; }
-    const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
-    let sc = 1; if (i > 0 && i < n - 1) { const dx = p[i * 2] - p[i * 2 - 2], dz = p[i * 2 + 1] - p[i * 2 - 1], l = Math.hypot(dx, dz) || 1; sc = 1 / Math.max(0.5, (-tz) * (-dz / l) + tx * (dx / l)); }
-    const x = p[i * 2] - tz * off * sc, z = p[i * 2 + 1] + tx * off * sc;
-    E.push(x, z, heightAt(x, z) + lift - 0.05, -tz * sg, tx * sg, along / 3); // a hair under the ribbon edge, so it never shows above it
-  }
-  for (let i = 0; i < n - 1; i += 2) { // 6 m pieces: plenty for a face you mostly see from the side
-    const a = i * 6, b = Math.min(n - 1, i + 2) * 6, ax = E[a], az = E[a + 1], ay = E[a + 2], bx = E[b], bz = E[b + 1], by = E[b + 2];
-    if (Math.max(ay - meshAt(ax + E[a + 3] * 1.2, az + E[a + 4] * 1.2), by - meshAt(bx + E[b + 3] * 1.2, bz + E[b + 4] * 1.2)) < 0.35) continue; // the ground meets the edge here: nothing to hide
-    const nx = (E[a + 3] + E[b + 3]) / 2, nz = (E[a + 4] + E[b + 4]) / 2, ua = E[a + 5], ub = E[b + 5], v = depth / 3;
-    const V = [[ax, ay, az, ua, 0], [bx, by, bz, ub, 0], [bx, by - depth, bz, ub, v], [ax, ay, az, ua, 0], [bx, by - depth, bz, ub, v], [ax, ay - depth, az, ua, v]];
-    // wind it to face outward
-    const ux = bx - ax, uz = bz - az, out = (-uz) * nx + ux * nz > 0; const ord = out ? [0, 2, 1, 3, 5, 4] : [0, 1, 2, 3, 4, 5];
-    for (const k of ord) { const q = V[k]; gb.p.push(q[0], q[1], q[2]); gb.n.push(nx, 0, nz); gb.c.push(col[0], col[1], col[2]); gb.uv.push(q[3], q[4]); }
-  }
-}
 function dashes(gb, p, width, off, lift, col, dash, gap, trim) {
   const n = p.length / 2; let total = 0;
   for (let i = 0; i < n - 1; i++) total += Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]);
@@ -1682,11 +1660,11 @@ function buildSigns() {
     const hx = Math.sin(heading), hz = Math.cos(heading); const rx = hz, rz = -hx; // right of travel
     const sx = x + rx * (w / 2 + 1.1), sz = z + rz * (w / 2 + 1.1); const y = heightAt(sx, sz);
     if (signOk(sx, sz)) { signQuad(sx, y + 2.0, sz, -hx, -hz, 0.75, 0.75, stopR); signPoles.push(sx, y, sz, 2.4); }
-    const bxp = x - hx * 1.5, bzp = z - hz * 1.5; bar(chunkAt(x, z).line, bxp, bzp, rx, rz, w * 0.45, 0.5, 0.17, [0.92, 0.92, 0.9]);
+    const bxp = x - hx * 1.5, bzp = z - hz * 1.5; bar(chunkAt(x, z).line, bxp, bzp, rx, rz, w * 0.45, 0.5, 0.06, [0.92, 0.92, 0.9]);
   }
   for (const [x, z, ang, w] of (D.crossings || [])) { // zebra across the road
     const tx = Math.cos(ang), tz = Math.sin(ang), nx = -tz, nz = tx; const gb = chunkAt(x, z).line;
-    for (let s = -w / 2 + 0.5; s < w / 2 - 0.4; s += 1.1) bar(gb, x + nx * s, z + nz * s, tx, tz, 2.4, 0.55, 0.17, [0.93, 0.93, 0.9]);
+    for (let s = -w / 2 + 0.5; s < w / 2 - 0.4; s += 1.1) bar(gb, x + nx * s, z + nz * s, tx, tz, 2.4, 0.55, 0.06, [0.93, 0.93, 0.9]);
   }
   // street name blades at intersections where two or more named streets meet
   for (let n = 0; n < nodeCount; n++) {
@@ -1761,8 +1739,7 @@ async function buildWorld() {
   const inZ = new Uint8Array(HGW * HGH); // coarse vertices inside the detail core
   MESHG = new Float32Array(HGW * HGH);
   if (ZH) for (let J = 0; J < HGH; J++) for (let I = 0; I < HGW; I++) { aerInv(I * CELLPX, J * CELLPX, _tmpA); inZ[J * HGW + I] = inCore(_tmpA[0], _tmpA[1]) ? 1 : 0; }
-  for (let J = 0; J < HGH; J++) for (let I = 0; I < HGW; I++) { aerInv(I * CELLPX, J * CELLPX, _tmpA); MESHG[J * HGW + I] = heightAt(_tmpA[0], _tmpA[1]) - (inZ[J * HGW + I] ? 0.35 : 0) - (ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1]) : 0); }
-  clampUnderRoads(MESHG, HGW, HGH, (i, j, out) => aerInv(i * CELLPX, j * CELLPX, out), 12.8);
+  for (let J = 0; J < HGH; J++) for (let I = 0; I < HGW; I++) { aerInv(I * CELLPX, J * CELLPX, _tmpA); MESHG[J * HGW + I] = heightAt(_tmpA[0], _tmpA[1]) - (inZ[J * HGW + I] ? 0.35 : 0); } // roads are part of the ground: the mesh IS the road bed (no carving under them)
   for (let cj = 0; cj < nchz; cj++) for (let ci = 0; ci < nchx; ci++) {
     const i0 = ci * cellsPer, j0 = cj * cellsPer, i1 = Math.min(HGW - 1, i0 + cellsPer), j1 = Math.min(HGH - 1, j0 + cellsPer);
     if (i1 <= i0 || j1 <= j0) continue;
@@ -1783,8 +1760,7 @@ async function buildWorld() {
     progress('Sculpting the detail zone…'); await tick();
     const TP = ZONE.tilePx, cells = TP / ZCELL;
     ZMN = ZONE.tiles * cells + 1; ZMESH = new Float32Array(ZMN * ZMN);
-    for (let j = 0; j < ZMN; j++) for (let i = 0; i < ZMN; i++) { zoneInv(ZONE.core0 + i * ZCELL, ZONE.core0 + j * ZCELL, _tmpA); ZMESH[j * ZMN + i] = heightAt(_tmpA[0], _tmpA[1]) - (ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1]) : 0); }
-    clampUnderRoads(ZMESH, ZMN, ZMN, (i, j, out) => zoneInv(ZONE.core0 + i * ZCELL, ZONE.core0 + j * ZCELL, out), 4);
+    for (let j = 0; j < ZMN; j++) for (let i = 0; i < ZMN; i++) { zoneInv(ZONE.core0 + i * ZCELL, ZONE.core0 + j * ZCELL, _tmpA); ZMESH[j * ZMN + i] = heightAt(_tmpA[0], _tmpA[1]); }
     for (let tj = 0; tj < ZONE.tiles; tj++) for (let ti = 0; ti < ZONE.tiles; ti++) {
       const W = cells + 1, pos = new Float32Array(W * W * 3), uv = new Float32Array(W * W * 2), idx = [];
       for (let j = 0; j <= cells; j++) for (let i = 0; i <= cells; i++) {
@@ -1813,13 +1789,12 @@ async function buildWorld() {
   D.roads.forEach((r, ri) => {
     const [ni, t, w, p0] = r; const p = densify(p0, 3); const n = p.length / 2; // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
     const ch = chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1]);
-    if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.12, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.12, [0.85, 0.84, 0.8], 3); }
-    { const e = t >= 1 && t <= 5 ? w / 2 + 2.1 : w / 2, lf = t >= 1 && t <= 5 ? 0.12 : 0.14; skirt(ch.skirt, p, e, lf, [0.52, 0.47, 0.4]); skirt(ch.skirt, p, -e, lf, [0.52, 0.47, 0.4]); }
-    ribbon(ch.road, p, w, 0, 0.14, t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1], 7);
+    if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.045, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.045, [0.85, 0.84, 0.8], 3); }
+    ribbon(ch.road, p, w, 0, ROAD_TOP, t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1], 7);
     if (t <= 3 && w >= 9) {
-      dashes(ch.line, p, 0.16, 0.14, 0.18, [0.85, 0.66, 0.12], 1, 0, 9); dashes(ch.line, p, 0.16, -0.14, 0.18, [0.85, 0.66, 0.12], 1, 0, 9);
-      if (w >= 13) { dashes(ch.line, p, 0.14, w * 0.25, 0.18, [0.85, 0.85, 0.82], 3, 6, 9); dashes(ch.line, p, 0.14, -w * 0.25, 0.18, [0.85, 0.85, 0.82], 3, 6, 9); }
-    } else if (t === 4 && w >= 8) dashes(ch.line, p, 0.12, 0, 0.18, [0.8, 0.62, 0.15], 2.5, 5, 10);
+      dashes(ch.line, p, 0.16, 0.14, 0.06, [0.85, 0.66, 0.12], 1, 0, 9); dashes(ch.line, p, 0.16, -0.14, 0.06, [0.85, 0.66, 0.12], 1, 0, 9);
+      if (w >= 13) { dashes(ch.line, p, 0.14, w * 0.25, 0.06, [0.85, 0.85, 0.82], 3, 6, 9); dashes(ch.line, p, 0.14, -w * 0.25, 0.06, [0.85, 0.85, 0.82], 3, 6, 9); }
+    } else if (t === 4 && w >= 8) dashes(ch.line, p, 0.12, 0, 0.06, [0.8, 0.62, 0.15], 2.5, 5, 10);
     const bb = bbox(p0); mapRoads.push({ t, w, p: p0, name: NAMES[ni] || '' }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', ri);
     for (let k = 0; k < p0.length / 2 - 1; k++) {
       const mx = Math.min(p0[k * 2], p0[k * 2 + 2]), Mx = Math.max(p0[k * 2], p0[k * 2 + 2]), mz = Math.min(p0[k * 2 + 1], p0[k * 2 + 3]), Mz = Math.max(p0[k * 2 + 1], p0[k * 2 + 3]);
@@ -1881,7 +1856,7 @@ async function buildWorld() {
       };
       try {
         NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas });
-        NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: offLimits });
+        NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
       } catch (e) { console.error('[nature] cover map', e); }
     }
     NATURE.veg.build();
@@ -1896,7 +1871,7 @@ async function buildWorld() {
     ch.wall.forEach((gb, i) => { const m = gb.mesh(M.walls[i], true); if (m) grp.add(m); });
     ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true); if (m) grp.add(m); }); ch.roofP = null;
     { const m = ch.facade.mesh(M.facade, false); if (m) { m.userData.lod = 1; grp.add(m); } ch.facade = null; }
-    for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['skirt', M.side, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
+    for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
       const m = ch[key].mesh(mat, sh); if (m) { if (LOD_KEYS.has(key)) m.userData.lod = 1; grp.add(m); } ch[key] = null;
     }
     for (const [gi, gb] of ch.roofGs) { const mat = M.terrain[gi]; const m = gb.mesh(mat ? new THREE.MeshStandardMaterial({ map: mat.map, roughness: 0.95 }) : M.roofShingle, true); if (m) grp.add(m); }
@@ -2043,7 +2018,7 @@ function updateSignals() {
 // chunk visibility by distance (saves draw calls far away)
 // chunk LOD: whole chunks past the view distance are hidden; past LOD_NEAR the small stuff (sidewalks, lane lines,
 // facade details, pools) goes too, and only chunks near you cast shadows. Most of the draw calls were far detail.
-const LOD_KEYS = new Set(['side', 'line', 'pool', 'poolWall', 'coping', 'skirt']), LOD_NEAR = { potato: 380, low: 520, medium: 680, high: 850, ultra: 1100 }[GFX.id] || 680, SHADOW_NEAR = 520;
+const LOD_KEYS = new Set(['side', 'line', 'pool', 'poolWall', 'coping']), LOD_NEAR = { potato: 380, low: 520, medium: 680, high: 850, ultra: 1100 }[GFX.id] || 680, SHADOW_NEAR = 520;
 function updateChunkVisibility(fx, fz) {
   let shown = 0, detail = 0;
   for (const ch of chunks.values()) {
@@ -5240,7 +5215,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
@@ -5254,7 +5229,8 @@ function netState() {
 }
 function netTick(rdt) {
   const f = focusPos(); _npT += rdt;
-  if (_npT >= 0.16) { _spd = Math.hypot(f.x - _np.x, f.z - _np.z) / _npT; _np.copy(f); _npT = 0; sendState(netState()); } // ~6 updates a second
+  if (_npT >= (HOME.open ? 0.066 : 0.16)) { _spd = Math.hypot(f.x - _np.x, f.z - _np.z) / _npT; _np.copy(f); _npT = 0; sendState(netState()); } // ~6 updates a second (15 with the home server)
+  if (HOME.open && !player.dead && Math.round(player.health) !== Math.round(homeHp)) { homeHp = player.health; HOME.send({ t: 'hp', h: Math.round(player.health) }); }
   badgeT -= rdt; if (badgeT <= 0) { badgeT = 1; SHELL.serverBadge(); }
 }
 const HELP_OFF = $('helpline').innerHTML;
@@ -5276,7 +5252,7 @@ function startOffline() {
   if (save.rep < -60) notify(`Locals remember you. Reputation: ${repLabel()}.`, 'red', 7000);
 }
 function startOnline(sid, name) {
-  clearRemotes(); resetWorld(); online = true; lastHit = null;
+  clearRemotes(); resetWorld(); online = true; lastHit = null; homeHp = 100; connectHome(sid, name);
   ACH.addTo('servers', sid);
   beginPlay(); SHELL.serverBadge(); $('pausesrv').textContent = NET.server ? name.toUpperCase() : 'ONLINE';
   if (job) { job = null; jobBeam.visible = false; $('job').hidden = true; }
@@ -5315,6 +5291,17 @@ onNet('hit', h => {
   if (player.dead) return;
   if (Math.random() < 0.4) notify(`<b>${String(h.n).replace(/[<>&]/g, '')}</b> hit you (${String(h.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800);
 });
+// with the home server (server/): it owns health. It sends ours whenever another player hits us or it refuses a change.
+let homeHp = 100;
+onNet('hp', m => {
+  if (!online) return; homeHp = m.h;
+  if (m.by) { lastHit = { name: m.by, w: m.w, t: simTime }; if (m.h > 0 && Math.random() < 0.4) notify(`<b>${String(m.by).replace(/[<>&]/g, '')}</b> hit you (${String(m.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800); }
+  if (player.dead) return;
+  player.health = m.h; if (m.h <= 0) die('wasted', 'pvp');
+});
+onNet('snap', m => { if (online && !player.inCar) { player.pos.set(m.x, m.y, m.z); } });
+onNet('home', on => { if (online) notify(on ? 'Connected to the game server: health and positions are server-checked.' : 'Game server connection lost; playing on Firebase only.', on ? 'green' : '', 3000); });
+bus.on('player:respawn', () => { if (online && HOME.open) { HOME.send({ t: 'respawn' }); homeHp = 100; } });
 onNet('feed', f => { if (online && f.k === 'kill' && f.a === NET.name && f.b !== NET.name) ACH.bump('pvpKills'); });
 bus.on('player:died', ({ kind, src }) => {
   if (!online) return;
