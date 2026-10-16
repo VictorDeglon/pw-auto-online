@@ -10,6 +10,7 @@ import { NET, initNet, watchServers, ping, join, leave, sendChat, on as onNet, s
 import { SERVERS, MAX_PLAYERS } from '../online/config.js';
 import { HUMANS, skinList, skinLabel, skinRole, ensureAvatar, makeHuman, animHuman } from '../humans.js';
 import { CATEGORIES } from '../people.js';
+import { ACHIEVEMENTS, renderAchievements, achievementCount, bump as achBump } from './achievements.js';
 import { PRESETS, ORDER, saveGfx } from '../gfx.js';
 import { remoteList, colorOf } from '../online/remote.js';
 
@@ -55,7 +56,7 @@ export function showMenu(scr) {
 }
 export function hideMenu() { $('menu').hidden = true; closeChar(); if (unwatch) { unwatch(); unwatch = null; } screen = null; }
 function open(name) {
-  for (const id of ['online', 'character', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
+  for (const id of ['online', 'character', 'achievements', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
   for (const b of document.querySelectorAll('#mnav [data-go]')) b.classList.toggle('on', b.dataset.go === name);
   if (screen === 'character' && name !== 'character') closeChar();
   if (screen === 'online' && name !== 'online' && unwatch) { unwatch(); unwatch = null; }
@@ -63,7 +64,10 @@ function open(name) {
   if (name === 'online') openServers();
   if (name === 'character') openChar();
   if (name === 'settings') openSettings();
+  if (name === 'achievements') renderAchievements($('achgrid'));
+  achSub();
 }
+export function achSub() { const e = $('achsub'); if (e) e.textContent = `${achievementCount()} / ${ACHIEVEMENTS.length}`; }
 
 // ---------------------------------------------------------------- servers
 function renderServers() {
@@ -244,7 +248,7 @@ export function initShell(hooks) {
   $('gfxapply').onclick = applyGfx;
   $('gfxsub').textContent = `Graphics: ${PRESETS[H.gfx.id].label}`;
   if (profile.skin) $('skinsub').textContent = skinLabel(profile.skin);
-  $('chatform').addEventListener('submit', e => { e.preventDefault(); const t = $('chatin').value; if (t.trim()) sendChat(t); closeChat(); });
+  $('chatform').addEventListener('submit', e => { e.preventDefault(); const t = $('chatin').value; if (t.trim()) { sendChat(t); achBump('chats'); } closeChat(); });
   $('chatin').addEventListener('keydown', e => { e.stopPropagation(); if (e.code === 'Escape') closeChat(); });
   $('chatin').addEventListener('keyup', e => e.stopPropagation());
   onNet('chat', onChat); onNet('feed', onFeed);

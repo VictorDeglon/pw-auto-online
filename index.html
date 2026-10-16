@@ -55,6 +55,11 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(-
 #cross::before,#cross::after{content:"";position:absolute;background:var(--paper);box-shadow:0 0 2px #000}
 #cross::before{left:10px;top:3px;width:2px;height:16px} #cross::after{top:10px;left:3px;height:2px;width:16px}
 #cross.hot::before,#cross.hot::after{background:var(--blood)}
+#cross.hit{animation:hitp .18s ease-out} #cross.hit::before,#cross.hit::after{background:#fff;box-shadow:0 0 6px #fff} #cross.head::before,#cross.head::after{background:#ffd23f}
+@keyframes hitp{from{transform:scale(1.6) rotate(45deg)}to{transform:scale(1) rotate(0)}}
+#scope{inset:0;background:radial-gradient(circle at 50% 50%,transparent 0 31vmin,rgba(0,0,0,.92) 31.4vmin);pointer-events:none}
+#scope::before{content:"";position:absolute;left:50%;top:50%;width:62vmin;height:62vmin;transform:translate(-50%,-50%);border-radius:50%;box-shadow:inset 0 0 40px rgba(0,0,0,.6);background:linear-gradient(transparent calc(50% - .5px),rgba(0,0,0,.85) calc(50% - .5px) calc(50% + .5px),transparent 0),linear-gradient(90deg,transparent calc(50% - .5px),rgba(0,0,0,.85) calc(50% - .5px) calc(50% + .5px),transparent 0)}
+body.scoped #cross{opacity:.5}
 #job{top:calc(150px + env(safe-area-inset-top,0px));right:18px;text-align:right;font:600 18px/1.3 var(--ui)}
 #wpinfo{top:calc(215px + env(safe-area-inset-top,0px));right:18px;text-align:right;font:600 18px/1.3 var(--ui);color:#c9a0ff}
 #wpinfo b{color:#e0c8ff;font:400 26px/1 var(--display);display:block}
@@ -212,6 +217,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 <div id="vignette" class="hud"></div>
 <div id="bubbles" class="hud"></div>
 <div id="cross" class="hud" hidden></div>
+<div id="scope" class="hud" hidden></div>
 <div id="feed" class="hud"></div>
 <div id="topright" class="hud" hidden>
   <div id="clock">10:00 · Clear</div>
@@ -229,7 +235,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
   <canvas id="minimap" width="210" height="210"></canvas>
   <div id="bars"><div id="hp"><div id="hpf"></div></div></div>
 </div>
-<div id="helpline" class="hud" hidden><kbd>F</kbd> car · <kbd>E</kbd> talk / use · <kbd>R</kbd> radio · <kbd>J</kbd> courier job · <kbd>M</kbd> map · <kbd>H</kbd> horn · <kbd>K</kbd> fast travel · <kbd>C</kbd> call your car · <kbd>wheel</kbd> weapons · <kbd>G</kbd> detonate · <kbd>Y</kbd> weather · <kbd>T</kbd> +1 hour · <kbd>P</kbd> pause</div>
+<div id="helpline" class="hud" hidden><kbd>F</kbd> car · <kbd>E</kbd> talk / use · <kbd>R</kbd> radio · <kbd>J</kbd> courier job · <kbd>M</kbd> map · <kbd>H</kbd> horn · <kbd>K</kbd> fast travel · <kbd>N</kbd> call your car · <kbd>wheel</kbd> weapons · <kbd>G</kbd> detonate · <kbd>Y</kbd> weather · <kbd>T</kbd> +1 hour · <kbd>P</kbd> pause</div>
 <div id="street" class="hud" hidden><b id="streetname">Poway Road</b><i id="areaname">Poway</i></div>
 <div id="big" class="hud" hidden><h1 id="bigt"></h1><p id="bigs"></p></div>
 <div id="subs" class="hud" hidden></div>
@@ -265,6 +271,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
       <button class="mbtn primary" data-go="online">Play online <small id="onlinesub">Pick a server</small></button>
       <button class="mbtn" id="play" disabled>Free roam <small>Offline · missions, jobs, story</small></button>
       <button class="mbtn" data-go="character">Character <small id="skinsub">Pick your look</small></button>
+      <button class="mbtn" data-go="achievements">Achievements <small id="achsub">0 / 30</small></button>
       <button class="mbtn" data-go="settings">Settings <small id="gfxsub">Graphics</small></button>
       <button class="mbtn" data-go="controls">Controls</button>
     </nav>
@@ -290,6 +297,11 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
     </div>
   </section>
 
+  <section class="screen" id="scr-achievements" hidden>
+    <header><h2>Achievements</h2><p id="achnote">Earned in free roam and online. Saved on this computer.</p></header>
+    <div class="achgrid" id="achgrid"></div>
+  </section>
+
   <section class="screen" id="scr-settings" hidden>
     <header><h2>Settings</h2><p id="gfxnote">Graphics are picked for this computer automatically.</p></header>
     <div class="presets" id="presets"></div>
@@ -305,9 +317,12 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
       <kbd>W A S D</kbd><span>Move / drive</span><kbd>Mouse</kbd><span>Look</span>
       <kbd>Shift</kbd><span>Sprint</span><kbd>Space</kbd><span>Jump / handbrake / glide</span>
       <kbd>Click</kbd><span>Punch / shoot</span><kbd>Right click</kbd><span>Aim</span>
-      <kbd>1–0, wheel</kbd><span>Weapons</span><kbd>G</kbd><span>Detonate sticky bombs</span>
+      <kbd>1–0, wheel</kbd><span>Weapons (buy more at the dealers, pink on the map)</span><kbd>G</kbd><span>Detonate sticky bombs</span>
       <kbd>F</kbd><span>Enter, exit, carjack</span><kbd>E</kbd><span>Talk, use</span>
-      <kbd>K</kbd><span>Fast travel</span><kbd>C</kbd><span>Call your car</span>
+      <kbd>K</kbd><span>Fast travel</span><kbd>N</kbd><span>Call your car</span>
+      <kbd>C</kbd><span>Crouch (sprint + C slides)</span><kbd>X</kbd><span>Dodge roll</span>
+      <kbd>Q</kbd><span>Aim lock (no right click needed)</span><kbd>Z</kbd><span>Scope zoom while aiming</span>
+      <kbd>B</kbd><span>Emote: wave, cheer, dance, laugh</span><kbd>Shift</kbd><span>Sprint</span>
       <kbd>M</kbd><span>Map + waypoint</span><kbd>R</kbd><span>Radio</span>
       <kbd>Enter</kbd><span>Chat (online)</span><kbd>Tab</kbd><span>Players (online)</span>
       <kbd>J</kbd><span>Courier job (offline)</span><kbd>Y / T</kbd><span>Weather / skip an hour (offline)</span>
@@ -372,6 +387,8 @@ import { NET, on as onNet, sendState, sendHit, feed as netFeed } from './src/onl
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
+import * as ACH from './src/ui/achievements.js';
+import * as SHOP from './src/ui/shop.js';
 import { initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
 
 const D = window.POWAY_DATA;
@@ -412,7 +429,7 @@ let seed = 7; const srand = () => (seed = (seed * 16807) % 2147483647) / 2147483
 const SAVE_KEY = 'pw-auto-online-v3', SAVE_V2 = 'pw-auto-online-v2';
 const STATS0 = () => ({ kills: 0, cars: 0, busted: 0, wasted: 0, jobs: 0, copsKilled: 0, tickets: 0, evaded: 0, cabs: 0 });
 const SETTINGS0 = () => ({ voices: true, radio: 0, radioOn: true });
-const save = { version: 3, money: 300, rep: 0, stats: STATS0(), story: null, clock: null, player: null, weather: null, settings: SETTINGS0() };
+const save = { version: 3, upgrades: {}, money: 1500, rep: 0, stats: STATS0(), story: null, clock: null, player: null, weather: null, settings: SETTINGS0() };
 const MIGRATE = { 2: s => ({ version: 3, money: s.money, rep: s.rep, stats: s.stats }) }; // v(n) -> v(n+1)
 let hadSave = false;
 try {
@@ -2049,6 +2066,7 @@ const sfx = {
   phone: v => { tone(1336, 0.12, 'sine', 0.2 * v); tone(941, 0.12, 'sine', 0.2 * v, null, 0.15); },
   job: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.25, 'triangle', 0.25, null, i * 0.12)); },
   hit: v => { noise(0.12, 'bandpass', 1500, 0.5 * v); },
+  achieve: tier => { const up = { b: 1, s: 1.12, g: 1.26, p: 1.5 }[tier] || 1; [523, 659, 784, 1046, 1318].forEach((f, i) => { tone(f * up, 0.32, 'triangle', 0.2, null, i * 0.07); tone(f * up * 2, 0.18, 'sine', 0.06, null, i * 0.07 + 0.02); }); noise(0.6, 'highpass', 6000, 0.12, 0.3); },
 };
 // car radio: Kevin MacLeod tracks (CC BY 4.0), grouped into two "stations"
 const STATIONS = [
@@ -2693,6 +2711,7 @@ player.arsenal = { pistol: 84 }; // weapon id -> rounds; a key present = you own
 Object.defineProperty(player, 'ammo', { get() { return this.arsenal.pistol | 0; }, set(n) { this.arsenal.pistol = n; }, configurable: true });
 function hurtPlayer(amt, src) {
   if (player.dead) return;
+  if (player.evasive && (src === 'gun' || src === 'pvp') && Math.random() < 0.5) return; // a roll or slide can make them miss
   if (player.inCar && src !== 'explosion') { damageCar(player.inCar, amt * 0.7, null); amt *= 0.35; }
   player.health -= amt; player.lastHurt = simTime;
   $('vignette').style.boxShadow = 'inset 0 0 160px 40px rgba(200,20,20,.55)';
@@ -2953,7 +2972,8 @@ function updateJob(dt) {
 }
 
 // ============================================================ input
-const keys = new Set(); let mouseDown = false, rightDown = false, locked = false, running = false, paused = false, lockAskT = 0;
+const keys = new Set(); let aimLock = false, scope = 0, emote = null, emoteT = 0; // Q aim lock, Z scope zoom, B emote (laptop-friendly)
+let mouseDown = false, rightDown = false, locked = false, running = false, paused = false, lockAskT = 0;
 const cam = { yaw: Math.PI, pitch: 0.28, dist: 6.5, lastMouse: -10 };
 addEventListener('keydown', e => {
   if (!running || SHELL.isChatOpen() || !$('menu').hidden || !$('namebox').hidden) return;
@@ -2969,15 +2989,19 @@ addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   if (garageOpen) { if (e.code === 'KeyE' || e.code === 'Escape') closeGarage(); return; } // the garage menu has the keyboard
+  if (shopOpen) { if (e.code === 'KeyE' || e.code === 'Escape') closeShop(); return; }
   if (e.code === 'KeyF') toggleCar();
   if (e.code === 'KeyE') { if (!storySkip()) useInteract(); }
   if (e.code === 'KeyJ' && !online) startJob();
   if (e.code === 'KeyH' && player.inCar) honk();
   if (e.code === 'KeyR') radioNext();
   if (e.code === 'KeyE') PHS.interactPHS(focusPos()); // PHS: open/close campus doors and gates
-  if (e.code === 'KeyC') callCar();
+  if (e.code === 'KeyN') callCar();
   if (!garageOpen) { const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'].indexOf(e.code); if (k >= 0) { if (travelOpen) travelTo(k); else selectWeapon(k); } }
   if (e.code === 'KeyG') detonateStickies();
+  if (e.code === 'KeyQ' && !player.inCar) { aimLock = !aimLock; notify(aimLock ? 'Aim lock on (Q). Z zooms the scope.' : 'Aim lock off.', '', 1400); }
+  if (e.code === 'KeyZ' && player.aiming) { scope = (scope + 1) % 3; tone(scope ? 1300 : 900, 0.04, 'square', 0.15); }
+  if (e.code === 'KeyB' && !player.inCar && !player.dead) { const E = ['wave', 'cheer', 'dance', 'laugh']; emote = E[(E.indexOf(emote) + 1) % E.length]; emoteT = emote === 'dance' ? 8 : 3.5; if (emote === 'dance') ACH.bump('danced'); }
   if (e.code === 'KeyK' || (e.code === 'Escape' && travelOpen)) toggleTravel();
   if (e.code === 'KeyY' && !online) setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weather.key) + 1) % WEATHER_ORDER.length]);
   if (e.code === 'KeyT' && !online) { if (e.shiftKey) clock.addDays(1); else { hour += 1; if (hour >= 24) { hour -= 24; clock.addDays(1); } } }
@@ -2998,7 +3022,7 @@ addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; if (e.
 addEventListener('wheel', e => { if (running && !mapOpen && !paused && !travelOpen) cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
 addEventListener('mousemove', e => {
   if (!running || paused || mapOpen || travelOpen) return;
-  const s = (rightDown ? 0.0016 : 0.0026) * SENS;
+  const s = (player.aiming ? 0.0016 * [1, 0.6, 0.3][scope] : 0.0026) * SENS;
   cam.yaw -= e.movementX * s; cam.pitch = clamp(cam.pitch + e.movementY * s, -0.35, 1.25); cam.lastMouse = simTime;
 });
 document.addEventListener('pointerlockchange', () => {
@@ -3161,7 +3185,7 @@ function equipGuns(rig) { // swap the holder's contents for one model per weapon
 function showGun(rig, id) { if (!rig.guns) return; for (const k in rig.guns) rig.guns[k].visible = k === id; }
 function selectWeapon(i) {
   if (!WEAPONS[i]) return;
-  if (!owned(i)) { notify(`No ${WEAPONS[i].name.toLowerCase()} yet. The dealer in the Kirkham Way business park (K to fast travel) has one.`, '', 2200); return; }
+  if (!owned(i)) { notify(`No ${WEAPONS[i].name.toLowerCase()} yet. Buy one from a dealer (pink markers on the map).`, '', 2200); return; }
   player.weapon = i; player.shootCd = Math.max(player.shootCd, 0.15);
 }
 function cycleWeapon(dir) {
@@ -3173,20 +3197,25 @@ function muzzlePos() {
   return player.inCar ? player.inCar.pos.clone().add(new THREE.Vector3(0, 1.6, 0))
     : new THREE.Vector3(player.pos.x + Math.sin(player.rotY) * 0.6 + Math.cos(player.rotY) * 0.3, player.pos.y + 1.45, player.pos.z + Math.cos(player.rotY) * 0.6 - Math.sin(player.rotY) * 0.3);
 }
+const holeMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -7, polygonOffsetUnits: -14 });
+let hitT = 0;
+function hitMarker(head) { const c = $('cross'); c.classList.remove('hit', 'head'); void c.offsetWidth; c.classList.add('hit'); if (head) c.classList.add('head'); clearTimeout(hitT); hitT = setTimeout(() => c.classList.remove('hit', 'head'), 180); tone(head ? 1800 : 1250, 0.035, 'square', 0.12); }
 function playerShoot() {
   const w = WEAPONS[player.weapon]; if (!w || !w.id || w.id === 'fists') return;
   if ((player.arsenal[w.id] | 0) <= 0) { tone(200, 0.05, 'square', 0.2); notify(`Out of ${w.name.toLowerCase()} ammo.`, '', 1600); player.shootCd = 0.4; cycleWeapon(-1); return; }
-  player.arsenal[w.id]--; player.shootCd = w.cd; player.shots = (player.shots || 0) + 1; player.rig.punch = 0; player.rig.recoil = Math.min(2, (player.rig.recoil || 0) + ((HOLD[w.id] || {}).kick ?? 0.5));
+  player.arsenal[w.id]--; player.shootCd = cdOf(w); player.shots = (player.shots || 0) + 1; player.rig.punch = 0; player.rig.recoil = Math.min(2, (player.rig.recoil || 0) + ((HOLD[w.id] || {}).kick ?? 0.5));
   camera.getWorldDirection(_sd);
   if (w.proj) { launchProjectile(w.proj, muzzlePos(), _sd.clone()); return; }
   const o = camera.position.clone().addScaledVector(_sd, cam.dist * 0.9), muzzle = muzzlePos();
-  const spread = player.aiming ? w.aim : w.spread;
+  const spread = (player.aiming ? w.aim : w.spread) * accMul(w);
   for (let k = 0; k < (w.pellets || 1); k++) {
     const d = _sd.clone().add(_sp.set(rand(-spread, spread), rand(-spread, spread), rand(-spread, spread))).normalize();
     const hit = hitscan(o, d, w.range, player.inCar ? 'player' : null), hp = o.clone().addScaledVector(d, hit.t);
     if (k < 3) tracer(muzzle.x, muzzle.y, muzzle.z, hp.x, hp.y, hp.z);
+    if (hit.wall) FX.impact(hp.x, hp.y, hp.z, 'wall'); else if (hit.ground) { FX.impact(hp.x, hp.y, hp.z, 'ground'); if (k === 0 && Math.random() < 0.3) decal(hp.x, hp.z, 0.12, holeMat); }
+    if (hit.ped && k === 0) { hitMarker(hit.head); if (hit.head) ACH.bump('headshots'); }
     if (hit.ped) {
-      const p = hit.ped, dmg = hit.head ? Math.max(150, w.dmg[1] * 2) : rand(w.dmg[0], w.dmg[1]), wasCop = p.isCop;
+      const p = hit.ped, dmg = (hit.head ? Math.max(150, w.dmg[1] * 2) : rand(w.dmg[0], w.dmg[1])) * dmgMul(w), wasCop = p.isCop;
       if (w.push && p.state !== 'dead') p.knock(d.x * w.push, 3, d.z * w.push, dmg, 'player'); else p.damage(dmg, 'player');
       if (p.state !== 'dead') crime('assault', p.pos.x, p.pos.z, wasCop ? 3 : 2, p);
     } else if (hit.car) {
@@ -3197,7 +3226,8 @@ function playerShoot() {
     else if (k < 3) sparks(hp.x, hp.y, hp.z, 3);
     if (k === 0) bus.emit('shot:fired', { from: 'player', hit });
   }
-  fire.emit(muzzle.x, muzzle.y, muzzle.z, 0, 0, 0, w.pellets ? 0.9 : 0.5, 0.06, 1, 0.8, 0.4);
+  FX.muzzle(muzzle, _sd, !!w.pellets || w.id === 'sniper' || w.id === 'minigun');
+  cam.pitch = clamp(cam.pitch - ((HOLD[w.id] || {}).kick ?? 0.5) * 0.012 * (player.aiming ? 0.6 : 1), -0.35, 1.25); shake = Math.max(shake, w.id === 'sniper' || w.pellets ? 0.12 : 0.04);
   sfx.gun(w.id === 'sniper' || w.id === 'shotgun' ? 1.4 : w.id === 'minigun' || w.id === 'smg' ? 0.6 : 1);
   crime('gunfire', player.pos.x, player.pos.z, 1);
 }
@@ -3267,8 +3297,10 @@ function updateProjectiles(dt) {
 const strikes = [];
 // ---- the blast: throws cars and people, wrecks what's close, scorches the ground
 function explosionAt(x, y, z, R, by) {
+  if (by === 'player' && WEAPONS[player.weapon] && WEAPONS[player.weapon].proj) R *= 1 + 0.1 * upLv(WEAPONS[player.weapon], 'dmg'); // bigger charges
   const f = focusPos();
   sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
+  if (by === 'player' || by === 'chain') bus.emit('explosion', { x, z, R });
   FX.explosion(x, y, z, R); // fireballs, shockwave, flash, embers, smoke column, flying dirt (src/fx/fx.js)
   decal(x, z, R * 0.55, scorchMat);
   blastBuildings(x, z, R, by);
@@ -3330,25 +3362,43 @@ function avengerAI(v, dt) {
   steerTo(v, tx, tz, dt, { maxSpeed: v.spec.vmax });
 }
 
-// ============================================================ the dealer (Kirkham Way business park)
-let DEALER = null;
-function setupDealer() { // out in the Kirkham Way business park: not next to a real school
-  const kp = ll(32.934851, -117.039283), base = kp ? sidewalkNear(kp.x, kp.z) : spawnPt; if (!base) return;
-  const ne = base.ne, tx = ne ? ne.tx : 1, tz = ne ? ne.tz : 0;
-  const q = { x: base.x + tx * 28, z: base.z + tz * 28 }; collideCircle(q, 0.5);
-  const rig = buildRig({ skin: '#8d5a3b', shirt: '#1d1d1d', pants: '#2b2b2b', hair: '#111111' });
-  rig.g.position.set(q.x, heightAt(q.x, q.z), q.z); rig.g.rotation.y = Math.atan2(-tz, tx); scene.add(rig.g);
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0x4b5a3a, roughness: 0.8 }));
-  crate.position.set(q.x + tz * 1.2, heightAt(q.x, q.z) + 0.35, q.z - tx * 1.2); crate.castShadow = true; scene.add(crate);
-  DEALER = { x: q.x, z: q.z, rig };
-  addInteract({ x: q.x, z: q.z, r: 3.2, label: () => 'Dealer: grab the goods', when: () => !player.inCar, onUse: () => {
-    let fresh = 0;
-    for (const w of WEAPONS) { if (!w.give) continue; if (player.arsenal[w.id] === undefined) fresh++; player.arsenal[w.id] = Math.min(w.max, Math.max(player.arsenal[w.id] | 0, 0) + w.give); }
-    sfx.cash(); notify(fresh ? '"Take it all. You never saw me." Every gun and explosive unlocked: wheel or 1-0 to switch, G sets off stickies.' : '"Restocked. Try not to level the business park."', 'green', 5500);
-    player.weapon = Math.max(player.weapon, 7);
-  } });
+// ============================================================ weapon dealers (src/ui/shop.js)
+// Four of them around town; each one runs the shop: guns, ammo and upgrades that stay with you.
+let DEALER = null; const DEALERS = [];
+const DEALER_SPOTS = [
+  ['Kirkham Kit', 32.934851, -117.039283], ['Poway Road Pawn', 32.9626, -117.0355], ['Twin Peaks Trading', 32.98334, -117.061123], ['Parkway Surplus', 32.939374, -117.050813],
+];
+function setupDealer() {
+  for (const [name, lat, lon] of DEALER_SPOTS) {
+    const kp = ll(lat, lon), base = kp ? sidewalkNear(kp.x, kp.z) : null; if (!base || base.x < B.minx || base.x > B.maxx || base.z < B.minz || base.z > B.maxz) continue;
+    const ne = base.ne, tx = ne ? ne.tx : 1, tz = ne ? ne.tz : 0;
+    const q = { x: base.x + tx * 22 + tz * 4, z: base.z + tz * 22 - tx * 4 }; collideCircle(q, 0.5);
+    const rig = buildRig({ skin: '#8d5a3b', shirt: '#1d1d1d', pants: '#2b2b2b', hair: '#111111' });
+    rig.g.position.set(q.x, heightAt(q.x, q.z), q.z); rig.g.rotation.y = Math.atan2(-tz, tx); scene.add(rig.g);
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.8), new THREE.MeshStandardMaterial({ color: 0x4b5a3a, roughness: 0.8 }));
+    crate.position.set(q.x + tz * 1.2, heightAt(q.x, q.z) + 0.35, q.z - tx * 1.2); crate.castShadow = true; scene.add(crate);
+    const lid = crate.clone(); lid.scale.set(1, 0.12, 1); lid.position.y += 0.42; lid.rotation.z = 0.5; scene.add(lid);
+    const D = { x: q.x, z: q.z, rig, name }; DEALERS.push(D); if (!DEALER) DEALER = D;
+    addInteract({ x: q.x, z: q.z, r: 3.4, label: () => `<b>${name}</b>: guns, ammo, upgrades`, when: () => !player.inCar, onUse: () => openShop(D) });
+  }
 }
-
+let shopOpen = false;
+function openShop(D) {
+  if (shopOpen) return; shopOpen = true; travelOpen = true; keys.clear(); mouseDown = rightDown = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  SHOP.openShop(D); sfx.cash();
+}
+function closeShop() { if (!shopOpen) return; shopOpen = false; travelOpen = false; SHOP.closeShop(); persist(); lockPointer(); }
+// effective weapon stats with the upgrades bought for it
+function upLv(w, k) { return (((save.upgrades || {})[w.id] || {})[k]) | 0; }
+function maxOf(w) { return Math.round((w.max || 0) * (1 + SHOP.UPGRADES.cap.step * upLv(w, 'cap'))); }
+function dmgMul(w) { return 1 + SHOP.UPGRADES.dmg.step * upLv(w, 'dmg'); }
+function cdOf(w) { return (w.cd || 0.3) * (1 - SHOP.UPGRADES.rate.step * upLv(w, 'rate')); }
+function accMul(w) { return 1 - SHOP.UPGRADES.acc.step * upLv(w, 'acc'); }
+function weaponStats(w) {
+  const per = w.dmg ? (w.dmg[0] + w.dmg[1]) / 2 * (w.pellets || 1) : w.id === 'airstrike' ? 900 : 320;
+  return { dmg: per * dmgMul(w) / 300, rate: Math.min(1, 0.05 / cdOf(w)), acc: w.spread ? 1 - w.spread * accMul(w) * 9 : 0.5, cap: maxOf(w) / ((w.max || 1) * 1.9) };
+}
 // ============================================================ fast travel (K)
 let travelOpen = false, TRAVEL = [];
 const ll = (lat, lon) => ({ x: (lon - LON0) * KX, z: -(lat - LAT0) * KZ });
@@ -3395,7 +3445,7 @@ function toggleTravel() {
 }
 function travelTo(i) {
   const T = TRAVEL[i]; if (!T) return;
-  travelOpen = false; $('travel').hidden = true; lockPointer();
+  travelOpen = false; $('travel').hidden = true; lockPointer(); ACH.addTo('travelled', T.name);
   let x = T.x, z = T.z, rot = player.rotY;
   if (T.road) { const ne = nearestEdge(x, z, 400, e => e.t >= 1 && e.t <= 5); if (ne) { x = ne.x; z = ne.z; rot = Math.atan2(ne.tx, ne.tz); if (!player.inCar) { const o = walkOff(edges[ne.e]); x -= ne.tz * o; z += ne.tx * o; } } }
   const v = player.inCar;
@@ -3412,9 +3462,17 @@ function initExtras() {
     const old = player.rig, nr = buildRig({ kind: 'player' });
     if (nr.human) { scene.remove(old.g); nr.g.position.copy(old.g.position); nr.g.rotation.copy(old.g.rotation); nr.g.visible = old.g.visible; player.rig = nr; scene.add(nr.g); equipGuns(nr); }
   }
+  if (!save.upgrades || typeof save.upgrades !== 'object') save.upgrades = {};
+  SHOP.initShop({ weapons: WEAPONS, money: () => save.money, spend: n => { if (save.money < n) { tone(200, 0.08, 'square', 0.2); return false; } save.money -= n; return true; },
+    arsenal: player.arsenal, upgrades: save.upgrades, owned, maxOf, stats: weaponStats, notify, sfx, close: closeShop,
+    onBuy: (kind, w, k, lv) => { bus.emit('shop:buy', { kind, weapon: w.id, upgrade: k, level: lv }); if (kind === 'buy') player.weapon = WEAPONS.indexOf(w); persist(); } });
   setupDealer(); setupTravel(); setupGarage();
+  ACH.initAchievements({ save, persist, bus, sfx, probe: () => {
+    const v = player.inCar; return { mph: v ? Math.abs(v.speed || 0) * 2.237 : 0, airT: v && v.air ? v.airT : 0, wanted: police.wanted, inCar: !!v, hour,
+      garage: garageList().length, ownedAll: WEAPONS.every((w, i) => !w.id || w.id === 'fists' || owned(i)) }; } });
+  bus.on('shop:buy', e => { if (e.kind === 'buy') ACH.bump('bought'); if (e.kind === 'upgrade' && e.level >= 3) ACH.bump('maxUpgrades'); });
 }
-function updateArsenal(dt) { updateDestruction(dt); FX.update(dt); updateFallers(dt); updateProjectiles(dt); updateAvengers(dt); if (DEALER && DEALER.rig) DEALER.rig.g.rotation.y += Math.sin(simTime * 0.7) * dt * 0.2; }
+function updateArsenal(dt) { ACH.tickAchievements(dt); updateDestruction(dt); FX.update(dt); updateFallers(dt); updateProjectiles(dt); updateAvengers(dt); for (const D of DEALERS) D.rig.g.rotation.y += Math.sin(simTime * 0.7) * dt * 0.2; }
 
 // ============================================================ breakables: trees, street lights and sign posts snap
 // A car at speed goes through them (losing a little speed); slow, a tree still stops you. Each one falls over where
@@ -3432,7 +3490,7 @@ function breakProp(p, v) {
 }
 // knock a prop over, falling along (dx, dz)
 function fellProp(p, dx, dz) {
-  p.alive = false;
+  p.alive = false; if (p.kind === 'tree') ACH.bump('trees'); else if (p.kind === 'lamp') ACH.bump('lamps');
   const g = new THREE.Group(); g.position.set(p.x, heightAt(p.x, p.z), p.z);
   if (p.kind === 'tree') {
     treeDead.add(p.ti);
@@ -3718,7 +3776,7 @@ function garageClick(ev) {
   if (act === 'store' && v) storeCar(v);
   if (act === 'mod' && e) { const lv = e.mods[arg] || 0, c = MODS[arg].cost[lv]; if (save.money >= c) { save.money -= c; e.mods[arg] = lv + 1; applyMods(player.inCar, e); sfx.cash(); notify(`${MODS[arg].name} level ${lv + 1} fitted.`, 'green', 2000); } }
   if (act === 'paint' && e) { if (save.money >= 50) { save.money -= 50; e.paint = PAINTS[+arg][1]; applyMods(player.inCar, e); sfx.cash(); } }
-  if (act === 'part' && e) { const [slot, idx] = [arg, +b.dataset.act.split(':')[2]], c = PARTS[slot].opts[idx][1]; if (save.money >= c) { save.money -= c; (e.parts || (e.parts = {}))[slot] = idx; applyMods(player.inCar, e); sfx.cash(); notify(`${PARTS[slot].name}: ${PARTS[slot].opts[idx][0]}.`, 'green', 1800); } }
+  if (act === 'part' && e) { const [slot, idx] = [arg, +b.dataset.act.split(':')[2]], c = PARTS[slot].opts[idx][1]; if (save.money >= c) { save.money -= c; (e.parts || (e.parts = {}))[slot] = idx; if (idx) ACH.bump('parts'); applyMods(player.inCar, e); sfx.cash(); notify(`${PARTS[slot].name}: ${PARTS[slot].opts[idx][0]}.`, 'green', 1800); } }
   if (act === 'neon' && e) { if (save.money >= 150) { save.money -= 150; e.neon = NEONS[+arg][1]; applyMods(player.inCar, e); sfx.cash(); } }
   if (act === 'take' && !player.inCar) { const c = ownedEntry(arg); let lv = liveOwned(arg); if (lv) lv.remove(); const nv = spawnOwned(c, GARAGE.x, GARAGE.z, GARAGE.rot); player.inCar = nv; nv.driver = 'player'; nv.mode = 'free'; player.rig.g.visible = false; cam.dist = 9; save.lastCar = c.id; closeGarage(); return; }
   if (act === 'sell') { const i = garageList().findIndex(c => c.id === arg); if (i >= 0) { const lv = liveOwned(arg); if (lv && lv !== player.inCar) lv.remove(); else if (lv) lv.ownedId = null; garageList().splice(i, 1); notify('Scrapped.', '', 1500); } }
@@ -3755,7 +3813,8 @@ function updatePlayer(dt) {
   player.punchCd -= dt; player.shootCd -= dt;
   if (player.dead) { player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
   if (simTime - player.lastHurt > 6 && player.health < 50) player.health = Math.min(50, player.health + dt * 2);
-  player.aiming = rightDown && player.weapon > 0 && !player.inCar;
+  player.aiming = (rightDown || aimLock) && player.weapon > 0 && !player.inCar;
+  if (!player.aiming) scope = 0;
   if (player.inCar) {
     const v = player.inCar;
     const thr = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
@@ -3769,6 +3828,7 @@ function updatePlayer(dt) {
       if (hs < 140 * (v.turbo || 1) * (v.rocket || 1)) { const a = 26 * (v.turbo || 1) * (v.rocket || 1) * dt; v.vel.x += Math.sin(v.rotY) * a; v.vel.y += Math.cos(v.rotY) * a; }
       v.pitchV *= Math.exp(-3 * dt); v.rollV *= Math.exp(-3 * dt); v.pitch = lerp(v.pitch, 0.05, 1 - Math.exp(-2 * dt)); v.roll = lerp(v.roll, 0, 1 - Math.exp(-2 * dt)); // flies level
       v.rotY += st * 0.9 * dt; // steer the glide
+      save.stats.glide = (save.stats.glide || 0) + dt;
       if (Math.random() < 0.5) smoke.emit(v.pos.x - Math.sin(v.rotY) * 2.3, v.pos.y + 0.6, v.pos.z - Math.cos(v.rotY) * 2.3, rand(-.3, .3), rand(-.3, .3), rand(-.3, .3), 0.9, 1.4, 0.85, 0.85, 0.85, 1);
     }
     if (!v.air) v.boosted = false;
@@ -3786,12 +3846,26 @@ function updatePlayer(dt) {
   if (keys.has('KeyD') || keys.has('ArrowRight')) { mx += rtX; mz += rtZ; } if (keys.has('KeyA') || keys.has('ArrowLeft')) { mx -= rtX; mz -= rtZ; }
   const ml = Math.hypot(mx, mz);
   let speed = 0;
-  if (player.knock > 0) { player.knock -= dt; }
+  const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight'), crouchKey = keys.has('KeyC');
+  // a slide starts from a sprint when you crouch; a dodge roll (X) goes where you're moving; both cut through gunfire
+  if (crouchKey && sprint && ml > 0 && !player.slideT && !player.rollT && player.air <= 0.01 && !player.crouch) { player.slideT = 0.75; player.slideDir = [mx / ml, mz / ml]; sfx.whoosh(0.5); }
+  player.crouch = crouchKey && !player.slideT;
+  if (player.rollT > 0 || player.slideT > 0) {
+    const roll = player.rollT > 0, T = roll ? player.rollT : player.slideT, v = roll ? 7.8 : 4 + T * 8, d = roll ? player.rollDir : player.slideDir;
+    player.pos.x += d[0] * v * dt; player.pos.z += d[1] * v * dt; player.rotY = Math.atan2(d[0], d[1]); speed = v;
+    if (roll) player.rollT = Math.max(0, player.rollT - dt); else player.slideT = Math.max(0, player.slideT - dt);
+    if (Math.random() < 0.4) smoke.emit(player.pos.x, player.pos.y + 0.1, player.pos.z, rand(-.5, .5), 0.4, rand(-.5, .5), 0.4, 0.6, 0.55, 0.5, 0.45, 0.6, 0);
+  }
+  else if (player.knock > 0) { player.knock -= dt; }
   else if (ml > 0) {
-    mx /= ml; mz /= ml; speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 7.2 : 3.4; if (player.aiming) speed = 2.4;
+    mx /= ml; mz /= ml; speed = sprint && !player.crouch ? 7.2 : 3.4; if (player.aiming) speed = 2.4; if (player.crouch) speed = 1.8;
+    if (player.health < 30 && speed > 3) speed *= 0.8; // hurt: you can't run flat out
     player.pos.x += mx * speed * dt; player.pos.z += mz * speed * dt;
     if (!player.aiming) player.rotY += wrapA(Math.atan2(mx, mz) - player.rotY) * Math.min(1, dt * 12);
+    emote = null;
   }
+  if (keys.has('KeyX') && ml > 0 && !player.rollT && !player.slideT && player.air <= 0.01) { keys.delete('KeyX'); player.rollT = 0.55; player.rollDir = [mx, mz]; sfx.whoosh(0.4); }
+  player.evasive = player.rollT > 0 || player.slideT > 0;
   if (player.aiming || (mouseDown && player.weapon > 0)) player.rotY = Math.atan2(fwdX, fwdZ);
   player.speed = speed;
   if (keys.has('Space') && player.air <= 0.001) player.vy = 5.2;
@@ -3832,7 +3906,14 @@ function updatePlayer(dt) {
   } else $('cross').classList.remove('hot');
   const r = player.rig;
   r.g.position.copy(player.pos); r.g.rotation.y = player.rotY;
-  animRig(r, speed, dt, player.aiming || (player.weapon > 0 && mouseDown) ? 'aim' : (player.weapon === 0 && mouseDown ? 'fists' : null));
+  if (emote) { emoteT -= dt; if (emoteT <= 0) emote = null; }
+  const pmode = player.aiming || (player.weapon > 0 && mouseDown) ? 'aim' : player.weapon === 0 && mouseDown ? 'fists' : player.crouch ? 'crouch' : emote ? emote : player.health < 30 ? 'injured' : null;
+  animRig(r, player.rollT > 0 ? 0 : speed, dt, pmode);
+  if (player.rollT > 0) { const k = 1 - player.rollT / 0.55; r.body.rotation.x = k * Math.PI * 2; r.body.position.y = 0.55 - Math.abs(Math.cos(k * Math.PI)) * 0.45; }
+  else if (player.slideT > 0) { r.body.rotation.x = -1.05; r.body.position.y = 0.25; }
+  else if (player.crouch && speed > 0.2) { r.body.rotation.x = 0.35; r.body.position.y = -0.25; }
+  else if (!player.dead) { r.body.rotation.x = 0; r.body.position.y = 0; }
+  player.mode = pmode;
   r.gun.visible = player.weapon > 0;
   if (r.human) { // the Rocketbox player: real gun models, arms posed along the camera's aim
     r.ownAim = true; const w = WEAPONS[player.weapon]; showGun(r, w.id);
@@ -4514,13 +4595,14 @@ function updatePopulation(dt) {
 const camPos = new THREE.Vector3(); let timeScale = 1;
 function updateCamera(dt) {
   const f = focusPos(); const inCar = player.inCar; const aiming = player.aiming;
-  let dist = aiming ? 2.6 : cam.dist;
+  let dist = aiming ? (scope ? 1.4 : 2.6) : cam.dist;
   if (inCar) {
     const sp = inCar.vel.length();
     if (simTime - cam.lastMouse > 1.5 && sp > 2) { const want = Math.atan2(inCar.vel.x, inCar.vel.y) + Math.PI; const back = inCar.speed < -1 ? inCar.rotY : want; cam.yaw += wrapA(back - cam.yaw) * Math.min(1, dt * 2.5); cam.pitch = lerp(cam.pitch, 0.22, dt); }
     camera.fov = lerp(camera.fov, 65 + clamp(sp * 0.45, 0, 20), dt * 2); camera.updateProjectionMatrix();
     dist = 9 + clamp(sp * 0.06, 0, 3);
-  } else if (Math.abs(camera.fov - (aiming ? 55 : 65)) > 0.1) { camera.fov = lerp(camera.fov, aiming ? 55 : 65, Math.min(1, dt * 8)); camera.updateProjectionMatrix(); }
+  } else { const want = aiming ? [55, 30, 14][scope] : 65; if (Math.abs(camera.fov - want) > 0.1) { camera.fov = lerp(camera.fov, want, Math.min(1, dt * 10)); camera.updateProjectionMatrix(); } }
+  $('scope').hidden = !(aiming && scope === 2); document.body.classList.toggle('scoped', !!(aiming && scope));
   const ty = f.y + (inCar ? 2.0 : (player.dead ? 0.5 : 1.65));
   const tx = f.x + (aiming ? Math.cos(cam.yaw) * 0.6 : 0), tz = f.z + (aiming ? -Math.sin(cam.yaw) * 0.6 : 0);
   const cp = Math.cos(cam.pitch), dx = Math.sin(cam.yaw) * cp, dy = Math.sin(cam.pitch), dz = Math.cos(cam.yaw) * cp;
@@ -4582,7 +4664,7 @@ function drawMinimap() {
   for (const p of peds) { if (p.state === 'dead') continue; if (p.isCop) blip(p.pos.x, p.pos.z, '#3b7bff', 3); else if (p.state === 'fight' || p.state === 'call') blip(p.pos.x, p.pos.z, '#d4302f', 3); }
   const fl = Math.floor(simTime * 4) % 2;
   for (const v of vehicles) if (v.isCop && !v.dead) blip(v.pos.x, v.pos.z, v.siren ? (fl ? '#ff3030' : '#3b7bff') : '#3b7bff', 4.5, v.siren);
-  if (DEALER) blip(DEALER.x, DEALER.z, '#ff3cac', 5, true); // the dealer
+  for (const D of DEALERS) blip(D.x, D.z, '#ff3cac', 5, true); // the dealers
   for (const r of remoteBlips()) blip(r.x, r.z, r.dead ? '#777' : r.color, r.car ? 6 : 5, true); // other players
   if (GARAGE) blip(GARAGE.x, GARAGE.z, '#f0b23a', 6, false); // your garage
   for (const v of vehicles) if (v.avenger) blip(v.pos.x, v.pos.z, '#ff8c1a', 4.5, true); // an owner coming for their car
@@ -4784,7 +4866,7 @@ let worldReady = false;
     hour: { get: () => hour, set: h => { hour = h; } }, siren: { get: () => siren }, job: { get: () => job }, mapOpen: { get: () => mapOpen },
     spawnPt: { get: () => spawnPt }, HOSPITAL: { get: () => HOSPITAL }, SHERIFF: { get: () => SHERIFF },
   });
-  initPolice(); initStory(); initExtras();
+  initPolice(); initStory(); initExtras(); SHELL.achSub();
   restoreSave();
   const sp0 = focusPos();
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
@@ -4800,7 +4882,7 @@ function restoreSave() {
   const sp = save.player;
   if (!sp || !Number.isFinite(sp.x) || sp.x < B.minx || sp.x > B.maxx || sp.z < B.minz || sp.z > B.maxz) return;
   player.pos.set(sp.x, heightAt(sp.x, sp.z), sp.z); player.rotY = sp.rotY || 0; cam.yaw = player.rotY + Math.PI;
-  player.health = clamp(sp.health || 100, 35, 100); player.ammo = Math.max(0, sp.ammo ?? player.ammo); if (sp.arsenal && typeof sp.arsenal === 'object') for (const w of WEAPONS) { const n = sp.arsenal[w.id]; if (w.max && Number.isFinite(n)) player.arsenal[w.id] = clamp(Math.floor(n), 0, w.max); } // only known weapons, finite counts player.weapon = WEAPONS[sp.weapon] && owned(sp.weapon) ? sp.weapon : 0;
+  player.health = clamp(sp.health || 100, 35, 100); player.ammo = Math.max(0, sp.ammo ?? player.ammo); if (sp.arsenal && typeof sp.arsenal === 'object') for (const w of WEAPONS) { const n = sp.arsenal[w.id]; if (w.max && Number.isFinite(n)) player.arsenal[w.id] = clamp(Math.floor(n), 0, maxOf(w)); } /* only known weapons, finite counts */ player.weapon = WEAPONS[sp.weapon] && owned(sp.weapon) ? sp.weapon : 0;
   if (sp.car && CAR[sp.car.type]) {
     if (sp.car.tommy) for (const v of vehicles.slice()) if (v.tommy) v.remove();
     const v = new Vehicle(sp.car.type, sp.x, sp.z, sp.rotY || 0, sp.car.tint);
@@ -4834,7 +4916,7 @@ function netTick(rdt) {
   badgeT -= rdt; if (badgeT <= 0) { badgeT = 1; SHELL.serverBadge(); }
 }
 const HELP_OFF = $('helpline').innerHTML;
-const HELP_ON = '<kbd>F</kbd> car · <kbd>E</kbd> use · <kbd>Enter</kbd> chat · <kbd>Tab</kbd> players · <kbd>M</kbd> map · <kbd>K</kbd> fast travel · <kbd>C</kbd> call your car · <kbd>wheel</kbd> weapons · <kbd>G</kbd> detonate · <kbd>P</kbd> pause';
+const HELP_ON = '<kbd>F</kbd> car · <kbd>E</kbd> use · <kbd>Enter</kbd> chat · <kbd>Tab</kbd> players · <kbd>M</kbd> map · <kbd>K</kbd> fast travel · <kbd>N</kbd> call your car · <kbd>wheel</kbd> weapons · <kbd>G</kbd> detonate · <kbd>P</kbd> pause';
 function showHud(on) { $('helpline').innerHTML = online ? HELP_ON : HELP_OFF; for (const id of ['topright', 'mapwrap', 'street', 'helpline']) $(id).hidden = !on; $('chat').hidden = !(on && online); if (!on) { SHELL.showPlayers(false); $('srvbadge').hidden = true; } }
 function beginPlay() {
   initAudio(); if (AC && AC.state === 'suspended') AC.resume();
@@ -4853,6 +4935,7 @@ function startOffline() {
 }
 function startOnline(sid, name) {
   clearRemotes(); online = true; lastHit = null;
+  ACH.addTo('servers', sid);
   beginPlay(); SHELL.serverBadge(); $('pausesrv').textContent = NET.server ? name.toUpperCase() : 'ONLINE';
   if (job) { job = null; jobBeam.visible = false; $('job').hidden = true; }
   _np.copy(focusPos()); sendState(netState());
@@ -4890,6 +4973,7 @@ onNet('hit', h => {
   if (player.dead) return;
   if (Math.random() < 0.4) notify(`<b>${String(h.n).replace(/[<>&]/g, '')}</b> hit you (${String(h.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800);
 });
+onNet('feed', f => { if (online && f.k === 'kill' && f.a === NET.name && f.b !== NET.name) ACH.bump('pvpKills'); });
 bus.on('player:died', ({ kind, src }) => {
   if (!online) return;
   if (kind === 'busted') netFeed('busted', { a: NET.name });

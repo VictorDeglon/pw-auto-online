@@ -91,12 +91,12 @@ export function createFX(o) {
     }
   }
 
-  // ---------------------------------------------------------------- shockwave ring + light flashes
-  const ringG = new THREE.RingGeometry(0.82, 1, 48).rotateX(-Math.PI / 2), rings = [];
-  function ring(x, y, z, R) {
-    const m = new THREE.Mesh(ringG, new THREE.MeshBasicMaterial({ color: 0xfff1d0, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-    m.position.set(x, y + 0.3, z); scene.add(m); rings.push({ m, t: 0, R });
-  }
+  // ---------------------------------------------------------------- shockwave (a fast rim-lit bubble) + light flashes
+  const swMat = () => new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uA: { value: 1 } },
+    vertexShader: 'varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform float uA; varying vec3 vN; varying vec3 vV; void main(){ float r = 1. - abs(dot(vN, vV)); gl_FragColor = vec4(vec3(1., .93, .8) * pow(r, 4.) * uA, 1.); }' });
+  const rings = [];
+  function ring(x, y, z, R) { const m = new THREE.Mesh(fbG, swMat()); m.position.set(x, y + 0.5, z); m.scale.setScalar(0.5); m.frustumCulled = false; scene.add(m); rings.push({ m, t: 0, R }); }
   const lights = [new THREE.PointLight(0xffa040, 0, 60, 2), new THREE.PointLight(0xffd080, 0, 40, 2)];
   for (const l of lights) { l.castShadow = false; scene.add(l); }
   const flashes = [];
@@ -105,7 +105,7 @@ export function createFX(o) {
     flashes[i] = { L, p: power, t: 0, dur };
   }
   function stepFlash(dt) {
-    for (const r of rings.slice()) { r.t += dt; const k = r.t / 0.55; r.m.scale.setScalar(1 + r.R * 3.2 * Math.sqrt(k)); r.m.material.opacity = 0.8 * (1 - k); if (k >= 1) { scene.remove(r.m); r.m.material.dispose(); rings.splice(rings.indexOf(r), 1); } }
+    for (const r of rings.slice()) { r.t += dt; const k = r.t / 0.32; r.m.scale.setScalar(0.5 + r.R * 2 * Math.sqrt(Math.min(1, k))); r.m.material.uniforms.uA.value = 1.6 * (1 - k); if (k >= 1) { scene.remove(r.m); r.m.material.dispose(); rings.splice(rings.indexOf(r), 1); } }
     for (let i = 0; i < flashes.length; i++) { const f = flashes[i]; if (!f) continue; f.t += dt; const k = f.t / f.dur; f.L.intensity = k >= 1 ? 0 : f.p * (1 - k) * (1 - k); if (k >= 1) flashes[i] = null; }
   }
 
@@ -125,7 +125,7 @@ export function createFX(o) {
     const big = R >= 7;
     fireball(x, y + R * 0.15, z, R * 0.75);
     for (let i = 0; i < (big ? 4 : 2); i++) fireball(x + rand(-R, R) * 0.4, y + rand(0, R * 0.4), z + rand(-R, R) * 0.4, R * rand(0.35, 0.55), rand(0.03, 0.18));
-    ring(x, heightAt(x, z), z, R);
+    ring(x, y, z, R);
     flash(x, y + 2, z, big ? 90 : 50, big ? 0.6 : 0.4, 0);
     for (let i = 0; i < 60 * Q + 20; i++) fire.emit(x, y + 0.5, z, rand(-1, 1) * R * 2.2, rand(3, 16), rand(-1, 1) * R * 2.2, rand(0.12, 0.3), rand(0.6, 1.6), 1, rand(0.55, 0.85), 0.25, 0, 14); // embers
     for (let i = 0; i < 26 * Q + 8; i++) { const g = rand(0.12, 0.25); smoke.emit(x + rand(-R, R) * 0.5, y + rand(0.5, 2), z + rand(-R, R) * 0.5, rand(-3, 3), rand(3, 9), rand(-3, 3), rand(2.5, 5) * R / 6, rand(3, 6), g, g, g, 2.2, -0.4); }

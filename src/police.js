@@ -165,7 +165,7 @@ function loseWanted() {
   const prev = police.wanted;
   police.wanted = 0; police.heat = 0; police.cool = 0; police.lkp = null; police.detect = 0; police.sed = false; police.violent = false;
   ctx.notify('You lost the Sheriff.', 'green'); radio('All units, suspect lost. Resume patrol.', true);
-  clearCops(false); ctx.save.rep += 1; ctx.save.stats.evaded = (ctx.save.stats.evaded || 0) + 1;
+  clearCops(false); ctx.save.rep += 1; ctx.save.stats.evaded = (ctx.save.stats.evaded || 0) + 1; if (prev >= 3) ctx.save.stats.evaded3 = (ctx.save.stats.evaded3 || 0) + 1;
   emit('wanted', { level: 0, prev });
 }
 
