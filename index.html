@@ -74,7 +74,7 @@ body.scoped #cross{opacity:.5}
 #helpline kbd{font:700 13px var(--ui);color:var(--paper);background:rgba(0,0,0,.5);padding:0 5px;border-radius:2px}
 #bigmap{position:fixed;inset:0;z-index:20;background:#11161a;display:none;cursor:crosshair}
 #bigmap.show{display:block;animation:mapIn .25s ease-out}
-@keyframes mapIn{from{opacity:0;transform:scale(1.03)}}
+@keyframes mapIn{from{transform:scale(1.03)}}
 /* ---- polish: HUD motion */
 #money.pop{animation:mpop .45s cubic-bezier(.2,1.6,.4,1)} #money.pop.down{animation:mdown .45s ease-out}
 @keyframes mpop{40%{transform:scale(1.18);filter:brightness(1.4)}} @keyframes mdown{30%{transform:translateX(-6px);color:var(--blood)}60%{transform:translateX(4px)}}
