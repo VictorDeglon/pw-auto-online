@@ -23,6 +23,16 @@ Accounts: every browser gets a guest account (Nakama device sign-in). In Career,
 The login is the username; Nakama stores it as an email address on the reserved `.invalid` domain. Signing in on
 another computer loads that account's save.
 
+Nakama's API can do far more than the game uses, so `index.js` closes the rest off:
+
+- names are 3 to 16 letters, numbers or underscores, at sign-up as well as on a rename
+- new accounts only come from guest sign-in, at most 60 sign-ins per address per 10 minutes; email sign-in can't
+  create accounts, and the login email linked to an account has to be that account's own name
+- players can write exactly one storage object, their save (`save/game`, up to 240,000 characters)
+- custom auth, groups, friends, chat channels, relayed matches, parties and the matchmaker are refused
+- only the game's 30 real achievements pay XP, once each; missions pay at most 25 times a day
+- every RPC that touches a player needs a signed-in player
+
 ## Running it
 
 Any Linux or macOS box with about 1 GB of RAM will do. It runs as an ordinary user with no root needed:
@@ -41,6 +51,24 @@ Deploy a new version of the module (copies `index.js`, restarts Nakama, checks t
 ```bash
 server/nakama/deploy.sh <ssh-host>
 ```
+
+### Or in Docker
+
+`Dockerfile` builds the server image (the official `heroiclabs/nakama:3.41.0` plus `index.js`), and
+`docker-compose.yml` runs it with Postgres 16:
+
+```bash
+cd server/nakama
+./gen-secrets.sh > .env    # random secrets; .env is gitignored, keep it private
+docker compose up -d --build
+```
+
+The image runs as an unprivileged user, with a read-only filesystem, all capabilities dropped and
+`no-new-privileges`. It refuses to start if any secret is missing, short or a default (`defaultkey`, `admin`, …).
+The secrets go into a config file on a private tmpfs rather than onto a command line. Postgres sits on an internal
+network with no published port. The game port (7350) and the console (7351) are published on `127.0.0.1` only, so
+put a TLS front in front of 7350 (Tailscale Funnel, Caddy, a load balancer) and point `nakama.json` at it. The
+browser's key is `SERVER_KEY` from `.env`. `NAKAMA_PORT` and `CONSOLE_PORT` change the host ports.
 
 ## Pointing the game at it
 

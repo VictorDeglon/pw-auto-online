@@ -1,0 +1,4 @@
+# only what the image needs (keeps .env and everything else out of the build context)
+*
+!index.js
+!docker-entrypoint.sh

@@ -130,12 +130,15 @@ function publicProgress(p, name) {
 // ---------------------------------------------------------------- RPCs
 function parse(payload) { try { return payload ? JSON.parse(payload) : {}; } catch (e) { throw Error('bad payload'); } }
 function userName(nk, uid) { try { var a = nk.accountGetId(uid); return a.user.username; } catch (e) { return ''; } }
+function needUser(ctx) { if (!ctx.userId) throw Error('sign in first'); } // server-to-server calls (http key) have no player
 
 function rpcProfile(ctx, logger, nk, payload) {
+  needUser(ctx);
   var cur = readProgress(nk, ctx.userId);
   return JSON.stringify({ me: publicProgress(cur.value, ctx.username), skills: SKILLS, titles: TITLES });
 }
 function rpcSkillBuy(ctx, logger, nk, payload) {
+  needUser(ctx);
   var id = String(parse(payload).id || ''), s = SKILLS.filter(function (x) { return x.id === id; })[0];
   if (!s) throw Error('unknown skill');
   var r = updateProgress(nk, logger, ctx.userId, function (p) {
@@ -147,6 +150,7 @@ function rpcSkillBuy(ctx, logger, nk, payload) {
   return JSON.stringify({ me: publicProgress(r.p, ctx.username) });
 }
 function rpcSkillReset(ctx, logger, nk, payload) { // one free respec a day: every point comes back
+  needUser(ctx);
   var r = updateProgress(nk, logger, ctx.userId, function (p) {
     if (p.respec === today()) throw Error('one reset a day');
     var back = 0; for (var k in p.skills) for (var n = 1; n <= p.skills[k]; n++) back += n;
@@ -154,11 +158,16 @@ function rpcSkillReset(ctx, logger, nk, payload) { // one free respec a day: eve
   });
   return JSON.stringify({ me: publicProgress(r.p, ctx.username) });
 }
+// the game's 30 achievements (src/ui/achievements.js): only these pay XP, once each
+var ACH_IDS = ['first-wheels', 'autobiography', 'joyride', 'ludicrous', 'air-time', 'frequent-flyer', 'fender-bender', 'demolition-derby',
+  'chain-reaction', 'urban-renewal', 'wrecking-crew', 'lumberjack', 'lights-out', 'five-stars', 'slippery', 'busted', 'wasted', 'shopper',
+  'fully-loaded', 'arsenal', 'courier', 'tourist', 'collector', 'pimp', 'sharpshooter', 'social', 'hopper', 'rival', 'night-owl', 'dancer'];
 function rpcClaim(ctx, logger, nk, payload) { // achievements once each, missions once per mission per day
+  needUser(ctx);
   var q = parse(payload), kind = q.kind === 'mission' ? 'mission' : 'ach', id = String(q.id || '');
-  if (!/^[a-zA-Z0-9_:-]{2,40}$/.test(id)) throw Error('bad id');
+  if (kind === 'ach' ? ACH_IDS.indexOf(id) < 0 : !/^(story|job):[a-zA-Z0-9_-]{1,30}$/.test(id)) throw Error('bad id');
   var r = updateProgress(nk, logger, ctx.userId, function (p, ev) {
-    if (kind === 'ach') { if (p.ach[id] || Object.keys(p.ach).length >= 80) return false; p.ach[id] = 1; addXp(p, 150, ev); return true; }
+    if (kind === 'ach') { if (p.ach[id]) return false; p.ach[id] = 1; addXp(p, 150, ev); return true; }
     var key = today() + ':' + id; if (p.missions[key]) return false;
     var n = 0; for (var k in p.missions) if (k.slice(0, 10) === today()) n++; if (n >= 25) return false;
     for (var k2 in p.missions) if (k2.slice(0, 10) !== today()) delete p.missions[k2];
@@ -198,6 +207,7 @@ function rpcRooms(ctx, logger, nk, payload) {
   return JSON.stringify({ counts: counts, t: Date.now(), max: MAX_PLAYERS });
 }
 function rpcRoomJoin(ctx, logger, nk, payload) {
+  needUser(ctx);
   var sid = String(parse(payload).sid || ''); if (SERVERS.indexOf(sid) < 0) throw Error('unknown server');
   var m = roomFor(nk, logger, sid);
   if (m.size >= MAX_PLAYERS) throw Error('That server is full.');
@@ -205,11 +215,48 @@ function rpcRoomJoin(ctx, logger, nk, payload) {
 }
 function rpcTime(ctx, logger, nk, payload) { return JSON.stringify({ t: Date.now() }); }
 
-// usernames are names in the world: 3 to 16 letters, numbers or underscores
-function beforeUpdateAccount(ctx, logger, nk, data) {
-  if (data.username !== undefined && data.username !== null && data.username !== '' && !/^[A-Za-z0-9_]{3,16}$/.test(data.username)) throw Error('Names are 3 to 16 letters, numbers or underscores.');
+// ---------------------------------------------------------------- what the public API allows
+// Nakama's API can do much more than this game uses. These hooks keep it to what the client actually calls.
+// usernames are names in the world: 3 to 16 letters, numbers or underscores (on sign-up as well as on a rename)
+var NAME_RE = /^[A-Za-z0-9_]{3,16}$/, NAME_MSG = 'Names are 3 to 16 letters, numbers or underscores.';
+var MAIL_DOMAIN = '@players.pw-auto-online.invalid'; // src/online/net-nakama.js: the login email is <name>@this
+var AUTH_PER_IP = 60, AUTH_WINDOW_S = 600; // sign-ins from one address per 10 minutes (a school's whole lab still fits)
+var SAVE_MAX = 240000; // characters in one cloud save
+function checkName(name) { if (name !== undefined && name !== null && name !== '' && !NAME_RE.test(name)) throw Error(NAME_MSG); }
+function throttleAuth(ctx, nk) { // keyed by the player's address (the TLS front passes it on in X-Forwarded-For)
+  var ip = ctx.clientIp || '';
+  if (!ip || ip === '127.0.0.1' || ip === '::1') return; // a front that hides addresses would make everyone one address: don't lock them all out
+  var key = 'auth:' + ip + ':' + Math.floor(Date.now() / (AUTH_WINDOW_S * 1000));
+  var n = (nk.localcacheGet(key) || 0) + 1; nk.localcachePut(key, n, AUTH_WINDOW_S);
+  if (n > AUTH_PER_IP) throw Error('Too many sign-ins from this network. Try again in a few minutes.');
+}
+function beforeUpdateAccount(ctx, logger, nk, data) { checkName(data.username); return data; }
+function beforeAuthenticateDevice(ctx, logger, nk, data) { throttleAuth(ctx, nk); checkName(data.username); return data; }
+function beforeAuthenticateEmail(ctx, logger, nk, data) { // signing in only: accounts start as guests and add a password later
+  throttleAuth(ctx, nk);
+  if (data.create !== false) throw Error('Sign in with an existing name and password.');
   return data;
 }
+function beforeLinkEmail(ctx, logger, nk, data) { // the login email has to be this account's own name, so nobody squats another name's login
+  var name = userName(nk, ctx.userId), email = String((data && data.email) || '').toLowerCase();
+  if (!name || email !== name.toLowerCase() + MAIL_DOMAIN) throw Error('Pick your name first, then save it with a password.');
+  return data;
+}
+function beforeWriteStorage(ctx, logger, nk, data) { // players write one thing: their own save (save/game), of a sane size
+  var objs = (data && data.objects) || [];
+  for (var i = 0; i < objs.length; i++) {
+    var o = objs[i];
+    if (o.collection !== 'save' || o.key !== 'game') throw Error('not writable');
+    if (String(o.value || '').length > SAVE_MAX) throw Error('That save is too big.');
+  }
+  return objs.length <= 1 ? data : null;
+}
+function beforeDeleteStorage(ctx, logger, nk, data) {
+  var ids = (data && data.objectIds) || [];
+  for (var i = 0; i < ids.length; i++) if (ids[i].collection !== 'save' || ids[i].key !== 'game') throw Error('not deletable');
+  return data;
+}
+function refuse(ctx, logger, nk, data) { return null; } // features the game doesn't use: custom auth, groups, friends, chat channels, relayed matches, parties, matchmaker
 
 // ---------------------------------------------------------------- the room (authoritative match)
 function str(nk, data) { try { return typeof data === 'string' ? data : nk.binaryToString(data); } catch (e) { return ''; } }
@@ -415,5 +462,19 @@ function InitModule(ctx, logger, nk, initializer) {
   initializer.registerRpc('room_join', rpcRoomJoin);
   initializer.registerRpc('time', rpcTime);
   initializer.registerBeforeUpdateAccount(beforeUpdateAccount);
+  initializer.registerBeforeAuthenticateDevice(beforeAuthenticateDevice);
+  initializer.registerBeforeAuthenticateEmail(beforeAuthenticateEmail);
+  initializer.registerBeforeLinkEmail(beforeLinkEmail);
+  initializer.registerBeforeWriteStorageObjects(beforeWriteStorage);
+  initializer.registerBeforeDeleteStorageObjects(beforeDeleteStorage);
+  initializer.registerBeforeAuthenticateCustom(refuse);
+  initializer.registerBeforeLinkCustom(refuse);
+  initializer.registerBeforeCreateGroup(refuse);
+  initializer.registerBeforeJoinGroup(refuse);
+  initializer.registerBeforeAddFriends(refuse);
+  initializer.registerRtBefore('ChannelJoin', refuse);
+  initializer.registerRtBefore('MatchCreate', refuse);
+  initializer.registerRtBefore('PartyCreate', refuse);
+  initializer.registerRtBefore('MatchmakerAdd', refuse);
   logger.info('pw-auto-online module loaded: %d skills, %d rooms', SKILLS.length, SERVERS.length);
 }
