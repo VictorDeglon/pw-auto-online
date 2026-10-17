@@ -499,6 +499,9 @@ import { createCheats } from './src/ui/cheats.js';
 import { DEALER_SKINS, RESERVED } from './src/reserved.js';
 import { createWheel, ICONS as WICONS } from './src/ui/wheel.js';
 import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
+import * as MAPKIT from './src/ui/mapkit.js';
+import { setGroundTint } from './src/nature/ground.js';
+import { updateBeacons } from './src/online/beacons.js';
 
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
@@ -1018,7 +1021,7 @@ async function loadAssets() {
   // terrain: photo colour far away, photo-classified PBR ground layers up close (src/nature/ground.js)
   M.outer = new THREE.MeshStandardMaterial({ roughness: 1 }); // beyond the photo: procedural chaparral / grassland
   M.outer.onBeforeCompile = groundPatch(ground, { procedural: true });
-  M.terrainShader = photoBias => groundPatch(ground, { photoBias });
+  M.terrainShader = photoBias => groundPatch(ground, { photoBias, edge: photoRect() }); // near its edge the photo fades into the outer hills
   M.terrain = [];
   const gm = AER.ground;
   if (gm) { // the aerial photo tiles stream in after the loading screen (loadGroundPhotos); till then, plain ground colour
@@ -5624,82 +5627,125 @@ function prepMapImages() {
   }
 }
 function drawAerial(ctx, alpha) { ctx.globalAlpha = alpha; for (const g of groundImgs) ctx.drawImage(g.img, g.x0, g.z0, g.x1 - g.x0, g.z1 - g.z0); ctx.globalAlpha = 1; }
+// the photo's rectangle in game metres. Both maps fade the photo (and the streets on it) out along a natural edge
+// (src/ui/mapkit.js); the 3D terrain fades it into the outer hills (src/nature/ground.js).
+function photoRect() { const a = aerInv(0, 0, [0, 0]), b = aerInv(AER.W, AER.H, [0, 0]); return [a[0], a[1], b[0], b[1]]; }
+// the photo shrunk (about 55 m a pixel) and blurred: the procedural ground near the photo takes its colours
+function groundTint() {
+  if (!groundImgs.length || !TX.ground) return;
+  const r = photoRect(), W = 256, H = Math.round(W * (r[3] - r[1]) / (r[2] - r[0])), c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.scale(W / (r[2] - r[0]), H / (r[3] - r[1])); g.translate(-r[0], -r[1]); drawAerial(g, 1);
+  const img = g.getImageData(0, 0, W, H), d = img.data, t = new Float32Array(W * H);
+  for (let ch = 0; ch < 3; ch++) for (let pass = 0; pass < 3; pass++) for (const horiz of [1, 0]) { // box blur, clamped at the edges
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { let s = 0; for (let k = -4; k <= 4; k++) s += horiz ? d[(j * W + clamp(i + k, 0, W - 1)) * 4 + ch] : d[(clamp(j + k, 0, H - 1) * W + i) * 4 + ch]; t[j * W + i] = s / 9; }
+    for (let k = 0; k < W * H; k++) d[k * 4 + ch] = t[k];
+  }
+  for (let k = 0; k < W * H; k++) d[k * 4 + 3] = 255;
+  g.setTransform(1, 0, 0, 1, 0, 0); g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
+  setGroundTint(TX.ground, tex, r);
+}
+let photoMask = null; const mmLayer = document.createElement('canvas'), bmLayer = document.createElement('canvas');
+function mapMask() { return photoMask || (photoMask = MAPKIT.buildPhotoMask(photoRect(), D.roads, D.buildings, REGIONS.map(r => ({ x: r.x, z: r.z, r: 700 })))); }
+const LM_COLOR = { school: '#f2c14e', park: '#7fc25a', water: '#4fb3e8', hospital: '#ff5a5a', police: '#3b7bff', library: '#d8b98a', fire_station: '#ff8a3d' };
+const LM_PLURAL = { school: 'schools', park: 'parks', water: 'lakes', hospital: 'hospitals', police: 'police stations', library: 'libraries', fire_station: 'fire stations' };
+// every marker the two maps show; MAPKIT clusters them, keeps their labels apart and stacks them by priority:
+// 0 you, 1 other players, 2 missions / job / waypoint, 3 shops / garage / services, 4 everything else
+function mapMarks(big) {
+  const out = [], f = focusPos(), fl = Math.floor(simTime * 4) % 2;
+  if (big) { // places; zoomed far out, only the big ones
+    for (const p of LANDMARKS) {
+      if (mapView.mpp > 9 && !(p.type === 'water' || p.type === 'hospital' || p.type === 'police' || /High School|Community Park|Old Poway/.test(p.name))) continue;
+      out.push({ kind: 'icon', pri: 4, x: p.x, z: p.z, glyph: p.type, color: LM_COLOR[p.type] || '#ddd', label: p.name, group: 'lm:' + p.type, plural: LM_PLURAL[p.type] });
+    }
+  } else { // cops, fights, the helicopter, an owner coming for their car; where you wake up
+    for (const p of peds) { if (p.state === 'dead') continue; if (p.isCop) out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#3b7bff' }); else if (p.state === 'fight' || p.state === 'call') out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#d4302f' }); }
+    for (const v of vehicles) { if (v.isCop && !v.dead) out.push({ kind: 'dot', pri: 4, x: v.pos.x, z: v.pos.z, r: 4.5, color: v.siren && fl ? '#ff3030' : '#3b7bff', edge: v.siren }); if (v.avenger) out.push({ kind: 'dot', pri: 4, x: v.pos.x, z: v.pos.z, r: 4.5, color: '#ff8c1a', edge: true }); }
+    if (police.heli) out.push({ kind: 'dot', pri: 4, x: police.heli.pos.x, z: police.heli.pos.z, r: 6, color: fl ? '#ff3030' : '#3b7bff', edge: true });
+    if (HOSPITAL) out.push({ kind: 'icon', pri: 3, x: HOSPITAL.x, z: HOSPITAL.z, glyph: 'hospital', color: '#ff5a5a', label: 'Hospital' });
+    if (SHERIFF) out.push({ kind: 'icon', pri: 3, x: SHERIFF.x, z: SHERIFF.z, glyph: 'police', color: '#3b7bff', label: 'Sheriff' });
+  }
+  // gun shops (only the nearest one waits at the minimap's edge), your garage
+  let near = null, nd = Infinity; for (const S of DEALERS) { const d = hyp(S.x - f.x, S.z - f.z); if (d < nd) { nd = d; near = S; } }
+  for (const S of DEALERS) out.push({ kind: 'icon', pri: 3, x: S.x, z: S.z, glyph: 'shop', color: '#ff3cac', label: S.name, group: 'shop', plural: 'gun shops', edge: !big && S === near });
+  if (GARAGE) out.push({ kind: 'icon', pri: 3, x: GARAGE.x, z: GARAGE.z, glyph: 'garage', color: '#d9dde3', label: 'Your garage' });
+  // missions, the courier job, your waypoint
+  for (const b of storyMapMarks()) {
+    if (b.letter) out.push({ kind: 'icon', pri: 2, x: b.x, z: b.z, glyph: b.letter, color: b.color, label: b.label, edge: b.edge, group: 'giver', plural: 'jobs' });
+    else if (b.size >= 6) out.push({ kind: 'icon', pri: 2, x: b.x, z: b.z, glyph: 'star', color: b.color, label: b.label, edge: b.edge });
+    else out.push({ kind: 'dot', pri: 2, x: b.x, z: b.z, r: b.size, color: b.color, edge: b.edge });
+  }
+  if (job) out.push({ kind: 'icon', pri: 2, x: job.x, z: job.z, glyph: 'star', color: '#f0b23a', label: job.name, edge: true });
+  if (waypoint) out.push({ kind: 'pin', pri: 2, x: waypoint.x, z: waypoint.z, color: '#b06cff', label: (waypoint.name ? waypoint.name + ' · ' : '') + fmtDist(hyp(waypoint.x - f.x, waypoint.z - f.z)), nodist: true, edge: true });
+  out.push(...MAPKIT.playerMarks(big)); // other players
+  return out;
+}
 function drawMinimap() {
   const W = mm.width, R = W / 2, f = focusPos();
   const sp = player.inCar ? player.inCar.vel.length() : 0, mpp = (1.5 + sp * 0.04) / MMD;
   mctx.save(); mctx.clearRect(0, 0, W, W);
   mctx.beginPath(); mctx.arc(R, R, R, 0, TAU); mctx.clip();
-  mctx.fillStyle = '#323d31'; mctx.fillRect(0, 0, W, W);
+  mctx.fillStyle = '#2c3529'; mctx.fillRect(0, 0, W, W);
   mctx.translate(R, R); mctx.rotate(cam.yaw); mctx.scale(1 / mpp, 1 / mpp); mctx.translate(-f.x, -f.z);
   const span = R * mpp * 1.45;
-  mctx.save(); mctx.beginPath(); mctx.rect(f.x - span, f.z - span, span * 2, span * 2); mctx.clip(); drawAerial(mctx, 0.9); mctx.restore();
   const gx0 = Math.floor((f.x - span) / MB), gx1 = Math.floor((f.x + span) / MB), gz0 = Math.floor((f.z - span) / MB), gz1 = Math.floor((f.z + span) / MB);
   const seenR = new Set();
   for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const c = mapBins.get(ckey(gx, gz)); if (!c) continue; c.r.forEach(i => seenR.add(i)); }
-  mctx.lineCap = mctx.lineJoin = 'round'; mctx.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
-  for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; mctx.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; mctx.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? mctx.lineTo(r.p[k], r.p[k + 1]) : mctx.moveTo(r.p[k], r.p[k + 1]); mctx.stroke(); }
-  for (const pass of [1, 0]) for (const i of seenR) {
-    const r = mapRoads[i]; if ((r.t <= 3) !== !!pass) continue;
-    mctx.strokeStyle = roadStyle(r.t); mctx.lineWidth = Math.max(r.w * 0.6, 2 * mpp);
-    mctx.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? mctx.lineTo(r.p[k], r.p[k + 1]) : mctx.moveTo(r.p[k], r.p[k + 1]); mctx.stroke();
-  }
+  MAPKIT.drawMasked(mctx, mmLayer, mapMask(), g => { // photo and streets, faded out past the edge of town
+    g.save(); g.beginPath(); g.rect(f.x - span, f.z - span, span * 2, span * 2); g.clip(); drawAerial(g, 0.9); g.restore();
+    g.lineCap = g.lineJoin = 'round'; g.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
+    for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; g.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
+    for (const pass of [1, 0]) for (const i of seenR) {
+      const r = mapRoads[i]; if ((r.t <= 3) !== !!pass) continue;
+      g.strokeStyle = roadStyle(r.t); g.lineWidth = Math.max(r.w * 0.6, 2 * mpp);
+      g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke();
+    }
+  });
+  mctx.lineCap = mctx.lineJoin = 'round';
   if (gps && gps.length > 2) { mctx.strokeStyle = job || storyTarget() ? '#f0b23a' : '#b06cff'; mctx.lineWidth = 5 * mpp; mctx.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? mctx.lineTo(gps[k], gps[k + 1]) : mctx.moveTo(gps[k], gps[k + 1]); mctx.stroke(); }
   drawPoliceMap(mctx, mpp);
   mctx.restore();
-  const toMap = (x, z) => { const dx = (x - f.x) / mpp, dz = (z - f.z) / mpp, c = Math.cos(cam.yaw), s = Math.sin(cam.yaw); return [R + dx * c - dz * s, R + dx * s + dz * c]; };
-  const blip = (x, z, col, size, edge) => {
-    let [bx, by] = toMap(x, z); const dx = bx - R, dy = by - R, d = Math.hypot(dx, dy);
-    if (d > R - 8) { if (!edge) return null; bx = R + dx / d * (R - 8); by = R + dy / d * (R - 8); }
-    mctx.fillStyle = col; mctx.strokeStyle = '#000'; mctx.lineWidth = 1.5 * MMD; mctx.beginPath(); mctx.arc(bx, by, size * MMD, 0, TAU); mctx.fill(); mctx.stroke();
-    return [bx, by];
-  };
-  for (const p of peds) { if (p.state === 'dead') continue; if (p.isCop) blip(p.pos.x, p.pos.z, '#3b7bff', 3); else if (p.state === 'fight' || p.state === 'call') blip(p.pos.x, p.pos.z, '#d4302f', 3); }
-  const fl = Math.floor(simTime * 4) % 2;
-  for (const v of vehicles) if (v.isCop && !v.dead) blip(v.pos.x, v.pos.z, v.siren ? (fl ? '#ff3030' : '#3b7bff') : '#3b7bff', 4.5, v.siren);
-  for (const D of DEALERS) blip(D.x, D.z, '#ff3cac', 5, true); // the dealers
-  for (const r of remoteBlips()) blip(r.x, r.z, r.dead ? '#777' : r.color, r.car ? 6 : 5, true); // other players
-  if (GARAGE) blip(GARAGE.x, GARAGE.z, '#f0b23a', 6, false); // your garage
-  for (const v of vehicles) if (v.avenger) blip(v.pos.x, v.pos.z, '#ff8c1a', 4.5, true); // an owner coming for their car
-  if (police.heli) blip(police.heli.pos.x, police.heli.pos.z, fl ? '#ff3030' : '#3b7bff', 6, true);
-  blip(HOSPITAL.x, HOSPITAL.z, '#ff5a5a', 4, false); blip(SHERIFF.x, SHERIFF.z, '#2c5e3a', 4, false);
-  if (job) blip(job.x, job.z, '#f0b23a', 6, true);
-  if (waypoint) blip(waypoint.x, waypoint.z, '#b06cff', 6, true);
-  for (const b of storyMapMarks()) {
-    const at = blip(b.x, b.z, b.color, b.size, b.edge);
-    if (at && b.letter) { mctx.fillStyle = '#0e1013'; mctx.font = `bold ${10 * MMD}px Arial`; mctx.textAlign = 'center'; mctx.textBaseline = 'middle'; mctx.fillText(b.letter, at[0], at[1] + MMD * 0.5); }
-  }
+  // markers: off-map ones that matter (players, missions, the waypoint, the nearest gun shop) wait on the rim
+  const c = Math.cos(cam.yaw), s = Math.sin(cam.yaw), rim = R - 15 * MMD;
+  const toMap = (x, z) => { const dx = (x - f.x) / mpp, dz = (z - f.z) / mpp; return [R + dx * c - dz * s, R + dx * s + dz * c]; };
+  const items = MAPKIT.layoutMarks(mapMarks(false), { toScreen: toMap, cluster: 11 * MMD, onMap: (x, y) => Math.hypot(x - R, y - R) < R - 6 * MMD,
+    toEdge: (x, y) => { const dx = x - R, dy = y - R, d = Math.hypot(dx, dy); return d < rim ? null : [R + dx / d * rim, R + dy / d * rim, Math.atan2(dy, dx)]; } });
+  MAPKIT.spreadRim(items, R, R, rim, 15 * MMD);
+  mctx.save(); mctx.beginPath(); mctx.arc(R, R, R - 1, 0, TAU); mctx.clip();
+  MAPKIT.drawItems(mctx, items, { s: MMD * 0.72, r: 9, labels: 'players', font: 14, short: 10, inward: true, inside: b => Math.max(Math.hypot(b[0] - R, b[1] - R), Math.hypot(b[2] - R, b[1] - R), Math.hypot(b[0] - R, b[3] - R), Math.hypot(b[2] - R, b[3] - R)) < R - 3 * MMD, busy: [[R - 13 * MMD, R - 13 * MMD, R + 13 * MMD, R + 13 * MMD]] });
   const facing = player.inCar ? player.inCar.rotY : player.rotY;
-  mctx.save(); mctx.translate(R, R); mctx.rotate(Math.PI - facing + cam.yaw);
-  mctx.fillStyle = '#fff'; mctx.strokeStyle = '#000'; mctx.lineWidth = 2 * MMD; mctx.beginPath(); mctx.moveTo(0, -9 * MMD); mctx.lineTo(6 * MMD, 7 * MMD); mctx.lineTo(0, 3 * MMD); mctx.lineTo(-6 * MMD, 7 * MMD); mctx.closePath(); mctx.fill(); mctx.stroke();
+  MAPKIT.drawSelf(mctx, R, R, Math.PI - facing + cam.yaw, MMD * 0.85, performance.now() / 1000); // you, on top of everything
   mctx.restore();
   const nx = R + (R - 12) * Math.sin(cam.yaw), ny = R - (R - 12) * Math.cos(cam.yaw);
   mctx.fillStyle = '#000'; mctx.beginPath(); mctx.arc(nx, ny, 7 * MMD, 0, TAU); mctx.fill(); mctx.fillStyle = '#fff'; mctx.font = `bold ${11 * MMD}px Arial`; mctx.textAlign = 'center'; mctx.textBaseline = 'middle'; mctx.fillText('N', nx, ny + 1);
 }
-let mapOpen = false, mapView = null;
+let mapOpen = false, mapView = null, bmTimer = 0, bmBase = null, bmDrawn = [], bmDpr = 1;
 const bm = $('bigmapc'), bctx = bm.getContext('2d');
 function toggleMap() {
   if (!mapOpen) closeMenus('map');
-  mapOpen = !mapOpen; $('bigmap').classList.toggle('show', mapOpen); keys.clear();
-  if (mapOpen) { if (document.pointerLockElement) document.exitPointerLock(); const f = focusPos(); mapView = { cx: f.x, cz: f.z, mpp: 6 }; drawBigMap(); }
+  mapOpen = !mapOpen; $('bigmap').classList.toggle('show', mapOpen); keys.clear(); clearInterval(bmTimer);
+  if (mapOpen) { if (document.pointerLockElement) document.exitPointerLock(); const f = focusPos(); mapView = { cx: f.x, cz: f.z, mpp: 6 }; drawBigMap(); bmTimer = setInterval(drawBigMap, 250); } // other players keep moving
   else lockPointer();
 }
-function drawBigMap() {
-  if (!mapOpen) return;
-  const dpr = Math.min(devicePixelRatio, 2); bm.width = innerWidth * dpr; bm.height = innerHeight * dpr;
-  const g = bctx, v = mapView, W = bm.width, H = bm.height, sc = dpr / v.mpp;
-  g.fillStyle = '#11161a'; g.fillRect(0, 0, W, H);
+// the parts of the big map that only change when you pan or zoom: photo, streets, sector grid, region names
+function bigMapBase(W, H, dpr) {
+  const v = mapView, key = [W, H, v.cx, v.cz, v.mpp, groundImgs.length].join();
+  if (bmBase && bmBase.key === key) return bmBase;
+  const cv = bmBase && bmBase.canvas.width === W && bmBase.canvas.height === H ? bmBase.canvas : Object.assign(document.createElement('canvas'), { width: W, height: H });
+  const g = cv.getContext('2d'), sc = dpr / v.mpp, regions = [];
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#11161a'; g.fillRect(0, 0, W, H);
   g.save(); g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-v.cx, -v.cz);
-  g.imageSmoothingEnabled = true; drawAerial(g, 1);
-  // half real, half cartoon: the photo underneath, pushed warmer and flatter, each region washed in its own colour
-  g.globalCompositeOperation = 'soft-light'; g.fillStyle = 'rgba(255,214,150,.55)'; g.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
-  g.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = g.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1300); gr.addColorStop(0, r.col + '55'); gr.addColorStop(1, r.col + '00'); g.fillStyle = gr; g.fillRect(r.x - 1300, r.z - 1300, 2600, 2600); }
-  g.globalCompositeOperation = 'source-over';
-  g.lineCap = g.lineJoin = 'round';
-  g.strokeStyle = 'rgba(18,22,28,.9)'; // ink outline under every road
-  for (const r of mapRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; g.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
-  for (const pass of [0, 1]) for (const r of mapRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; g.strokeStyle = roadStyle(r.t); g.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
-  if (gps && gps.length > 2) { g.strokeStyle = job ? '#f0b23a' : '#b06cff'; g.lineWidth = Math.max(3 * v.mpp, 3); g.setLineDash([6 * v.mpp, 4 * v.mpp]); g.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? g.lineTo(gps[k], gps[k + 1]) : g.moveTo(gps[k], gps[k + 1]); g.stroke(); g.setLineDash([]); }
-  drawPoliceMap(g, v.mpp);
+  MAPKIT.drawMasked(g, bmLayer, mapMask(), L => {
+    L.imageSmoothingEnabled = true; drawAerial(L, 1);
+    // half real, half cartoon: the photo underneath, pushed warmer and flatter, each region washed in its own colour
+    L.globalCompositeOperation = 'soft-light'; L.fillStyle = 'rgba(255,214,150,.55)'; L.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
+    L.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = L.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1300); gr.addColorStop(0, r.col + '55'); gr.addColorStop(1, r.col + '00'); L.fillStyle = gr; L.fillRect(r.x - 1300, r.z - 1300, 2600, 2600); }
+    L.globalCompositeOperation = 'source-over';
+    L.lineCap = L.lineJoin = 'round';
+    L.strokeStyle = 'rgba(18,22,28,.9)'; // ink outline under every road
+    for (const r of mapRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    for (const pass of [0, 1]) for (const r of mapRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+  });
   g.restore();
   const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
   { // 1 km sector grid, labelled along the top and left edges like a paper street atlas
@@ -5713,7 +5759,7 @@ function drawBigMap() {
     for (let r = 0; r < SECTOR.rows; r++) { const [, y] = toS(0, SECTOR.z0 + (r + 0.5) * SECTOR.size); if (y > 90 * dpr && y < H - 20) tag(String(r + 1), 18 * dpr, y); }
     g.restore();
   }
-  { // region names: big, inked, a little tilted, fading out as you zoom in on the streets
+  { // region names: big, inked, a little tilted, fading out as you zoom in on the streets; markers' labels keep off them
     const a = clamp((v.mpp - 1.6) / 2.5, 0, 1); if (a > 0.02) {
       g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       for (const r of REGIONS) {
@@ -5723,27 +5769,43 @@ function drawBigMap() {
         g.font = `400 ${fs}px Anton, Impact, sans-serif`; const t = r.name.toUpperCase();
         g.lineWidth = 5 * dpr; g.strokeStyle = 'rgba(12,14,20,.85)'; g.strokeText(t, 0, 0); g.fillStyle = '#f3ede1'; g.fillText(t, 0, 0);
         g.fillStyle = r.col; g.fillRect(-fs * 1.2, fs * 0.62, fs * 2.4, 3 * dpr);
+        if (a > 0.4) { const w = g.measureText(t).width / 2 + 4 * dpr; regions.push([x - w, y - fs * 0.62, x + w, y + fs * 0.75]); }
         g.restore();
       }
       g.restore();
     }
   }
-  g.font = `600 ${13 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'center';
-  for (const p of LANDMARKS) {
-    if (v.mpp > 9 && !(p.type === 'water' || p.type === 'hospital' || p.type === 'police' || /High School|Community Park|Old Poway/.test(p.name))) continue;
-    const [x, y] = toS(p.x, p.z); if (x < 0 || y < 0 || x > W || y > H) continue;
-    g.fillStyle = { school: '#f0b23a', park: '#a6c98a', water: '#8fc8ee', hospital: '#ff6b6b', police: '#7fb3ff', library: '#e6d8b8', fire_station: '#ff9a5a' }[p.type] || '#ddd';
-    g.beginPath(); g.arc(x, y, 3.5 * dpr, 0, TAU); g.fill(); g.fillStyle = 'rgba(243,237,225,.95)'; g.shadowColor = '#000'; g.shadowBlur = 4; g.fillText(p.name, x, y - 7 * dpr); g.shadowBlur = 0;
-  }
-  const f = focusPos(); const [px, py] = toS(f.x, f.z);
-  g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(px, py, 7 * dpr, 0, TAU); g.fill(); g.stroke();
-  const pin = (x, z, col, label) => { const [wx, wy] = toS(x, z); g.fillStyle = col; g.beginPath(); g.moveTo(wx, wy); g.lineTo(wx - 8 * dpr, wy - 16 * dpr); g.arc(wx, wy - 18 * dpr, 8 * dpr, Math.PI, 0); g.lineTo(wx + 8 * dpr, wy - 16 * dpr); g.closePath(); g.fill(); g.stroke(); g.fillStyle = '#fff'; g.font = `700 ${13 * dpr}px "Barlow Condensed", Arial`; g.fillText(label, wx, wy - 30 * dpr); };
-  if (waypoint) pin(waypoint.x, waypoint.z, '#b06cff', (waypoint.name ? waypoint.name + ' · ' : '') + fmtDist(hyp(waypoint.x - f.x, waypoint.z - f.z)));
-  if (job) pin(job.x, job.z, '#f0b23a', job.name);
-  for (const r of remoteBlips()) pin(r.x, r.z, r.color, r.name + (r.dead ? ' (down)' : ''));
-  for (const b of storyMapMarks()) if (b.label) pin(b.x, b.z, b.color, b.label);
-  { // vignette, where-you-are card, scale bar, compass
-    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(6,8,14,.55)'); g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  { const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(6,8,14,.55)'); g.fillStyle = vg; g.fillRect(0, 0, W, H); } // vignette
+  return (bmBase = { key, canvas: cv, regions });
+}
+function drawBigMap() {
+  if (!mapOpen) return;
+  const dpr = bmDpr = Math.min(devicePixelRatio, 2), W = Math.round(innerWidth * dpr), H = Math.round(innerHeight * dpr);
+  if (bm.width !== W || bm.height !== H) { bm.width = W; bm.height = H; }
+  const g = bctx, v = mapView, sc = dpr / v.mpp, base = bigMapBase(W, H, dpr);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(base.canvas, 0, 0);
+  g.save(); g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-v.cx, -v.cz); g.lineCap = g.lineJoin = 'round';
+  if (gps && gps.length > 2) { g.strokeStyle = job ? '#f0b23a' : '#b06cff'; g.lineWidth = Math.max(3 * v.mpp, 3); g.setLineDash([6 * v.mpp, 4 * v.mpp]); g.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? g.lineTo(gps[k], gps[k + 1]) : g.moveTo(gps[k], gps[k + 1]); g.stroke(); g.setLineDash([]); }
+  drawPoliceMap(g, v.mpp);
+  g.restore();
+  const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
+  const f = focusPos(), [px, py] = toS(f.x, f.z);
+  // markers: clustered, labels kept apart; players, missions and the waypoint wait at the screen's edge when off it
+  const mg = 12 * dpr, e0 = 36 * dpr, e1 = 172 * dpr, e2 = W - 36 * dpr, e3 = H - 84 * dpr, cx = W / 2, cy = H / 2;
+  const toEdge = (x, y) => {
+    if (x > mg && y > mg && x < W - mg && y < H - mg) return null;
+    const dx = x - cx, dy = y - cy, k = Math.min(dx > 0 ? (e2 - cx) / dx : dx < 0 ? (e0 - cx) / dx : 1e9, dy > 0 ? (e3 - cy) / dy : dy < 0 ? (e1 - cy) / dy : 1e9);
+    return [cx + dx * k, cy + dy * k, Math.atan2(dy, dx)];
+  };
+  const items = MAPKIT.layoutMarks(mapMarks(true), { toScreen: toS, toEdge, cluster: 30 * dpr, onMap: (x, y) => x > -20 && y > -20 && x < W + 20 && y < H + 20 });
+  const you = [px - 22 * dpr, py - 46 * dpr, px + 22 * dpr, py + 18 * dpr]; // you, and the YOU tag over you
+  bmDrawn = MAPKIT.drawItems(g, items, { s: dpr, r: 10, labels: 'all', font: 14, busy: [...base.regions, you], from: f, clip: [0, 0, W, H] });
+  const facing = player.inCar ? player.inCar.rotY : player.rotY;
+  MAPKIT.drawSelf(g, px, py, Math.PI - facing, dpr * 1.15, performance.now() / 1000);
+  g.font = `700 ${13 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#ffd25a'; g.strokeStyle = 'rgba(10,12,16,.92)'; g.lineWidth = 1.5 * dpr; g.beginPath(); g.roundRect(px - 19 * dpr, py - 44 * dpr, 38 * dpr, 19 * dpr, 9.5 * dpr); g.fill(); g.stroke();
+  g.fillStyle = '#0e1013'; g.fillText('YOU', px, py - 34 * dpr);
+  { // where-you-are card, scale bar, compass
     const rg = regionAt(f.x, f.z), sec = sectorAt(f.x, f.z); $('maphere').innerHTML = `<i style="background:${rg.col}"></i><b>${rg.name}</b><span>${rg.district} · sector ${sec} · ${streetAt(f.x, f.z) || ''}</span>`;
     const want = 120 * v.mpp, steps = [50, 100, 200, 250, 500, 1000, 2000], m = steps.find(s => s >= want * 0.6) || 2000, px = m / v.mpp * dpr, bx = W - px - 30 * dpr, by = H - 40 * dpr;
     g.fillStyle = 'rgba(14,18,26,.85)'; g.fillRect(bx - 10 * dpr, by - 26 * dpr, px + 20 * dpr, 40 * dpr);
@@ -5771,7 +5833,10 @@ function clearWaypoint(quiet) { waypoint = null; wpBeam.visible = false; gps = n
     if (!drag || !mapOpen) { drag = null; return; }
     if (!drag.moved) {
       const x = mapView.cx + (e.clientX - innerWidth / 2) * mapView.mpp, z = mapView.cz + (e.clientY - innerHeight / 2) * mapView.mpp;
-      if (waypoint && hyp(waypoint.x - x, waypoint.z - z) < 15 * mapView.mpp) clearWaypoint();
+      const it = MAPKIT.hitItem(bmDrawn, e.clientX * bmDpr, e.clientY * bmDpr);
+      if (it && it.n > 1 && mapView.mpp > 0.85) { mapView.cx = it.members.reduce((a, q) => a + q.x, 0) / it.n; mapView.cz = it.members.reduce((a, q) => a + q.z, 0) / it.n; mapView.mpp = clamp(mapView.mpp / 2.5, 0.8, 14); } // a cluster: zoom in till it splits
+      else if (it && it.m.kind === 'pin' || waypoint && hyp(waypoint.x - x, waypoint.z - z) < 15 * mapView.mpp) clearWaypoint();
+      else if (it && it.m.label) setWaypoint(it.m.x, it.m.z, it.m.label);
       else { let poi = null, pd = 22 * mapView.mpp; for (const p of LANDMARKS) { const d = hyp(p.x - x, p.z - z); if (d < pd) { pd = d; poi = p; } } if (poi) setWaypoint(poi.x, poi.z, poi.name); else setWaypoint(x, z, streetAt(x, z)); }
       drawBigMap();
     }
@@ -5846,7 +5911,7 @@ function tick(rdt) {
   sigT -= rdt; if (sigT <= 0) { sigT = 0.1; updateSignals(); }
   smoke.update(dt); fire.update(dt); NUKE_FX.update(rdt, skyU.horizon.value);
   for (let i = tracers.length - 1; i >= 0; i--) { tracers[i].t -= dt; if (tracers[i].t <= 0) { scene.remove(tracers[i].l); tracers[i].l.geometry.dispose(); tracers.splice(i, 1); } }
-  updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap();
+  updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap(); updateBeacons(rdt);
   const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); }
   if (bigTimer > 0) { bigTimer -= rdt; if (bigTimer <= 0) $('big').hidden = true; }
   repT += dt; if (repT > 30) { repT = 0; if (police.wanted === 0 && save.rep < 0) save.rep += 1; }
@@ -5945,6 +6010,7 @@ async function loadGroundPhotos() {
     const old = m.map; m.map = t; if (old && old.isDataTexture) old.dispose();
   }));
   groundImgs.length = 0; prepMapImages(); // the minimap and the big map draw the photo too
+  groundTint();
 }
 async function loadRoofPhotos() {
   const ts = await Promise.all(['assets/roofs0.jpg', 'assets/roofs1.jpg'].map(u => loadTex(u, true, false)));
