@@ -17,7 +17,7 @@ async function nakamaConfig() {
 // never disappears with it
 async function reachable(c) {
   try {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 3000);
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
     const r = await fetch(`${c.ssl ? 'https' : 'http'}://${c.host}:${c.port || (c.ssl ? 443 : 7350)}/healthcheck`, { cache: 'no-store', signal: ctl.signal }); clearTimeout(t);
     return r.ok;
   } catch (e) { return false; }
