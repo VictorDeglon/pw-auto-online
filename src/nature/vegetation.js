@@ -34,7 +34,14 @@ function mergeLod(THREE, root) {
   const geos = [], mats = [];
   root.traverse(o => {
     if (!o.isMesh) return;
-    const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld);
+    const g = o.geometry.clone();
+    for (const k of Object.keys(g.attributes)) { // quantized (KHR_mesh_quantization) or integer attributes -> float, so transforms and merging work
+      const a = g.attributes[k]; if (a.array instanceof Float32Array && !a.normalized) continue;
+      const f = new Float32Array(a.count * a.itemSize), get = ['getX', 'getY', 'getZ', 'getW'];
+      for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) f[i * a.itemSize + c] = a[get[c]](i);
+      g.setAttribute(k, new THREE.BufferAttribute(f, a.itemSize));
+    }
+    g.applyMatrix4(o.matrixWorld);
     for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k);
     if (!g.attributes.color) { const c = new Float32Array(g.attributes.position.count * 3).fill(1); g.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
     if (g.attributes.color.itemSize === 4) { // RGBA vertex colour -> RGB
@@ -54,7 +61,7 @@ function mergeLod(THREE, root) {
   geos.forEach((g, i) => {
     const c = g.attributes.position.count;
     P.set(g.attributes.position.array, o * 3); N.set(g.attributes.normal.array, o * 3); U.set(g.attributes.uv.array, o * 2);
-    const col = g.attributes.color; C.set(col.normalized ? Array.from(col.array, v => v / 255) : col.array, o * 3);
+    C.set(g.attributes.color.array, o * 3);
     geo.addGroup(o, c, i); o += c;
   });
   geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
@@ -129,7 +136,7 @@ void main() {
   if (${IGN} < 1.0 - vFade) discard;   // complement of the near mesh's dither
   vec4 a = texture2D(uAlb, vUv0) * vW.x + texture2D(uAlb, vUv1) * vW.y + texture2D(uAlb, vUv2) * vW.z + texture2D(uAlb, vUv3) * vW.w;
   float cov = clamp((a.a - 0.5) / max(fwidth(a.a), 1e-3) + 0.5, 0.0, 1.0);
-  if (cov < 0.02) discard;
+  if (cov < 0.5) discard; // below this the fringe has no MSAA to soften it and reads as a dark halo
   vec3 nt = (texture2D(uNrm, vUv0).xyz * vW.x + texture2D(uNrm, vUv1).xyz * vW.y + texture2D(uNrm, vUv2).xyz * vW.z + texture2D(uNrm, vUv3).xyz * vW.w) * 2.0 - 1.0;
   vec3 N = normalize(vBr * nt.x + vBu * nt.y + vBf * max(nt.z, 0.05));
   float ndl = dot(N, uSunDir);
@@ -155,10 +162,13 @@ function impostorMaterial(THREE, sp, U) {
   return m;
 }
 
-// near-mesh material patch: dithered fade-out beyond uNear and wind sway that grows with height
-function patchNear(mat, U, sway) {
+// near-mesh material patch, the way Unreal shades foliage: dithered fade-out beyond uNear (the impostor fades in under
+// it), wind sway growing with height plus a flutter on the leaves, an anti-aliased alpha cut that keeps its coverage in
+// the distance, and two-sided foliage: sunlight coming through the leaves when they're backlit or you look toward the
+// sun through the crown.
+function patchNear(mat, U, sway, leaf) {
   mat.onBeforeCompile = sh => {
-    for (const k of ['uNear', 'uBand', 'uTime', 'uWind']) sh.uniforms[k] = U[k];
+    for (const k of ['uNear', 'uBand', 'uTime', 'uWind', 'uSunDir', 'uSunCol']) sh.uniforms[k] = U[k];
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uNear, uBand, uTime, uWind; varying float vNearFade;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -169,14 +179,28 @@ function patchNear(mat, U, sway) {
           float sw = uWind * ${sway.toFixed(4)} * hgt * hgt / (1.0 + hgt);
           transformed.x += sin(uTime * 1.3 + ph + transformed.y * 0.4) * sw;
           transformed.z += cos(uTime * 1.1 + ph * 1.3 + transformed.x * 0.4) * sw * 0.7;
+          ${leaf ? 'transformed += objectNormal * sin(uTime * 6.3 + dot(transformed, vec3(3.1, 1.7, 2.3)) + ph) * 0.025 * uWind * min(hgt, 1.0);' : ''}
         #else
           vNearFade = 1.0;
         #endif`);
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vNearFade;')
+    let fs = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vNearFade; uniform vec3 uSunDir, uSunCol;')
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nif (${IGN} >= vNearFade) discard;`);
+    if (leaf) fs = fs
+      .replace('#include <alphatest_fragment>', `{ // keep thin leaves from thinning out with the mip level, then cut at 0.5
+          vec2 tsz = vec2(textureSize(map, 0)); vec2 dx = dFdx(vMapUv * tsz), dy = dFdy(vMapUv * tsz);
+          float mip = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy))));
+          diffuseColor.a *= 1.0 + mip * 0.25;
+          if (diffuseColor.a < 0.5) discard;
+          diffuseColor.a = 1.0;
+        }`)
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+        { vec3 Ls = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz), V = normalize(vViewPosition);
+          float back = max(dot(-normal, Ls), 0.0), thru = pow(max(dot(-V, Ls), 0.0), 4.0);
+          reflectedLight.directDiffuse += diffuseColor.rgb * uSunCol * (back * 0.22 + thru * 0.5) * vec3(1.0, 1.06, 0.62) * RECIPROCAL_PI; }`);
+    sh.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => 'nearveg' + sway;
+  mat.customProgramCacheKey = () => 'nearveg' + sway + (leaf ? 'leaf' : '');
 }
 
 // ---------------------------------------------------------------- the renderer
@@ -227,9 +251,10 @@ export class Vegetation {
       sp.lods.forEach((lod, v) => {
         if (!lod) return;
         const mats = lod.mats.map(m0 => {
-          const m = m0.clone(); m.vertexColors = true; m.side = THREE.DoubleSide; m.roughness = 0.92; m.metalness = 0;
-          m.transparent = false; m.alphaTest = 0; m.depthWrite = true; m.envMapIntensity = 0.4;
-          patchNear(m, this.U, sp.sway ?? 0.012); return m;
+          const leaf = !!m0.map && (m0.transparent || m0.alphaTest > 0); // the leaf cards (their texture has alpha)
+          const m = m0.clone(); m.vertexColors = true; m.side = THREE.DoubleSide; m.roughness = leaf ? 0.75 : 0.92; m.metalness = 0;
+          m.transparent = false; m.alphaTest = leaf ? 0.5 : 0; m.depthWrite = true; m.envMapIntensity = 0.4; m.normalMap = null;
+          patchNear(m, this.U, sp.sway ?? 0.012, leaf); return m;
         });
         const im = new THREE.InstancedMesh(lod.geo, mats, 64); im.count = 0; im.frustumCulled = false;
         im.castShadow = this.opts.nearShadows; im.receiveShadow = true; im.name = `near:${name}/${v}`;

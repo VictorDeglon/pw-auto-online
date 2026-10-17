@@ -284,9 +284,11 @@ export function interactPHS(pos, reach = REACH) {
 }
 
 // ------------------------------------------------------------------ spawn
-// Game start point: the main entrance by the PCPA on the Titan Way side (campus local metres east/north).
-// index.html pickSpawn() snaps it to the nearest sidewalk so the player's car spawns at the curb.
+// Game start point: on the running track at the south end of the football stadium, looking up the field, with the
+// player's car parked beside them (campus local metres east/north). Lots of open room to walk or drive.
+// index.html pickSpawn() keeps the nearest sidewalk as `curb` (the garage goes off the road there).
 export function spawnPoint() {
   if (!S.F) return null;
-  return { x: gx(338), z: gz(70) };
+  const x = gx(330), z = gz(378), fx = gx(316) - x, fz = gz(455) - z;
+  return { x, z, rot: Math.atan2(fx, fz), car: { x: gx(341), z: gz(381), rot: Math.atan2(gx(343) - gx(341), gz(420) - gz(381)) } };
 }

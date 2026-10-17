@@ -5,11 +5,15 @@
 //    classes the terrain shader uses (lawn, dry grass, chaparral/leaf litter, bare soil, paving), with roads,
 //    buildings, houses, pools and water masked out. R = grass density, G = brush density, B = dryness (green lawn
 //    to golden hillside), A = grass height.
-//  - Two instanced layers that follow the camera, drawn with one draw call each: grass tufts out to ~55 m and
+//  - Two instanced layers that follow the camera, drawn with one draw call each: grass clumps out to ~55 m and
 //    brush clumps out to ~200 m. Every instance is anchored to a world grid cell (position and size come from a
 //    hash of the cell), so nothing swims as you move. The vertex shader reads the cover map for density and colour
 //    and a small height texture (re-centred as the camera travels) for the ground height. Lambert material, so
 //    grass picks up the scene's sun, sky, shadows and fog for free. Cars and the player push it aside.
+//  - Shaded the way Unreal shades landscape grass: crossed cards textured with drawn blades / leaves (no assets),
+//    normals that follow the ground so the grass lights like the ground it grows from, darker at the root, an
+//    anti-aliased alpha cut that keeps thin blades from vanishing with distance, and a fade that shrinks the clumps
+//    into the ground at the edge of the ring instead of dithering them away.
 // Beyond the brush radius, scatterShrubs() adds impostor shrubs (src/nature/vegetation.js) on wild land map-wide.
 
 // ---------------------------------------------------------------- the cover map
@@ -31,6 +35,7 @@ export function buildCoverMap(THREE, opts) {
   const poly = p => { mk2.beginPath(); mk2.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) mk2.lineTo(p[i], p[i + 1]); mk2.closePath(); mk2.fill(); };
   for (const b of opts.buildings) poly(b[2]);
   for (const a of opts.areas) if (a[0] === 0) poly(a[1]); // water
+  for (const p of opts.exclude || []) poly(p);              // places with their own ground (the Poway High campus: turf, track, courts)
   const rect = (x, z, w, d, ang, grow) => { mk2.save(); mk2.translate(x, z); mk2.rotate(ang); mk2.fillRect(-w / 2 - grow, -d / 2 - grow, w + grow * 2, d + grow * 2); mk2.restore(); };
   for (const h of opts.houses) rect(h[0], h[1], h[2], h[3], h[4], 1);
   for (const p of opts.pools) rect(p[0], p[1], p[2], p[3], p[4], 1.2);
@@ -72,19 +77,12 @@ export function buildCoverMap(THREE, opts) {
 
 // ---------------------------------------------------------------- geometry: one grass tuft, one brush clump
 function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
-function grassTuft(THREE) {
-  const r = rng(7), P = [], N = [], U = [], I = []; const BL = 11;
-  for (let b = 0; b < BL; b++) {
-    const a = r() * Math.PI * 2, rr = Math.sqrt(r()) * 0.36, ox = Math.cos(a) * rr, oz = Math.sin(a) * rr, f = r() * Math.PI * 2;
-    const fx = Math.cos(f), fz = Math.sin(f), w = 0.011 + r() * 0.009, hgt = 0.55 + r() * 0.45, lean = 0.08 + r() * 0.22, base = P.length / 3;
-    const nx = -fz, nz = fx; // blade faces this way
-    for (let s = 0; s <= 2; s++) {
-      const t = s / 2, y = t * hgt, bend = lean * t * t, ww = s === 2 ? 0 : w * (1 - t * 0.5);
-      const cx = ox + nx * bend, cz = oz + nz * bend;
-      P.push(cx - fx * ww, y, cz - fz * ww, cx + fx * ww, y, cz + fz * ww);
-      N.push(nx, 0.6, nz, nx, 0.6, nz); U.push(0, t, 1, t);
-    }
-    for (let s = 0; s < 2; s++) { const a0 = base + s * 2; I.push(a0, a0 + 1, a0 + 3, a0, a0 + 3, a0 + 2); }
+function grassTuft(THREE) { // three crossed cards; the texture holds the blades
+  const P = [], N = [], U = [], I = [];
+  for (let k = 0; k < 3; k++) {
+    const ang = k * Math.PI / 3 + 0.2, c = Math.cos(ang), sn = Math.sin(ang), b = P.length / 3, w = 0.62;
+    for (const [u, v] of [[0, 0], [1, 0], [1, 1], [0, 1]]) { const x = (u - 0.5) * w; P.push(c * x, v, sn * x); N.push(-sn, 0, c); U.push(u, v); }
+    I.push(b, b + 1, b + 2, b, b + 2, b + 3);
   }
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
@@ -105,6 +103,36 @@ function brushClump(THREE) { // three crossed cards and a cap; the fragment shad
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I); return g;
+}
+
+// ---------------------------------------------------------------- card textures, drawn once (no downloads)
+// RGB is a grey around 1 the shader tints (per-blade variation, warmer tips); A is the cut-out
+function cardTexture(THREE, draw) {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); draw(g, rng(11));
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter; t.premultiplyAlpha = false; return t;
+}
+function grassBlades(g, r) {
+  for (let i = 0; i < 46; i++) { // tapered, curved blades, longest in the middle of the clump
+    const x0 = 128 + (r() - 0.5) * 190, len = (0.45 + 0.55 * r()) * 250 * (1 - Math.abs(x0 - 128) / 260), lean = (r() - 0.5) * 70 + (x0 - 128) * 0.35, w = 3 + r() * 4;
+    const tone = 0.78 + r() * 0.35, warm = r() * 0.12;
+    const grd = g.createLinearGradient(0, 256, 0, 256 - len);
+    grd.addColorStop(0, `rgba(${Math.round(150 * tone)},${Math.round(165 * tone)},${Math.round(140 * tone)},1)`);
+    grd.addColorStop(1, `rgba(${Math.round((215 + warm * 300) * tone)},${Math.round(225 * tone)},${Math.round((170 - warm * 200) * tone)},1)`);
+    g.fillStyle = grd; g.beginPath(); g.moveTo(x0 - w, 256); g.quadraticCurveTo(x0 + lean * 0.3 - w * 0.6, 256 - len * 0.55, x0 + lean, 256 - len);
+    g.quadraticCurveTo(x0 + lean * 0.3 + w * 0.6, 256 - len * 0.55, x0 + w, 256); g.closePath(); g.fill();
+  }
+}
+function brushLeaves(g, r) {
+  for (let i = 0; i < 520; i++) { // small leaves in a rounded crown, denser and darker inside, lighter at the rim
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()), x = 128 + Math.cos(a) * d * 112, y = 132 + Math.sin(a) * d * 104 - (1 - d) * 10;
+    if (y > 250) continue;
+    const tone = (0.62 + 0.45 * d) * (0.8 + r() * 0.4), s = 5 + r() * 7;
+    g.fillStyle = `rgba(${Math.round(185 * tone)},${Math.round(200 * tone)},${Math.round(165 * tone)},1)`;
+    g.save(); g.translate(x, y); g.rotate(r() * Math.PI); g.beginPath(); g.ellipse(0, 0, s, s * 0.45, 0, 0, Math.PI * 2); g.fill(); g.restore();
+  }
+  g.strokeStyle = 'rgba(95,80,60,1)'; g.lineWidth = 3; // a few stems showing at the bottom
+  for (let i = 0; i < 7; i++) { const x = 100 + r() * 56; g.beginPath(); g.moveTo(128 + (x - 128) * 0.3, 256); g.lineTo(x, 200 - r() * 30); g.stroke(); }
 }
 
 // ---------------------------------------------------------------- shader patch
@@ -134,13 +162,15 @@ const VS_BODY = /* glsl */`
   float dens = uKind < 0.5 ? min(1.0, cv.r * 1.6) : min(1.0, cv.g * 1.3); // generous: the point is to hide the ground
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
   float thin = uKind < 0.5 ? mix(1.0, 0.35, smoothstep(uR * 0.3, uR, dist)) : 1.0;
-  vFade = 1.0 - smoothstep(uR * 0.45, uR, dist);
+  vFade = 1.0 - smoothstep(uR * 0.6, uR, dist);
   float keep = step(h3, dens * thin) * step(0.001, vFade);
   float ang = h1 * 6.2831853, cs = cos(ang), sn = sin(ang);
   vec3 p = position;
   float sc;
-  if (uKind < 0.5) { sc = mix(0.12, 0.6, cv.a) * (0.7 + 0.6 * h4) * mix(0.7, 1.0, dens); p.xz *= 1.0 + 0.4 * cv.a; p.y *= sc; }
-  else { sc = (0.55 + 0.9 * h4) * (0.6 + 0.5 * dens); p *= sc; }
+  // the edge of the ring: clumps sink into the ground instead of dithering away
+  float sink = smoothstep(0.0, 1.0, vFade);
+  if (uKind < 0.5) { sc = mix(0.16, 0.62, cv.a) * (0.7 + 0.6 * h4) * mix(0.75, 1.0, dens) * sink; p.xz *= (0.75 + 0.5 * cv.a) * (0.8 + 0.4 * h2); p.y *= sc; }
+  else { sc = (0.55 + 0.9 * h4) * (0.6 + 0.5 * dens) * sink; p *= sc; }
   p = vec3(cs * p.x + sn * p.z, p.y, -sn * p.x + cs * p.z);
   // wind: grows with height above the ground
   float hy = max(p.y, 0.0), ph = dot(wp, vec2(0.21, 0.17));
@@ -158,7 +188,7 @@ const VS_BODY = /* glsl */`
   if (uKind < 0.5) {
     vec3 lawn = vec3(0.045, 0.10, 0.018), gold = vec3(0.28, 0.20, 0.075), olive = vec3(0.10, 0.10, 0.04);
     vec3 c = mix(mix(lawn, olive, smoothstep(0.2, 0.6, cv.b)), gold, smoothstep(0.5, 0.95, cv.b + (h2 - 0.5) * 0.3));
-    vGC = c * mix(0.62, 1.12, t) * (0.85 + 0.3 * h3);
+    vGC = c * (0.85 + 0.3 * h3);
   } else {
     vec3 chap = vec3(0.065, 0.08, 0.04), sage = vec3(0.16, 0.17, 0.115), dryb = vec3(0.2, 0.16, 0.085);
     vec3 c = mix(chap, sage, h2 * 0.8); c = mix(c, dryb, smoothstep(0.75, 1.0, cv.b) * h4 * 0.6);
@@ -172,19 +202,20 @@ function patch(mat, U, kind) {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + VS_HEAD)
       .replace('#include <beginnormal_vertex>', kind < 0.5
-        ? 'vec3 objectNormal = normalize(vec3(0.0, 1.0, 0.0) + 0.35 * normal);'
+        ? 'vec3 objectNormal = normalize(vec3(0.0, 1.0, 0.0) + 0.18 * normal);' // lit like the ground it grows from
         : 'vec3 objectNormal = normalize(vec3(position.x, position.y - 0.35, position.z) + vec3(0.0, 0.4, 0.0));')
       .replace('#include <begin_vertex>', VS_BODY);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vGC; varying float vFade; varying vec2 vLeaf; varying float vSeed;\nfloat lh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }\nfloat ln(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(lh(i), lh(i + vec2(1, 0)), f.x), mix(lh(i + vec2(0, 1)), lh(i + vec2(1, 1)), f.x), f.y); }`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vGC; varying float vFade; varying vec2 vLeaf; varying float vSeed; uniform sampler2D uCard;`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        if (${IGN} >= vFade) discard;
-        ${kind > 0.5 ? `{ // leafy clusters inside a rounded silhouette
-          vec2 q = vLeaf - vec2(0.5, 0.45); float e = length(q * vec2(1.0, 1.15));
-          float n = ln(vLeaf * 14.0 + vSeed * 13.0) * 0.45 + ln(vLeaf * 38.0 + vSeed * 7.0) * 0.35 + ln(vLeaf * 90.0) * 0.2;
-          if (n - e * 1.5 < 0.06) discard;
-        }` : ''}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\ndiffuseColor.rgb *= vGC;${kind > 0.5 ? `\ndiffuseColor.rgb *= (0.7 + 0.6 * ln(vLeaf * 45.0 + vSeed * 5.0)) * mix(0.55, 1.15, vLeaf.y);` : ''}`);
+        vec4 card = texture2D(uCard, vLeaf);
+        { // an alpha cut that keeps its coverage as the texture's mips blur the thin blades (and stays sharp up close)
+          vec2 dx = dFdx(vLeaf * 256.0), dy = dFdy(vLeaf * 256.0);
+          float mip = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy))));
+          if (card.a * (1.0 + mip * 0.3) < 0.5) discard;
+        }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        diffuseColor.rgb *= vGC * card.rgb * 2.0 * mix(${kind > 0.5 ? '0.6, 1.1' : '0.5, 1.15'}, smoothstep(0.0, 0.8, vLeaf.y)); // darker at the root`);
   };
   mat.customProgramCacheKey = () => 'groundcover' + kind;
 }
@@ -196,7 +227,7 @@ export class GroundCover {
     this.THREE = THREE; this.cover = cover; this.terrainAt = terrainAt; this.U = U;
     const q = opts.quality ?? 1;
     this.layers = [
-      { kind: 0, s: 0.6 / Math.sqrt(q), R: 50, geo: grassTuft(THREE) },
+      { kind: 0, s: 0.55 / Math.sqrt(q), R: 50, geo: grassTuft(THREE) },
       { kind: 1, s: 3.2 / Math.sqrt(q), R: 200, geo: brushClump(THREE) },
     ];
     // height texture around the camera
@@ -211,11 +242,12 @@ export class GroundCover {
       uTime: U.uTime, uWind: U.uWind,
       uPush: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
     };
+    const cards = [cardTexture(THREE, grassBlades), cardTexture(THREE, brushLeaves)];
     for (const L of this.layers) {
       const N = Math.ceil(2 * L.R / L.s), cells = new Float32Array(N * N * 2);
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { cells[(j * N + i) * 2] = i - N / 2; cells[(j * N + i) * 2 + 1] = j - N / 2; }
       L.geo.setAttribute('iCell', new THREE.InstancedBufferAttribute(cells, 2)); L.geo.instanceCount = N * N;
-      const U2 = Object.assign({}, this.shared, { uBase: { value: new THREE.Vector2() }, uS: { value: L.s }, uR: { value: L.R } });
+      const U2 = Object.assign({}, this.shared, { uBase: { value: new THREE.Vector2() }, uS: { value: L.s }, uR: { value: L.R }, uCard: { value: cards[L.kind] } });
       L.U = U2;
       const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
       patch(mat, U2, L.kind);

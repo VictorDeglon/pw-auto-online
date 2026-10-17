@@ -190,11 +190,13 @@ export function animHuman(r, speed, dt, mode) {
   else if (r.gun.visible) holdWeapon(r, null, { dt });
 }
 
-// ---- holding and aiming guns. Rocketbox ships no weapon animations, so arms are posed on top of the clip: the right
-// arm swings so the hand lines up with the aim, the left hand reaches for the fore-grip (two-handed weapons), and the
-// held model (r.gun, a holder Group) is placed at the hand pointing down the aim. Works in world space, so it doesn't
-// care how the Biped bones' local axes are set up.
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _m = new THREE.Matrix4();
+// ---- holding and aiming guns. Rocketbox ships no weapon animations, so arms are posed on top of the clip with
+// two-bone IK (shoulder, elbow, wrist): the gun's grip goes where a shooter holds it for that kind of weapon, the right
+// hand takes it, and the left hand takes the fore-grip `grip` m down the barrel with its elbow under the gun. Long guns
+// sit in the shoulder pocket with the right elbow out; pistols are pushed out in front of the face in both hands; the
+// minigun rides at the hip; launchers rest on the shoulder. Works in world space, so it doesn't care how the Biped
+// bones' local axes are set up.
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 function swing(bone, tip, dirW) { // rotate `bone` so the bone->tip vector points along dirW (world)
   bone.getWorldPosition(_a); tip.getWorldPosition(_b); _c.subVectors(_b, _a).normalize();
   _q.setFromUnitVectors(_c, dirW);
@@ -205,30 +207,61 @@ function swing(bone, tip, dirW) { // rotate `bone` so the bone->tip vector point
 function bones(r) {
   if (r.bones) return r.bones;
   const n = s => r.inst.getObjectByName(s);
-  r.bones = { ru: n('Bip01_R_UpperArm'), rf: n('Bip01_R_Forearm'), rh: n('Bip01_R_Hand'), lu: n('Bip01_L_UpperArm'), lf: n('Bip01_L_Forearm'), lh: n('Bip01_L_Hand'), sh: n('Bip01_R_Clavicle') };
+  r.bones = { ru: n('Bip01_R_UpperArm'), rf: n('Bip01_R_Forearm'), rh: n('Bip01_R_Hand'), lu: n('Bip01_L_UpperArm'), lf: n('Bip01_L_Forearm'), lh: n('Bip01_L_Hand'), sh: n('Bip01_R_Clavicle'), sp: n('Bip01_Spine2') || n('Bip01_Spine1') };
   return r.bones;
 }
-const _d = new THREE.Vector3(), _t = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0), _z = new THREE.Vector3(0, 0, 1);
-// r: rig; dirW: aim direction (world, unit) or null to carry the weapon low; o: { twoHand, grip (m), shoulder, dt (s) }
+// put the wrist on `target` (world), bending the elbow toward `pole` (a world direction)
+const _s = new THREE.Vector3(), _e = new THREE.Vector3(), _w = new THREE.Vector3(), _ax = new THREE.Vector3(), _pl = new THREE.Vector3(), _el = new THREE.Vector3(), _dw = new THREE.Vector3(); // (swing uses _a/_b/_c)
+function reach(up, fore, hand, target, pole) {
+  up.getWorldPosition(_s); fore.getWorldPosition(_e); hand.getWorldPosition(_w);
+  const a = _s.distanceTo(_e), b = _e.distanceTo(_w);
+  _ax.subVectors(target, _s); let d = _ax.length(); if (d < 1e-4) return; _ax.divideScalar(d);
+  d = Math.min(Math.max(d, Math.abs(a - b) + 0.02), (a + b) * 0.995); // out of reach: the arm points at it, straight
+  const ca = (a * a + d * d - b * b) / (2 * a * d), sa = Math.sqrt(Math.max(0, 1 - ca * ca));
+  _pl.copy(pole).addScaledVector(_ax, -pole.dot(_ax)); if (_pl.lengthSq() < 1e-6) _pl.set(0, -1, 0).addScaledVector(_ax, _ax.y); _pl.normalize();
+  _el.copy(_s).addScaledVector(_ax, ca * a).addScaledVector(_pl, sa * a);
+  swing(up, fore, _dw.subVectors(_el, _s).normalize());
+  fore.getWorldPosition(_e); _w.copy(_s).addScaledVector(_ax, d); // where the wrist ends up (target, clamped)
+  swing(fore, hand, _dw.subVectors(_w, _e).normalize());
+}
+const _d = new THREE.Vector3(), _t = new THREE.Vector3(), _z = new THREE.Vector3(0, 0, 1), _up = new THREE.Vector3(0, 1, 0);
+const _rs = new THREE.Vector3(), _ls = new THREE.Vector3(), _lf = new THREE.Vector3(), _g = new THREE.Vector3(), _p1 = new THREE.Vector3(), _p2 = new THREE.Vector3();
+// r: rig; dirW: aim direction (world, unit) or null to carry the weapon low; o: { twoHand, grip (m), shoulder, pose, dt (s) }
+// pose: 'long' | 'pistol' | 'hip' | 'shoulder' (default from twoHand / grip / shoulder)
 export function holdWeapon(r, dirW, o = {}) {
   const B = bones(r); if (!B.ru || !B.rf || !B.rh) return;
   r.g.updateMatrixWorld(true);
-  const kick = r.recoil || 0;
+  const kick = r.recoil || 0, H = r.gun;
+  const pose = o.pose || (o.shoulder ? 'shoulder' : o.twoHand && (o.grip || 0) >= 0.15 ? 'long' : o.twoHand ? 'pistol' : 'one');
   if (dirW) {
     _d.copy(dirW); _d.y += kick * 0.12; _d.normalize();
-    swing(B.ru, B.rh, _d); swing(B.rf, B.rh, _d);
-    if (o.twoHand && B.lu && B.lf && B.lh) { // left hand to a point along the barrel
-      B.rh.getWorldPosition(_t).addScaledVector(_d, o.grip || 0.3); B.lu.getWorldPosition(_a);
-      _b.subVectors(_t, _a).normalize(); swing(B.lu, B.lh, _b);
-      B.lf.getWorldPosition(_a); _b.subVectors(_t, _a).normalize(); swing(B.lf, B.lh, _b);
+    // lean the chest into the aim a little (up or down), so the arms don't do all of it
+    if (B.sp) { _lf.set(_d.x, 0, _d.z).normalize(); const pitch = Math.asin(Math.max(-1, Math.min(1, _d.y))); _p1.crossVectors(_up, _lf).normalize(); _q.setFromAxisAngle(_p1, -pitch * 0.35); B.sp.getWorldQuaternion(_q2); _q2.premultiply(_q); B.sp.parent.getWorldQuaternion(_q3).invert(); B.sp.quaternion.copy(_q3.multiply(_q2)); B.sp.updateMatrixWorld(true); }
+    B.ru.getWorldPosition(_rs); (B.lu || B.ru).getWorldPosition(_ls);
+    _lf.subVectors(_ls, _rs); _lf.y = 0; if (_lf.lengthSq() < 1e-6) _lf.set(1, 0, 0); _lf.normalize(); // the body's left
+    const L = _rs.distanceTo(B.rf.getWorldPosition(_p1)) + _p1.distanceTo(B.rh.getWorldPosition(_p2)); // arm length
+    // where the grip goes
+    if (pose === 'long') _g.copy(_rs).addScaledVector(_d, 0.3).addScaledVector(_up, -0.03).addScaledVector(_lf, 0.07);
+    else if (pose === 'hip') _g.copy(_rs).addScaledVector(_d, 0.3).addScaledVector(_up, -0.36).addScaledVector(_lf, 0.04);
+    else if (pose === 'shoulder') _g.copy(_rs).addScaledVector(_d, 0.24).addScaledVector(_up, 0.0).addScaledVector(_lf, 0.03);
+    else if (pose === 'pistol') _g.copy(_rs).lerp(_ls, 0.38).addScaledVector(_d, L * 0.82).addScaledVector(_up, -0.04);
+    else _g.copy(_rs).addScaledVector(_d, L * 0.85).addScaledVector(_lf, 0.05);
+    _g.addScaledVector(_d, -kick * 0.06);
+    // right arm: elbow down, and out to the side for a long gun
+    _p1.copy(_up).multiplyScalar(-1).addScaledVector(_lf, pose === 'long' || pose === 'shoulder' ? -0.9 : -0.35).addScaledVector(_d, -0.15);
+    reach(B.ru, B.rf, B.rh, _t.copy(_g).addScaledVector(_d, -0.08), _p1);
+    if (pose !== 'one' && B.lu && B.lf && B.lh) { // left hand under the fore-grip (or cupping the right hand on a pistol)
+      _t.copy(_g).addScaledVector(_d, pose === 'pistol' ? 0.02 : (o.grip || 0.3) - 0.04).addScaledVector(_up, pose === 'pistol' ? -0.05 : -0.06);
+      if (pose === 'pistol') _t.addScaledVector(_lf, 0.03);
+      _p2.copy(_up).multiplyScalar(-1).addScaledVector(_lf, pose === 'pistol' ? 0.45 : 0.3);
+      reach(B.lu, B.lf, B.lh, _t, _p2);
     }
   }
-  // the held model: at the hand (or the shoulder for launchers), pointing along the aim / slightly down when carried
-  const H = r.gun; if (!H || !H.isGroup) return;
-  (o.shoulder && B.sh ? B.sh : B.rh).getWorldPosition(_a);
-  if (o.shoulder) _a.y += 0.08;
+  // the held model: its grip in the right hand, pointing along the aim / slightly down when carried
+  if (!H || !H.isGroup) return;
+  B.rh.getWorldPosition(_a);
   if (!dirW) { _d.set(Math.sin(r.g.rotation.y), -1.4, Math.cos(r.g.rotation.y)).normalize(); }
-  _a.addScaledVector(_d, -kick * 0.08);
+  else if (pose === 'shoulder') _a.addScaledVector(_up, 0.06); // the tube rides over the hand, on the shoulder
   r.g.worldToLocal(_a); H.position.copy(_a);
   r.g.getWorldQuaternion(_q2).invert(); _b.copy(_d).applyQuaternion(_q2);
   H.quaternion.setFromUnitVectors(_z, _b);
