@@ -6011,7 +6011,7 @@ function startCareer() {
   initCareer({ notify, big, addCash: n => { save.money += n; persist(); } }).catch(e => console.warn('[career]', e));
   try { // a board just off the sidewalk at Poway High (the spawn), the dealer and the plaza, facing the street
     const spots = [], at = (p, along) => { if (!p || !p.ne) return; const nx = -p.ne.tz, nz = p.ne.tx; spots.push({ x: p.x + nx * 4 + p.ne.tx * along, z: p.z + nz * 4 + p.ne.tz * along, nx, nz }); };
-    at(spawnPt, 22); if (DEALER) at(sidewalkNear(DEALER.x, DEALER.z), -14); at(sidewalkNear(PLAZA_CENTER.x, PLAZA_CENTER.z), 0);
+    at(spawnPt.ne ? spawnPt : spawnPt.curb, 22); if (DEALER) at(sidewalkNear(DEALER.x, DEALER.z), -14); at(sidewalkNear(PLAZA_CENTER.x, PLAZA_CENTER.z), 0);
     BILLBOARDS = createBillboards({ THREE, scene, heightAt, spots });
     const upd = async () => { const r = await fetchBoard('kd', 8); BILLBOARDS.show(r ? r.rows : null); };
     upd(); setInterval(upd, 120e3);
