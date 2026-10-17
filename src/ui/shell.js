@@ -13,6 +13,7 @@ import { CATEGORIES } from '../people.js';
 import { ACHIEVEMENTS, renderAchievements, achievementCount, bump as achBump } from './achievements.js';
 import { PRESETS, ORDER, saveGfx } from '../gfx.js';
 import { remoteList, colorOf } from '../online/remote.js';
+import { openCareer, closeCareer, renderOnlineBoard } from './career.js';
 
 const $ = id => document.getElementById(id);
 const PROFILE_KEY = 'pw-auto-online-profile';
@@ -56,13 +57,15 @@ export function showMenu(scr) {
 }
 export function hideMenu() { $('menu').hidden = true; closeChar(); if (unwatch) { unwatch(); unwatch = null; } screen = null; }
 function open(name) {
-  for (const id of ['online', 'character', 'achievements', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
+  for (const id of ['online', 'career', 'character', 'achievements', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
   for (const b of document.querySelectorAll('#mnav [data-go]')) b.classList.toggle('on', b.dataset.go === name);
   if (screen === 'character' && name !== 'character') closeChar();
+  if (screen === 'career' && name !== 'career') closeCareer();
   if (screen === 'online' && name !== 'online' && unwatch) { unwatch(); unwatch = null; }
   screen = name;
   if (name === 'online') openServers();
   if (name === 'character') openChar();
+  if (name === 'career') openCareer();
   if (name === 'settings') openSettings();
   if (name === 'achievements') renderAchievements($('achgrid'));
   achSub();
@@ -95,6 +98,7 @@ async function openServers() {
   if (!ok) { $('netstate').textContent = 'Online play is not set up in this build yet (no Firebase project configured). Free roam works.'; return; }
   $('netstate').textContent = H.ready() ? 'Pick a server. Same town on each, different people.' : 'Pick a server. You can join as soon as Poway finishes loading.';
   if (!unwatch) unwatch = watchServers(c => { counts = c; renderServers(); updateOnlineSub(); });
+  renderOnlineBoard();
   for (const s of SERVERS) ping(s.id).then(ms => { pings[s.id] = ms; if (screen === 'online') renderServers(); });
 }
 function updateOnlineSub() { const tot = Object.values(counts).reduce((a, b) => a + b, 0); $('onlinesub').textContent = tot ? `${tot} playing now` : 'Pick a server'; }

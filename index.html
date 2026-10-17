@@ -252,6 +252,41 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 .preset b{font:400 22px/1 var(--display);letter-spacing:.04em;text-transform:uppercase} .preset span{font:500 13px/1.3 var(--ui);color:var(--dim)}
 .preset.on{border-color:var(--gold);background:rgba(255,122,47,.12)} .preset .tag{align-self:flex-start;font:700 11px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;background:var(--sage);color:#06231f;padding:3px 6px}
 .check,.range{display:flex;align-items:center;gap:10px;font:600 17px/1.2 var(--ui)} .check small{color:var(--dim);font-weight:500} .range input{flex:0 1 240px;accent-color:var(--gold)}
+/* career, leaderboards, account (src/ui/career.js) */
+.onlinewrap{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+@media (max-width:1100px){.onlinewrap{grid-template-columns:1fr}}
+.lbbox{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-top:3px solid var(--gold);padding:12px 14px}
+.lbbox h4,#scr-career h4{margin:0 0 8px;font:700 14px/1 var(--ui);letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
+.lb ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.lb li{display:grid;grid-template-columns:30px 1fr auto auto;gap:8px;align-items:baseline;padding:5px 6px;font:600 16px/1.1 var(--ui);color:var(--paper)}
+.lb li:nth-child(-n+3) .rk{color:#ffd23f}.lb li.me{background:rgba(255,122,47,.14)}.lb li.sep{margin-top:6px;border-top:1px dashed rgba(255,255,255,.15)}
+.lb .rk{font:400 18px/1 var(--display);color:var(--dim)}.lb .nm small{display:block;font:600 11px/1.2 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.lb b{font:400 20px/1 var(--display)}.lb small.kd{color:var(--dim);font:600 13px var(--ui)}
+#careerbody{display:flex;flex-direction:column;gap:16px}
+.cgrid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:14px}
+@media (max-width:1200px){.cgrid{grid-template-columns:1fr 1fr}}@media (max-width:760px){.cgrid{grid-template-columns:1fr}}
+#scr-career .card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);padding:14px 16px}
+#scr-career .who h3{margin:4px 0 8px;font:400 34px/1 var(--display);text-transform:uppercase;letter-spacing:.02em}
+#scr-career .who h3 small,.skillhead small{font:600 16px var(--ui);color:var(--dim);letter-spacing:.06em;margin-left:8px}
+.xpbar,#prog .xp,.ch .bar{height:8px;background:rgba(255,255,255,.08);overflow:hidden}.xpbar i,#prog .xp i,.ch .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),#ffd23f)}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:12px 0}.stats div{background:rgba(0,0,0,.25);padding:8px 6px;text-align:center}
+.stats b{display:block;font:400 24px/1 var(--display)}.stats small{font:600 12px var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.acct p{margin:0 0 8px;font:500 15px/1.35 var(--ui);color:var(--paper)}
+.ch{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}.ch .bar{grid-column:1/-1}
+.ch b{font:700 16px var(--ui)}.ch small{display:block;font:500 13px/1.25 var(--ui);color:var(--dim)}.ch span{font:600 14px var(--ui);color:var(--dim)}.ch.done span{color:var(--cash)}.ch.done .bar i{background:var(--cash)}
+.tabs{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}.tabs button{font:700 12px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase;background:#0b1222;color:var(--dim);border:1px solid #2b3550;padding:7px 9px;cursor:pointer}.tabs button.on{background:var(--gold);color:#1a0d02;border-color:var(--gold)}
+.skillhead{display:flex;justify-content:space-between;align-items:center;gap:12px}.skillhead h3{margin:0;font:400 28px/1 var(--display);text-transform:uppercase}
+.trees{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}@media (max-width:900px){.trees{grid-template-columns:1fr}}
+.tree{display:flex;flex-direction:column;gap:8px}
+.sk{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-left:4px solid #2b3550;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.sk.has{border-left-color:var(--gold)}.sk.locked{opacity:.55}.sk .t{display:flex;justify-content:space-between;align-items:center;gap:8px}.sk b{font:700 16px var(--ui)}.sk small{font:500 13px/1.3 var(--ui);color:var(--dim)}
+.pips{display:flex;gap:3px}.pips i{width:10px;height:10px;transform:skewX(-12deg);background:rgba(255,255,255,.12)}.pips i.on{background:var(--gold)}
+.sk .lock,.sk .maxed{font:600 12px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}.sk .maxed{color:var(--cash)}
+button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase;background:var(--gold);color:#1a0d02;border:0;padding:7px 10px;cursor:pointer}button.mini:disabled{background:#2b3550;color:var(--dim);cursor:default}
+#acctbox input{font:600 18px var(--ui);padding:10px 12px;background:#0b1222;color:var(--paper);border:1px solid #2b3550}
+#prog{margin-top:6px;text-align:right;font:600 14px/1.2 var(--ui);letter-spacing:.06em;color:var(--paper)}#prog .lv b{font:400 18px var(--display);color:var(--gold)}
+#prog .sp{color:#ffd23f}#prog .xp{width:170px;height:5px;margin:4px 0 4px auto}#prog .kd{color:var(--dim)}#prog .kd b{color:var(--paper)}
+#announce{position:fixed;top:14%;left:50%;transform:translateX(-50%);z-index:30;padding:10px 22px;background:rgba(10,16,32,.86);border-left:5px solid var(--gold);font:400 26px/1.1 var(--display);letter-spacing:.03em;text-transform:uppercase;color:var(--paper);transition:opacity .4s}#announce.out{opacity:0}
 .skyset{margin:4px 0 6px 28px;transition:opacity .2s}.skyset.off{opacity:.45}.seg.wrap{flex-wrap:wrap}.seg.wrap button{padding:8px 11px;font-size:12px} .check input{accent-color:var(--gold);width:18px;height:18px}
 /* name prompt */
 .modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(5,8,16,.7);backdrop-filter:blur(3px)}
@@ -296,6 +331,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
   <div id="stars"><span>★</span><span>★</span><span>★</span><span>★</span><span>★</span></div>
   <div id="evade" hidden><i></i></div>
   <div id="rep">Regular Resident</div>
+  <div id="prog" hidden></div>
   <div id="radio" hidden></div>
 </div>
 <div id="job" class="hud" hidden></div>
@@ -341,6 +377,7 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
     </div>
     <nav class="mnav" id="mnav">
       <button class="mbtn primary" data-go="online">Play online <small id="onlinesub">Pick a server</small></button>
+      <button class="mbtn" data-go="career">Career <small id="careersub">Levels, skills, leaderboards</small></button>
       <button class="mbtn" id="play" disabled>Free roam <small>Offline · missions, jobs, story</small></button>
       <button class="mbtn" data-go="character">Character <small id="skinsub">Pick your look</small></button>
       <button class="mbtn" data-go="achievements">Achievements <small id="achsub">0 / 30</small></button>
@@ -353,8 +390,13 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 
   <section class="screen" id="scr-online" hidden>
     <header><h2>Servers</h2><p id="netstate">Connecting…</p></header>
-    <div class="servers" id="servers"></div>
-    <p class="fine">Your name is asked every time you join and must be unique on that server. Progress, money and your look are saved on this computer.</p>
+    <div class="onlinewrap"><div class="servers" id="servers"></div><aside class="lbbox" id="lbonline" hidden></aside></div>
+    <p class="fine" id="onlinefine">Your name is asked every time you join and must be unique on that server. Progress, money and your look are saved on this computer.</p>
+  </section>
+
+  <section class="screen" id="scr-career" hidden>
+    <header><h2>Career</h2><p>Level up online and off, spend skill points, beat today's challenges, climb the leaderboards.</p></header>
+    <div id="careerbody"></div>
   </section>
 
   <section class="screen" id="scr-character" hidden>
@@ -411,13 +453,25 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 </div>
 
 <!-- username, asked on every join -->
+<div id="acctbox" class="modal" hidden>
+  <form class="modal-card" id="acctform" autocomplete="on">
+    <div class="eyebrow">Your account</div>
+    <h2 id="accttitle">Save your progress</h2>
+    <p class="fine" id="accthint"></p>
+    <input id="acctname" maxlength="16" spellcheck="false" placeholder="Name" aria-label="Name" autocomplete="username">
+    <input id="acctpass" type="password" maxlength="64" placeholder="Password (8+ characters)" aria-label="Password" autocomplete="current-password">
+    <p class="err" id="accterr"></p>
+    <div class="row"><button type="submit" class="mbtn primary small" id="acctgo">Save progress</button><button type="button" class="mbtn small" id="acctclose">Cancel</button></div>
+  </form>
+</div>
+<div id="announce" class="hud" hidden></div>
 <div id="namebox" class="modal" hidden>
   <form class="modal-card" id="nameform" autocomplete="off">
     <div class="eyebrow" id="namesrv">Joining</div>
     <h2>Who's driving?</h2>
     <input id="namein" maxlength="16" spellcheck="false" placeholder="Username" aria-label="Username">
     <p class="err" id="nameerr"></p>
-    <p class="fine">3–16 letters, numbers or _. Unique on this server.</p>
+    <p class="fine">3–16 letters, numbers or _. No two players can share a name.</p>
     <div class="row"><button type="submit" class="mbtn primary small" id="namego">Join</button><button type="button" class="mbtn small" id="namecancel">Back</button></div>
   </form>
 </div>
@@ -475,6 +529,9 @@ import { lanesPerDir, laneOffset, arrivalDir, canArrive, buildIntersections } fr
 import { createSignals } from './src/signals.js';
 import { ctx } from './src/ctx.js';
 import * as bus from './src/events.js';
+import { skill, carArmor, carRepairPerS, nitroSeconds } from './src/progress.js';
+import { initCareer, renderHud as careerHud, fetchBoard } from './src/ui/career.js';
+import { createBillboards } from './src/world/billboards.js';
 import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
@@ -3008,7 +3065,7 @@ function damageCar(v, amt, by, blast) {
   if (v.puppet) { if (by !== 'net') puppetCarDamage(v, blast ? amt : amt * 0.2, blast); return; }
   if (v.dead) { if (blast && !v.exploded && amt > 40) primeCar(v, by); return; }
   if (v.cheatTank) return;
-  v.health -= (blast ? amt : amt * 0.12) * (v.armorMul || 1); if (by) v.lastHitBy = by; // cars shrug off crashes (a dozen hard hits to total one); explosions still wreck them
+  v.health -= (blast ? amt : amt * 0.12) * (v.armorMul || 1) * (v === player.inCar ? carArmor() : 1); if (by) v.lastHitBy = by; // cars shrug off crashes (a dozen hard hits to total one); explosions still wreck them
   if (v.health <= 0) { wreckCar(v); if (blast) primeCar(v, by); }
 }
 // a wreck caught in a blast: its fuel goes up a second later and throws it again (chain reactions down a row of cars)
@@ -3220,7 +3277,8 @@ function focusPos() { return player.inCar ? player.inCar.pos : player.pos; }
 player.arsenal = { pistol: 84 }; // weapon id -> rounds; a key present = you own it
 Object.defineProperty(player, 'ammo', { get() { return this.arsenal.pistol | 0; }, set(n) { this.arsenal.pistol = n; }, configurable: true });
 function hurtPlayer(amt, src) {
-  if (player.dead || CH.god) return;
+  if (player.dead || CH.god || simTime < (player.shieldUntil || 0)) return; // Comeback: a short shield after respawning
+  amt *= 1 - 0.05 * skill('tough');
   if (player.evasive && (src === 'gun' || src === 'pvp') && Math.random() < 0.5) return; // a roll or slide can make them miss
   if (player.inCar && src !== 'explosion') { damageCar(player.inCar, amt * 0.7, null); amt *= 0.35; }
   player.health -= amt; player.lastHurt = simTime;
@@ -4144,10 +4202,10 @@ function openShop(D) {
 function closeShop() { if (!shopOpen) return; shopOpen = false; travelOpen = false; SHOP.closeShop(); persist(); lockPointer(); }
 // effective weapon stats with the upgrades bought for it
 function upLv(w, k) { return (((save.upgrades || {})[w.id] || {})[k]) | 0; }
-function maxOf(w) { return Math.round((w.max || 0) * (1 + SHOP.UPGRADES.cap.step * upLv(w, 'cap'))); }
-function dmgMul(w) { return 1 + SHOP.UPGRADES.dmg.step * upLv(w, 'dmg'); }
-function cdOf(w) { return (w.cd || 0.3) * (1 - SHOP.UPGRADES.rate.step * upLv(w, 'rate')); }
-function accMul(w) { return 1 - SHOP.UPGRADES.acc.step * upLv(w, 'acc'); }
+function maxOf(w) { return Math.round((w.max || 0) * (1 + SHOP.UPGRADES.cap.step * upLv(w, 'cap')) * (1 + 0.15 * skill('mags'))); }
+function dmgMul(w) { return (1 + SHOP.UPGRADES.dmg.step * upLv(w, 'dmg')) * (1 + 0.04 * skill('damage')); } // skills: src/progress.js
+function cdOf(w) { return (w.cd || 0.3) * (1 - SHOP.UPGRADES.rate.step * upLv(w, 'rate')) / (1 + 0.05 * skill('trigger')); }
+function accMul(w) { return (1 - SHOP.UPGRADES.acc.step * upLv(w, 'acc')) * (1 - 0.1 * skill('steady')); }
 function weaponStats(w) {
   const per = w.dmg ? (w.dmg[0] + w.dmg[1]) / 2 * (w.pellets || 1) : w.id === 'airstrike' ? 900 : 320;
   return { dmg: per * dmgMul(w) / 300, rate: Math.min(1, 0.05 / cdOf(w)), acc: w.spread ? 1 - w.spread * accMul(w) * 9 : 0.5, cap: maxOf(w) / ((w.max || 1) * 1.9) };
@@ -4557,7 +4615,7 @@ function die(kind, src) {
 function respawn() {
   const kind = player.deadKind; const P = kind === 'wasted' ? HOSPITAL : SHERIFF;
   if (player.inCar) { player.inCar.driver = null; player.inCar = null; }
-  player.dead = false; player.health = 100; player.knock = 0; player.rig.g.visible = true; player.rig.body.rotation.set(0, 0, 0); player.rig.body.position.y = 0;
+  player.dead = false; player.health = 100; player.knock = 0; player.shieldUntil = simTime + 1.5 * skill('comeback'); player.rig.g.visible = true; player.rig.body.rotation.set(0, 0, 0); player.rig.body.position.y = 0;
   player.pos.set(P.x, heightAt(P.x, P.z), P.z); player.air = 0; player.rotY = P.rot; cam.yaw = P.rot + Math.PI; cam.dist = 6.5;
   const fee = kind === 'wasted' ? Math.min(save.money, 150 + Math.round(save.money * 0.05)) : Math.min(save.money, 200 + Math.round(save.money * 0.1));
   save.money -= fee;
@@ -4576,7 +4634,7 @@ function updatePlayer(dt) {
   player.punchCd -= dt; player.shootCd -= dt;
   if (player.dead) { player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
   if (JET.on) { if (keys.has('KeyF')) { keys.delete('KeyF'); leaveJet(); } else { updateJet(dt); return; } }
-  if (simTime - player.lastHurt > 6 && player.health < 50) player.health = Math.min(50, player.health + dt * 2);
+  { const rg = skill('regen'), cap = 50 + 15 * rg; if (simTime - player.lastHurt > 6 && player.health < cap) player.health = Math.min(cap, player.health + dt * 2 * (1 + 0.5 * rg)); } // Second Wind
   player.aiming = (rightDown || aimLock) && player.weapon > 0 && !player.inCar;
   if (!player.aiming) scope = 0;
   if (player.inCar) {
@@ -4596,7 +4654,8 @@ function updatePlayer(dt) {
       if (Math.random() < 0.5) smoke.emit(v.pos.x - Math.sin(v.rotY) * 2.3, v.pos.y + 0.6, v.pos.z - Math.cos(v.rotY) * 2.3, rand(-.3, .3), rand(-.3, .3), rand(-.3, .3), 0.9, 1.4, 0.85, 0.85, 0.85, 1);
     }
     if (!v.air) v.boosted = false;
-    if (CH.nitro && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !v.dead) { const hs = Math.hypot(v.vel.x, v.vel.y); if (hs < 95) { v.vel.x += Math.sin(v.rotY) * 24 * dt; v.vel.y += Math.cos(v.rotY) * 24 * dt; } if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 1 + Math.random() * 0.6; }); }
+    { const tank = nitroSeconds(); player.nitro = Math.min(tank, (player.nitro ?? tank) + dt * 0.08); if (carRepairPerS() && !v.dead && v.health < 100) v.health = Math.min(100, v.health + carRepairPerS() * dt); } // Nitrous refills, Road Mechanic
+    if ((CH.nitro || player.nitro > 0.05) && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !v.dead) { if (!CH.nitro) player.nitro -= dt; const hs = Math.hypot(v.vel.x, v.vel.y); if (hs < 95) { v.vel.x += Math.sin(v.rotY) * 24 * dt; v.vel.y += Math.cos(v.rotY) * 24 * dt; } if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 1 + Math.random() * 0.6; }); }
     if (v.partsG && v.partsG.userData.flames && !(v.air && keys.has('Space'))) v.partsG.userData.flames.forEach(f => f.visible = false);
     if (v.flipped && !v.dead && st && v.vel.length() < 2 && !v.air) { v.flipped = false; launchCar(v, 4.6, 0, -Math.sign(st) * 4.4); } // rock it back over
     carHitWorld(v); boundsClamp(v.pos); settleCar(v, dt);
@@ -4624,7 +4683,7 @@ function updatePlayer(dt) {
   }
   else if (player.knock > 0) { player.knock -= dt; }
   else if (ml > 0) {
-    mx /= ml; mz /= ml; speed = sprint && !player.crouch ? 7.2 : 3.4; if (player.aiming) speed = 2.4; if (player.crouch) speed = 1.8;
+    mx /= ml; mz /= ml; speed = (sprint && !player.crouch ? 7.2 : 3.4) * (1 + 0.05 * skill('runner')); if (player.aiming) speed = 2.4; if (player.crouch) speed = 1.8;
     if (CH.speed) speed *= 3; if (CH.fly && player.air > 0.5) speed = sprint ? 38 : 14;
     if (player.health < 30 && speed > 3) speed *= 0.8; // hurt: you can't run flat out
     player.pos.x += mx * speed * dt; player.pos.z += mz * speed * dt;
@@ -5924,8 +5983,20 @@ let worldReady = false;
   worldReady = true; DL.on = false; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
-  loadLater();
+  loadLater(); startCareer();
 })().catch(err => { SHELL.bootFail('Failed to build the world: ' + err.message); console.error(err); });
+// ---- the competitive side (src/ui/career.js, src/progress.js): career and HUD, and leaderboard billboards around town
+let BILLBOARDS = null;
+function startCareer() {
+  initCareer({ notify, big, addCash: n => { save.money += n; persist(); } }).catch(e => console.warn('[career]', e));
+  try { // a board just off the sidewalk at Poway High (the spawn), the dealer and the plaza, facing the street
+    const spots = [], at = (p, along) => { if (!p || !p.ne) return; const nx = -p.ne.tz, nz = p.ne.tx; spots.push({ x: p.x + nx * 4 + p.ne.tx * along, z: p.z + nz * 4 + p.ne.tz * along, nx, nz }); };
+    at(spawnPt, 22); if (DEALER) at(sidewalkNear(DEALER.x, DEALER.z), -14); at(sidewalkNear(PLAZA_CENTER.x, PLAZA_CENTER.z), 0);
+    BILLBOARDS = createBillboards({ THREE, scene, heightAt, spots });
+    const upd = async () => { const r = await fetchBoard('kd', 8); BILLBOARDS.show(r ? r.rows : null); };
+    upd(); setInterval(upd, 120e3);
+  } catch (e) { console.warn('[billboards]', e); }
+}
 // ---- after the loading screen: what it no longer waits for, most visible first. A step that fails logs and the rest go on.
 async function loadLater() {
   const t0 = performance.now();
@@ -5955,13 +6026,20 @@ async function loadRoofPhotos() {
 }
 // people who spawned as blocky stand-ins before the crowd's avatars arrived get their real bodies (busy ones keep theirs)
 function upgradePeds() {
-  for (const p of peds) {
-    if (p.removed || p.rig.human || !p.look || !['walk', 'roam', 'idle', 'group', 'call'].includes(p.state)) continue;
-    const nr = buildRig(p.look); if (!nr.human) continue;
-    const old = p.rig; nr.g.position.copy(old.g.position); nr.g.rotation.copy(old.g.rotation); nr.g.visible = old.g.visible;
-    if (p.marker) { old.g.remove(p.marker); nr.g.add(p.marker); }
-    scene.remove(old.g); p.rig = nr; scene.add(nr.g);
-  }
+  for (const p of peds) if (!p.rig.human && ['walk', 'roam', 'idle', 'group', 'call'].includes(p.state)) reskin(p);
+}
+// give a person a new body built from their look (same place, same marker); false when it couldn't be built
+function reskin(p) {
+  if (p.removed || !p.look) return false;
+  const nr = buildRig(p.look); if (!nr.human) return false;
+  const old = p.rig; nr.g.position.copy(old.g.position); nr.g.rotation.copy(old.g.rotation); nr.g.visible = old.g.visible;
+  if (p.marker) { old.g.remove(p.marker); nr.g.add(p.marker); }
+  scene.remove(old.g); p.rig = nr; scene.add(nr.g); return true;
+}
+// online crowds: another player's person must look the same here, so fetch their avatar if this game hasn't got it
+function reskinWhenLoaded(p, avatar) {
+  if (!HUMANS.manifest) return;
+  ensureAvatar(avatar).then(ok => { if (ok && !p.removed && p.rig.avatar !== avatar) reskin(p); });
 }
 // Put the player back where the save left them (and in the same car), with their health, ammo, weather and settings.
 function restoreSave() {
@@ -6087,7 +6165,7 @@ initWorld({
   focus: () => focusPos(), peds: () => peds, vehicles: () => vehicles, playerCar: () => player.inCar, notify,
   avatarIndex: a => a || '', avatarName: a => a || null, carTypeIndex: t => Object.keys(CAR).indexOf(t), carTypeName: i => Object.keys(CAR)[i] || null,
   modelIndex: (t, m) => Math.max(0, CAR[t].model.indexOf(m)), modelName: (t, i) => CAR[t].model[i] || CAR[t].model[0],
-  makePuppetPed: (x, z, avatar) => { const p = new Ped(x, z, { look: { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; return p; },
+  makePuppetPed: (x, z, avatar) => { const p = new Ped(x, z, { look: { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; if (avatar && p.rig.avatar !== avatar) reskinWhenLoaded(p, avatar); return p; }, // the leader's exact person: load their avatar if we haven't
   makePuppetCar: (type, x, z, r, tint, model) => { const v = new Vehicle(type, x, z, r, tint, model); v.keep = true; v.mode = 'puppet'; settleCar(v); return v; },
   settle: (v, dt) => settleCar(v, dt), wreck: v => wreckCar(v),
   clearAmbient: () => { // stop running our own town here: the leader's people and cars take over

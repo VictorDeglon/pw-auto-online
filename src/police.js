@@ -16,6 +16,7 @@
 //   4+: spike strips and passenger fire. 5: SED tactical unit and a marksman in the helicopter.
 import { ctx } from './ctx.js';
 import { emit, on } from './events.js';
+import { skill } from './progress.js';
 import { steerTo, driveTo } from './drive.js';
 
 export const police = {
@@ -748,7 +749,7 @@ export function updatePolice(dt) {
       const c = police.lkp, R = SEARCH_R[police.wanted];
       let rate = !c || hyp(f.x - c.x, f.z - c.z) > R ? 1 : 0.4;
       if (police.suspect && (P.inCar || 'foot') !== police.suspect) rate *= 1.6; // different car than the one they're looking for
-      police.cool += dt * rate;
+      police.cool += dt * rate * (1 + 0.15 * skill('lowkey')); // Low Profile (src/progress.js)
       if (police.cool >= NEED[police.wanted]) loseWanted();
     }
     if (police.wanted > 0) dispatch(dt);
