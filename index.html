@@ -5801,9 +5801,9 @@ function tick(rdt) {
   smoke.update(dt); fire.update(dt); NUKE_FX.update(rdt, skyU.horizon.value);
   for (let i = tracers.length - 1; i >= 0; i--) { tracers[i].t -= dt; if (tracers[i].t <= 0) { scene.remove(tracers[i].l); tracers[i].l.geometry.dispose(); tracers.splice(i, 1); } }
   updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap();
-  NIGHTL.update(camera, nightAmount, lampsNear, rdt); if (AIRT) AIRT.update(dt, nightAmount, focusPos()); // street lamps' light, aircraft
   const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); }
   if (bigTimer > 0) { bigTimer -= rdt; if (bigTimer <= 0) $('big').hidden = true; }
+  NIGHTL.update(camera, nightAmount, lampsNear, rdt); if (AIRT) AIRT.update(dt, nightAmount, focusPos()); // street lamps' light, aircraft
   repT += dt; if (repT > 30) { repT = 0; if (police.wanted === 0 && save.rep < 0) save.rep += 1; }
   saveT -= rdt; if (saveT <= 0) { saveT = 10; persist(); }
   if (online) netTick(rdt);
