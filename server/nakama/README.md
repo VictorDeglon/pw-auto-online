@@ -77,7 +77,8 @@ browser's key is `SERVER_KEY` from `.env`. `NAKAMA_PORT` and `CONSOLE_PORT` chan
 The game reads `nakama.json` next to `index.html`: `{ "host": "...", "port": 443, "ssl": true, "key": "<server key>" }`.
 It isn't in git (it names the server), so write it before `firebase deploy`. For testing against a local or tunnelled
 server, put the same shape in `nakama.local.json` (for example host `127.0.0.1`, port 7350, ssl false) and open the
-game with `?nk=local`. Hosting never publishes that file.
+game with `?nk=local`. Hosting never publishes that file. A copy served from your own computer (localhost) ignores
+`nakama.json` unless you add `?nk=prod`, so local test runs don't create accounts on the real server.
 
 Browsers on the HTTPS site need `wss://`, so the server must be reachable over TLS. Do that with a tunnel or a reverse
 proxy in front of `127.0.0.1:7350`, never by binding Nakama to a public interface.

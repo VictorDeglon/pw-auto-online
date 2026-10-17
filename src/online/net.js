@@ -1,11 +1,14 @@
 // Online play: picks the transport once, at load.
 //   Nakama   when the site has a game server: nakama.json next to index.html ({ host, port, ssl, key }), written at
 //            deploy time and never committed (it names the server). ?nk=local reads nakama.local.json instead, for
-//            testing against a local or tunnelled server. See server/nakama/README.md.
+//            testing against a local or tunnelled server. A copy served from this computer (localhost) leaves the
+//            real server alone unless asked with ?nk=prod, so test runs don't make accounts on it.
+//            See server/nakama/README.md.
 //   Firebase otherwise (Realtime Database, net-firebase.js), as before.
 // Both export the same interface; ACCOUNT and PRO (accounts, progression, leaderboards) exist only with Nakama.
 async function nakamaConfig() {
-  const file = new URLSearchParams(location.search).get('nk') === 'local' ? 'nakama.local.json' : 'nakama.json';
+  const q = new URLSearchParams(location.search).get('nk'), here = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  const file = q === 'local' ? 'nakama.local.json' : here && q !== 'prod' ? null : 'nakama.json'; if (!file) return null;
   try {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 2500);
     const r = await fetch(file, { cache: 'no-store', signal: ctl.signal }); clearTimeout(t);
