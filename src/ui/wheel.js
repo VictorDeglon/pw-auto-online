@@ -1,6 +1,13 @@
-// GTA-style radial wheels: hold a key, move the mouse (or the cursor) toward a slice, let go to pick.
-//   const W = createWheel({ title, items: () => [{ label, sub, icon, off, color }], current: () => i, onPick: i => {} })
-//   W.show()  W.move(dx, dy)  W.hover(clientX, clientY)  W.commit()  W.cancel()  W.open
+// GTA-style radial wheels, made to work on a touchpad as well as a mouse:
+//   hold the key, point, let go     the classic flick
+//   tap the key                     the wheel stays open: swipe, ← → (or A D) or a number key to choose, then click,
+//                                   Enter, Space or the key again to take it; Esc closes it
+//   scroll (wheel or two fingers)   opens it and steps through it; it equips on its own once you stop scrolling
+// Pointing adds up into a cursor that stays where you leave it (a dot on the wheel): short touchpad strokes nudge it,
+// lifting the finger doesn't lose it, and it stops at the ring.
+//   const W = createWheel({ title, help, stickyHelp, items: () => [{ label, sub, icon, off, color }], current: () => i, onPick: i => {} })
+//   W.show()  W.move(dx, dy)  W.hover(clientX, clientY)  W.step(±1)  W.choose(i)  W.scroll(deltaY, notch)  W.release()  W.commit()  W.cancel()
+//   W.open  W.sticky
 // icon: an SVG fragment drawn in a 64x32 box (weapons) or 32x32 (stations).
 export const ICONS = {
   fists: '<path d="M22 8h16a6 6 0 0 1 6 6v6a8 8 0 0 1-8 8H26a8 8 0 0 1-8-8v-8a4 4 0 0 1 4-4z"/><path d="M26 8v8M32 8v8M38 8v8" stroke="#000" stroke-opacity=".35" stroke-width="1.6"/><path d="M18 18h-4a3 3 0 0 0 0 6h5" />',
@@ -20,19 +27,52 @@ export const ICONS = {
 };
 export function createWheel(o) {
   const el = document.createElement('div'); el.className = 'wheel'; el.hidden = true; document.body.append(el);
-  let items = [], sel = -1, vx = 0, vy = 0;
+  const REACH = 110, DEAD = 22, TAP_MS = 250; // cursor travel (px), how far before it picks, a tap vs a hold
+  let items = [], sel = -1, cx = 0, cy = 0, openedAt = 0, moved = false, dot = null, help = null;
+  let acc = 0, lastScroll = 0, lastStep = 0, burst = 0, settleT = 0, byScroll = false;
   const api = {
-    open: false,
+    open: false, sticky: false,
     show() {
       items = o.items(); if (!items.length) return false;
-      sel = o.current ? o.current() : -1; vx = vy = 0; api.open = true; render(); el.hidden = false; requestAnimationFrame(() => el.classList.add('in')); return true;
+      sel = o.current ? o.current() : -1; cx = cy = 0; moved = false; api.sticky = false; byScroll = false; acc = 0; burst = 0; openedAt = performance.now();
+      api.open = true; render(); el.hidden = false; requestAnimationFrame(() => el.classList.add('in')); return true;
     },
-    move(dx, dy) { vx = vx * 0.85 + dx; vy = vy * 0.85 + dy; if (Math.hypot(vx, vy) > 18) pickAt(Math.atan2(vx, -vy)); },
-    hover(x, y) { const cx = innerWidth / 2, cy = innerHeight / 2; if (Math.hypot(x - cx, y - cy) > 40) pickAt(Math.atan2(x - cx, -(y - cy))); },
+    move(dx, dy) {
+      cx += dx; cy += dy; const r = Math.hypot(cx, cy); if (r > REACH) { cx *= REACH / r; cy *= REACH / r; }
+      if (Math.hypot(cx, cy) > DEAD) { moved = true; pickAt(Math.atan2(cx, -cy)); }
+      place(); settle();
+    },
+    hover(x, y) { const ox = x - innerWidth / 2, oy = y - innerHeight / 2; if (Math.hypot(ox, oy) > 40) { moved = true; pickAt(Math.atan2(ox, -oy)); } },
+    step(d) { // next (or previous) slice you can take
+      const n = items.length; let i = sel < 0 ? (d > 0 ? -1 : 0) : sel;
+      for (let k = 0; k < n; k++) { i = (i + d + n) % n; if (!items[i].off) break; }
+      moved = true; setSel(i); aimAt(i);
+    },
+    scroll(d, notch) { // a mouse-wheel click is one step; a touchpad stroke adds up: one step at once, then one per long stroke
+      const now = performance.now();
+      if (notch) { if (now - lastStep > 50) { api.step(d > 0 ? 1 : -1); lastStep = now; } }
+      else {
+        if (now - lastScroll > 400) acc = 0; lastScroll = now; // a pause in the stroke starts the count again
+        acc += d;
+        if (Math.abs(acc) >= (burst ? 200 : 24) && now - lastStep > 200) { api.step(acc > 0 ? 1 : -1); acc = 0; burst++; lastStep = now; }
+      }
+      if (!byScroll) { byScroll = true; api.sticky = true; el.classList.add('sticky'); if (help) help.textContent = o.scrollHelp || 'Scroll to choose · it equips when you stop'; }
+      settle();
+    },
+    choose(i) { if (!items[i] || items[i].off) return; setSel(i); api.commit(); },
+    release() { // the key came up: a quick tap leaves the wheel open for the touchpad, a hold takes what's highlighted
+      if (!api.open) return;
+      if (!moved && performance.now() - openedAt < TAP_MS) { api.sticky = true; el.classList.add('sticky'); if (help) help.textContent = o.stickyHelp || 'Swipe or ← → to choose · click or Enter to take · Esc to close'; return; }
+      api.commit();
+    },
     commit() { if (!api.open) return; const i = sel; api.cancel(); if (i >= 0 && items[i] && !items[i].off) o.onPick(i); },
-    cancel() { api.open = false; el.classList.remove('in'); el.hidden = true; },
+    cancel() { clearTimeout(settleT); api.open = false; api.sticky = false; byScroll = false; el.classList.remove('in', 'sticky'); el.hidden = true; },
   };
-  function pickAt(a) { const n = items.length, k = ((Math.round(a / (Math.PI * 2 / n)) % n) + n) % n; if (k !== sel) { sel = k; mark(); o.tick && o.tick(); } }
+  function settle() { if (!byScroll) return; clearTimeout(settleT); settleT = setTimeout(() => { if (api.open && byScroll) api.commit(); }, 700); }
+  function setSel(i) { if (i !== sel) { sel = i; mark(); o.tick && o.tick(); } }
+  function aimAt(i) { const a = i * Math.PI * 2 / items.length, r = REACH * 0.7; cx = Math.sin(a) * r; cy = -Math.cos(a) * r; place(); }
+  function place() { if (dot) { const k = 135 / REACH; dot.style.transform = `translate(${cx * k}px, ${cy * k}px)`; dot.style.opacity = Math.hypot(cx, cy) > 4 ? 1 : 0; } }
+  function pickAt(a) { const n = items.length; setSel(((Math.round(a / (Math.PI * 2 / n)) % n) + n) % n); }
   function mark() {
     el.querySelectorAll('.wseg').forEach((s, i) => s.classList.toggle('sel', i === sel));
     const it = items[sel], c = el.querySelector('.wcenter');
@@ -52,7 +92,11 @@ export function createWheel(o) {
       svg += '</g>';
     });
     svg += '</svg>';
-    el.innerHTML = `<div class="wtitle">${o.title}</div>${svg}<div class="wcenter"></div><div class="whelp">${o.help || 'Move the mouse to choose · let go to pick'}</div>`;
+    el.innerHTML = `<div class="wtitle">${o.title}</div>${svg}<div class="wcenter"></div><div class="whelp"></div>`;
+    help = el.querySelector('.whelp'); help.textContent = o.help || 'Point to choose · let go to pick · tap to keep it open';
+    dot = document.createElement('i'); dot.className = 'wdot';
+    dot.style.cssText = 'position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.35),0 0 14px rgba(255,255,255,.6);opacity:0;transition:opacity .1s;pointer-events:none';
+    el.append(dot);
     mark();
   }
   return api;

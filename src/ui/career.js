@@ -29,7 +29,7 @@ export async function initCareer(hooks) {
   await refresh(); retryClaims(); updateSub(); renderHud();
   CLOUD.start();
   CLOUD.check().then(c => { if (c) askToLoad(c); });
-  setInterval(() => { if (ACCOUNT && !NET.server) refresh(); }, 5 * 60e3); // offline XP claims and other computers
+  setInterval(() => { if (ACCOUNT && !NET.server) refresh(); }, 5 * 60e3); // progress made on other computers
 }
 function updateSub() {
   const s = $('careersub'); if (!s) return;
@@ -88,9 +88,9 @@ function renderCareer() {
     <div class="cgrid">
       <div class="card who"><div class="eyebrow">${esc(m.title)}</div><h3>${esc(a.username || m.name)} <small>Level ${m.lvl}</small></h3>
         <div class="xpbar"><i style="width:${pct}%"></i></div><p class="fine">${m.need ? `${m.xp} / ${m.need} XP to level ${m.lvl + 1}` : 'Max level'}</p>
-        <div class="stats"><div><b>${m.kd.toFixed(2)}</b><small>K/D</small></div><div><b>${m.kills}</b><small>Kills</small></div><div><b>${m.deaths}</b><small>Deaths</small></div><div><b>${m.best}</b><small>Best streak</small></div><div><b>${hours}</b><small>Online</small></div></div>
+        <div class="stats"><div><b>${m.kd.toFixed(2)}</b><small>K/D</small></div><div><b>${m.kills}</b><small>Kills${m.npc ? ` · ${m.npc} NPC` : ''}</small></div><div><b>${m.deaths}</b><small>Deaths</small></div><div><b>${m.best}</b><small>Best streak</small></div><div><b>${hours}</b><small>Online</small></div></div>
         <div class="acct">${acc}</div></div>
-      <div class="card"><h4>Today's challenges</h4>${daily}<p class="fine">New ones every day at midnight UTC. Kills, streaks and time count online.</p></div>
+      <div class="card"><h4>Today's challenges</h4>${daily}<p class="fine">New ones every day at midnight UTC. Only online play counts: kills (players and NPCs), streaks and time.</p></div>
       <div class="card"><div class="tabs" id="lbtabs">${BOARDS.map(([k, l]) => `<button data-b="${k}"${k === board ? ' class="on"' : ''}>${l}</button>`).join('')}</div><div id="lbcareer" class="lb"></div></div>
     </div>
     <div class="skillhead"><h3>Skills <small>${m.sp} point${m.sp === 1 ? '' : 's'} to spend</small></h3><button class="mbtn small" id="skreset"${m.respecToday ? ' disabled' : ''}>${m.respecToday ? 'Reset used today' : 'Reset skills (free, once a day)'}</button></div>
@@ -133,7 +133,7 @@ export function renderOnlineBoard() {
   if (!PRO) { el.hidden = true; return; }
   el.hidden = false; el.innerHTML = '<h4>All-time K/D</h4><div id="lbonlinelist" class="lb"></div>';
   loadBoard($('lbonlinelist'), 'kd', 10);
-  const fine = $('onlinefine'); if (fine) fine.textContent = 'Your name is yours across the game. Kills and deaths online count toward your level and the leaderboards. Save your progress with a password in Career to play on other computers.';
+  const fine = $('onlinefine'); if (fine) fine.textContent = 'Your name is yours across the game. Only online play counts toward your level and the leaderboards: kills (players and NPCs), deaths, missions and achievements. Save your progress with a password in Career to play on other computers.';
 }
 export function boardRows(which) { return boardCache[which] ? boardCache[which].rows : null; }
 export async function fetchBoard(which, limit) { if (!PRO) return null; try { const r = await PRO.leaderboard(which, limit); r.at = Date.now(); boardCache[which] = r; return r; } catch (e) { return boardCache[which] || null; } }

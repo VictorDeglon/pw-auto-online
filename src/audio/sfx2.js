@@ -12,6 +12,7 @@ export function createSfx2(AC, master) {
   const verb = AC.createConvolver(); { const L = Math.round(SR * 1.4), b = AC.createBuffer(2, L, SR); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let k = 0; k < 7; k++) { const at = Math.round(SR * (0.06 + Math.random() * 0.35)), a = 0.5 * Math.pow(0.7, k); for (let i = 0; i < 300 && at + i < L; i++) d[at + i] += (Math.random() * 2 - 1) * a * (1 - i / 300); } for (let i = 0; i < L; i++) d[i] += (Math.random() * 2 - 1) * 0.08 * Math.pow(1 - i / L, 4); } verb.buffer = b; }
   const verbIn = AC.createGain(); verbIn.gain.value = 0.35; const verbLp = AC.createBiquadFilter(); verbLp.type = 'lowpass'; verbLp.frequency.value = 3500; verbIn.connect(verbLp).connect(verb).connect(out);
   const now = () => AC.currentTime;
+  let booms = []; // when the last few booms started
   // a voice chain for one sound: distance low-pass + gain, then dry out and a verb send
   function chain(vol, dist = 0, wet = 0.4) {
     const g = AC.createGain(), f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = Math.max(500, 18000 / (1 + dist / 60)); g.gain.value = vol / (1 + dist / 45);
@@ -48,8 +49,9 @@ export function createSfx2(AC, master) {
       tone(d, t, 0.14, 'sine', G.thump * 1.8, G.thump * 0.6, 0.55 * G.tg);         // the thump in your chest
       if (id === 'shotgun') { noise(d, t + 0.35, 0.06, 'bandpass', 1200, 3, 0.2); noise(d, t + 0.5, 0.05, 'bandpass', 900, 3, 0.18); } // pump
     },
-    boom(R = 7, vol = 1, dist = 0) {
-      const t = now() + dist / 343, d = chain(vol * (0.7 + R / 20), dist, 0.8), big = R >= 8;
+    boom(R = 7, vol = 1, dist = 0) { // booms on top of each other share the loudness instead of stacking into a clip
+      const T = now(); booms = booms.filter(b => T - b < 0.4); booms.push(T); const pile = 1 / Math.sqrt(booms.length);
+      const t = T + dist / 343, d = chain(vol * (0.7 + R / 20) * 0.6 * pile, dist, 0.8), big = R >= 8;
       noise(d, t, 0.03, 'highpass', 3000, 0.6, 1);                                   // the crack of the blast front
       noise(d, t, big ? 2.4 : 1.6, 'lowpass', 260, 0.7, 1.2, 0.004, brown);           // the body
       noise(d, t, 0.8, 'bandpass', 900, 0.5, 0.5);

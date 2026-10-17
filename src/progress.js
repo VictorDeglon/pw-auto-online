@@ -26,17 +26,20 @@ export async function refresh() {
 export async function buySkill(id) { const r = await PRO.buySkill(id); PROG.me = r.me; changed(); return PROG; }
 export async function resetSkills() { const r = await PRO.resetSkills(); PROG.me = r.me; changed(); return PROG; }
 
-// XP for things done in free roam or offline missions: the server pays each achievement once and each mission once a day
+// Kills, XP and levels only count online, in a room: achievements, missions and jobs done there pay XP (each achievement
+// once, each mission once a day), and so does every NPC you take down. Single player doesn't touch your level.
 const pending = [];
+const online = () => !!(PRO && ACCOUNT && PRO.online());
 async function claim(kind, id) {
-  if (!PRO || !ACCOUNT) return;
+  if (!online()) return;
   try { const r = await PRO.claim(kind, id); if (r.me) PROG.me = r.me; changed(r.ev); }
-  catch (e) { if (pending.length < 50) pending.push([kind, id]); } // offline: try again when the server answers
+  catch (e) { if (pending.length < 50) pending.push([kind, id]); } // the server didn't answer: try again shortly
 }
 export function retryClaims() { const a = pending.splice(0); for (const [k, id] of a) claim(k, id); }
 onBus('mission:pass', d => claim('mission', 'story:' + (d && d.id || 'mission')));
 onBus('job:done', d => claim('mission', 'job:' + ((d && d.job && (d.job.kind || d.job.type)) || 'courier')));
 onBus('ach:unlock', d => claim('ach', d && d.id));
+onBus('ped:killed', d => { if (d && d.by === 'player' && online()) PRO.npcKill(d.ped && d.ped.isCop); });
 
 // the room tells you about your kills, XP, level-ups and challenges as they happen
 onNet('stats', d => { if (d.me) { PROG.me = d.me; changed(d.ev || []); } else changed(d.ev || []); });

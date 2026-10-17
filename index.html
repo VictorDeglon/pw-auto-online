@@ -116,11 +116,14 @@ body.scoped #cross{opacity:.5}
 #cheatsheet .cs{position:relative;width:min(720px,94vw);max-height:86vh;overflow:auto;background:#0b111f;border-top:4px solid #ff4fd8;padding:18px 20px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
 #cheatsheet h3{margin:0;font:400 32px/1 var(--display);letter-spacing:.06em;text-transform:uppercase;color:#ff4fd8}#cheatsheet p{color:var(--dim);font:500 14px/1.3 var(--ui);margin:6px 0 12px}
 #cheatsheet .cx{position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;background:rgba(255,255,255,.06);color:#fff;font:400 24px/1 var(--ui);cursor:pointer}
-#cheatsheet .cr{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.06)}
+#cheatsheet .cr{display:grid;grid-template-columns:1fr auto auto auto;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.06)}
 #cheatsheet .cr b{display:block;font:700 15px var(--ui);color:#fff}#cheatsheet .cr small{font:500 12px/1.25 var(--ui);color:var(--dim)}
 #cheatsheet code{font:600 15px ui-monospace,Menlo,monospace;color:#7dff6a;background:rgba(125,255,106,.07);padding:4px 8px;user-select:all}
 #cheatsheet .cr button{border:0;background:#ff4fd8;color:#0b111f;font:700 12px var(--ui);padding:6px 10px;cursor:pointer;min-width:62px}
-@media (max-width:560px){#cheatsheet .cr{grid-template-columns:1fr auto}#cheatsheet .cr button{grid-column:2}}
+#cheatsheet .cr button.cp{background:rgba(255,255,255,.08);color:#e9e4d6;min-width:0}
+#cheatsheet .cr button.sw{background:#1a2238;color:var(--dim);border:1px solid #2b3550}#cheatsheet .cr button.sw.on{background:#7dff6a;color:#0b111f;border-color:#7dff6a}
+#cheatsheet .cr button.run{background:#ffb020}#cheatsheet .cr button[disabled]{opacity:.35;cursor:default}
+@media (max-width:560px){#cheatsheet .cr{grid-template-columns:1fr auto auto}#cheatsheet .cr code{grid-column:1/-1}}
 
 #travel .tv{position:relative} #travel button.tvx{position:absolute;top:10px;right:10px;width:36px;height:36px;margin:0;padding:0;justify-content:center;font:400 26px/1 var(--ui);background:rgba(255,255,255,.06);border:0;animation:none} #travel button.tvx:hover{background:rgba(255,80,80,.3)}
 #travel button.locked{opacity:.45;filter:grayscale(1)}
@@ -444,7 +447,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <kbd>Q</kbd><span>Aim lock (no right click needed)</span><kbd>Z</kbd><span>Scope zoom while aiming</span>
       <kbd>B</kbd><span>Emote: wave, cheer, dance, laugh</span><kbd>Shift</kbd><span>Sprint</span>
       <kbd>M</kbd><span>Map + waypoint</span><kbd>R</kbd><span>Next radio station</span>
-      <kbd>Tab</kbd><span>Hold: weapon wheel</span><kbd>Q</kbd><span>Hold in a car: radio wheel</span>
+      <kbd>Tab</kbd><span>Weapon wheel: hold and point, or tap it to keep it open (touchpad), or scroll</span><kbd>Q</kbd><span>Radio wheel in a car: hold, or tap to keep it open</span>
       <kbd>Enter</kbd><span>Chat</span><kbd>L</kbd><span>Hold: players (online)</span>
       <kbd>J</kbd><span>Courier job (offline)</span><kbd>Y / T</kbd><span>Weather / skip an hour (offline)</span>
       <kbd>V</kbd><span>Voices on/off</span><kbd>Esc</kbd><span>Pause</span>
@@ -2428,12 +2431,20 @@ const decals = [];
 function decal(x, z, r, mat) { const m = new THREE.Mesh(decalG, mat); m.position.set(x, heightAt(x, z) + 0.2, z); m.scale.setScalar(r); scene.add(m); decals.push({ m, t: 90 }); if (decals.length > 40) { const d = decals.shift(); scene.remove(d.m); } }
 
 // ============================================================ audio + radio
-let AC = null, master = null, noiseBuf = null, engine = null, siren = null, rainSnd = null, S2 = null; // S2: src/audio/sfx2.js
+let AC = null, master = null, musicBus = null, noiseBuf = null, engine = null, siren = null, rainSnd = null, S2 = null; // S2: src/audio/sfx2.js
 let voices = true;
+function duckMusic(depth) { // a blast pushes the music back for a moment, then it comes back up
+  if (!musicBus || depth < 0.06) return; const t = AC.currentTime, g = musicBus.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(Math.max(0.4, Math.min(g.value, 1 - depth)), t + 0.04); g.linearRampToValueAtTime(1, t + 1.8);
+}
 function initAudio() {
   if (AC) return;
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
-  master = AC.createGain(); master.gain.value = 0.55; master.connect(AC.destination);
+  master = AC.createGain(); master.gain.value = 0.55;
+  // a limiter on the way out: a big explosion (or a chain of them) used to clip the whole mix, music and all
+  const lim = AC.createDynamicsCompressor(); lim.threshold.value = -9; lim.knee.value = 3; lim.ratio.value = 20; lim.attack.value = 0.002; lim.release.value = 0.16;
+  master.connect(lim).connect(AC.destination);
+  musicBus = AC.createGain(); musicBus.connect(master); // radio and score: dips under a blast instead of fighting it
   noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   const mk = (type, f) => { const o = AC.createOscillator(); o.type = type; o.frequency.value = f; return o; };
   engine = { o: mk('sawtooth', 50), o2: mk('square', 25), f: AC.createBiquadFilter(), g: AC.createGain() };
@@ -2494,7 +2505,7 @@ function radioPlay(next) {
   const t = S.tracks[radio.track];
   if (S.proc) {
     if (radio.el) radio.el.pause();
-    if (!AC) return; if (!radio.comp) { radio.comp = createComposer(AC, master); radio.comp.onend = () => { if (radio.on && STATIONS[radio.st].proc && player.inCar) radioPlay(true); }; }
+    if (!AC) return; if (!radio.comp) { radio.comp = createComposer(AC, musicBus); radio.comp.onend = () => { if (radio.on && STATIONS[radio.st].proc && player.inCar) radioPlay(true); }; }
     radio.comp.volume(radio.vol * 1.1); radio.comp.play(t, { offset: next ? 0 : rand(0, 50) });
   } else {
     if (radio.comp) radio.comp.stop();
@@ -2518,7 +2529,7 @@ function scoreTo(mode) {
 }
 function updateScore(dt) {
   if (!AC || !running || paused) return;
-  if (!SCORE.ex) { SCORE.ex = createComposer(AC, master); SCORE.ch = createComposer(AC, master); SCORE.ex.onend = () => { SCORE.restT = rand(30, 75); if (SCORE.mode === 'explore') scoreTo('rest'); }; SCORE.ch.onend = () => { if (SCORE.mode === 'chase') { SCORE.mode = 'none'; } }; }
+  if (!SCORE.ex) { SCORE.ex = createComposer(AC, musicBus); SCORE.ch = createComposer(AC, musicBus); SCORE.ex.onend = () => { SCORE.restT = rand(30, 75); if (SCORE.mode === 'explore') scoreTo('rest'); }; SCORE.ch.onend = () => { if (SCORE.mode === 'chase') { SCORE.mode = 'none'; } }; }
   const radioOn = player.inCar && radio.on;
   let want = police.wanted > 0 && !player.dead ? 'chase' : radioOn ? 'none' : 'explore';
   if (want === 'explore' && SCORE.restT > 0) { SCORE.restT -= dt; want = 'rest'; }
@@ -2801,6 +2812,8 @@ class Vehicle {
   remove() { if (this.ownedId) lostOwned(this); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) m.dispose(); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
 }
 function carCircles(v) { const o = v.spec.L / 2 - v.spec.W / 2; return [v.pos.x + v.fx * o, v.pos.z + v.fz * o, v.pos.x - v.fx * o, v.pos.z - v.fz * o]; }
+// for car-on-car hits: a chain of overlapping circles nose to tail (two circles leave a gap mid-body: 7 m on a bus)
+function carChain(v) { const o = v.spec.L / 2 - v.spec.W / 2, n = Math.max(2, Math.ceil(2 * o / (v.spec.W * 0.5)) + 1), a = []; for (let i = 0; i < n; i++) { const t = o - 2 * o * i / (n - 1); a.push(v.pos.x + v.fx * t, v.pos.z + v.fz * t); } return a; }
 const _sl = [0, 0];
 // ---- vertical motion. Cars hug the ground until the ground falls away faster than gravity can pull them down
 // (a crest or a cliff at speed), then fly ballistically, tumble, bounce and land. The body pivots about its centre:
@@ -2933,8 +2946,13 @@ function settleCar(v, dt) { // without dt: snap to the ground (spawns, rail traf
   }
   if (v.roadPull) { const R = v.roadPull, k = Math.min(1, dt * 7); R.t -= dt; v.pos.x += (R.x + v.vel.x * 0.1 - v.pos.x) * k * 0.18; v.pos.z += (R.z + v.vel.y * 0.1 - v.pos.z) * k * 0.18; R.x += v.vel.x * dt; R.z += v.vel.y * dt; if (R.t <= 0) v.roadPull = null; }
 }
+// a car's weight from its size (a sedan ~1.5 t, a bus ~12 t): crashes trade momentum by it
+function carMass(v) { const s = v.spec; return s.mass || clamp(s.W * s.L * s.H * 120, 700, 16000); }
 function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
-  const fx = v.fx, fz = v.fz, sx = fz, sz = -fx, s = v.spec;
+  if (v.spinV && !v.air) { // spun by a crash: the body turns, the tyres scrub it back to a stop
+    v.rotY = wrapA(v.rotY + v.spinV * dt); v.spinV *= Math.exp(-dt * (v.flipped ? 4 : 2.6)); if (Math.abs(v.spinV) < 0.03) v.spinV = 0;
+  }
+  const fx = Math.sin(v.rotY), fz = Math.cos(v.rotY), sx = fz, sz = -fx, s = v.spec;
   let vf = v.vel.x * fx + v.vel.y * fz, vs = v.vel.x * sx + v.vel.y * sz;
   v.steer = lerp(v.steer, steerIn, 1 - Math.exp(-dt * 8));
   if (v.air) { v.vel.multiplyScalar(Math.exp(-0.05 * dt)); v.pos.x += v.vel.x * dt; v.pos.z += v.vel.y * dt; v.speed = vf; return; } // no grip in the air
@@ -2970,7 +2988,7 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
   v.pos.x += v.vel.x * dt; v.pos.z += v.vel.y * dt; v.speed = vf;
   if (hand && Math.abs(vs) > 4 && Math.random() < 0.6) smoke.emit(v.pos.x - nfx * 2, v.pos.y + 0.3, v.pos.z - nfz * 2, rand(-.5, .5), 0.5, rand(-.5, .5), 0.8, 1.2, 0.8, 0.8, 0.8, 1.5);
 }
-const _wn = { x: 0, z: 0 };
+const _wn = { x: 0, z: 0, px: 0, pz: 0 };
 function carHitWorld(v) {
   carHitProps(v); // trees, lamps and sign posts snap first
   const c = carCircles(v), r = v.spec.W / 2 + 0.05; let worst = null;
@@ -2979,7 +2997,7 @@ function carHitWorld(v) {
     if (h) {
       const dx = p.x - c[k * 2], dz = p.z - c[k * 2 + 1]; v.pos.x += dx; v.pos.z += dz;
       const vn = v.vel.x * h.x + v.vel.y * h.z;
-      if (vn < 0) { v.vel.x -= 1.35 * vn * h.x; v.vel.y -= 1.35 * vn * h.z; if (-vn > (worst || 0)) { worst = -vn; _wn.x = h.x; _wn.z = h.z; } }
+      if (vn < 0) { v.vel.x -= 1.15 * vn * h.x; v.vel.y -= 1.15 * vn * h.z; if (-vn > (worst || 0)) { worst = -vn; _wn.x = h.x; _wn.z = h.z; _wn.px = c[k * 2] - h.x * r; _wn.pz = c[k * 2 + 1] - h.z * r; } } // crumples, barely bounces
     }
   }
   if (worst > 4) {
@@ -2991,7 +3009,8 @@ function carHitWorld(v) {
     dentCar(v, cx + v.fx * v.spec.L * 0.3 * Math.sign(v.speed || 1), v.pos.y + 0.7, cz + v.fz * v.spec.L * 0.3 * Math.sign(v.speed || 1), hx, 0, hz, Math.min(0.35, Math.max(0, worst - 7) * 0.025), 1.5);
     { const fd = hx * v.fx + hz * v.fz; if (Math.abs(fd) > 0.5) { const e = fd < 0 ? 1 : -1; dentCar(v, v.pos.x + v.fx * v.spec.L * 0.36 * e, v.pos.y + v.spec.H * 0.85, v.pos.z + v.fz * v.spec.L * 0.36 * e, 0, -1, 0, Math.min(0.3, (worst - 4) * 0.025), 1.2); } } // hood / trunk buckles
     if (worst > 10) shards(v, Math.min(8, worst * 0.4));
-    if (worst > 17) launchCar(v, Math.min(7, worst * 0.22), worst * 0.06 * Math.sign(v.speed || 1), rand(-1, 1) * worst * 0.05); // the rear kicks up
+    if (worst > 30) launchCar(v, Math.min(1.6, (worst - 30) * 0.08), (worst - 30) * 0.03 * Math.sign(v.speed || 1), 0); // only a huge hit lifts the rear, a little
+    { const rx = _wn.px - v.pos.x, rz = _wn.pz - v.pos.z, I = (v.spec.L * v.spec.L + v.spec.W * v.spec.W) / 12; v.spinV = clamp((v.spinV || 0) + (hx * rz - hz * rx) * worst * 0.9 / I * 0.35, -3, 3); } // a glancing hit turns the car
   }
 }
 function carCrashed(v, imp) { // a hard hit: wear, and a crunch you can hear getting worse
@@ -3226,7 +3245,8 @@ function hurtPlayer(amt, src) {
 }
 
 // ============================================================ cheats (src/ui/cheats.js reads the codes; the effects live here)
-const CHEAT = createCheats({ run: (id, arg) => runCheat(id, arg), onOpen: () => { closeMenus('cheats'); keys.clear(); mouseDown = rightDown = false; if (document.pointerLockElement) document.exitPointerLock(); }, onClose: () => { if (running && !paused) lockPointer(); } });
+const CHEAT_TOGGLES = ['god', 'fly', 'aimbot', 'ghost', 'speed', 'jump', 'boom', 'punch', 'tank', 'nitro', 'moon', 'slowmo'];
+const CHEAT = createCheats({ run: (id, arg) => runCheat(id, arg), state: id => CHEAT_TOGGLES.includes(id) ? !!CH[id] : null, onOpen: () => { closeMenus('cheats'); keys.clear(); mouseDown = rightDown = false; if (document.pointerLockElement) document.exitPointerLock(); }, onClose: () => { if (running && !paused) lockPointer(); } });
 const CH = { god: false, fly: false, aimbot: false, ghost: false, speed: false, jump: false, boom: false, punch: false, tank: false, nitro: false, moon: false, slowmo: false, richUntil: 0, richBase: 0, riotT: 0, stormT: 0, stormNext: 0, strikes: [] };
 const JET = { on: false, m: null, pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(), thr: 0.6, cd: 0 };
 let AIR = null, AIRT = null; // aircraft models and the air traffic (src/aircraft.js), loaded after the loading screen
@@ -3272,7 +3292,7 @@ function runCheat(id, arg) {
     case 'storm': setWeather('storm'); CH.stormT = simTime + 75; cheatToast('Thor · 1:15'); return;
     case 'supercar': { const f = focusPos(), a = cam.yaw + Math.PI, x = f.x + Math.sin(a) * 6, z = f.z + Math.cos(a) * 6, c = new Vehicle('sports', x, z, a); c.keep = true; c.mine = true; c.turbo = 1.6; c.armorMul = 0.3; settleCar(c); cheatToast('Supercar'); return; }
     case 'clean': {
-      for (const k of ['god', 'fly', 'aimbot', 'ghost', 'speed', 'jump', 'boom', 'punch', 'tank', 'nitro', 'moon', 'slowmo']) CH[k] = false;
+      for (const k of CHEAT_TOGGLES) CH[k] = false;
       if (CH.richUntil > simTime) { save.money = CH.richBase; CH.richUntil = 0; } CH.riotT = CH.stormT = 0; CH.strikes.length = 0; if (JET.on) leaveJet();
       for (const v of vehicles) v.cheatTank = false; cheatToast('Clean slate'); return;
     }
@@ -3700,7 +3720,7 @@ const cam = { yaw: Math.PI, pitch: 0.28, dist: 6.5, lastMouse: -10 };
 addEventListener('keydown', e => {
   if (!running || SHELL.isChatOpen() || !$('menu').hidden || !$('namebox').hidden) return;
   if (!paused && !mapOpen && !garageOpen && !travelOpen && !CHEAT.open) {
-    if (e.code === 'Enter') { e.preventDefault(); keys.clear(); SHELL.openChat(); return; } // offline too: the chat box takes cheat codes
+    if (e.code === 'Enter' && !WHEEL.open) { e.preventDefault(); keys.clear(); SHELL.openChat(); return; } // offline too: the chat box takes cheat codes
     if (e.code === 'KeyL' && online) { SHELL.showPlayers(true); return; }
   }
   // menus: Esc always closes whatever is open first (the mouse is free in a menu, so Esc used to fall through to pause)
@@ -3709,9 +3729,9 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyM' && !paused) { toggleMap(); return; }
   if (e.code === 'KeyP' || (e.code === 'Escape' && !locked)) { setPaused(!paused); return; }
   if (paused || mapOpen) return;
-  if (e.code === 'Tab') { e.preventDefault(); if (!e.repeat && !WHEEL.open && !openMenu() && !player.dead && !JET.on) { keys.clear(); WW.show(); } return; }
-  if (e.code === 'KeyQ' && player.inCar) { if (!e.repeat && !WHEEL.open && !openMenu()) { RW.show(); } return; }
-  if (WHEEL.open) return;
+  if (e.code === 'Tab') { e.preventDefault(); if (e.repeat) return; if (WW.open) { WW.commit(); return; } if (!WHEEL.open && !openMenu() && !player.dead && !JET.on) { keys.clear(); WW.show(); } return; }
+  if (e.code === 'KeyQ' && player.inCar) { if (e.repeat) return; if (RW.open) { RW.commit(); return; } if (!WHEEL.open && !openMenu()) { RW.show(); } return; }
+  if (WHEEL.open) { wheelKey(e); return; }
   keys.add(e.code);
   if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
@@ -3739,21 +3759,35 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => {
   keys.delete(e.code); if (e.code === 'KeyL') SHELL.showPlayers(false);
-  if (e.code === 'Tab' && WW.open) WW.commit(); if (e.code === 'KeyQ' && RW.open) RW.commit(); // let go of the key: take what's highlighted
+  if (e.code === 'Tab' && WW.open) WW.release(); if (e.code === 'KeyQ' && RW.open) RW.release(); // let go: a hold takes what's highlighted, a tap leaves it open
 });
 addEventListener('blur', () => { keys.clear(); mouseDown = rightDown = false; });
 const cv = renderer.domElement;
 cv.addEventListener('contextmenu', e => e.preventDefault());
 function lockPointer() { lockAskT = performance.now(); try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => { }); } catch (err) { } }
+let clickHint = null, hintOn = false, cursorOff = null;
+function playCursor(needClick) { // needClick: in play without the mouse captured. The cursor only shows in menus.
+  const off = running && !paused && !openMenu() && !SHELL.isChatOpen();
+  if (off !== cursorOff) { cursorOff = off; cv.style.cursor = off ? 'none' : ''; }
+  if (needClick === hintOn) return; hintOn = needClick;
+  if (!clickHint) { clickHint = document.createElement('div'); clickHint.id = 'clickplay'; clickHint.textContent = 'Click to play'; clickHint.style.cssText = 'position:fixed;left:50%;top:58%;transform:translateX(-50%);z-index:15;padding:8px 16px;background:rgba(8,12,24,.72);color:#f3efe6;font:600 15px/1 var(--ui,system-ui);letter-spacing:.06em;text-transform:uppercase;pointer-events:none;border-left:3px solid var(--gold,#f0b23a)'; document.body.append(clickHint); }
+  clickHint.hidden = !needClick;
+}
 const canLock = 'requestPointerLock' in HTMLElement.prototype && !matchMedia('(pointer: coarse)').matches;
 cv.addEventListener('mousedown', e => {
   if (!running || paused) return;
   if (WHEEL.open) { WHEEL.cur().commit(); return; }
-  if (!locked) lockPointer();
+  if (canLock && !locked) { lockPointer(); return; } // this click only takes the mouse back: it doesn't fire
   if (e.button === 0) mouseDown = true; if (e.button === 2) rightDown = true;
 });
 addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; if (e.button === 2) rightDown = false; });
-addEventListener('wheel', e => { if (running && !mapOpen && !paused && !travelOpen && !WHEEL.open && !CHEAT.open) cycleWeapon(e.deltaY > 0 ? 1 : -1); }, { passive: true });
+addEventListener('wheel', e => { // mouse wheel or two-finger scroll: steps through the weapon wheel, which equips when you stop
+  if (!running || mapOpen || paused || travelOpen || CHEAT.open || player.dead || JET.on || RW.open) return;
+  if (!WW.open) { if (openMenu()) return; keys.clear(); if (!WW.show()) return; }
+  // a wheel mouse clicks in notches (lines, or Chrome/Safari's wheelDelta in steps of 120); a touchpad streams pixels
+  const notch = e.deltaMode !== 0 || (e.wheelDeltaY && e.wheelDeltaY % 120 === 0 && Math.abs(e.deltaY) >= 40);
+  WW.scroll(e.deltaMode === 1 ? e.deltaY * 30 : e.deltaMode === 2 ? e.deltaY * 600 : e.deltaY, notch);
+}, { passive: true });
 addEventListener('mousemove', e => {
   if (WHEEL.open) { const W = WHEEL.cur(); if (document.pointerLockElement) W.move(e.movementX, e.movementY); else W.hover(e.clientX, e.clientY); return; }
   if (!running || paused || mapOpen || travelOpen) return;
@@ -3943,16 +3977,26 @@ function cycleWeapon(dir) {
   let i = player.weapon;
   for (let k = 0; k < WEAPONS.length; k++) { i = (i + dir + WEAPONS.length) % WEAPONS.length; if (owned(i)) { player.weapon = i; break; } }
 }
-// ---- weapon wheel (hold Tab) and radio wheel (hold Q in a car): src/ui/wheel.js
+// ---- weapon wheel (Tab or scroll) and radio wheel (Q in a car): src/ui/wheel.js
 const STATION_COLORS = ['#ff4fd8', '#ffb020', '#8fd3ff', '#d9a35b', '#ff5d3d', '#7dff6a', '#ffd43d', '#c08bff', '#4dffb8', '#ff8a65', '#9ad0ec'];
-const WW = createWheel({ title: 'Weapons', help: 'Move the mouse to choose · let go of Tab to equip',
+const WW = createWheel({ title: 'Weapons', help: 'Point to choose · let go of Tab to equip · tap Tab to keep it open',
+  stickyHelp: 'Swipe, ← → or a number to choose · click, Enter or Tab to equip · Esc to close', scrollHelp: 'Scroll to choose · equips when you stop · click to take it now',
   items: () => WEAPONS.map((w, i) => ({ label: w.name, sub: i ? `${player.arsenal[w.id] | 0} / ${maxOf(w)}` : 'Bare hands', icon: WICONS[w.id], off: !owned(i), offText: 'Buy one from a dealer', wide: true, count: i && owned(i) ? player.arsenal[w.id] | 0 : null, color: '#f0b23a' })),
   current: () => player.weapon, onPick: i => selectWeapon(i), tick: () => tone(1500, 0.015, 'square', 0.05) });
-const RW = createWheel({ title: 'Radio', help: 'Move the mouse to choose · let go of Q to tune',
+const RW = createWheel({ title: 'Radio', help: 'Point to choose · let go of Q to tune · tap Q to keep it open',
+  stickyHelp: 'Swipe, ← → or a number to choose · click, Enter or Q to tune · Esc to close',
   items: () => [...STATIONS.map((S, i) => ({ label: S.name, sub: S.proc ? 'Original music · live' : 'Kevin MacLeod (CC BY)', icon: WICONS.radio, color: STATION_COLORS[i % STATION_COLORS.length], short: S.name.replace(/ ·.*/, '').replace(/\s*\d+(\.\d+)?$/, '').slice(0, 12) })), { label: 'Radio off', sub: 'Silence', icon: WICONS.off, color: '#8a8f98', short: 'OFF' }],
   current: () => radio.on ? radio.st : STATIONS.length,
   onPick: i => { if (i >= STATIONS.length) { radio.on = false; radioStop(); return; } radio.on = true; radio.st = i; radio.track = -1; sfx.tune(); radioPlay(false); }, tick: () => tone(1500, 0.015, 'square', 0.05) });
 const WHEEL = { get open() { return WW.open || RW.open; }, cur() { return WW.open ? WW : RW; }, cancel() { WW.cancel(); RW.cancel(); } };
+const WHEEL_DIGITS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'];
+function wheelKey(e) { // an open wheel has the keyboard: ← → (A D) step, a number picks, Enter or Space takes it
+  const W = WHEEL.cur(); if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter'].includes(e.code)) e.preventDefault();
+  if (e.code === 'ArrowRight' || e.code === 'ArrowDown' || e.code === 'KeyD') W.step(1);
+  else if (e.code === 'ArrowLeft' || e.code === 'ArrowUp' || e.code === 'KeyA') W.step(-1);
+  else if (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space') W.commit();
+  else { const k = WHEEL_DIGITS.indexOf(e.code); if (k >= 0) W.choose(k); }
+}
 const _sd = new THREE.Vector3(), _sp = new THREE.Vector3();
 function muzzlePos() {
   return player.inCar ? player.inCar.pos.clone().add(new THREE.Vector3(0, 1.6, 0))
@@ -4062,7 +4106,7 @@ const strikes = [];
 function explosionAt(x, y, z, R, by) {
   if (by === 'player' && WEAPONS[player.weapon] && WEAPONS[player.weapon].proj) R *= 1 + 0.1 * upLv(WEAPONS[player.weapon], 'dmg'); // bigger charges
   const f = focusPos();
-  if (S2) S2.boom(R, 1, Math.hypot(x - f.x, z - f.z)); else sfx.boom(volAt(x, z, 260)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
+  if (S2) S2.boom(R, 1, Math.hypot(x - f.x, z - f.z)); else sfx.boom(volAt(x, z, 260)); duckMusic(0.55 * volAt(x, z, 260) * Math.min(1, R / 8)); shake = Math.max(shake, clamp(1.3 - Math.hypot(x - f.x, z - f.z) / 80, 0, 1.2)); flash = Math.max(flash, 0.8);
   if (by === 'player' || by === 'chain') bus.emit('explosion', { x, z, R });
   if (online && by === 'player') sendEvent('boom', { x, y, z, R });
   FX.explosion(x, y, z, R); // fireballs, shockwave, flash, embers, smoke column, flying dirt (src/fx/fx.js)
@@ -4276,10 +4320,15 @@ function fellProp(p, dx, dz, fromNet) {
   const g = new THREE.Group(); g.position.set(p.x, heightAt(p.x, p.z), p.z);
   if (p.kind === 'tree') {
     treeDead.add(p.ti);
+    const real = NATURE.veg && p.veg && NATURE.veg.standalone ? NATURE.veg.standalone(p.veg[0], p.veg[1]) : null; // the tree you saw, not a stand-in
     const r = NATURE.veg && p.veg ? NATURE.veg.hide(p.veg[0], p.veg[1]) : null, H = r ? r.h : 6, W = r ? r.w : 4;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * H / 6, 0.2 * H / 6, H * 0.55, 7).translate(0, H * 0.275, 0), fallMat.bark);
-    const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(W * 0.45, 1), fallMat.leaf); crown.position.y = H * 0.68; crown.scale.y = 0.8;
-    g.add(trunk, crown); sfx.crash(volAt(p.x, p.z) * 0.6); noise(0.4, 'highpass', 3000, 0.3 * volAt(p.x, p.z));
+    if (real) g.add(real);
+    else { // no near model for this plant: a simple trunk and crown
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * H / 6, 0.2 * H / 6, H * 0.55, 7).translate(0, H * 0.275, 0), fallMat.bark);
+      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(W * 0.45, 1), fallMat.leaf); crown.position.y = H * 0.68; crown.scale.y = 0.8;
+      g.add(trunk, crown);
+    }
+    sfx.crash(volAt(p.x, p.z) * 0.6); noise(0.4, 'highpass', 3000, 0.3 * volAt(p.x, p.z));
   } else if (p.kind === 'lamp') {
     p.inst.forEach(m => { m.setMatrixAt(p.i, ZERO4); m.instanceMatrix.needsUpdate = true; });
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 7, 6).translate(0, 3.5, 0), M.pole); const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.14, 0.9).translate(0, 7, 0.9), M.lampHead);
@@ -5238,33 +5287,43 @@ function updateVehicles(dt) {
   }
 }
 function collideCars(v) {
-  const c1 = carCircles(v), r1 = v.spec.W / 2;
+  const c1 = carChain(v), r1 = v.spec.W / 2;
   for (const o of vehicles) {
-    if (o === v) continue; if (hyp(o.pos.x - v.pos.x, o.pos.z - v.pos.z) > 7) continue;
+    if (o === v) continue; if (hyp(o.pos.x - v.pos.x, o.pos.z - v.pos.z) > 4 + (v.spec.L + o.spec.L) / 2) continue;
     if (Math.abs(o.pos.y - v.pos.y) > Math.max(o.spec.H, v.spec.H) * 0.9) continue; // one is flying over the other
-    const c2 = carCircles(o), r2 = o.spec.W / 2;
-    for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) {
-      let nx = c2[b * 2] - c1[a * 2], nz = c2[b * 2 + 1] - c1[a * 2 + 1]; const d = Math.hypot(nx, nz), pen = r1 + r2 - d;
-      if (pen <= 0 || d < 1e-4) continue; nx /= d; nz /= d;
+    const c2 = carChain(o), r2 = o.spec.W / 2;
+    let pen = 0, nx = 0, nz = 0, px = 0, pz = 0; // the deepest touching pair: one push, one impulse
+    for (let a = 0; a < c1.length; a += 2) for (let b = 0; b < c2.length; b += 2) {
+      const dx = c2[b] - c1[a], dz = c2[b + 1] - c1[a + 1], d = Math.hypot(dx, dz), p = r1 + r2 - d;
+      if (p > pen && d > 1e-4) { pen = p; nx = dx / d; nz = dz / d; px = (c1[a] + c2[b]) / 2; pz = (c1[a + 1] + c2[b + 1]) / 2; }
+    }
+    if (pen <= 0) continue;
+    {
       if (o.mode === 'rail') { o.mode = 'free'; o.vel.set(o.fx * o.speed, o.fz * o.speed); o.agent = null; o.crashed = true; }
       v.pos.x -= nx * pen * 0.5; v.pos.z -= nz * pen * 0.5; o.pos.x += nx * pen * 0.5; o.pos.z += nz * pen * 0.5;
       const rv = (o.vel.x - v.vel.x) * nx + (o.vel.y - v.vel.y) * nz;
       if (rv < 0) {
-        const j = -1.3 * rv / 2; v.vel.x -= j * nx; v.vel.y -= j * nz; o.vel.x += j * nx; o.vel.y += j * nz;
-        const imp = -rv; o.rotY += (Math.random() - 0.5) * imp * 0.02; v.rotY += (Math.random() - 0.5) * imp * 0.015;
+        // momentum by weight, with a crumple (little bounce): a bus shrugs off a hatchback, the hatchback goes flying sideways
+        const m1 = carMass(v), m2 = carMass(o), j = -(1 + 0.22) * rv / (1 / m1 + 1 / m2);
+        v.vel.x -= j / m1 * nx; v.vel.y -= j / m1 * nz; o.vel.x += j / m2 * nx; o.vel.y += j / m2 * nz;
+        const imp = -rv;
+        // an off-centre hit spins a car (yaw) instead of throwing it: angular impulse = r x J over the body's inertia
+        const spinBy = (car, m, jx, jz) => { const rx = px - car.pos.x, rz = pz - car.pos.z, I = m * (car.spec.L * car.spec.L + car.spec.W * car.spec.W) / 12; car.spinV = clamp((car.spinV || 0) + (jx * rz - jz * rx) / I * 1.4, -3.5, 3.5); };
+        if (imp > 2) { spinBy(v, m1, -j * nx, -j * nz); spinBy(o, m2, j * nx, j * nz); }
         if (imp > 3) {
           if (imp > 7) { carCrashed(v, imp); carCrashed(o, imp); }
           if (v.driver === 'player' || o.driver === 'player') bus.emit('car:crash', { a: v, b: o, impact: imp });
-          damageCar(o, imp * 2.2, v.driver === 'player' ? 'player' : null); damageCar(v, imp * 1.6, null);
-          const mx = (c1[a * 2] + c2[b * 2]) / 2, mz = (c1[a * 2 + 1] + c2[b * 2 + 1]) / 2, dd = Math.min(0.3, Math.max(0, imp - 4) * 0.018);
+          const share = 2 * m1 / (m1 + m2); // the lighter car takes more of it
+          damageCar(o, imp * 2.2 * clamp(share, 0.4, 1.6), v.driver === 'player' ? 'player' : null); damageCar(v, imp * 1.6 * clamp(2 - share, 0.4, 1.6), null);
+          const mx = px, mz = pz, dd = Math.min(0.3, Math.max(0, imp - 4) * 0.018);
           dentCar(v, mx, v.pos.y + 0.7, mz, -nx, 0, -nz, dd, 1.3); dentCar(o, mx, o.pos.y + 0.7, mz, nx, 0, nz, dd * 1.2, 1.4);
           if (imp > 9) shards(o, Math.min(8, imp * 0.4));
-          if (imp > 13) { // T-bones roll the car that got hit, head-ons pitch it
-            const side = nx * o.fz - nz * o.fx, fwd = nx * o.fx + nz * o.fz;
-            launchCar(o, Math.min(8, imp * 0.3), fwd * imp * 0.12, -side * imp * 0.2);
-            if (imp > 20) launchCar(v, Math.min(5, imp * 0.15), -(nx * v.fx + nz * v.fz) * imp * 0.06, rand(-1, 1) * imp * 0.05);
+          if (imp > 24) { // only a violent side hit from something heavier lifts a car, a tall light one most, and not far
+            const side = nx * o.fz - nz * o.fx, fwd = nx * o.fx + nz * o.fz, heavier = clamp(m1 / m2, 0.3, 3), tall = clamp(o.spec.H / o.spec.W, 0.6, 1.4);
+            const k = (imp - 24) * 0.1 * heavier, lift = Math.min(2.4, k * Math.abs(side));
+            if (lift > 0.5) launchCar(o, lift, fwd * Math.min(0.8, k * 0.2), -Math.sign(side) * Math.min(2.4, k * tall));
           }
-          sfx.crash(volAt(v.pos.x, v.pos.z) * Math.min(1, imp / 12)); sparks((c1[a * 2] + c2[b * 2]) / 2, v.pos.y + 0.7, (c1[a * 2 + 1] + c2[b * 2 + 1]) / 2);
+          sfx.crash(volAt(v.pos.x, v.pos.z) * Math.min(1, imp / 12)); sparks(px, v.pos.y + 0.7, pz);
           if (v.driver === 'player') {
             shake = Math.min(1, imp / 18);
             if (o.driver === 'ai') { o.angerAt = 'player'; o.react = rand(0.8, 1.6); if (imp > 6) o.hitRunCheck = 12; if (o.personality > 0.6) setTimeout(() => { if (!o.removed && o.driver === 'ai') sfx.horn(volAt(o.pos.x, o.pos.z)); }, 400); }
@@ -5876,7 +5935,7 @@ function updateHud(dt) {
   hudFx.hp = player.health; $('hplag').style.width = clamp(player.health, 0, 100) + '%';
   if (player.weapon !== hudFx.weapon) { hudFx.weapon = player.weapon; const w = $('weapon'); w.classList.remove('swap'); void w.offsetWidth; w.classList.add('swap'); }
   $('hpf').style.width = clamp(player.health, 0, 100) + '%'; $('hpf').style.background = player.health < 30 ? 'var(--blood)' : 'var(--cash)';
-  { const w = WEAPONS[player.weapon]; $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · hold Tab for weapons'; }
+  { const w = WEAPONS[player.weapon]; $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · Tab or scroll for weapons'; }
   $('cross').hidden = !(player.weapon > 0 && (player.aiming || player.inCar) || player.aiming);
   hudT -= dt; if (hudT > 0) return; hudT = 0.4;
   const hh = Math.floor(hour), mn = Math.floor((hour - hh) * 60);
@@ -5901,6 +5960,7 @@ function tick(rdt) {
   WATER_T.value += rdt; updateBoats(rdt);
   if (NATURE.gc) { const v = player.inCar; NATURE.gc.update(camera, v ? [[v.pos.x, v.pos.z, v.spec.L / 2 + 0.6]] : [[player.pos.x, player.pos.z, 0.9]]); }
   if (!running) {
+    playCursor(false); // menus: the cursor is back
     orbit += rdt * 0.05; simTime += rdt;
     const cx = spawnPt.x, cz = spawnPt.z, cy = heightAt(cx, cz);
     camera.position.set(cx + Math.cos(orbit) * 160, cy + 70, cz + Math.sin(orbit) * 160); camera.lookAt(cx, cy, cz); sky.position.copy(camera.position);
@@ -5909,8 +5969,10 @@ function tick(rdt) {
     visT -= rdt; if (visT <= 0) { visT = 1; updateChunkVisibility(cx, cz); }
     drawFrame(); return;
   }
-  // the mouse must stay captured during gameplay: if the lock was lost any way at all, pause (Resume re-locks)
-  if (canLock && !paused && !mapOpen && !travelOpen && !locked && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 1500 && performance.now() - lockAskT > 900) setPaused(true);
+  // in play the mouse is captured and hidden; in any menu it's free and shown. Esc in play pauses (pointerlockchange);
+  // a menu closed with Esc can't grab the mouse back (browsers don't let Esc do that), so the game carries on and one
+  // click takes control again: no pause menu bouncing up
+  playCursor(canLock && !paused && !openMenu() && !locked && !SHELL.isChatOpen() && SHELL.chatClosedAgo() > 600 && performance.now() - lockAskT > 400);
   // the cheat sheet freezes everything this game runs (online, the other players carry on) without the pause menu over it
   if (paused || mapOpen || travelOpen || CHEAT.open) { drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
@@ -6100,7 +6162,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';

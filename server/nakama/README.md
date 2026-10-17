@@ -12,7 +12,9 @@ What the server decides, so a modified browser can't fake it (all in `index.js`)
   everyone's health, so kills and deaths are real. Leaving mid-fight counts as a death.
 - **Progression:** XP, levels (to 100), titles, skill points, the three skill trees, lifetime kills and deaths, best
   streak, time online, and three daily challenges. Stored per player in `progress/stats`, which the player can read but
-  only the server can write.
+  only the server can write. Only online play counts: XP for achievements, missions and jobs is paid only while the
+  player is in a room. NPC kills count as kills (20 XP, cops 40); the browser reports them, so the room accepts at
+  most one every 1.5 s and 20 a minute. They don't build streaks or bounties, which stay player-versus-player.
 - **Leaderboards:** `kd_alltime` (needs 10 kills plus deaths), `kills_weekly` (resets Mondays, UTC) and
   `level_alltime`. Only the server writes them.
 - **Streaks and bounties:** announced at 3, 5 and every 5 after; at 5 the player has a bounty worth 1.5x XP.

@@ -21,7 +21,7 @@ export function on(ev, cb) { if (!L.has(ev)) L.set(ev, new Set()); L.get(ev).add
 function emit(ev, data) { for (const cb of L.get(ev) || []) { try { cb(data); } catch (e) { console.error('[net]', ev, e); } } }
 
 const OP = {
-  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10,
+  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, NPC_KILL: 12,
   SNAP: 20, ROSTER: 21, JOIN: 22, LEAVE: 23, HPSET: 24, CHAT_OUT: 25, FEED_OUT: 26, EVENT_OUT: 27, RUIN_OUT: 28, CROWD_OUT: 29,
   CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35,
 };
@@ -122,6 +122,8 @@ export const PRO = {
   resetSkills: () => rpcSafe('skill_reset'),
   claim: (kind, id) => rpcSafe('claim', { kind, id }),
   leaderboard: (board, limit) => rpcSafe('leaderboard', { board, limit }),
+  online: () => !!(NET.server && matchId && NET.connected), // in a room: the only place kills, XP and levels count
+  npcKill: cop => sendOp(OP.NPC_KILL, { cop: cop ? 1 : 0 }), // the room checks the pace and pays the XP
 };
 
 // ---------------------------------------------------------------- the menus

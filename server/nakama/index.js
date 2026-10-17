@@ -16,7 +16,7 @@
 var SERVERS = ['silverwood', 'elysium', 'asgard', 'avalon', 'vaeloria']; // must match src/online/config.js
 var MAX_PLAYERS = 20, TICK_RATE = 10, EMPTY_TICKS = TICK_RATE * 600; // a room with nobody in it closes after 10 minutes
 var OP = {
-  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, SKIN: 11,
+  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, SKIN: 11, NPC_KILL: 12,
   SNAP: 20, ROSTER: 21, JOIN: 22, LEAVE: 23, HPSET: 24, CHAT_OUT: 25, FEED_OUT: 26, EVENT_OUT: 27, RUIN_OUT: 28, CROWD_OUT: 29,
   CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35,
 };
@@ -59,6 +59,9 @@ var DAILY_POOL = [
   { id: 'alive10', name: 'Hard to Kill', desc: 'Stay alive 10 minutes in a row online', stat: 'alive', goal: 10, xp: 400 },
 ];
 var MAX_LEVEL = 100, KD_MIN_FIGHTS = 10, KILL_XP = 100, BOUNTY_STREAK = 5;
+// NPC kills count as kills too (people 20 XP, cops 40), but only in a room and at a human pace: the browser reports
+// them, so the room takes at most one every 1.5 s and 20 a minute, and banks them for a few seconds before saving
+var NPC_XP = 20, COP_XP = 40, NPC_GAP_MS = 1500, NPC_PER_MIN = 20, NPC_FLUSH_TICKS = TICK_RATE * 3;
 var BOARD = { kd: 'kd_alltime', kills_week: 'kills_weekly', level: 'level_alltime' };
 
 function needFor(lvl) { return 200 + 80 * lvl; } // XP from this level to the next
@@ -70,7 +73,7 @@ function dailyFor(day) { // the same three challenges for everyone, a new set ev
   for (var i = ids.length - 1; i > 0; i--) { s = (s * 1103515245 + 12345) % 2147483648; var j = s % (i + 1), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
   return ids.slice(0, 3);
 }
-function blankProgress() { return { v: 1, lvl: 1, xp: 0, total: 0, sp: 0, skills: {}, kills: 0, deaths: 0, best: 0, mins: 0, ach: {}, missions: {}, daily: null, respec: '' }; }
+function blankProgress() { return { v: 1, lvl: 1, xp: 0, total: 0, sp: 0, skills: {}, kills: 0, npc: 0, deaths: 0, best: 0, mins: 0, ach: {}, missions: {}, daily: null, respec: '' }; }
 function normalize(p) {
   var b = blankProgress(); for (var k in b) if (p[k] === undefined || p[k] === null) p[k] = b[k];
   var d = today(); if (!p.daily || p.daily.day !== d) p.daily = { day: d, prog: {}, done: {} };
@@ -122,7 +125,7 @@ function publicProgress(p, name) {
   var ids = dailyFor(dayNumber());
   return {
     name: name, lvl: p.lvl, xp: p.xp, need: p.lvl >= MAX_LEVEL ? 0 : needFor(p.lvl), total: p.total, sp: p.sp, skills: p.skills, title: titleFor(p.lvl),
-    kills: p.kills, deaths: p.deaths, kd: Math.round(p.kills / Math.max(1, p.deaths) * 100) / 100, best: p.best, mins: p.mins, respecToday: p.respec === today(),
+    kills: p.kills, npc: p.npc | 0, deaths: p.deaths, kd: Math.round(p.kills / Math.max(1, p.deaths) * 100) / 100, best: p.best, mins: p.mins, respecToday: p.respec === today(),
     daily: ids.map(function (id) { var c = DAILY_POOL.filter(function (x) { return x.id === id; })[0]; return { id: c.id, name: c.name, desc: c.desc, goal: c.goal, xp: c.xp, prog: Math.min(c.goal, p.daily.prog[c.stat] || 0), done: !!p.daily.done[c.id] }; }),
   };
 }
@@ -130,6 +133,10 @@ function publicProgress(p, name) {
 // ---------------------------------------------------------------- RPCs
 function parse(payload) { try { return payload ? JSON.parse(payload) : {}; } catch (e) { throw Error('bad payload'); } }
 function userName(nk, uid) { try { var a = nk.accountGetId(uid); return a.user.username; } catch (e) { return ''; } }
+// who is in a room right now (this node's cache; refreshed every minute while they're there)
+function markRoom(nk, uid, sid) { try { nk.localcachePut('room:' + uid, sid, 180); } catch (e) { } }
+function leftRoom(nk, uid) { try { nk.localcacheDelete('room:' + uid); } catch (e) { } }
+function inRoom(nk, uid) { try { return !!nk.localcacheGet('room:' + uid); } catch (e) { return false; } }
 function needUser(ctx) { if (!ctx.userId) throw Error('sign in first'); } // server-to-server calls (http key) have no player
 
 function rpcProfile(ctx, logger, nk, payload) {
@@ -164,6 +171,7 @@ var ACH_IDS = ['first-wheels', 'autobiography', 'joyride', 'ludicrous', 'air-tim
   'fully-loaded', 'arsenal', 'courier', 'tourist', 'collector', 'pimp', 'sharpshooter', 'social', 'hopper', 'rival', 'night-owl', 'dancer'];
 function rpcClaim(ctx, logger, nk, payload) { // achievements once each, missions once per mission per day
   needUser(ctx);
+  if (!inRoom(nk, ctx.userId)) return JSON.stringify({ ok: false, offline: true, ev: [] }); // XP and levels come from online play only
   var q = parse(payload), kind = q.kind === 'mission' ? 'mission' : 'ach', id = String(q.id || '');
   if (kind === 'ach' ? ACH_IDS.indexOf(id) < 0 : !/^(story|job):[a-zA-Z0-9_-]{1,30}$/.test(id)) throw Error('bad id');
   var r = updateProgress(nk, logger, ctx.userId, function (p, ev) {
@@ -291,11 +299,12 @@ function matchJoin(ctx, logger, nk, dispatcher, tick, state, presences) {
       uid: pr.userId, name: pr.username, presence: pr, skin: '', p: null, at: 0, hp: 100, dead: false, lastTp: 0, lastHeal: 0, hpAt: Date.now(),
       dmgWin: [], lastHitBy: null, lastHitAt: 0, sk: 0, sd: 0, streak: 0, lvl: prog.lvl, title: titleFor(prog.lvl), skills: prog.skills || {},
       shieldUntil: 0, aliveSince: Date.now(), minsBank: 0, msgN: 0, msgWin: 0, chatAt: 0, joinedAt: Date.now(),
+      npcAt: 0, npcWin: [], npcBank: 0, npcXp: 0,
     };
     var md = state.pending[pr.userId] || {}; delete state.pending[pr.userId];
     if (typeof md.s === 'string') P.skin = md.s.slice(0, 40);
     try { var p0 = md.p ? JSON.parse(md.p) : null; if (p0 && isFinite(p0.x) && isFinite(p0.z)) { p0.h = 100; p0.d = 0; P.p = p0; P.at = Date.now(); P.dirty = true; } } catch (e) { }
-    state.players[pr.userId] = P;
+    state.players[pr.userId] = P; markRoom(nk, P.uid, state.sid);
     var roster = []; for (var k in state.players) if (k !== P.uid) roster.push(rosterEntry(state.players[k]));
     var ruins = []; for (var ri in state.ruins) ruins.push(state.ruins[ri]);
     var crowds = []; for (var ci in state.crowds) if (ci !== P.uid) crowds.push({ id: ci, e: state.crowds[ci].e, t: state.crowds[ci].t });
@@ -312,7 +321,7 @@ function matchLeave(ctx, logger, nk, dispatcher, tick, state, presences) {
     var P = state.players[presences[i].userId]; if (!P || P.presence.sessionId !== presences[i].sessionId) continue;
     // leaving in the middle of a fight counts as a death, and the kill goes to whoever was shooting
     if (!P.dead && P.lastHitBy && Date.now() - P.lastHitAt < ASSIST_MS && state.players[P.lastHitBy]) killed(nk, logger, dispatcher, state, P, state.players[P.lastHitBy], 'rage quit');
-    flushMinutes(nk, logger, null, state, P, true);
+    flushNpc(nk, logger, null, state, P); flushMinutes(nk, logger, null, state, P, true); leftRoom(nk, P.uid);
     delete state.players[P.uid]; delete state.crowds[P.uid];
     send(dispatcher, OP.LEAVE, { id: P.uid }); send(dispatcher, OP.CROWD_GONE, { id: P.uid });
     feedOut(dispatcher, state, 'leave', { u: P.uid, a: P.name });
@@ -391,6 +400,22 @@ function onRespawn(dispatcher, state, P) {
   P.shieldUntil = now + 1500 * rank(P, 'comeback');
   send(dispatcher, OP.HPSET, { h: 100 }, [P.presence]);
 }
+function onNpcKill(dispatcher, state, P, q) {
+  var now = Date.now(); if (P.dead || !P.p || now - P.npcAt < NPC_GAP_MS) return;
+  P.npcWin = P.npcWin.filter(function (t) { return now - t < 60000; }); if (P.npcWin.length >= NPC_PER_MIN) return;
+  P.npcAt = now; P.npcWin.push(now);
+  P.sk++; P.npcBank++; P.npcXp += q.cop ? COP_XP : NPC_XP;
+}
+function flushNpc(nk, logger, dispatcher, state, P) { // bank -> lifetime kills, XP, the daily kill challenges and the boards
+  if (!P.npcBank) return;
+  var n = P.npcBank, xp = P.npcXp; P.npcBank = 0; P.npcXp = 0;
+  try {
+    var was = P.lvl;
+    var r = updateProgress(nk, logger, P.uid, function (p, ev) { p.kills += n; p.npc = (p.npc | 0) + n; addXp(p, xp * (1 + 0.2 * rank(p, 'hunter')), ev); dailyBump(p, 'kills', n, false, ev); });
+    P.lvl = r.p.lvl; P.title = titleFor(P.lvl); P.skills = r.p.skills || {}; postBoards(nk, logger, P.uid, P.name, r.p, n);
+    if (dispatcher) { statsTo(dispatcher, P, r); if (P.lvl !== was) playerChanged(dispatcher, state, P); }
+  } catch (e) { logger.warn('npc kills for %s: %s', P.uid, e.message || e); }
+}
 function flushMinutes(nk, logger, dispatcher, state, P, force) { // time online: daily challenge minutes, and 25 XP per 5 minutes
   var mins = Math.floor((Date.now() - P.joinedAt) / 60000) - P.minsBank; if (mins < (force ? 1 : 5)) return;
   P.minsBank += mins;
@@ -414,6 +439,7 @@ function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
       case OP.HIT: onHit(nk, logger, dispatcher, state, P, q); break;
       case OP.HP: onOwnHealth(nk, logger, dispatcher, state, P, q); break;
       case OP.RESPAWN: onRespawn(dispatcher, state, P); break;
+      case OP.NPC_KILL: onNpcKill(dispatcher, state, P, q); break;
       case OP.CHAT: {
         var text = String(q.m || '').replace(/\s+/g, ' ').trim().slice(0, 160); if (!text || now - P.chatAt < 700) break;
         P.chatAt = now; send(dispatcher, OP.CHAT_OUT, { u: P.uid, n: P.name, m: text, t: now }); break;
@@ -433,13 +459,14 @@ function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
   var a = [], n = 0;
   for (var k in state.players) { var Q = state.players[k]; n++; if (Q.dirty && Q.p) { a.push([Q.uid, Q.p]); Q.dirty = false; } }
   if (a.length && n > 1) send(dispatcher, OP.SNAP, { t: now, a: a });
-  if (tick % (TICK_RATE * 60) === 0) for (var k2 in state.players) flushMinutes(nk, logger, dispatcher, state, state.players[k2], false);
+  if (tick % NPC_FLUSH_TICKS === 0) for (var k3 in state.players) flushNpc(nk, logger, dispatcher, state, state.players[k3]);
+  if (tick % (TICK_RATE * 60) === 0) for (var k2 in state.players) { flushMinutes(nk, logger, dispatcher, state, state.players[k2], false); markRoom(nk, k2, state.sid); }
   for (var ri in state.ruins) if (now - state.ruins[ri].t > RUIN_MS) delete state.ruins[ri];
   if (!n) { if (++state.empty > EMPTY_TICKS) { logger.info('closing empty room %s', state.sid); return null; } } else state.empty = 0;
   return { state: state };
 }
 function matchTerminate(ctx, logger, nk, dispatcher, tick, state, graceSeconds) {
-  for (var k in state.players) flushMinutes(nk, logger, null, state, state.players[k], true);
+  for (var k in state.players) { flushNpc(nk, logger, null, state, state.players[k]); flushMinutes(nk, logger, null, state, state.players[k], true); leftRoom(nk, k); }
   return { state: state };
 }
 function matchSignal(ctx, logger, nk, dispatcher, tick, state, data) { return { state: state, data: '' }; }

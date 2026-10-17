@@ -229,6 +229,17 @@ export class Vegetation {
     this.last.t = 1e9; // re-gather the near meshes next frame
     return out;
   }
+  // one plant as a standalone object at the origin (its own near mesh: same model, materials, size, turn and tint), so a
+  // tree a car knocks over falls as the tree you saw. Call before hide(). null when the species has no near mesh.
+  standalone(species, i) {
+    const a = this.inst.get(species); if (!a || !a.s[i] || !this.order) return null;
+    const im = this.near.get(`${this.order.indexOf(species)}/${a.v[i]}`); if (!im) return null;
+    const { THREE } = this, one = new THREE.InstancedMesh(im.geometry, im.material, 1); // same shader path as the near meshes
+    one.setMatrixAt(0, new THREE.Matrix4().compose(new THREE.Vector3(), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), a.rot[i]), new THREE.Vector3().setScalar(a.s[i])));
+    one.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array([a.t[i * 3], a.t[i * 3 + 1], a.t[i * 3 + 2]]), 3);
+    one.castShadow = im.castShadow; one.receiveShadow = true; one.frustumCulled = false; one.name = 'fallen:' + species;
+    return one;
+  }
   count() { let n = 0; for (const a of this.inst.values()) n += a.x.length; return n; }
   build() {
     const { THREE } = this; const quad = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
