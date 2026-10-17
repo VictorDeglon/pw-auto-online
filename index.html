@@ -385,7 +385,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <button class="mbtn" data-go="controls">Controls</button>
     </nav>
     <button class="linkbtn" id="newgame" hidden>Reset offline progress</button>
-    <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
+    <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0), Quaternius (CC0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY 3.0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
   </div>
 
   <section class="screen" id="scr-online" hidden>
@@ -544,6 +544,9 @@ import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/onl
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
+import { createSky } from './src/sky.js';
+import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } from './src/aircraft.js';
+import { createNightLights, headlightBeam } from './src/nightlights.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
 import { createComposer, procSongs } from './src/audio/composer.js';
@@ -659,80 +662,9 @@ Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -12
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.08;
 scene.add(sun, sun.target);
 
-// sky dome: analytic sky with a living sunset. The horizon band in the sun's direction runs gold -> orange -> red ->
-// magenta as the sun drops; the far side gets the pink belt of Venus over the blue shadow of the Earth; a Mie halo
-// round the sun; two cloud decks lit from below at golden hour (silver linings toward the sun); crepuscular rays;
-// stars and a moon at night.
-const skyU = {
-  top: { value: hex(0x4a8fd8) }, horizon: { value: hex(0xbfd8ee) }, sunDir: { value: new THREE.Vector3(0, 1, 0) },
-  sunCol: { value: hex(0xfff0c0) }, cloud: { value: 0.1 }, time: { value: 0 }, night: { value: 0 }, flash: { value: 0 }, dusk: { value: 0 },
-};
-const sky = new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), new THREE.ShaderMaterial({
-  uniforms: skyU, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
-  vertexShader: `varying vec3 vDir; void main(){ vDir=position; vec4 p=projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position=p; gl_Position.z=p.w*0.9999; }`,
-  fragmentShader: `uniform vec3 top,horizon,sunDir,sunCol; uniform float cloud,time,night,flash,dusk; varying vec3 vDir;
-  float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-  float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
-  float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*noise(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return v;}
-  float hg(float c,float g){float g2=g*g;return (1.-g2)/pow(1.+g2-2.*g*c,1.5)*.0796;} // Henyey-Greenstein
-  void main(){
-    vec3 d=normalize(vDir); float h=max(d.y,0.), sy=sunDir.y;
-    float cs=dot(d,sunDir), sd=max(cs,0.);
-    vec2 sh=normalize(sunDir.xz+1e-5), dh=normalize(d.xz+1e-5); float az=dot(sh,dh)*.5+.5; // 1 toward the sun, 0 away
-    // base gradient, with a thicker warm horizon the lower the sun
-    vec3 col=mix(horizon,top,pow(h,.45+dusk*.25));
-    // sunset palette, banded by height above the horizon and spread round toward the sun
-    float g=clamp(sy*4.+.25,0.,1.); // 1 high sun .. 0 at/below the horizon
-    vec3 gold=vec3(1.,.72,.32), ora=vec3(1.,.42,.12), red=vec3(.85,.16,.08), mag=vec3(.55,.18,.42);
-    vec3 band=mix(mix(red,ora,smoothstep(0.,.06,h)),mix(gold,mag*.6+top*.4,smoothstep(.12,.45,h)),smoothstep(.04,.2,h));
-    band=mix(band,mix(red,mag,.5),(1.-g)*.45*smoothstep(.0,.3,h));
-    float spread=pow(az,1.6+2.*g)*exp(-h*(3.2-dusk*1.4));
-    col=mix(col,band*1.25,clamp(dusk*spread*1.35,0.,1.)*(1.-cloud*.6));
-    // anti-solar side: belt of Venus (pink) over the Earth's shadow (blue-grey band hugging the horizon)
-    float anti=pow(1.-az,2.);
-    col=mix(col,vec3(.86,.55,.62),dusk*anti*smoothstep(.02,.1,h)*(1.-smoothstep(.1,.32,h))*.55*(1.-cloud*.7));
-    col=mix(col,vec3(.24,.3,.46),dusk*anti*(1.-smoothstep(0.,.06,h))*.6*(1.-cloud*.7));
-    if(d.y<0.) col=mix(horizon*.85,col,exp(d.y*14.));
-    // sun: halo (Mie), aureole and a limb-darkened disc that grows and reddens toward the horizon
-    float mie=hg(cs,.76+dusk*.12)*(.35+dusk*1.6);
-    vec3 sc=mix(sunCol,vec3(1.,.38,.12),dusk*.8);
-    col+=sc*mie*(1.-cloud*.8)*(1.-night*.9);
-    float disc=smoothstep(.9994-dusk*.0006,.99975-dusk*.0003,cs);
-    col+=sc*disc*(7.+dusk*3.)*(1.-cloud*.9)*(1.-smoothstep(-.02,-.06,sy));
-    // crepuscular rays: angular streaks fanning out from the sun at golden hour
-    vec3 t1=normalize(cross(sunDir,vec3(0.,1.,0.))+1e-5), t2=cross(t1,sunDir); float ang=atan(dot(d,t2),dot(d,t1));
-    float rays=(noise(vec2(ang*18.,time*.05))*.6+noise(vec2(ang*41.,time*.08))*.4);
-    col+=sc*smoothstep(.45,.85,rays)*pow(sd,6.)*dusk*.3*(1.-cloud*.5)*smoothstep(-.02,.15,d.y);
-    if(d.y>0.){
-      // stars (twinkling) and the moon opposite the sun
-      vec2 sp=d.xz/(d.y+.25)*170.; float st=step(.9965,hash(floor(sp)));
-      st*=.55+.45*sin(time*3.+hash(floor(sp)+3.)*40.);
-      col+=vec3(st)*night*(1.-cloud)*.9;
-      float mc=dot(d,-sunDir); col+=vec3(.9,.92,1.)*(smoothstep(.99955,.9998,mc)*1.3+pow(max(mc,0.),220.)*.12)*night*(1.-cloud*.8);
-      // two cloud decks, moving; lit from the sun side, undersides on fire at golden hour
-      vec2 cp=d.xz/(d.y+.1)*1.4+vec2(time*.012,time*.005);
-      float c=fbm(cp), c2=fbm(cp*2.7+5.), hi=fbm(d.xz/(d.y+.06)*.55+vec2(time*.004,0.)+9.);
-      float cov=smoothstep(.75-cloud*.55,1.0-cloud*.35,c)*smoothstep(0.,.12,d.y);
-      float cirr=smoothstep(.58,.9,hi)*smoothstep(0.,.2,d.y)*(.55-cloud*.3);
-      float dens=cov*(.6+.4*c2);
-      vec3 lit=mix(vec3(1.),mix(vec3(1.,.62,.3),vec3(1.,.36,.28),1.-g),dusk);           // sunlit side
-      vec3 shade=mix(horizon*.75+vec3(.05),mix(vec3(.42,.24,.34),vec3(.25,.16,.24),1.-g),dusk); // shadowed side
-      vec3 cc=mix(lit,shade,clamp(dens*.9-sd*.4,0.,1.));
-      cc+=sc*pow(sd,5.)*(1.-dens)*1.6*(.4+dusk);                                         // silver lining
-      cc=mix(cc,band*1.4,dusk*spread*.6);                                                  // undersides catch the band
-      cc*=(1.-.6*cloud)*(1.-night*.88); cc+=flash;
-      col=mix(col,cc,cov);
-      vec3 cic=mix(vec3(1.),mix(ora,mag,.4)*1.3,dusk)*(1.-night*.9);
-      col=mix(col,cic,cirr*(1.-cov));
-    }
-    col+=flash*.6;
-    col+=(hash(vDir.xy*413.+time)-.5)/255.; // dither: no banding in the gradients
-    gl_FragColor=vec4(col,1.);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-  }`,
-}));
-sky.renderOrder = -10; sky.frustumCulled = false; scene.add(sky);
+// sky dome (src/sky.js): sunset bands, lit cumulus and cirrus, a real star field and Milky Way, the moon at its phase,
+// the town's glow on the night sky. updateWeather sets its uniforms.
+const SKYFX = createSky(THREE), skyU = SKYFX.U, sky = SKYFX.mesh; scene.add(sky);
 
 // ============================================================ geo: aerial pixel space + terrain
 const AER = D.aerial, TER = D.terrain;
@@ -2102,7 +2034,7 @@ async function plantNature() {
       }
     };
     try {
-      NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas });
+      NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas, exclude: window.GTP_NATURE_EXCLUDE || [] });
       NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
     } catch (e) { console.error('[nature] cover map', e); }
   }
@@ -2783,8 +2715,10 @@ function carTemplate(name) {
     body.scale.set(sx, sy, sz); body.position.set(-(box0.min.x + box0.max.x) / 2 * sx, clear - box0.min.y * sy, -(box0.min.z + box0.max.z) / 2 * sz);
     for (const w of wheels) {
       const k = dim.r / Math.max(1e-3, wr0(w)); wr = dim.r;
-      const sg = Math.sign(w.x) || 1, tyw = dim.r * 1.32; // these bodies have no arches: set the tyre's outer face 4 cm proud of the body side so it shows
-      tw.push({ x: sg * (dim.W / 2 + 0.04 - tyw / 2), y: dim.r, z: w.z * sz - (box0.min.z + box0.max.z) / 2 * sz, front: w.front, right: w.right, mesh: w.mesh, scale: [k, k, k] });
+      // Kenney's toy tyre is 2/3 as wide as it is tall; a real one is about 1/3 (225/65 R16): squeeze it across the axle.
+      // These bodies have no arches: set the tyre's outer face 3 cm proud of the body side so it shows.
+      const sg = Math.sign(w.x) || 1, kw = 0.55, tyw = dim.r * 1.333 * kw;
+      tw.push({ x: sg * (dim.W / 2 + 0.03 - tyw / 2), y: dim.r, z: w.z * sz - (box0.min.z + box0.max.z) / 2 * sz, front: w.front, right: w.right, mesh: w.mesh, scale: [k * kw, k, k] });
     }
   } else { // Kenney: tyres touch the ground; scale each axis to the real size
     let minY = box0.min.y; for (const w of wheels) minY = Math.min(minY, w.y - wr0(w));
@@ -2821,8 +2755,8 @@ function buildCar(type, tint, model) {
       } else if (/Accent|SignPlate/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: type === 'police' ? 0x1f4a2c : src.color, roughness: 0.4, metalness: 0.2 });
       else if (/PoliceLight(Red|Blue)/.test(nm)) m = new THREE.MeshBasicMaterial({ color: /Red/.test(nm) ? 0x400000 : 0x000a40 });
       else if (/Glass|Window/i.test(nm)) m = new THREE.MeshPhysicalMaterial({ color: 0x101418, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6 });
-      else if (/Headlight|LightFront|PoliceLightWhite/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0xfff4d8, emissive: 0xffe6b0, emissiveIntensity: 0.25, roughness: 0.2 });
-      else if (/TailLight|LightRear/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0xa01010, emissive: 0x600000, emissiveIntensity: 0.4, roughness: 0.3 });
+      else if (/Headlight|LightFront|PoliceLightWhite/i.test(nm)) { m = new THREE.MeshStandardMaterial({ color: 0xfff4d8, emissive: 0xffe6b0, emissiveIntensity: 0.25, roughness: 0.2 }); m.userData.lamp = 'head'; } // brighter at night (src/nightlights.js)
+      else if (/TailLight|LightRear/i.test(nm)) { m = new THREE.MeshStandardMaterial({ color: 0xa01010, emissive: 0x600000, emissiveIntensity: 0.4, roughness: 0.3 }); m.userData.lamp = 'tail'; }
       else if (/Grey|TrimDark|PoliceLightBar/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.5, metalness: 0.6 });
       else if (/^Trim$/.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.25, metalness: 0.9 });
       else m = new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.7 });
@@ -2844,8 +2778,9 @@ function buildCar(type, tint, model) {
     const band = new THREE.MeshStandardMaterial({ color: 0x1f4a2c, roughness: 0.4, metalness: 0.2 });
     for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.26), band); p.position.set(sx * (T.W / 2 + 0.012), T.H * 0.45, -0.1); p.rotation.y = sx * Math.PI / 2; g.add(p); }
   }
+  const beam = headlightBeam(THREE, T.L, T.W); g.add(beam); // the pool of its headlights on the road, at night
   scene.add(g);
-  return { g, body, wheels, bars, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name };
+  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name };
 }
 const vehicles = [];
 class Vehicle {
@@ -3163,7 +3098,7 @@ function popWheel(v) {
   const w = v.m.wheels.splice(Math.floor(Math.random() * v.m.wheels.length), 1)[0];
   v.m.g.updateMatrixWorld(true); scene.attach(w.w);
   const ox = w.w.position.x - v.pos.x, oz = w.w.position.z - v.pos.z, ol = Math.hypot(ox, oz) || 1;
-  addDebris(w.w, v.vel.x * 0.8 + ox / ol * 5, rand(4, 8), v.vel.y * 0.8 + oz / ol * 5, 45, v.spec.wr);
+  addDebris(w.w, v.vel.x * 0.8 + ox / ol * 5, rand(4, 8), v.vel.y * 0.8 + oz / ol * 5, 45, v.m.wr || 0.34); // (spec.wr is undefined: the wheel fell through the ground)
 }
 function updateDebris(dt) {
   for (let i = debris.length - 1; i >= 0; i--) {
@@ -3294,6 +3229,7 @@ function hurtPlayer(amt, src) {
 const CHEAT = createCheats({ run: (id, arg) => runCheat(id, arg), onOpen: () => { closeMenus('cheats'); keys.clear(); mouseDown = rightDown = false; if (document.pointerLockElement) document.exitPointerLock(); }, onClose: () => { if (running && !paused) lockPointer(); } });
 const CH = { god: false, fly: false, aimbot: false, ghost: false, speed: false, jump: false, boom: false, punch: false, tank: false, nitro: false, moon: false, slowmo: false, richUntil: 0, richBase: 0, riotT: 0, stormT: 0, stormNext: 0, strikes: [] };
 const JET = { on: false, m: null, pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(), thr: 0.6, cd: 0 };
+let AIR = null, AIRT = null; // aircraft models and the air traffic (src/aircraft.js), loaded after the loading screen
 function cheatToast(name, on) { notify(on === undefined ? `<b>${name}</b>` : `<b>${name}</b> ${on ? 'on' : 'off'}`, on === false ? '' : 'green', 1800); tone(on === false ? 520 : 1040, 0.06, 'triangle', 0.12); }
 function aimPoint(maxD = 900) { // where the crosshair lands (ground, wall or a person)
   camera.getWorldDirection(_sd); const o = camera.position.clone().addScaledVector(_sd, cam.dist * 0.9), hit = hitscan(o, _sd, maxD, 'player');
@@ -3398,6 +3334,8 @@ function updateNukeWaves() {
 }
 // ---- fighter jet: flies where the camera looks, W/S throttle, A/D roll, click fires missiles, F bails out
 function jetModel() {
+  const air = makeAircraft(AIR, 'fighter', { center: true }); // the F-35-like model once it's in (src/aircraft.js); the boxy one below until then
+  if (air) { const fl = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.4, 10).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff9a40 })); fl.position.set(0, -0.15, air.box.min.z - 0.9); air.g.add(fl); air.g.userData.flame = fl; air.g.traverse(o => { if (o.isMesh) o.castShadow = true; }); return air.g; }
   const g = new THREE.Group(), grey = new THREE.MeshStandardMaterial({ color: 0x8c949c, roughness: 0.45, metalness: 0.5 }), dark = new THREE.MeshStandardMaterial({ color: 0x3a3f45, roughness: 0.6, metalness: 0.4 });
   const glass = new THREE.MeshStandardMaterial({ color: 0x1b2a3a, roughness: 0.05, metalness: 0.9 }), glow = new THREE.MeshBasicMaterial({ color: 0xff9a40 });
   const add = (geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
@@ -3528,10 +3466,10 @@ rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
 const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xaab6c4, transparent: true, opacity: 0.45 }));
 rain.frustumCulled = false; scene.add(rain);
 const C = {
-  dayTop: hex('#3f86d6'), dayHor: hex('#c4dcef'), duskTop: hex('#3a4f7a'), duskHor: hex('#f09a55'), nightTop: hex('#04070f'), nightHor: hex('#141c2c'),
+  dayTop: hex('#3f86d6'), dayHor: hex('#c4dcef'), duskTop: hex('#3a4f7a'), duskHor: hex('#f09a55'), nightTop: hex('#070d1d'), nightHor: hex('#1b263b'),
   grayTop: hex('#6d7680'), grayHor: hex('#a9b0b6'), hazeHor: hex('#d9b98a'),
 };
-const sunDir = new THREE.Vector3();
+const sunDir = new THREE.Vector3(), _nightDir = new THREE.Vector3(), _moonCol = hex('#a9bde8'), _nightSky = hex('#6f86bf'), _nightGround = hex('#4a3b2c');
 let nightAmount = 0;
 function updateWeather(dt) {
   const mode = SKY.lock ? 'lock' : online && NET.server ? 'shared' : 'own';
@@ -3549,6 +3487,7 @@ function updateWeather(dt) {
   const ph = (hour - 6) / 12 * Math.PI;
   sunDir.set(Math.cos(ph), Math.sin(ph) * 0.94, Math.sin(ph) * 0.34).normalize();
   const sy = sunDir.y, day = smooth(-0.08, 0.25, sy), dusk = Math.exp(-sy * sy * 40) * (1 - weather.cloud * 0.7), night = 1 - day;
+  const moon = SKYFX.celestial(clock.date, hour, ph), moonUp = smooth(-0.02, 0.12, moon.dir.y); skyU.rain.value = weather.rain; skyU.fog.value = weather.fog;
   const top = C.nightTop.clone().lerp(C.dayTop, day).lerp(C.duskTop, dusk * 0.5).lerp(C.grayTop.clone().multiplyScalar(0.15 + 0.85 * day), weather.cloud * 0.85);
   const hor = C.nightHor.clone().lerp(C.dayHor, day).lerp(C.duskHor, dusk * 0.8).lerp(C.grayHor.clone().multiplyScalar(0.15 + 0.85 * day), Math.max(weather.cloud * 0.8, weather.fog)).lerp(C.hazeHor, weather.haze * 0.5 * day);
   skyU.top.value.copy(top); skyU.horizon.value.copy(hor); skyU.sunDir.value.copy(sunDir); skyU.cloud.value = weather.cloud; skyU.night.value = night; skyU.time.value = simTime;
@@ -3559,18 +3498,23 @@ function updateWeather(dt) {
   const far = Math.min(GFX.view, lerp(2300, 140, Math.pow(weather.fog, 0.8))) * (1 - weather.rain * 0.3) * (1 - weather.haze * 0.25);
   scene.fog.far = far; scene.fog.near = far * (weather.fog > 0.5 ? 0.05 : 0.22);
   const cfar = Math.min(2600, far + 200); if (Math.abs(camera.far - cfar) > 30) { camera.far = cfar; camera.updateProjectionMatrix(); }
-  const ld = sy > 0 ? sunDir : sunDir.clone().negate();
-  sun.intensity = (day * 2.8 + (1 - day) * 0.25) * (1 - weather.cloud * 0.72) + flash * 2;
-  sun.color.setRGB(1, 0.92 - dusk * 0.32, 0.82 - dusk * 0.55).lerp(hex('#8fa6d8'), night); // amber, low and long at golden hour
-  hemi.intensity = (0.55 + day * 0.65) * (1 - weather.cloud * 0.15) + flash * 3;
-  hemi.color.copy(hor).lerp(hex('#ffffff'), 0.3); hemi.groundColor.setRGB(0.45 * (0.2 + day), 0.4 * (0.2 + day), 0.3 * (0.2 + day));
+  // by night the key light is the moon when it's up (stronger the fuller it is), else soft light from high overhead;
+  // it fades out for a moment as the sun hands over so the shadows don't jump
+  const ld = sy > -0.03 ? sunDir : _nightDir.set(0.2, 1, 0.35).normalize().lerp(moon.dir, moonUp).normalize();
+  const nightKey = 0.22 + 0.55 * moon.lit * moonUp;
+  sun.intensity = (day * 2.8 + (1 - day) * nightKey) * (1 - weather.cloud * 0.72) * smooth(0, 0.05, Math.abs(sy + 0.03)) + flash * 2;
+  sun.color.setRGB(1, 0.92 - dusk * 0.32, 0.82 - dusk * 0.55).lerp(_moonCol, night); // amber, low and long at golden hour; blue-white moonlight
+  // fill: the sky by day; at night a moonlit blue from above and the town's warm light bouncing up from below, enough
+  // to read the street, cars and people without making it look like day
+  hemi.intensity = (0.55 + day * 0.65) * (1 - weather.cloud * 0.15) + night * (0.5 + 0.25 * moon.lit * moonUp + 0.15 * weather.cloud) + flash * 3;
+  hemi.color.copy(hor).lerp(hex('#ffffff'), 0.3).lerp(_nightSky, night); hemi.groundColor.setRGB(0.45 * (0.2 + day), 0.4 * (0.2 + day), 0.3 * (0.2 + day)).lerp(_nightGround, night);
   const f = focusPos();
   sun.position.set(f.x + ld.x * 300, f.y + ld.y * 300 + 20, f.z + ld.z * 300); sun.target.position.set(f.x, f.y, f.z);
-  renderer.toneMappingExposure = 0.95 + night * 0.25;
+  renderer.toneMappingExposure = 0.95 + night * 0.6; // the eye adapts to the dark
   const lights = smooth(0.15, 0.6, night + weather.cloud * 0.25 * (weather.rain + weather.fog)); nightAmount = lights;
   for (const m of M.walls) m.emissiveIntensity = lights * 0.9;
   M.lampHead.color.setRGB(0.45 + lights * 0.55, 0.45 + lights * 0.45, 0.45 + lights * 0.2);
-  M.lampGlow.opacity = lights * 0.55;
+  M.lampGlow.opacity = lights * 0.35; // the nearest lamps also cast real light (src/nightlights.js)
   M.road.color.setScalar(1 - weather.wet * 0.35); M.side.color.setScalar(1 - weather.wet * 0.3); M.road.roughness = 0.9 - weather.wet * 0.6;
   const count = Math.floor(weather.rain * RAIN_N);
   rainGeo.setDrawRange(0, count * 2);
@@ -3589,6 +3533,15 @@ function updateWeather(dt) {
 }
 const headlight = new THREE.SpotLight(0xfff2d0, 0, 70, 0.5, 0.5, 1.2); scene.add(headlight, headlight.target);
 const heliLight = new THREE.SpotLight(0xffffff, 0, 120, 0.22, 0.4, 1); scene.add(heliLight, heliLight.target);
+// the street lamps nearest the camera cast real light at night (made now, at boot, so no material ever recompiles)
+const NIGHTL = createNightLights(THREE, scene, { potato: 0, low: 2, medium: 4, high: 6, ultra: 8 }[GFX.id] ?? 4);
+function lampsNear(x, z, r) {
+  const out = [];
+  for (let gx = Math.floor((x - r) / PG); gx <= Math.floor((x + r) / PG); gx++) for (let gz = Math.floor((z - r) / PG); gz <= Math.floor((z + r) / PG); gz++) {
+    const c = propGrid.get(gx * 100000 + gz); if (c) for (const p of c) if (p.kind === 'lamp' && p.alive && (p.x - x) ** 2 + (p.z - z) ** 2 < r * r) out.push({ x: p.x, y: heightAt(p.x, p.z), z: p.z, rot: p.rot });
+  }
+  return out;
+}
 
 // ============================================================ named places
 const POIS = D.pois.map(p => ({ name: p[0], type: p[1], x: p[2], z: p[3] }));
@@ -3619,7 +3572,7 @@ function sidewalkNear(x, z) {
 }
 let spawnPt, HOSPITAL, SHERIFF;
 function pickSpawn() {
-  { const ps = PHS.spawnPoint(); if (ps) { spawnPt = sidewalkNear(ps.x, ps.z); HOSPITAL = hospital ? sidewalkNear(hospital.x, hospital.z) : spawnPt; SHERIFF = sheriff ? sidewalkNear(sheriff.x, sheriff.z) : spawnPt; return; } } // PHS: start at Poway High
+  { const ps = PHS.spawnPoint(); if (ps) { const curb = sidewalkNear(ps.x, ps.z); spawnPt = ps.rot != null ? { x: ps.x, z: ps.z, rot: ps.rot, car: ps.car, curb } : curb; HOSPITAL = hospital ? sidewalkNear(hospital.x, hospital.z) : spawnPt; SHERIFF = sheriff ? sidewalkNear(sheriff.x, sheriff.z) : spawnPt; return; } } // PHS: start at Poway High
   const phs = POIS.find(p => p.name === 'Poway High School');
   const ne0 = phs && (nearestEdge(phs.x, phs.z, 600, e => e.name === 'Espola Road') || nearestEdge(phs.x, phs.z, 600, e => e.t >= 1 && e.t <= 5));
   if (ne0) { // Poway High School: sidewalk on the campus side of Espola Road (flip the edge so its right side faces the school)
@@ -3949,7 +3902,7 @@ const WEAPONS = [
 function owned(i) { return i === 0 || player.arsenal[WEAPONS[i].id] !== undefined; }
 // how each weapon is held: two hands with the left on a fore-grip `grip` m down the barrel, or on the shoulder; kick = recoil
 const HOLD = { pistol: { twoHand: true, grip: 0.06, kick: 0.6 }, smg: { twoHand: true, grip: 0.2, kick: 0.25 }, shotgun: { twoHand: true, grip: 0.42, kick: 1.5 },
-  rifle: { twoHand: true, grip: 0.38, kick: 0.35 }, sniper: { twoHand: true, grip: 0.5, kick: 1.3 }, minigun: { twoHand: true, grip: 0.3, kick: 0.15 },
+  rifle: { twoHand: true, grip: 0.38, kick: 0.35 }, sniper: { twoHand: true, grip: 0.5, kick: 1.3 }, minigun: { twoHand: true, grip: 0.3, kick: 0.15, pose: 'hip' },
   rpg: { twoHand: true, grip: 0.35, shoulder: true, kick: 1.8 }, gl: { twoHand: true, grip: 0.3, kick: 1.1 }, grenade: { kick: 0 }, sticky: { kick: 0 }, airstrike: { kick: 0 } };
 // gun models from primitives, +Z = muzzle direction, origin at the grip (no downloads, no licences)
 const GUNMAT = { steel: new THREE.MeshStandardMaterial({ color: 0x2b2d30, roughness: 0.38, metalness: 0.75 }), black: new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.6, metalness: 0.2 }),
@@ -4491,8 +4444,8 @@ function applyParts(v, e) {
   if (v.partsG) { v.m.g.remove(v.partsG); v.partsG = null; }
   v.m.body.position.y = P.stance === 2 ? 0.25 : P.stance === 1 ? -0.1 : 0;
   for (const w of v.m.wheels) {
-    if (w.baseS === undefined) { w.baseS = w.w.scale.x; w.baseY = w.piv.position.y; }
-    w.w.scale.setScalar(w.baseS * (P.stance === 2 ? 1.35 : 1)); w.piv.position.y = w.baseY + (P.stance === 2 ? 0.12 : 0);
+    if (w.baseS === undefined) { w.baseS = w.w.scale.clone(); w.baseY = w.piv.position.y; }
+    w.w.scale.copy(w.baseS).multiplyScalar(P.stance === 2 ? 1.35 : 1); w.piv.position.y = w.baseY + (P.stance === 2 ? 0.12 : 0);
   }
   const rim = RIMS[P.rims || 0];
   for (const w of v.m.wheels) w.w.traverse(o => { // the rim is the light-coloured part of the wheel; leave the rubber black
@@ -4542,7 +4495,7 @@ function callCar() {
   notify(`Your ${carName(e)} is here.`, 'green', 2500); sfx.horn(0.6);
 }
 function setupGarage() {
-  const base = spawnPt; if (!base || !base.ne) return;
+  const base = spawnPt && spawnPt.curb || spawnPt; if (!base || !base.ne) return;
   const tx = base.ne.tx, tz = base.ne.tz, nx = -tz, nz = tx;
   // 70 m back along the road, set off the far side of the sidewalk
   const cx = base.x - tx * 70 + nx * 9, cz = base.z - tz * 70 + nz * 9, y = heightAt(cx, cz), rot = Math.atan2(nx, nz);
@@ -5278,8 +5231,9 @@ function updateVehicles(dt) {
     const g = v.m.g, hc = v.spec.H / 2; g.rotation.set(v.pitch, v.rotY, v.roll, 'YXZ'); // pivot about the centre so tumbles look right
     _cog.set(0, hc, 0).applyEuler(g.rotation); g.position.set(v.pos.x - _cog.x, v.pos.y + hc - _cog.y, v.pos.z - _cog.z);
     const fsp = v.mode === 'rail' ? v.speed : v.vel.x * v.fx + v.vel.y * v.fz;
-    v.wheelRot += fsp * dt / v.spec.wr;
+    v.wheelRot = (v.wheelRot + fsp * dt / (v.m.wr || 0.34)) % TAU; // spec has no wr: dividing by it made every wheel NaN, so none drew
     for (const w of v.m.wheels) { w.w.rotation.x = v.wheelRot; if (w.front) w.piv.rotation.y = v.steer * 0.5; }
+    NIGHTL.carLights(v.m, v.driver && !v.dead ? nightAmount : 0); // lights on while someone drives it
     if (v.m.bars) { const on = v.siren && Math.floor(simTime * 6) % 2 === 0; v.m.bars[0].material.color.setHex(v.siren ? (on ? 0xff2020 : 0x300000) : 0x400000); v.m.bars[1].material.color.setHex(v.siren ? (!on ? 0x2050ff : 0x000830) : 0x000a40); }
   }
 }
@@ -5973,6 +5927,7 @@ function tick(rdt) {
   updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap(); updateBeacons(rdt);
   const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); }
   if (bigTimer > 0) { bigTimer -= rdt; if (bigTimer <= 0) $('big').hidden = true; }
+  NIGHTL.update(camera, nightAmount, lampsNear, rdt); if (AIRT) AIRT.update(dt, nightAmount, focusPos()); // street lamps' light, aircraft
   repT += dt; if (repT > 30) { repT = 0; if (police.wanted === 0 && save.rep < 0) save.rep += 1; }
   saveT -= rdt; if (saveT <= 0) { saveT = 10; persist(); }
   if (online) netTick(rdt);
@@ -6023,7 +5978,7 @@ let worldReady = false;
     const ne = spawnPt.ne, e = edges[ne.e], o = e.w / 2 - 0.4, along = 9;
     const mine = new Vehicle('sports', spawnPt.x + ne.tx * along - ne.tz * (o - walkOff(e)), spawnPt.z + ne.tz * along + ne.tx * (o - walkOff(e)), Math.atan2(ne.tx, ne.tz), 0xf0b23a);
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
-  }
+  } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
   Object.assign(ctx, {
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
@@ -6068,6 +6023,7 @@ async function loadLater() {
   const step = async (name, f) => { try { await f(); } catch (e) { console.warn('[later]', name, e); } };
   await step('ground photos', loadGroundPhotos);
   await step('crowd', async () => { if (await loadCrowd()) upgradePeds(); });
+  await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); });
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
   await step('roof photos', loadRoofPhotos);
@@ -6089,6 +6045,20 @@ async function loadRoofPhotos() {
     if (!t) return; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO);
     const old = TX.roofs[i]; TX.roofs[i] = t; M.roofPhoto[i].map = t; if (old && old.isDataTexture) old.dispose();
   });
+}
+// the medevac helicopter on its pad beside Palomar Medical Center Poway: the nearest flat, open spot to the hospital
+function parkMedevac() {
+  if (!hospital || !AIR.protos.has('heli')) return;
+  for (let r = 30; r < 220; r += 12) for (let a = 0; a < TAU; a += TAU / 20) {
+    const x = hospital.x + Math.cos(a) * r, z = hospital.z + Math.sin(a) * r, y = heightAt(x, z);
+    if (offLimits(x, z, 6) || collideCircle({ x, z }, 12, true, y + 0.5) || nearestEdge(x, z, 16, () => true)) continue;
+    let lo = y, hi = y; for (const [dx, dz] of [[10, 0], [-10, 0], [0, 10], [0, -10], [7, 7], [-7, -7]]) { const h = heightAt(x + dx, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (hi - lo > 1) continue;
+    const rot = Math.atan2(hospital.x - x, hospital.z - z), c = Math.cos(rot), s = Math.sin(rot), pt = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
+    helipad(THREE, scene, x, hi, z, rot); parkAircraft(THREE, scene, AIR, 'heli', x, hi, z, rot);
+    addPoly([...pt(-1.3, -4.5), ...pt(1.3, -4.5), ...pt(1.3, 3.2), ...pt(-1.3, 3.2)], hi, hi + 3); // the cabin is solid
+    console.info('[aircraft] medevac pad', Math.round(x), Math.round(z)); return;
+  }
 }
 // people who spawned as blocky stand-ins before the crowd's avatars arrived get their real bodies (busy ones keep theirs)
 function upgradePeds() {
