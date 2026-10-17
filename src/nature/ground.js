@@ -64,6 +64,7 @@ export function setGround(ground, real) {
 const COMMON = /* glsl */`
 uniform highp sampler2DArray gAlb; uniform highp sampler2DArray gNrm;
 uniform vec3 gMean[5]; uniform float gTile[5]; uniform float gPhotoBias; uniform float gNear; uniform float gFar; uniform float gProcedural; uniform float gDetail;
+uniform float gEdgeOn; uniform vec4 gEdge; uniform float gEdgeW; uniform sampler2D gTint; uniform float gTintOn;
 varying vec3 vWp; varying vec3 vWn;
 float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -92,13 +93,22 @@ vec4 gRock(vec3 p, vec3 N, out vec3 nW) {
 }
 `;
 
-// onBeforeCompile patch for MeshStandardMaterial terrain. opts: { photoBias, procedural }
+// The photo's edge: the photo terrain fades into the procedural ground along a ragged line within about
+// edgeW..2*edgeW of its rectangle, and (after setGroundTint) the procedural ground near the photo takes the photo's
+// own colours, fading back to its stock palette a few km out, so there is no seam where the two meet.
+export function setGroundTint(ground, tex, rect) {
+  for (const u of ground.users || []) { u.gTint.value = tex; u.gTintOn.value = 1; u.gEdge.value = rect; }
+}
+
+// onBeforeCompile patch for MeshStandardMaterial terrain. opts: { photoBias, procedural, edge: [x0, z0, x1, z1], edgeW }
+// edge: the photo's rectangle in world x/z, for the photo terrain (see setGroundTint)
 export function groundPatch(ground, opts = {}) {
   const uniforms = {
     gAlb: { value: ground.alb }, gNrm: { value: ground.nrm },
     gMean: { value: GROUND_LAYERS.flatMap(k => MEANS[k]) },
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
+    gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
   };
   (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
@@ -119,12 +129,24 @@ export function groundPatch(ground, opts = {}) {
           soft = texture2D(map, vMapUv, gPhotoBias).rgb;          // photo with its pixel smear blurred out
         #endif
         float macro = gFbm(vWp.xz * 0.013);
-        if (gProcedural > 0.5) {                                  // no photo: chaparral / grassland mosaic
+        float pW = gProcedural;                                   // 1: no photo here
+        if (gEdgeOn > 0.5) {                                      // near the photo's edge: fade into the procedural ground
+          vec2 q = vWp.xz; float ed = min(min(q.x - gEdge.x, gEdge.z - q.x), min(q.y - gEdge.y, gEdge.w - q.y));
+          if (ed < 2.2 * gEdgeW) { ed -= gFbm(q * 0.0011) * gEdgeW; pW = 1.0 - smoothstep(0.1 * gEdgeW, gEdgeW, ed); } // the noise only pushes inward: fully procedural at the seam
+        }
+        if (pW > 0.001) {                                         // chaparral / grassland mosaic
           // north-facing and steeper slopes carry denser chaparral, like the real hills around Poway
           float shrub = smoothstep(0.40, 0.60, gFbm(vWp.xz * 0.02) + 0.18 * smoothstep(0.05, 0.35, 1.0 - Nw.y) + 0.12 * (-Nw.z));
           vec3 chap = vec3(0.034, 0.040, 0.024), grass = vec3(0.150, 0.112, 0.060);
-          soft = mix(grass, chap, shrub) * (0.75 + 0.5 * gFbm(vWp.xz * 0.11));
-          photo = soft;
+          vec3 proc = mix(grass, chap, shrub) * (0.75 + 0.5 * gFbm(vWp.xz * 0.11));
+          if (gTintOn > 0.5) {                                    // near the photo: its colours, with the mosaic's light and shade
+            vec2 q = vWp.xz, uv = clamp((q - gEdge.xy) / (gEdge.zw - gEdge.xy), 0.0, 1.0);
+            vec3 tc = texture2D(gTint, vec2(uv.x, 1.0 - uv.y)).rgb;
+            float outside = length(max(max(gEdge.xy - q, q - gEdge.zw), 0.0));
+            float pl = dot(proc, vec3(0.2126, 0.7152, 0.0722)) / dot(mix(grass, chap, 0.45), vec3(0.2126, 0.7152, 0.0722));
+            proc = mix(proc, tc * mix(1.0, pl, 0.5), 1.0 - smoothstep(500.0, 4500.0, outside));
+          }
+          soft = mix(soft, proc, pW); photo = mix(photo, proc, pW);
         }
         float lum = dot(soft, vec3(0.2126, 0.7152, 0.0722));
         float green = (soft.g - max(soft.r, soft.b)) / (lum + 0.02);
