@@ -127,14 +127,20 @@ export function createOuter(E) {
     }
   };
   // a tile's data, ready before anything is drawn: terrain, roads, the road surface
+  const tries = new Map(); // tile -> failed downloads so far
   async function fetchTile(i, j) {
     const t = { i, j, k: key(i, j), x0: i * T, z0: j * T, hN: null, hM: null, rs: null, built: false, group: null, subs: null, polys: [], bld: [0, 0], edges: 0 };
     O.tiles.set(t.k, t);
     try {
       const r = await fetch(`assets/world/t/${t.k}.json.gz`); if (!r.ok) throw new Error(r.status);
       const d = await gunzipJSON(r); if (!O.tiles.has(t.k)) return;
-      t.d = d; t.prep = prepare(t); O.preps.push(t); // run a few milliseconds a frame in update()
-    } catch (e) { console.warn('[outer] tile', t.k, e); t.failed = true; }
+      t.d = d; t.prep = prepare(t); O.preps.push(t); tries.delete(t.k); // run a few milliseconds a frame in update()
+    } catch (e) {
+      console.warn('[outer] tile', t.k, e); t.failed = true;
+      // a flaky connection mustn't leave a hole for good: forget it after a while (2 s, 4 s, ... a minute) and the next scan asks again
+      const n = (tries.get(t.k) || 0) + 1; tries.set(t.k, n);
+      setTimeout(() => { if (O.tiles.get(t.k) === t) O.tiles.delete(t.k); }, Math.min(60, 2 ** n) * 1000);
+    }
   }
   function* prepare(t) {
     const d = t.d, x0 = t.x0, z0 = t.z0, s = 0.1; t.phase = 'parse';
