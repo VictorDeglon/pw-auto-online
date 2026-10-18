@@ -39,16 +39,86 @@ export const REGIONS = [
   { id: 'sabre-springs', name: 'Sabre Springs', district: 'San Diego', x: -4030, z: 1830, col: '#6a90c0', tag: 'Creekside and South Creek' },
   { id: 'penasquitos', name: 'Rancho Peñasquitos', district: 'San Diego', x: -5430, z: 2880, col: '#c0906a', tag: 'Black Mountain\'s shadow' },
 ];
+// the outer world (src/world/outer.js): 50 km around Poway, from the beaches to the back country. Anchors in lat / lon;
+// r: how far the name reaches (m), bigger than Poway's neighbourhoods
+const ll = (lat, lon) => ({ x: Math.round((lon + 117.035) * 93403.11), z: Math.round(-(lat - 32.96) * 110540) });
+const OUTER_REGIONS = [
+  ['downtown', 'Downtown', 'San Diego', 32.7157, -117.1611, '#f0b23a', 'Gaslamp, the ballpark and the bay', 1600],
+  ['little-italy', 'Little Italy', 'San Diego', 32.7243, -117.1690, '#e06060', 'Espresso and the airport flight path', 900],
+  ['balboa-park', 'Balboa Park', 'San Diego', 32.7341, -117.1446, '#6fbf5a', 'Museums, gardens and the zoo', 1400],
+  ['hillcrest', 'Hillcrest', 'San Diego', 32.7484, -117.1661, '#c06ac0', 'The sign, the bars, the brunch lines', 1100],
+  ['north-park', 'North Park', 'San Diego', 32.7480, -117.1300, '#d07a9a', 'Craft beer on every corner', 1500],
+  ['mission-valley', 'Mission Valley', 'San Diego', 32.7700, -117.1600, '#5d8fd8', 'Malls, the river and the 8', 2200],
+  ['old-town', 'Old Town', 'San Diego', 32.7540, -117.1970, '#d9a441', 'Where San Diego started', 1000],
+  ['point-loma', 'Point Loma', 'San Diego', 32.7200, -117.2400, '#4a9bd0', 'Lighthouse, cliffs and the Navy', 2600],
+  ['ocean-beach', 'Ocean Beach', 'San Diego', 32.7495, -117.2470, '#3fb6d9', 'The pier and the dog beach', 1200],
+  ['mission-beach', 'Mission Beach', 'San Diego', 32.7700, -117.2520, '#3fb6d9', 'Boardwalk and the roller coaster', 1300],
+  ['mission-bay', 'Mission Bay', 'San Diego', 32.7800, -117.2250, '#3b8fe8', 'Islands, kites and SeaWorld', 1800],
+  ['pacific-beach', 'Pacific Beach', 'San Diego', 32.7967, -117.2536, '#3fb6d9', 'Crystal Pier and Garnet Avenue', 1600],
+  ['la-jolla', 'La Jolla', 'San Diego', 32.8400, -117.2713, '#7ab8a8', 'The Cove, sea lions and big houses', 2400],
+  ['utc', 'University City', 'San Diego', 32.8710, -117.2210, '#9b7fd1', 'UC San Diego and the Golden Triangle', 2600],
+  ['torrey-pines', 'Torrey Pines', 'San Diego', 32.9200, -117.2500, '#84b04a', 'Gliders over the cliffs', 2000],
+  ['clairemont', 'Clairemont', 'San Diego', 32.8300, -117.2000, '#b9a06a', 'Mesa tops and canyons', 2400],
+  ['kearny-mesa', 'Kearny Mesa', 'San Diego', 32.8331, -117.1250, '#8a8f99', 'Convoy Street and the 163', 2000],
+  ['miramar', 'MCAS Miramar', 'San Diego', 32.8686, -117.1428, '#a0704a', 'Jets overhead. Do not land here.', 3200],
+  ['mira-mesa', 'Mira Mesa', 'San Diego', 32.9156, -117.1439, '#c0906a', 'Tract homes on the mesa', 2200],
+  ['scripps-ranch', 'Scripps Ranch', 'San Diego', 32.9100, -117.1000, '#5aa06a', 'Eucalyptus and Miramar Lake', 2200],
+  ['sorrento-valley', 'Sorrento Valley', 'San Diego', 32.9000, -117.2050, '#80a0b0', 'Biotech and the Coaster', 1800],
+  ['carmel-valley', 'Carmel Valley', 'San Diego', 32.9400, -117.2200, '#b07a9a', 'Newer houses, bigger lawns', 2200],
+  ['tierrasanta', 'Tierrasanta', 'San Diego', 32.8240, -117.0950, '#7a9a50', 'A suburb on an old artillery range', 1800],
+  ['mission-trails', 'Mission Trails', 'San Diego', 32.8250, -117.0500, '#84b04a', 'Cowles Mountain and the gorge', 2600],
+  ['del-mar', 'Del Mar', 'Del Mar', 32.9595, -117.2653, '#3fb6d9', 'The racetrack and the fair', 1800],
+  ['solana-beach', 'Solana Beach', 'Solana Beach', 32.9912, -117.2711, '#3fb6d9', 'Bluffs and the Belly Up', 1600],
+  ['rancho-santa-fe', 'Rancho Santa Fe', 'Rancho Santa Fe', 33.0203, -117.2028, '#d9a441', 'Horses, golf and gates', 3000],
+  ['encinitas', 'Encinitas', 'Encinitas', 33.0370, -117.2920, '#3fb6d9', 'Swami\'s and the surf', 2600],
+  ['carlsbad', 'Carlsbad', 'Carlsbad', 33.1581, -117.3506, '#3fb6d9', 'Flower fields and the lagoons', 3600],
+  ['oceanside', 'Oceanside', 'Oceanside', 33.1959, -117.3795, '#3b8fe8', 'The longest wooden pier on the coast', 3200],
+  ['camp-pendleton', 'Camp Pendleton', 'Marine Corps', 33.3000, -117.3500, '#a0704a', 'Restricted. Mostly hills.', 9000],
+  ['fallbrook', 'Fallbrook', 'Fallbrook', 33.3764, -117.2511, '#6fbf5a', 'Avocado capital of the world', 4000],
+  ['vista', 'Vista', 'Vista', 33.2000, -117.2425, '#e0b040', 'Breweries and hills', 3200],
+  ['san-marcos', 'San Marcos', 'San Marcos', 33.1434, -117.1661, '#e8743b', 'Cal State and Double Peak', 3200],
+  ['escondido', 'Escondido', 'Escondido', 33.1192, -117.0864, '#e06060', 'Grand Avenue and the 15', 3600],
+  ['valley-center', 'Valley Center', 'Valley Center', 33.2184, -117.0342, '#8fcf6a', 'Orchards and casinos', 5000],
+  ['lake-hodges', 'Lake Hodges', 'San Diego', 33.0560, -117.1250, '#3fb6d9', 'The bridge and the trail', 2000],
+  ['safari-park', 'San Pasqual Valley', 'Escondido', 33.0975, -116.9956, '#b08a5a', 'The Safari Park and the battlefield', 3500],
+  ['ramona', 'Ramona', 'Ramona', 33.0420, -116.8680, '#c4a35a', 'Wine country on the 78', 4500],
+  ['julian', 'Julian', 'Julian', 33.0787, -116.6022, '#b5583a', 'Apple pie and snow, sometimes', 4000],
+  ['palomar', 'Palomar Mountain', 'Back country', 33.3560, -116.8640, '#7a9a50', 'The observatory up top', 6000],
+  ['cuyamaca', 'Cuyamaca', 'Back country', 32.9500, -116.5900, '#6f7a4a', 'Pines and burned slopes', 6000],
+  ['santee', 'Santee', 'Santee', 32.8384, -116.9739, '#e0b040', 'Riverbed parks and the 52', 3000],
+  ['lakeside', 'Lakeside', 'Lakeside', 32.8573, -116.9222, '#c4a35a', 'Rodeo town on the 67', 3200],
+  ['el-cajon', 'El Cajon', 'El Cajon', 32.7948, -116.9625, '#e8743b', 'The valley floor', 3600],
+  ['la-mesa', 'La Mesa', 'La Mesa', 32.7678, -117.0231, '#9b7fd1', 'The village and the trolley', 2400],
+  ['lemon-grove', 'Lemon Grove', 'Lemon Grove', 32.7426, -117.0314, '#f2c14e', 'The big lemon', 1600],
+  ['spring-valley', 'Spring Valley', 'Spring Valley', 32.7448, -116.9989, '#84b04a', 'Hills east of the 125', 2400],
+  ['alpine', 'Alpine', 'Alpine', 32.8351, -116.7664, '#6f7a4a', 'Up the 8 into the mountains', 4500],
+  ['national-city', 'National City', 'National City', 32.6781, -117.0992, '#d35400', 'Mile of Cars', 2400],
+  ['coronado', 'Coronado', 'Coronado', 32.6859, -117.1831, '#3fb6d9', 'The bridge and the Hotel del', 2400],
+  ['chula-vista', 'Chula Vista', 'Chula Vista', 32.6401, -117.0842, '#e06060', 'The bayfront and the hills', 4000],
+  ['imperial-beach', 'Imperial Beach', 'Imperial Beach', 32.5839, -117.1131, '#3fb6d9', 'The last beach in the USA', 2000],
+  ['otay-mesa', 'Otay Mesa', 'San Diego', 32.5700, -116.9700, '#8a8f99', 'Trucks lining up for the border', 3500],
+  ['san-ysidro', 'San Ysidro', 'San Diego', 32.5520, -117.0420, '#d07a9a', 'The busiest border crossing', 1800],
+  ['tijuana', 'Tijuana', 'Baja California', 32.5149, -117.0382, '#c0392b', 'Across the line', 5000],
+  ['pacific', 'Pacific Ocean', 'California coast', 32.8500, -117.4800, '#24566e', 'Nothing but water till Japan', 14000],
+];
+for (const [id, name, district, lat, lon, col, tag, r] of OUTER_REGIONS) REGIONS.push({ id, name, district, ...ll(lat, lon), col, tag, r, outer: true });
 const WILD = { id: 'backcountry', name: 'Poway Backcountry', district: 'Poway', col: '#9a8a6a', tag: 'Chaparral, dirt roads, no cell signal' };
+const COUNTY = { id: 'county', name: 'San Diego County', district: 'Back country', col: '#9a8a6a', tag: 'Hills, ranches and long empty roads' };
 const REACH = 1700;
 export function regionAt(x, z) {
-  let best = WILD, bd = REACH * REACH;
-  for (const r of REGIONS) { const d = (r.x - x) ** 2 + (r.z - z) ** 2; if (d < bd) { bd = d; best = r; } }
-  return best;
+  let best = null, bd = 1; // the nearest anchor, measured in its own reach
+  for (const r of REGIONS) { const R = r.r || REACH, d = ((r.x - x) ** 2 + (r.z - z) ** 2) / (R * R); if (d < bd) { bd = d; best = r; } }
+  return best || (x > SECTOR.x0 - 3000 && x < SECTOR.x0 + SECTOR.cols * SECTOR.size + 3000 && z > SECTOR.z0 - 3000 && z < SECTOR.z0 + SECTOR.rows * SECTOR.size + 3000 ? WILD : COUNTY);
 }
 // map bounds from poway-data.js ([-5969, -8391, 7461, 3275]): 14 columns x 12 rows of 1 km
 export const SECTOR = { x0: -5969, z0: -8391, size: 1000, cols: 14, rows: 12 };
 export function sectorAt(x, z) {
+  const cx = Math.floor((x - SECTOR.x0) / SECTOR.size), cz = Math.floor((z - SECTOR.z0) / SECTOR.size);
+  if (cx < 0 || cz < 0 || cx >= SECTOR.cols || cz >= SECTOR.rows) { // outside Poway's grid: how far and which way
+    const dx = x - (SECTOR.x0 + SECTOR.cols * SECTOR.size / 2), dz = z - (SECTOR.z0 + SECTOR.rows * SECTOR.size / 2);
+    const dir = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'][((Math.round(Math.atan2(dz, dx) / (Math.PI / 4)) % 8) + 8) % 8];
+    return `${Math.round(Math.hypot(dx, dz) / 1000)} km ${dir}`;
+  }
   const c = Math.max(0, Math.min(SECTOR.cols - 1, Math.floor((x - SECTOR.x0) / SECTOR.size)));
   const r = Math.max(0, Math.min(SECTOR.rows - 1, Math.floor((z - SECTOR.z0) / SECTOR.size)));
   return String.fromCharCode(65 + c) + (r + 1);

@@ -55,7 +55,8 @@ export class RoadSurface {
     }
     // paint corridors, narrow roads first so wider ones win the overlaps
     const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => roads[a][2] - roads[b][2] || this.len[b] - this.len[a]);
-    for (const i of order) this.paint(i);
+    if (opts.defer) this.order = order; // the caller paints them (a few at a time: src/world/outer.js)
+    else for (const i of order) this.paint(i);
     this._q = { road: -1, d: 0, cx: 0, cz: 0, tx: 0, tz: 0, s: 0 }; this._c = { x: 0, z: 0, t: 0 };
   }
   // a cell belongs to the road whose asphalt/walk it is on (the wider one at a crossing), else the nearest walk edge,

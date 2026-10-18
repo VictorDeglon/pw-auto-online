@@ -130,8 +130,10 @@ const VS_BODY = /* glsl */`
   float h1 = gh(cell), h2 = gh(cell + 17.31), h3 = gh(cell + 41.77), h4 = gh(cell + 73.13);
   vec2 wp = (cell + vec2(h1, h2)) * uS;
   float dist = distance(wp, cameraPosition.xz);
-  vec4 cv = texture2D(uCover, (wp - uCov.xy) / uCov.zw);
+  vec2 cuv = (wp - uCov.xy) / uCov.zw, cm = 300.0 / uCov.zw; // the cover map's 300 m pad: no data out there (the outer world)
+  vec4 cv = texture2D(uCover, cuv);
   float dens = uKind < 0.5 ? min(1.0, cv.r * 1.6) : min(1.0, cv.g * 1.3); // generous: the point is to hide the ground
+  dens *= step(cm.x, cuv.x) * step(cuv.x, 1.0 - cm.x) * step(cm.y, cuv.y) * step(cuv.y, 1.0 - cm.y);
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
   float thin = uKind < 0.5 ? mix(1.0, 0.35, smoothstep(uR * 0.3, uR, dist)) : 1.0;
   vFade = 1.0 - smoothstep(uR * 0.45, uR, dist);
