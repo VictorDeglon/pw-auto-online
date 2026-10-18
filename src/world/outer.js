@@ -20,6 +20,7 @@ import { RoadSurface } from './roadsurface.js';
 const BUILD_PAD = 300, UNBUILD_PAD = 1500, DATA_PAD = 2300, DROP_PAD = 4500;
 const SUB = 4;                   // a tile's meshes are split 4 x 4 (500 m): drawn, detailed and shadowed by distance
 const BUDGET = 7;                // ms of tile building per frame
+const URGENT = 14, HURRY = 100;  // ... when the ground under you isn't built yet; behind the fast-travel hold
 const STEP = 3;                  // a builder yields after this many ms (one step can't hold up a frame)
 let stepT0 = 0;
 const due = () => performance.now() - stepT0 > STEP;
@@ -91,19 +92,23 @@ export function createOuter(E) {
         if (t.built || !t.ready) continue;
         const d = rectDist(t, f); if (d > view + BUILD_PAD) continue;
         let ok = true;
-        for (let b = -1; b <= 1 && ok; b++) for (let a = -1; a <= 1; a++) { const n = O.tiles.get(key(t.i + a, t.j + b)); if (O.has(t.i + a, t.j + b) && !(n && (n.ready || n.failed))) { ok = false; break; } }
+        for (let b = -1; b <= 1 && ok; b++) for (let a = -1; a <= 1; a++) {
+          const n = O.tiles.get(key(t.i + a, t.j + b));
+          if (O.has(t.i + a, t.j + b) && !(n && (n.ready || n.failed))) { ok = false; if (!n) fetchTile(t.i + a, t.j + b); break; } // a corner neighbour can be past the data range: ask for it
+        }
         if (ok && d < bd) { bd = d; best = t; }
       }
       if (best) { best.job = buildTile(best); O.building = best; best.b0 = performance.now(); best.work = 0; }
     }
-    const t0 = performance.now(), budget = E.hurry && E.hurry() ? 40 : BUDGET; // waiting on a load screen (fast travel): build faster
+    // waiting behind "Loading the area" (fast travel): nearly the whole frame; standing where nothing's built yet: a bit more
+    const t0 = performance.now(), budget = E.hurry && E.hurry() ? HURRY : O.builtAt(f.x, f.z) ? BUDGET : URGENT;
     if (O.preps.length) { // tile data: terrain, road surface, carving (nearest tiles first)
       O.preps.sort((a, b) => rectDist(a, f) - rectDist(b, f));
-      while (O.preps.length && performance.now() - t0 < budget * 0.6) { const t = O.preps[0], s0 = stepT0 = performance.now(); const done = !O.tiles.has(t.k) || t.prep.next().done; slow('prep:' + (t.phase || ''), performance.now() - s0); if (done) { O.preps.shift(); t.prep = null; } }
+      while (O.preps.length && performance.now() - t0 < budget * 0.6) { const t = O.preps[0], s0 = stepT0 = performance.now(); const done = !O.tiles.has(t.k) || t.prep.next().done; slow('prep:' + (t.phase || ''), performance.now() - s0, t); if (done) { O.preps.shift(); t.prep = null; } }
     }
     if (O.building) { // run the builder for a few milliseconds
       const b = O.building;
-      while (performance.now() - t0 < budget) { const s0 = stepT0 = performance.now(), r = b.job.next(); slow('build:' + (b.phase || ''), performance.now() - s0); if (r.done) { b.job = null; O.building = null; O.stats.lastBuild = { tile: b.k, wallS: +((performance.now() - b.b0) / 1000).toFixed(1), workMs: Math.round(b.work + performance.now() - t0) }; break; } }
+      while (performance.now() - t0 < budget) { const s0 = stepT0 = performance.now(), r = b.job.next(); slow('build:' + (b.phase || ''), performance.now() - s0, b); if (r.done) { b.job = null; O.building = null; O.stats.lastBuild = { tile: b.k, wallS: +((performance.now() - b.b0) / 1000).toFixed(1), workMs: Math.round(b.work + performance.now() - t0) }; break; } }
       if (O.building === b) b.work += performance.now() - t0;
     }
     // culling, twice a second: each 500 m piece drawn within view, its small stuff within the detail range, shadows near
@@ -180,6 +185,8 @@ export function createOuter(E) {
     const d = t.d, g = new THREE.Group(), C = T / SUB; t.group = g; t.phase = 'terrain'; g.matrixAutoUpdate = false; // static: matrices once, not every frame
     const subs = []; for (let b = 0; b < SUB; b++) for (let a = 0; a < SUB; a++) { const cx = t.x0 + (a + 0.5) * C, cz = t.z0 + (b + 0.5) * C, sg = new THREE.Group(); sg.matrixAutoUpdate = false; g.add(sg); subs.push({ cx, cz, ch: E.newChunk(cx, cz), group: sg, near: null, sh: null }); }
     const ch = (x, z) => subs[Math.min(SUB - 1, Math.max(0, Math.floor((z - t.z0) / C))) * SUB + Math.min(SUB - 1, Math.max(0, Math.floor((x - t.x0) / C)))].ch; // the chunk sink: the piece under (x, z)
+    // while this tile's builders run: meshes go to its pieces, and anything solid waits (t.pend) until it's drawn
+    t.pend = []; const on = () => { E.setSink(ch); E.holdPolys(t.pend); }, off = () => { E.setSink(null); E.holdPolys(null); };
     // terrain with the tile's photo, one mesh per piece (so pieces out of view or range aren't drawn)
     {
       const mat = E.terrainMaterial(); t.mat = mat; const per = (HN - 1) / SUB; t.terrains = [];
@@ -207,38 +214,43 @@ export function createOuter(E) {
         const m = new THREE.Mesh(geo, E.seaMat()); m.receiveShadow = true; m.matrixAutoUpdate = false; g.add(m);
       }
     }
+    E.scene.add(g); // the ground shows now (its heights were already what you stand on); the rest joins it as it's built
     yield;
     // roads: asphalt, sidewalks and curbs, markings (the core's paveRoad), the graph for traffic and the GPS
-    t.phase = 'roads'; E.setSink(ch);
+    t.phase = 'roads'; on();
     let n = 0;
     for (const e of t.edges) {
       E.paveRoad(e.t, e.w, densify(e.p, 3), e.p);
       E.mapRoad(e);
-      n++; if (due()) { E.setSink(null); yield; E.setSink(ch); }
+      n++; if (due()) { off(); yield; on(); }
     }
-    E.setSink(null);
+    off();
     t.phase = 'graph'; for (const _ of E.addEdges(t.edges.filter(e => e.t <= 6), t, due)) yield;
     O.stats.edges += t.edges.length;
     yield;
     // street furniture: lamps along the bigger streets, stop signs, signal poles, crosswalk stripes
-    t.phase = 'kit'; t.props = { meshes: [], props: [] }; E.setSink(ch); for (const _ of E.streetKit(t, d, t.props, due)) { E.setSink(null); yield; E.setSink(ch); } E.setSink(null);
+    t.phase = 'kit'; t.props = { meshes: [], props: [] }; on(); for (const _ of E.streetKit(t, d, t.props, due)) { off(); yield; on(); } off();
     yield;
     // buildings: one footprint makes both the walls you see and the polygon you hit
-    t.phase = 'buildings'; E.setSink(ch); t.bld[0] = E.bldCount(); const p0 = E.polyCount(); t.polys = [p0, p0]; t.partial = true; // until done, unbuild drops everything added since p0
+    t.phase = 'buildings'; on(); t.bld[0] = E.bldCount(); const p0 = E.polyCount(); t.polys = [p0, p0]; t.partial = true; // until done, unbuild drops everything added since p0
     n = 0;
     for (const b of t.blds) {
       if (b[2].length < 6) continue;
       const kind = b[1] === 0 && area(b[2]) > 450 ? 1 : b[1]; // a big "building=yes" is not a house
       E.addBuilding([b[0], kind, b[2], kind === 0 ? 1 : 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // houses get hip roofs
-      n++; if (due()) { E.setSink(null); yield; E.setSink(ch); }
+      n++; if (due()) { off(); yield; on(); }
     }
-    E.setSink(null); t.bld[1] = E.bldCount(); t.polys = [p0, E.polyCount()]; t.partial = false;
+    off(); t.bld[1] = E.bldCount(); t.polys = [p0, E.polyCount()]; t.partial = false;
     O.stats.buildings += n;
     yield;
     // meshes, one builder at a time, into their pieces
-    t.phase = 'meshes'; for (const sb of subs) { const out = { lod: [] }; for (const _ of E.meshChunkSteps(sb.ch, sb.group, out)) yield; sb.ch = null; } t.subs = subs;
+    // meshes, one builder at a time, off-scene (so nothing shows before it's solid) ...
+    t.phase = 'meshes'; t.staging = new THREE.Group();
+    for (const sb of subs) { const out = { lod: [] }; sb.stage = new THREE.Group(); t.staging.add(sb.stage); for (const _ of E.meshChunkSteps(sb.ch, sb.stage, out)) yield; sb.ch = null; }
+    // ... then into the scene in the same frame as the walls go solid
     t.phase = 'show';
-    E.scene.add(g); t.built = true; O.stats.built++;
+    for (const sb of subs) { for (const m of sb.stage.children.slice()) sb.group.add(m); sb.stage = null; } t.staging = null; t.subs = subs;
+    E.releasePolys(t.pend); t.pend = null; t.built = true; O.stats.built++;
     if (t.photo && !t.trees) plant(t); // trees and brush, read off the photo (when it's in)
     t.phase = '';
     if (O.onBuilt) O.onBuilt(t);
@@ -248,7 +260,7 @@ export function createOuter(E) {
   O.vegNear = (dt, cam) => { for (const t of O.tiles.values()) { const V = t.trees && t.trees.veg; if (!V) continue; const L = V.last; L.t += dt; if (Math.hypot(cam.x - L.x, cam.z - L.z) > 6 || L.t > 2) { V.updateNear(cam.x, cam.z); L.x = cam.x; L.z = cam.z; L.t = 0; } } };
   O.seaLevel = () => E.seaLevel();
   function area(p) { let a = 0; for (let i = 0, n = p.length / 2, j = n - 1; i < n; j = i++) a += (p[j * 2] + p[i * 2]) * (p[j * 2 + 1] - p[i * 2 + 1]); return Math.abs(a) / 2; }
-  function slow(k, ms) { const S = O.stats.slow || (O.stats.slow = {}); if (!(ms < (S[k] || 0))) S[k] = Math.round(ms); }
+  function slow(k, ms, t) { const S = O.stats.slow || (O.stats.slow = {}); if (!(ms < (S[k] || 0))) S[k] = Math.round(ms); if (t) { const P = t.ms || (t.ms = {}); P[k] = (P[k] || 0) + ms; } } // worst step of each kind; each tile's time per phase
   async function gunzipJSON(r) { // the tile files are gzipped JSON (a server may have unzipped them already)
     const buf = new Uint8Array(await r.arrayBuffer());
     if (buf[0] !== 0x1f || buf[1] !== 0x8b) return JSON.parse(new TextDecoder().decode(buf));
@@ -264,14 +276,14 @@ export function createOuter(E) {
   }
   function unbuild(t) {
     if (O.building === t) { // stopped half way: whatever its buildings added so far goes too (no walls without a building)
-      O.building = null; t.job = null; E.setSink(null);
+      O.building = null; t.job = null; E.setSink(null); E.holdPolys(null); t.pend = null;
       if (t.partial) { t.polys = [t.polys[0], E.polyCount()]; t.bld = [t.bld[0], E.bldCount()]; }
     }
-    if (t.group) { E.scene.remove(t.group); t.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    for (const G of [t.group, t.staging]) if (G) { E.scene.remove(G); G.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     if (t.mat) t.mat.dispose(); if (t.photo) { t.photo.dispose(); E.mapPhoto(t, null); }
     E.dropPolys(t.polys); E.dropBuildings(t.bld);
     if (t.props) E.dropKit(t.props); if (t.trees && E.dropTrees) E.dropTrees(t.trees);
-    t.group = null; t.terrain = null; t.terrains = null; t.subs = null; t.built = false; t.photo = null; t.mat = null; t.props = null; t.trees = null; t.polys = [0, 0]; t.bld = [0, 0];
+    t.group = null; t.staging = null; t.terrain = null; t.terrains = null; t.subs = null; t.built = false; t.photo = null; t.mat = null; t.props = null; t.trees = null; t.polys = [0, 0]; t.bld = [0, 0];
   }
   function unload(t) { unbuild(t); O.tiles.delete(t.k); t.rs = null; t.hN = t.hM = null; t.d = null; }
   return O;

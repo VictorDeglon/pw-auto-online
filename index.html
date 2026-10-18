@@ -1127,12 +1127,14 @@ function gridAdd(minx, minz, maxx, maxz, kind, idx) {
       c[kind].push(idx);
     }
 }
+let POLY_HOLD = null; // an outer tile being built keeps its walls out of the collision grid until they're drawn
 function addPoly(flat, base, top) {
   let minx = 1e9, maxx = -1e9, minz = 1e9, maxz = -1e9;
   for (let i = 0; i < flat.length; i += 2) { minx = Math.min(minx, flat[i]); maxx = Math.max(maxx, flat[i]); minz = Math.min(minz, flat[i + 1]); maxz = Math.max(maxz, flat[i + 1]); }
   const idx = polys.length; polys.push({ p: Float32Array.from(flat), base, top, minx, maxx, minz, maxz, stamp: 0 });
-  gridAdd(minx, minz, maxx, maxz, 'b', idx);
+  if (POLY_HOLD) POLY_HOLD.push(idx); else gridAdd(minx, minz, maxx, maxz, 'b', idx);
 }
+function releasePolys(list) { for (const i of list) { const P = polys[i]; if (P && !P.gone) gridAdd(P.minx, P.minz, P.maxx, P.maxz, 'b', i); } list.length = 0; }
 const _hitN = { x: 0, z: 0, depth: 0 };
 function collideCircle(pos, r, withTrees = true, y) { // y: the bottom of whatever is moving; above a roof or a treetop there's nothing to hit
   let hit = null; const st = ++stampN;
@@ -2454,6 +2456,7 @@ const OUTER = createOuter({
   THREE, scene, M, ROAD_SCALE, exag, HBASE: () => HBASE, focus: () => focusPos(),
   view: () => GFX.view, lodNear: () => LOD_NEAR, shadowNear: () => SHADOW_NEAR, hurry: () => !!worldHold,
   inCorePhoto, coreTerrainAt, coreMeshAt, newChunk, meshChunk, meshChunkSteps, setSink: ch => { CHUNK_SINK = ch; },
+  holdPolys: list => { POLY_HOLD = list; }, releasePolys,
   paveRoad: (t, w, p) => paveRoad(t, w, p),
   mapRoad: e => { const bb = bbox(e.p); mapRoads.push({ t: e.t, w: e.w, p: e.p, name: e.name }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', mapRoads.length - 1); },
   addEdges: addOuterEdges, addBuilding, bldCount: () => BLD.length, polyCount: () => polys.length, dropPolys, dropBuildings,
@@ -6710,7 +6713,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { OUTER, teleport, edgesN: () => edges.length, polysN: () => polys.length, get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { OUTER, teleport, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
