@@ -4,7 +4,10 @@ Free-roam driving and mayhem in a real-scale Poway, California, in the browser. 
 tune your ride at the garage, and play with friends on one of five online servers: **Silverwood, Emberfall,
 Stormhaven, Moonhollow and Frostvale**.
 
-The town is built from real data: OpenStreetMap streets and buildings, USGS elevation and aerial imagery.
+The town is built from real data: OpenStreetMap streets and buildings, USGS elevation and aerial imagery. Around it,
+50 km of San Diego County each way (the beaches, La Jolla, downtown San Diego, Miramar, Escondido, the back country,
+the edge of Tijuana) streams in as you travel, 2 km at a time, so only what's near you is ever loaded. It's built by
+`tools/world` (see its README) into `assets/world`.
 
 ## Playing
 
