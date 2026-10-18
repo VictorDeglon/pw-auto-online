@@ -14,7 +14,7 @@ export const PROG = { me: null, skills: [], titles: [], available: !!PRO, err: '
 try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.me) Object.assign(PROG, { me: c.me, skills: c.skills || [], titles: c.titles || [] }); } catch (e) { }
 const subs = new Set();
 export function onProgress(cb) { subs.add(cb); return () => subs.delete(cb); }
-function changed(ev) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ me: PROG.me, skills: PROG.skills, titles: PROG.titles })); } catch (e) { } for (const cb of subs) { try { cb(PROG, ev || []); } catch (e) { console.error('[progress]', e); } } }
+function changed(ev) { try { if (!(NET && NET.tabGuest)) localStorage.setItem(CACHE_KEY, JSON.stringify({ me: PROG.me, skills: PROG.skills, titles: PROG.titles })); } catch (e) { } for (const cb of subs) { try { cb(PROG, ev || []); } catch (e) { console.error('[progress]', e); } } }
 export function skill(id) { return PROG.me && PROG.me.skills ? PROG.me.skills[id] | 0 : 0; }
 
 export async function refresh() {

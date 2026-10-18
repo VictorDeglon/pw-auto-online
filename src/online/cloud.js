@@ -4,7 +4,8 @@
 //   This computer is the source of truth while you play on it: changes go up once a minute and when the page hides.
 //   A save made somewhere else since this computer last synced is offered, not forced (askToLoad).
 //   Signing in to an account on a new computer loads that account's save (and backs up what was here).
-import { ACCOUNT } from './net.js';
+import { ACCOUNT, NET } from './net.js';
+const mine = () => ACCOUNT && !(NET && NET.tabGuest); // a second tab playing as its own guest never touches this browser's save
 
 const KEYS = ['pw-auto-online-v3', 'pw-auto-online-profile', 'pw-auto-online-gfx', 'pw-auto-online-post', 'pw-auto-online-input', 'pao.sky'];
 const META = 'pw-auto-online-sync', BACKUP = 'pw-auto-online-backup';
@@ -19,7 +20,7 @@ function apply(keys) {
 
 let busy = false, timer = 0;
 export async function push(force) {
-  if (!ACCOUNT || busy) return false;
+  if (!mine() || busy) return false;
   const b = bundle(), h = hash(b); if (!force && h === meta.hash) return false;
   busy = true;
   try { const t = Date.now(); await ACCOUNT.writeSave({ t, keys: b }); meta.at = t; meta.hash = h; saveMeta(); return true; }
@@ -28,7 +29,7 @@ export async function push(force) {
 }
 // is there a save from another computer that's newer than what this one last synced?
 export async function check() {
-  if (!ACCOUNT) return null;
+  if (!mine()) return null;
   try { const c = await ACCOUNT.readSave(); if (!c || !c.keys) return null; if (c.t > meta.at + 2000 && hash(c.keys) !== hash(bundle())) return c; } catch (e) { }
   return null;
 }
@@ -36,12 +37,12 @@ export async function check() {
 export function load(c) { apply(c.keys); meta.at = c.t; meta.hash = hash(bundle()); saveMeta(); location.reload(); }
 // after signing in to an account on this computer: its save wins (if it has one)
 export async function afterSignIn() {
-  const c = ACCOUNT ? await ACCOUNT.readSave().catch(() => null) : null;
+  const c = mine() ? await ACCOUNT.readSave().catch(() => null) : null;
   if (c && c.keys) { load(c); return true; }
   meta.at = 0; meta.hash = ''; saveMeta(); await push(true); return false;
 }
 export function start() {
-  if (!ACCOUNT || timer) return;
+  if (!ACCOUNT || timer) return; // (push and check skip themselves in a tab-guest tab)
   timer = setInterval(() => push(false), 60e3);
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') push(false); });
 }
