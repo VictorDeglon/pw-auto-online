@@ -576,6 +576,7 @@ import { drawFog, fogSeen, FOG } from './src/ui/fog.js'; // map discovery (fog o
 import { garageMarks } from './src/world/garages.js';
 import { CINE } from './src/story/cutscene.js';
 import { createBuilder } from './src/world/builder.js';
+import { createPowayArchitecture } from './src/world/poway_architecture.js';
 
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
@@ -3569,6 +3570,15 @@ function initBuilder() {
   return BUILDER;
 }
 initBuilder();
+let ARCH_WORLD = null;
+function initArchWorld() {
+  if (ARCH_WORLD) return ARCH_WORLD;
+  ARCH_WORLD = createPowayArchitecture({
+    THREE, scene, camera, player, cam, heightAt, sfx, notify, addInteract, hour: () => hour
+  });
+  return ARCH_WORLD;
+}
+initArchWorld();
 // two light planes parked on open grass in parks near the start: flat, clear of buildings and well off the road
 function parkPlanes() {
   if (!AIR || !initPilot()) return; const placed = [];
@@ -6252,10 +6262,23 @@ function updateCamera(dt) {
   const ty = f.y + (inCar ? 2.0 : (player.dead ? 0.5 : 1.65));
   const tx = f.x + (aiming ? Math.cos(cam.yaw) * 0.6 : 0), tz = f.z + (aiming ? -Math.sin(cam.yaw) * 0.6 : 0);
   const cp = Math.cos(cam.pitch), dx = Math.sin(cam.yaw) * cp, dy = Math.sin(cam.pitch), dz = Math.cos(cam.yaw) * cp;
-  let d = dist; const hitT = rayBuildings(tx, ty, tz, dx * dist, dy * dist, dz * dist, 1); if (hitT < 1) d = Math.max(1.2, dist * hitT - 0.4);
-  const tt = rayTerrain(tx, ty, tz, dx * d, dy * d, dz * d); if (tt < 1) d = Math.max(1.2, d * tt - 0.3);
+  let d = dist;
+  const isInside = ARCH_WORLD && ARCH_WORLD.isInside();
+  const curInterior = isInside ? ARCH_WORLD.currentInterior() : null;
+  if (!isInside) {
+    const hitT = rayBuildings(tx, ty, tz, dx * dist, dy * dist, dz * dist, 1); if (hitT < 1) d = Math.max(1.2, dist * hitT - 0.4);
+    const tt = rayTerrain(tx, ty, tz, dx * d, dy * d, dz * d); if (tt < 1) d = Math.max(1.2, d * tt - 0.3);
+  } else {
+    d = Math.min(dist, 2.2);
+  }
   camPos.set(tx + dx * d, ty + dy * d, tz + dz * d);
-  camPos.y = Math.max(camPos.y, heightAt(camPos.x, camPos.z) + 0.6);
+  if (isInside && curInterior) {
+    camPos.x = clamp(camPos.x, curInterior.minX + 0.35, curInterior.maxX - 0.35);
+    camPos.z = clamp(camPos.z, curInterior.minZ + 0.35, curInterior.maxZ - 0.35);
+    camPos.y = clamp(camPos.y, curInterior.floorY + 0.6, curInterior.ceilY - 0.3);
+  } else {
+    camPos.y = Math.max(camPos.y, heightAt(camPos.x, camPos.z) + 0.6);
+  }
   if (player.dead) { cam.yaw += dt * 0.3; }
   camera.position.lerp(camPos, 1 - Math.exp(-dt * (inCar ? 10 : 18)));
   camera.lookAt(tx, ty + (aiming ? 0.1 : 0.2), tz);
@@ -6586,6 +6609,7 @@ function tick(rdt) {
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
   if (BUILDER) BUILDER.update(dt);
+  if (ARCH_WORLD) ARCH_WORLD.update(dt);
   PHS.updatePHS(dt, focusPos()); // PHS
   if (PLAZA) PLAZA.update(focusPos(), nightAmount);
   if (PARK && !WORLD.following) PARK.update(dt, focusPos());
