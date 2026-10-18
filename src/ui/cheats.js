@@ -26,6 +26,9 @@ export function createCheats(H) {
       if (head.toLowerCase() === '/build' || head.toLowerCase() === 'build' || head.toLowerCase() === '/builder') {
         H.run('build', arg); return true;
       }
+      if (t === '##tester2026' || t.toLowerCase() === '##tester2026') {
+        H.run('tester_fast_travel', arg); return true;
+      }
       if (await sha(t) === DATA.master) { try { if (!sheet) { sheet = await unlock(t); ids = await Promise.all(sheet.map(c => sha(String(c.code).split(' ')[0]).then(h => DATA.codes[h] || null))); } show(); } catch (e) { } return true; }
       const id = DATA.codes[await sha(head)]; if (!id) return false;
       H.run(id, arg); return true;

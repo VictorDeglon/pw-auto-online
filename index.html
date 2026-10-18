@@ -3617,6 +3617,13 @@ function runCheat(id, arg) {
       nukeAt(x, z, true, who); return;
     }
     case 'build': if (BUILDER) BUILDER.toggle(); return;
+    case 'tester_fast_travel': {
+      TESTER_FAST_TRAVEL = true;
+      if (!mapOpen) toggleMap();
+      notify('⚡ <b>TESTER FAST TRAVEL ACTIVE</b><br>Click anywhere on the map to teleport instantly.', '#38bdf8', 6000);
+      drawBigMap();
+      return;
+    }
     case 'god': cheatToast('Immortal', tog('god')); return;
     case 'fly': { const on = tog('fly'); if (on && player.inCar) toggleCar(); cheatToast('Flight', on); return; }
     case 'jet': spawnJet(); return;
@@ -3990,7 +3997,10 @@ POIS.push(
   { name: 'Carmel Mountain Promenade', type: 'mall', x: -4250.0, z: -2260.0, area: 22000 },
   { name: 'Costco Tech Center', type: 'mall', x: -4260.0, z: -2640.0, area: 35000 }
 );
-const LANDMARK_TYPES = new Set(['school', 'park', 'water', 'hospital', 'police', 'library', 'fire_station', 'mall']);
+const LANDMARK_TYPES = new Set([
+  'school', 'park', 'water', 'hospital', 'police', 'library', 'fire_station',
+  'mall', 'shop', 'restaurant', 'fast_food', 'cafe', 'bank', 'fuel', 'post_office'
+]);
 const LANDMARKS = POIS.filter(p => LANDMARK_TYPES.has(p.type));
 function areaAt(x, z) {
   let best = null, bd = 450 * 450;
@@ -4707,7 +4717,7 @@ function weaponStats(w) {
   return { dmg: per * dmgMul(w) / 300, rate: Math.min(1, 0.05 / cdOf(w)), acc: w.spread ? 1 - w.spread * accMul(w) * 9 : 0.5, cap: maxOf(w) / ((w.max || 1) * 1.9) };
 }
 // ============================================================ fast travel (K)
-let travelOpen = false, TRAVEL = [];
+let travelOpen = false, TRAVEL = [], TESTER_FAST_TRAVEL = false;
 const ll = (lat, lon) => ({ x: (lon - LON0) * KX, z: -(lat - LAT0) * KZ });
 function setupTravel() {
   const spots = [
@@ -6336,11 +6346,25 @@ function mapMask() {
   if (OUTER.ready) { const I = OUTER.idx, r = [I.i0 * I.tile, I.j0 * I.tile, (I.i1 + 1) * I.tile, (I.j1 + 1) * I.tile]; return (photoMask = MAPKIT.buildPhotoMask(r, [], [], [{ x: (r[0] + r[2]) / 2, z: (r[1] + r[3]) / 2, r: 1e6 }], 400)); }
   return (photoMask = MAPKIT.buildPhotoMask(photoRect(), D.roads, D.buildings, REGIONS.map(r => ({ x: r.x, z: r.z, r: 700 }))));
 }
-const LM_COLOR = { school: '#f2c14e', park: '#7fc25a', water: '#4fb3e8', hospital: '#ff5a5a', police: '#3b7bff', library: '#d8b98a', fire_station: '#ff8a3d', university: '#f2c14e', beach: '#f5d58a', attraction: '#c98cff', pier: '#b8c6d0', stadium: '#ffb14a', airport: '#9ad0ff', military: '#a8a07a', mall: '#ff7eb6', peak: '#c9b49a' };
-const LM_PLURAL = { school: 'schools', park: 'parks', water: 'lakes', hospital: 'hospitals', police: 'police stations', library: 'libraries', fire_station: 'fire stations', university: 'campuses', beach: 'beaches', attraction: 'sights', pier: 'piers', stadium: 'stadiums', airport: 'airports', military: 'bases', mall: 'malls', peak: 'peaks' };
+const LM_COLOR = {
+  school: '#f2c14e', park: '#7fc25a', water: '#4fb3e8', hospital: '#ff5a5a', police: '#3b7bff',
+  library: '#d8b98a', fire_station: '#ff8a3d', university: '#f2c14e', beach: '#f5d58a',
+  attraction: '#c98cff', pier: '#b8c6d0', stadium: '#ffb14a', airport: '#9ad0ff',
+  military: '#a8a07a', mall: '#ff7eb6', peak: '#c9b49a',
+  shop: '#38bdf8', restaurant: '#f97316', fast_food: '#ef4444', cafe: '#10b981',
+  bank: '#0284c7', fuel: '#eab308', post_office: '#818cf8'
+};
+const LM_PLURAL = {
+  school: 'schools', park: 'parks', water: 'lakes', hospital: 'hospitals', police: 'police stations',
+  library: 'libraries', fire_station: 'fire stations', university: 'campuses', beach: 'beaches',
+  attraction: 'sights', pier: 'piers', stadium: 'stadiums', airport: 'airports', military: 'bases',
+  mall: 'malls', peak: 'peaks',
+  shop: 'shops', restaurant: 'restaurants', fast_food: 'fast food', cafe: 'cafes',
+  bank: 'banks', fuel: 'gas stations', post_office: 'post offices'
+};
 const MAJOR_LM = new Set(['water', 'hospital', 'police', 'beach', 'airport', 'stadium', 'military', 'university', 'pier']);
 // the county's places by how much they matter at this zoom: kind plus size (area 0: a mapped point, size unknown)
-const LM_WEIGHT = { airport: 3, stadium: 3, university: 3, beach: 2.5, attraction: 2.5, military: 2, hospital: 2, mall: 2, pier: 1.5, peak: 1.5, park: 1, water: 1, police: 1, school: 0.5, library: 0.5, fire_station: 0.5 };
+const LM_WEIGHT = { airport: 3, stadium: 3, university: 3, beach: 2.5, attraction: 2.5, military: 2, hospital: 2, mall: 2, pier: 1.5, peak: 1.5, park: 1, water: 1, police: 1, fuel: 1, school: 0.5, library: 0.5, fire_station: 0.5, shop: 0.4, restaurant: 0.4, fast_food: 0.4, cafe: 0.4, bank: 0.4 };
 function outerLmShown(p, mpp) {
   const score = (LM_WEIGHT[p.type] || 0.5) + (p.area > 0 ? Math.log10(p.area) / 2 : 1);
   return score > (mpp <= 3 ? 0 : mpp <= 6 ? 3.2 : mpp <= 12 ? 4.4 : mpp <= 30 ? 5.2 : 5.9);
@@ -6351,7 +6375,12 @@ function mapMarks(big) {
   const out = [], f = focusPos(), fl = Math.floor(simTime * 4) % 2;
   if (big) { // places; zoomed far out, only the big ones
     for (const p of LANDMARKS) {
-      if (p.outer ? !outerLmShown(p, mapView.mpp) : mapView.mpp > 9 && !(MAJOR_LM.has(p.type) || p.area > 250000 || /High School|Community Park|Old Poway/.test(p.name))) continue;
+      if (p.outer) {
+        if (!outerLmShown(p, mapView.mpp)) continue;
+      } else {
+        if (mapView.mpp > 14 && !(MAJOR_LM.has(p.type) || p.type === 'mall' || p.area > 250000 || /High School|Community Park|Old Poway/.test(p.name))) continue;
+        if (mapView.mpp > 8.5 && ['shop', 'restaurant', 'fast_food', 'cafe'].includes(p.type)) continue;
+      }
       out.push({ kind: 'icon', pri: 4, x: p.x, z: p.z, glyph: p.type, color: LM_COLOR[p.type] || '#ddd', label: p.name, group: 'lm:' + p.type, plural: LM_PLURAL[p.type] });
     }
   } else { // cops, fights, the helicopter, an owner coming for their car; where you wake up
@@ -6433,27 +6462,34 @@ function bigMapBase(W, H, dpr) {
   if (bmBase && bmBase.key === key) return bmBase;
   const cv = bmBase && bmBase.canvas.width === W && bmBase.canvas.height === H ? bmBase.canvas : Object.assign(document.createElement('canvas'), { width: W, height: H });
   const g = cv.getContext('2d'), sc = dpr / v.mpp, regions = [];
-  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#11161a'; g.fillRect(0, 0, W, H);
+  // Artistic tactical midnight canvas
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#090d16'; g.fillRect(0, 0, W, H);
   g.save(); g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-v.cx, -v.cz);
   MAPKIT.drawMasked(g, bmLayer, mapMask(), L => {
     L.imageSmoothingEnabled = true; drawAerial(L, 1, [v.cx - W / 2 * v.mpp / dpr, v.cz - H / 2 * v.mpp / dpr, v.cx + W / 2 * v.mpp / dpr, v.cz + H / 2 * v.mpp / dpr]);
-    // half real, half cartoon: the photo underneath, pushed warmer and flatter, each region washed in its own colour
-    L.globalCompositeOperation = 'soft-light'; L.fillStyle = 'rgba(255,214,150,.55)'; L.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
-    L.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = L.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1300); gr.addColorStop(0, r.col + '55'); gr.addColorStop(1, r.col + '00'); L.fillStyle = gr; L.fillRect(r.x - 1300, r.z - 1300, 2600, 2600); }
+    // Half real, half stylized tactical map: cool oceanic grade & atmospheric region glow halos
+    L.globalCompositeOperation = 'soft-light'; L.fillStyle = 'rgba(70, 130, 205, .48)'; L.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
+    L.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = L.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1500); gr.addColorStop(0, r.col + '66'); gr.addColorStop(1, r.col + '00'); L.fillStyle = gr; L.fillRect(r.x - 1500, r.z - 1500, 3000, 3000); }
     L.globalCompositeOperation = 'source-over';
     L.lineCap = L.lineJoin = 'round';
     const vr = [v.cx - W / 2 * v.mpp / dpr - 50, v.cz - H / 2 * v.mpp / dpr - 50, v.cx + W / 2 * v.mpp / dpr + 50, v.cz + H / 2 * v.mpp / dpr + 50], inView = new Set();
     if (v.mpp < 20) { for (let gx = Math.floor(vr[0] / MB); gx <= Math.floor(vr[2] / MB); gx++) for (let gz = Math.floor(vr[1] / MB); gz <= Math.floor(vr[3] / MB); gz++) { const c = mapBins.get(ckey(gx, gz)); if (c) for (const i of c.r) inView.add(i); } }
-    else for (let i = 0; i < mapRoads.length; i++) if (mapRoads[i].t <= 2) inView.add(i); // far out: just the highways and big roads
+    else for (let i = 0; i < mapRoads.length; i++) if (mapRoads[i].t <= 2) inView.add(i);
     const viewRoads = [...inView].map(i => mapRoads[i]);
-    L.strokeStyle = 'rgba(18,22,28,.9)'; // ink outline under every road
-    for (const r of viewRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
-    for (const pass of [0, 1]) for (const r of viewRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    L.strokeStyle = 'rgba(8, 12, 20, .96)'; // Deep crisp ink border
+    for (const r of viewRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.4 : 2.4); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    for (const pass of [0, 1]) for (const r of viewRoads) {
+      if ((r.t <= 3) !== !!pass) continue;
+      if (r.t >= 4 && v.mpp > 10) continue;
+      L.strokeStyle = r.t <= 1 ? '#f59e0b' : r.t <= 3 ? '#f1f5f9' : '#94a3b8';
+      L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.85);
+      L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke();
+    }
   });
-  drawFog(g); // what you haven't explored (src/ui/fog.js)
+  drawFog(g); // discovery cloud with feathered falloff
   g.restore();
   const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
-  if (v.mpp < 20) { // 1 km sector grid, labelled along the top and left edges like a paper street atlas
+  if (v.mpp < 20) { // 1 km sector grid
     g.save(); g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = dpr; g.setLineDash([4 * dpr, 6 * dpr]);
     g.font = `700 ${12 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
     for (let c = 0; c <= SECTOR.cols; c++) { const [x] = toS(SECTOR.x0 + c * SECTOR.size, 0); if (x < -50 || x > W + 50) continue; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
@@ -6464,11 +6500,11 @@ function bigMapBase(W, H, dpr) {
     for (let r = 0; r < SECTOR.rows; r++) { const [, y] = toS(0, SECTOR.z0 + (r + 0.5) * SECTOR.size); if (y > 90 * dpr && y < H - 20) tag(String(r + 1), 18 * dpr, y); }
     g.restore();
   }
-  { // region names: big, inked, a little tilted, fading out as you zoom in on the streets; markers' labels keep off them
-    const a = clamp((v.mpp - 1.6) / 2.5, 0, 1); if (a > 0.02) {
+  { // Region names: ONLY shown when zoomed all the way out (mpp >= 9.5)
+    const a = clamp((v.mpp - 9.5) / 3.0, 0, 1); if (a > 0.02) {
       g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       for (const r of REGIONS) {
-        if (v.mpp > 22 && (!r.outer || r.r < 2600) && r.id !== 'town-center') continue; // far out: the towns, and Poway once
+        if (v.mpp > 22 && (!r.outer || r.r < 2600) && r.id !== 'town-center') continue;
         const [x, y] = toS(r.x, r.z); if (x < -200 || y < -60 || x > W + 200 || y > H + 60 || !fogSeen(r.x, r.z, 0.3)) continue;
         const fs = clamp(24 - v.mpp * 0.4, 15, 26) * dpr * (r.district === 'Poway' ? 1 : 0.85);
         g.save(); g.translate(x, y); g.rotate(((r.x * 13 + r.z * 7) % 7 - 3) * 0.012);
@@ -6481,7 +6517,7 @@ function bigMapBase(W, H, dpr) {
       g.restore();
     }
   }
-  { const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(6,8,14,.55)'); g.fillStyle = vg; g.fillRect(0, 0, W, H); } // vignette
+  { const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(4,6,12,.72)'); g.fillStyle = vg; g.fillRect(0, 0, W, H); } // vignette
   return (bmBase = { key, canvas: cv, regions });
 }
 function drawBigMap() {
@@ -6522,6 +6558,25 @@ function drawBigMap() {
     g.fillStyle = '#d4302f'; g.beginPath(); g.moveTo(0, -cr); g.lineTo(7 * dpr, 0); g.lineTo(-7 * dpr, 0); g.fill(); g.fillStyle = '#f3ede1'; g.beginPath(); g.moveTo(0, cr); g.lineTo(7 * dpr, 0); g.lineTo(-7 * dpr, 0); g.fill();
     g.font = `400 ${14 * dpr}px Anton, Impact`; g.textAlign = 'center'; g.fillStyle = '#f3ede1'; g.fillText('N', 0, -cr - 12 * dpr); g.restore();
   }
+  // Tester Fast Travel Banner Overlay
+  if (TESTER_FAST_TRAVEL) {
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    const barH = 46 * dpr;
+    g.fillStyle = 'rgba(8, 14, 28, 0.94)';
+    g.fillRect(0, 0, W, barH);
+    g.strokeStyle = '#38bdf8';
+    g.lineWidth = 2.5 * dpr;
+    g.beginPath();
+    g.moveTo(0, barH); g.lineTo(W, barH);
+    g.stroke();
+    g.font = `bold ${15 * dpr}px "Barlow Condensed", Arial`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = '#38bdf8';
+    g.fillText('⚡ TESTER FAST TRAVEL MODE ACTIVE · CLICK ANYWHERE ON MAP TO TELEPORT IMMEDIATELY · [ESC] TO CLOSE', W / 2, barH / 2);
+    g.restore();
+  }
 }
 function fmtDist(d) { return d >= 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m'; }
 function setWaypoint(x, z, name) {
@@ -6539,6 +6594,13 @@ function clearWaypoint(quiet) { waypoint = null; wpBeam.visible = false; gps = n
     if (!drag || !mapOpen) { drag = null; return; }
     if (!drag.moved) {
       const x = mapView.cx + (e.clientX - innerWidth / 2) * mapView.mpp, z = mapView.cz + (e.clientY - innerHeight / 2) * mapView.mpp;
+      if (TESTER_FAST_TRAVEL) {
+        teleport(x, z, 'Tester Fast Travel');
+        notify(`⚡ <b>Teleported to</b> ${streetAt(x, z) || areaAt(x, z) || 'Destination'} [${Math.round(x)}, ${Math.round(z)}]`, '#38bdf8', 3500);
+        toggleMap();
+        drag = null;
+        return;
+      }
       const it = MAPKIT.hitItem(bmDrawn, e.clientX * bmDpr, e.clientY * bmDpr);
       if (it && it.n > 1 && mapView.mpp > 0.85) { mapView.cx = it.members.reduce((a, q) => a + q.x, 0) / it.n; mapView.cz = it.members.reduce((a, q) => a + q.z, 0) / it.n; mapView.mpp = clamp(mapView.mpp / 2.5, 0.8, 14); } // a cluster: zoom in till it splits
       else if (it && it.m.kind === 'pin' || waypoint && hyp(waypoint.x - x, waypoint.z - z) < 15 * mapView.mpp) clearWaypoint();

@@ -162,8 +162,13 @@ function glyph(g, k, x, y, r, col) {
     case 'mall': g.fillRect(-4.6 * u, -2 * u, 9.2 * u, 7.6 * u); g.lineWidth = 1.6 * u; g.beginPath(); g.arc(0, -2 * u, 2.6 * u, Math.PI, 0); g.stroke(); break;
     case 'pier': g.fillRect(-1.2 * u, -6 * u, 2.4 * u, 12 * u); for (const yy of [-4, 0, 4]) g.fillRect(-4 * u, (yy - 0.6) * u, 8 * u, 1.2 * u); break;
     case 'peak': g.beginPath(); g.moveTo(-6.4 * u, 5 * u); g.lineTo(-1 * u, -5.4 * u); g.lineTo(1.6 * u, -0.6 * u); g.lineTo(3 * u, -2.6 * u); g.lineTo(6.4 * u, 5 * u); g.closePath(); g.fill(); break;
+    case 'fuel': g.fillRect(-4.2 * u, -4.8 * u, 5.8 * u, 9.6 * u); g.beginPath(); g.moveTo(2 * u, -2 * u); g.lineTo(4.6 * u, -2 * u); g.lineTo(4.6 * u, 2.8 * u); g.stroke(); break;
+    case 'cafe': g.fillRect(-4.2 * u, -2.8 * u, 6.4 * u, 6.8 * u); g.lineWidth = 1.4 * u; g.beginPath(); g.arc(2.8 * u, 0, 1.9 * u, -Math.PI * 0.5, Math.PI * 0.5); g.stroke(); break;
+    case 'fast_food': g.beginPath(); g.arc(0, -1.8 * u, 5.2 * u, Math.PI, 0); g.fill(); g.fillRect(-5.2 * u, -0.4 * u, 10.4 * u, 2.4 * u); g.fillRect(-4.6 * u, 2.8 * u, 9.2 * u, 2.2 * u); break;
+    case 'restaurant': g.fillRect(-3.6 * u, -5.2 * u, 1.8 * u, 10.4 * u); g.fillRect(1.8 * u, -5.2 * u, 1.8 * u, 10.4 * u); g.fillRect(-4.8 * u, -5.2 * u, 4.2 * u, 3.2 * u); break;
+    case 'bank': g.beginPath(); g.moveTo(0, -5.5 * u); g.lineTo(-5.5 * u, -2.2 * u); g.lineTo(5.5 * u, -2.2 * u); g.closePath(); g.fill(); g.fillRect(-4.2 * u, -1.6 * u, 1.6 * u, 5.2 * u); g.fillRect(-0.8 * u, -1.6 * u, 1.6 * u, 5.2 * u); g.fillRect(2.6 * u, -1.6 * u, 1.6 * u, 5.2 * u); g.fillRect(-5.5 * u, 4.2 * u, 11 * u, 1.6 * u); break;
+    case 'shop': g.fillRect(-4.5 * u, -2 * u, 9 * u, 7.5 * u); g.lineWidth = 1.5 * u; g.beginPath(); g.arc(0, -2 * u, 2.4 * u, Math.PI, 0); g.stroke(); break;
     case 'dead': g.lineWidth = 2.4 * u; g.beginPath(); g.moveTo(-4 * u, -4 * u); g.lineTo(4 * u, 4 * u); g.moveTo(4 * u, -4 * u); g.lineTo(-4 * u, 4 * u); g.stroke(); break;
-    case 'shop': k = '$'; // falls through: a letter
     default: g.font = `700 ${(k.length > 1 ? 9.5 : 12.5) * u}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(k, 0, 0.8 * u);
   }
   g.restore();

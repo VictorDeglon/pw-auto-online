@@ -15,7 +15,7 @@ import { ctx } from '../ctx.js';
 
 const CELL = 24, PAD = 600;      // Poway's cloud: cell size, margin past the core's bounds
 const WCELL = 128, RING = 50000; // the county's: the outer world reaches 50 km past the core (tools/world/config.py)
-const R_FOOT = 170, R_CAR = 230, STEP = 30; // reveal radius on foot / driving; metres moved between checks
+const R_FOOT = 340, R_CAR = 460, STEP = 30; // 2x as wide discovery bubble around player on foot / driving
 const F = { ready: false, fine: null, wide: null, ver: 0, pts: null, lx: 1e9, lz: 1e9, t: 0, seen: 0 };
 export const FOG = F;
 
@@ -48,16 +48,16 @@ function grid(x0, z0, x1, z1, cell) {
   return G;
 }
 function grow(G, i0, j0, i1, j1) { const r = G.dirty; if (!r) G.dirty = [i0, j0, i1, j1]; else { r[0] = Math.min(r[0], i0); r[1] = Math.min(r[1], j0); r[2] = Math.max(r[2], i1); r[3] = Math.max(r[3], j1); } }
-// reveal a disc around (x, z): solid out to about half the radius, then a soft fall-off whose edge wanders with noise
+// reveal a disc around (x, z): soft fall-off whose edge wanders with noise and feathers smoothly
 function stampIn(G, x, z, r) {
   const C = G.cell;
-  const i0 = Math.max(0, Math.floor((x - r * 1.2 - G.x0) / C)), i1 = Math.min(G.nx - 1, Math.ceil((x + r * 1.2 - G.x0) / C));
-  const j0 = Math.max(0, Math.floor((z - r * 1.2 - G.z0) / C)), j1 = Math.min(G.nz - 1, Math.ceil((z + r * 1.2 - G.z0) / C));
+  const i0 = Math.max(0, Math.floor((x - r * 1.3 - G.x0) / C)), i1 = Math.min(G.nx - 1, Math.ceil((x + r * 1.3 - G.x0) / C));
+  const j0 = Math.max(0, Math.floor((z - r * 1.3 - G.z0) / C)), j1 = Math.min(G.nz - 1, Math.ceil((z + r * 1.3 - G.z0) / C));
   if (i0 > i1 || j0 > j1) return;
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
     const cx = G.x0 + (i + 0.5) * C, cz = G.z0 + (j + 0.5) * C, d = Math.hypot(cx - x, cz - z);
-    const rr = r * (0.8 + 0.4 * fbm(cx / 110, cz / 110)); if (d > rr) continue;
-    const v = Math.round(255 * sstep(rr, rr * 0.5, d)), k = j * G.nx + i;
+    const rr = r * (0.85 + 0.35 * fbm(cx / 110, cz / 110)); if (d > rr) continue;
+    const v = Math.round(255 * sstep(rr, rr * 0.15, d)), k = j * G.nx + i;
     if (v > G.a[k]) { if (G === F.fine && G.a[k] < 128 && v >= 128) F.seen++; G.a[k] = v; paint(G, k); }
   }
   grow(G, i0, j0, i1, j1);
@@ -87,9 +87,9 @@ export function initFog(save) {
 // took you (the givers of the missions you've done, and the places you can fast travel to)
 function seedSpots(save) {
   const out = [], f = ctx.focusPos(), sp = ctx.spawnPt;
-  out.push({ x: f.x, z: f.z, r: 260 }); if (sp) out.push({ x: sp.x, z: sp.z, r: 260 });
+  out.push({ x: f.x, z: f.z, r: 520 }); if (sp) out.push({ x: sp.x, z: sp.z, r: 520 });
   const st = save.story, done = st && st.done || [];
-  if (done.length && ctx.storyPlaces) for (const p of ctx.storyPlaces(done)) out.push({ x: p.x, z: p.z, r: 320 });
+  if (done.length && ctx.storyPlaces) for (const p of ctx.storyPlaces(done)) out.push({ x: p.x, z: p.z, r: 640 });
   return out;
 }
 
