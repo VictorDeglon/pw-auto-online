@@ -565,6 +565,9 @@ import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, stor
 import * as MAPKIT from './src/ui/mapkit.js';
 import { setGroundTint } from './src/nature/ground.js';
 import { updateBeacons } from './src/online/beacons.js';
+import { drawFog, fogSeen, FOG } from './src/ui/fog.js'; // map discovery (fog of war)
+import { garageMarks } from './src/world/garages.js';
+import { CINE } from './src/story/cutscene.js';
 
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
@@ -5660,6 +5663,7 @@ function updatePopulation(dt) {
 // ============================================================ camera
 const camPos = new THREE.Vector3(); let timeScale = 1;
 function updateCamera(dt) {
+  if (CINE.camera(camera, dt)) { sky.position.copy(camera.position); headlight.intensity = 0; return; } // a cutscene has it (src/story/cutscene.js)
   const f = focusPos(); const inCar = player.inCar; const aiming = player.aiming;
   let dist = aiming ? (scope ? 1.4 : 2.6) : cam.dist;
   if (inCar) {
@@ -5731,7 +5735,7 @@ function mapMarks(big) {
       out.push({ kind: 'icon', pri: 4, x: p.x, z: p.z, glyph: p.type, color: LM_COLOR[p.type] || '#ddd', label: p.name, group: 'lm:' + p.type, plural: LM_PLURAL[p.type] });
     }
   } else { // cops, fights, the helicopter, an owner coming for their car; where you wake up
-    for (const p of peds) { if (p.state === 'dead') continue; if (p.isCop) out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#3b7bff' }); else if (p.state === 'fight' || p.state === 'call') out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#d4302f' }); }
+    for (const p of peds) { if (p.state === 'dead') continue; if (p.isCop) out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#3b7bff' }); else if (p.state === 'fight' || p.state === 'call') out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#d4302f' }); else if (p.callT > 0 && p.witness) out.push({ kind: 'dot', pri: 4, x: p.pos.x, z: p.pos.z, color: '#ffb020' }); }
     for (const v of vehicles) { if (v.isCop && !v.dead) out.push({ kind: 'dot', pri: 4, x: v.pos.x, z: v.pos.z, r: 4.5, color: v.siren && fl ? '#ff3030' : '#3b7bff', edge: v.siren }); if (v.avenger) out.push({ kind: 'dot', pri: 4, x: v.pos.x, z: v.pos.z, r: 4.5, color: '#ff8c1a', edge: true }); }
     if (police.heli) out.push({ kind: 'dot', pri: 4, x: police.heli.pos.x, z: police.heli.pos.z, r: 6, color: fl ? '#ff3030' : '#3b7bff', edge: true });
     if (HOSPITAL) out.push({ kind: 'icon', pri: 3, x: HOSPITAL.x, z: HOSPITAL.z, glyph: 'hospital', color: '#ff5a5a', label: 'Hospital' });
@@ -5740,7 +5744,7 @@ function mapMarks(big) {
   // gun shops (only the nearest one waits at the minimap's edge), your garage
   let near = null, nd = Infinity; for (const S of DEALERS) { const d = hyp(S.x - f.x, S.z - f.z); if (d < nd) { nd = d; near = S; } }
   for (const S of DEALERS) out.push({ kind: 'icon', pri: 3, x: S.x, z: S.z, glyph: 'shop', color: '#ff3cac', label: S.name, group: 'shop', plural: 'gun shops', edge: !big && S === near });
-  if (GARAGE) out.push({ kind: 'icon', pri: 3, x: GARAGE.x, z: GARAGE.z, glyph: 'garage', color: '#d9dde3', label: 'Your garage' });
+  out.push(...garageMarks(GARAGE)); // yours, and the ones the story opens (src/world/garages.js)
   // missions, the courier job, your waypoint
   for (const b of storyMapMarks()) {
     if (b.letter) out.push({ kind: 'icon', pri: 2, x: b.x, z: b.z, glyph: b.letter, color: b.color, label: b.label, edge: b.edge, group: 'giver', plural: 'jobs' });
@@ -5750,7 +5754,9 @@ function mapMarks(big) {
   if (job) out.push({ kind: 'icon', pri: 2, x: job.x, z: job.z, glyph: 'star', color: '#f0b23a', label: job.name, edge: true });
   if (waypoint) out.push({ kind: 'pin', pri: 2, x: waypoint.x, z: waypoint.z, color: '#b06cff', label: (waypoint.name ? waypoint.name + ' · ' : '') + fmtDist(hyp(waypoint.x - f.x, waypoint.z - f.z)), nodist: true, edge: true });
   out.push(...MAPKIT.playerMarks(big)); // other players
-  return out;
+  // what you haven't explored stays hidden (src/ui/fog.js): places and other players under the cloud are left off;
+  // missions, your job and your waypoint always show, and so do the deputies (radar)
+  return out.filter(m => m.pri === 2 || m.always || m.kind === 'dot' || fogSeen(m.x, m.z));
 }
 function drawMinimap() {
   const W = mm.width, R = W / 2, f = focusPos();
@@ -5773,6 +5779,7 @@ function drawMinimap() {
       g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke();
     }
   });
+  drawFog(mctx); // unexplored ground under a cloud (src/ui/fog.js)
   mctx.lineCap = mctx.lineJoin = 'round';
   if (gps && gps.length > 2) { mctx.strokeStyle = job || storyTarget() ? '#f0b23a' : '#b06cff'; mctx.lineWidth = 5 * mpp; mctx.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? mctx.lineTo(gps[k], gps[k + 1]) : mctx.moveTo(gps[k], gps[k + 1]); mctx.stroke(); }
   drawPoliceMap(mctx, mpp);
@@ -5801,7 +5808,7 @@ function toggleMap() {
 }
 // the parts of the big map that only change when you pan or zoom: photo, streets, sector grid, region names
 function bigMapBase(W, H, dpr) {
-  const v = mapView, key = [W, H, v.cx, v.cz, v.mpp, groundImgs.length].join();
+  const v = mapView, key = [W, H, v.cx, v.cz, v.mpp, groundImgs.length, FOG.ver].join();
   if (bmBase && bmBase.key === key) return bmBase;
   const cv = bmBase && bmBase.canvas.width === W && bmBase.canvas.height === H ? bmBase.canvas : Object.assign(document.createElement('canvas'), { width: W, height: H });
   const g = cv.getContext('2d'), sc = dpr / v.mpp, regions = [];
@@ -5818,6 +5825,7 @@ function bigMapBase(W, H, dpr) {
     for (const r of mapRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
     for (const pass of [0, 1]) for (const r of mapRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
   });
+  drawFog(g); // what you haven't explored (src/ui/fog.js)
   g.restore();
   const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
   { // 1 km sector grid, labelled along the top and left edges like a paper street atlas
@@ -5835,7 +5843,7 @@ function bigMapBase(W, H, dpr) {
     const a = clamp((v.mpp - 1.6) / 2.5, 0, 1); if (a > 0.02) {
       g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       for (const r of REGIONS) {
-        const [x, y] = toS(r.x, r.z); if (x < -200 || y < -60 || x > W + 200 || y > H + 60) continue;
+        const [x, y] = toS(r.x, r.z); if (x < -200 || y < -60 || x > W + 200 || y > H + 60 || !fogSeen(r.x, r.z, 0.3)) continue;
         const fs = clamp(24 - v.mpp * 0.4, 15, 26) * dpr * (r.district === 'Poway' ? 1 : 0.85);
         g.save(); g.translate(x, y); g.rotate(((r.x * 13 + r.z * 7) % 7 - 3) * 0.012);
         g.font = `400 ${fs}px Anton, Impact, sans-serif`; const t = r.name.toUpperCase();
@@ -6055,6 +6063,7 @@ let worldReady = false;
     sfx2: { get: () => S2 }, simTime: { get: () => simTime }, nightAmount: { get: () => nightAmount }, paused: { get: () => paused }, running: { get: () => running },
     hour: { get: () => hour, set: h => { hour = h; } }, siren: { get: () => siren }, job: { get: () => job }, mapOpen: { get: () => mapOpen },
     spawnPt: { get: () => spawnPt }, HOSPITAL: { get: () => HOSPITAL }, SHERIFF: { get: () => SHERIFF },
+    online: { get: () => online }, garage: { get: () => GARAGE, set: g => { GARAGE = g; } }, garageOpen: { get: () => garageOpen }, openGarage: { value: () => openGarage() },
   });
   initPolice(); initStory(); initExtras(); SHELL.achSub();
   restoreSave();
@@ -6195,7 +6204,7 @@ function startOffline() {
   const was = running; beginPlay(); $('pausesrv').textContent = 'FREE ROAM';
   if (was) return;
   if (hadSave && save.player) notify(`Welcome back to Poway. Progress restored: <b>$${Math.round(save.money).toLocaleString()}</b>, ${clock.label()}.`, 'green', 6000);
-  else notify(PHS.spawnPoint() ? 'Welcome to <b>Poway Automobile Online</b>. You start at Poway High; your gold car is at the curb. <b>J</b> for a courier job, <b>R</b> for the radio, <b>K</b> to fast travel.' : 'Welcome to <b>Poway Automobile Online</b>. Your gold car is parked at the curb.', 'green', 9000);
+  else notify(PHS.spawnPoint() ? 'Welcome to <b>Poway Automobile Online</b>. You start at Poway High; your car is at the curb. <b>J</b> for a courier job, <b>R</b> for the radio, <b>K</b> to fast travel.' : 'Welcome to <b>Poway Automobile Online</b>. Your gold car is parked at the curb.', 'green', 9000);
   if (save.rep < -60) notify(`Locals remember you. Reputation: ${repLabel()}.`, 'red', 7000);
 }
 function startOnline(sid, name) {

@@ -17,7 +17,14 @@
 //   pickup {at, [dx], [dz], label, text} · loseCops {text} · wait {t, [text]}
 //   passenger {as} · comfort {npc, to, stories, failText} · dropoff {as}
 //   pursuers {as, n, crew, armed, shake, shakeT, text} · act {n, title}
+//   stage {scene} · cutscene {scene}              set up / play a cutscene (src/story/cutscene.js)
+//   text {from, msg, [wait]} · card {title, [sub], [t], [hour]}   a text message / a black title card ("FOUR DAYS LATER")
+//   learn {keys, [lines]}                        open up crimes, abilities, garages (src/story/unlocks.js, crimes.js)
+//   crime {kind, n, [at], text}                  do that crime n times (crime:done events from src/story/crimes.js)
+//   marcosCar                                    the prologue: Marco's own car where the game put Tommy's
 // A step with `if: 'wanted'` only runs while you have a wanted level.
+// A mission with `auto: true` starts by itself when it's available (the prologue); `offline: true` keeps it out of
+// online rooms.
 import { ctx } from '../ctx.js';
 import { on, emit } from '../events.js';
 import { addInteract, removeInteract } from '../interact.js';
@@ -27,6 +34,12 @@ import { steerTo, driveTo, routeEdges, routePolyline, samplePolyline } from '../
 import { CAST, LOOKS } from './cast.js';
 import { PLACES } from './places.js';
 import { MISSIONS, LINES } from './missions.js';
+import { playCutscene, updateCutscene, SCENES, titleCard } from './cutscene.js';
+import { initCrimes, updateCrimes, crimeMarks, nearestCrimeSpot, crimeJournal, CRIMES, crimeDebug } from './crimes.js';
+import { unlockList } from './unlocks.js';
+import { initFog, updateFog, fogStats, fogDebug } from '../ui/fog.js';
+import { initGarages, updateGarages, GARAGES } from '../world/garages.js';
+import { initMapKey } from '../ui/mapkey.js';
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -66,6 +79,9 @@ function place(key, m) {
     if (P.snap === 'road') {
       const ne = ctx.nearestEdge(x, z, 300, P.names ? (e => P.names.includes(e.name)) : (e => e.t <= 5)) || ctx.nearestEdge(x, z, 300, e => e.t <= 5);
       pt = ne ? { x: ne.x, z: ne.z } : { x, z };
+    } else if (P.names) { // the sidewalk of that street, on the side the place is on
+      const ne = ctx.nearestEdge(x, z, 300, e => P.names.includes(e.name)); if (ne) { const e = ctx.edges[ne.e], nx = -ne.tz, nz = ne.tx, sd = (x - ne.x) * nx + (z - ne.z) * nz >= 0 ? 1 : -1, o = ctx.walkOff(e); pt = { x: ne.x + nx * o * sd, z: ne.z + nz * o * sd }; }
+      else { const s = ctx.sidewalkNear(x, z); pt = { x: s.x, z: s.z }; }
     } else { const s = ctx.sidewalkNear(x, z); pt = { x: s.x, z: s.z }; }
   }
   placeCache.set(key, pt); return pt;
@@ -78,9 +94,22 @@ function summit(below) {
   if (!below) return { x: _summit.x, z: _summit.z };
   const ne = ctx.nearestEdge(_summit.x, _summit.z, 900, () => true); return ne ? { x: ne.x, z: ne.z } : { x: _summit.x, z: _summit.z };
 }
-// The Reyes house (fictional): it uses the spawn point.
+// The Reyes house (fictional): the nearest real house to where the game starts, a few streets from Poway High, with
+// Rosa on the sidewalk out front. Without the detail zone's data the same search runs around the spawn point.
 function homeSpot() {
-  const Z = ctx.ZONE; if (!Z || Z.cx == null) return { x: ctx.spawnPt.x, z: ctx.spawnPt.z };
+  const sp = ctx.spawnPt, Z = ctx.ZONE;
+  if (sp && !(Z && Z.cx != null)) {
+    let best = null, bd = Infinity;
+    for (const b of ctx.D.buildings) {
+      if (b[1] !== 0) continue; const f = b[2], d0 = hyp(f[0] - sp.x, f[1] - sp.z); if (d0 < 230 || d0 > 1600 || d0 >= bd) continue;
+      let cx = 0, cz = 0; const n = f.length / 2; for (let i = 0; i < n; i++) { cx += f[i * 2]; cz += f[i * 2 + 1]; } cx /= n; cz /= n;
+      const ne = ctx.nearestEdge(cx, cz, 32, e => e.t >= 4 && e.t <= 5); if (!ne) continue;
+      bd = d0; best = { cx, cz, ne };
+    }
+    if (best) { const { cx, cz, ne } = best, e = ctx.edges[ne.e], nx = -ne.tz, nz = ne.tx, sd = (cx - ne.x) * nx + (cz - ne.z) * nz >= 0 ? 1 : -1, o = ctx.walkOff(e); return { x: ne.x + nx * o * sd, z: ne.z + nz * o * sd }; }
+    return { x: sp.x, z: sp.z };
+  }
+  if (!Z || Z.cx == null) return { x: ctx.spawnPt.x, z: ctx.spawnPt.z };
   let best = null, bd = 1e9;
   for (const b of ctx.D.buildings) { const f = b[2], d = hyp(f[0] - Z.cx, f[1] - Z.cz); if (d < bd) { bd = d; best = f; } }
   let hx = Z.cx, hz = Z.cz;
@@ -313,8 +342,10 @@ const STEPS = {
       if (d.time) { s.left -= dt; setMeter(`<b>${fmtT(s.left)}</b>left`); if (s.left <= 0) return 'You ran out of time.'; }
       const P = ctx.player, f = ctx.focusPos();
       if (d.car && !P.inCar) { setObjective('Get in a <em>car</em>.'); return false; }
+      const close = hyp(f.x - pt.x, f.z - pt.z) < (d.r || 10);
+      if (d.foot && P.inCar && close) { setObjective('Get out of the car (<em>F</em>).'); return false; }
       setObjective(d.text);
-      return hyp(f.x - pt.x, f.z - pt.z) < (d.r || 10) && (!P.inCar || P.inCar.vel.length() < 8);
+      return close && (!P.inCar || P.inCar.vel.length() < 8);
     },
   },
   wait: { start(s, d) { s.t = d.t; if (d.text) setObjective(d.text); }, update(s, d, m, dt) { return (s.t -= dt) <= 0; } },
@@ -718,7 +749,54 @@ const STEPS = {
     start(s, d) { const st = ensureSave(); if (d.n) st.act = Math.max(st.act, d.n + 1); s.t = 5.5; ctx.big(d.big || `ACT ${['I', 'II', 'III', 'IV'][d.n - 1]} COMPLETE`, d.title, 'mission', 5); },
     update(s, d, m, dt) { return (s.t -= dt) <= 0; },
   },
+  // ---------------------------------------------------------------- the prologue, title cards, and what the story opens up
+  marcosCar: { // a fresh game parks Tommy's gold car at the start; in the story Tommy has it, so Marco has his own
+    start(s, d, m) {
+      const P = ctx.player, f = ctx.focusPos();
+      for (const v of ctx.vehicles.slice()) if (v.tommy && !v.dead && v !== P.inCar && hyp(v.pos.x - f.x, v.pos.z - f.z) < 120) {
+        const c = spawnVehicle('sedan', 'q-sedan', v.pos.x, v.pos.z, v.rotY, 0x5d6f86); Object.assign(c, { mine: true, marco: true, keep: false, mission: false, react: 0 }); v.remove();
+      }
+    },
+  },
+  stage: { start(s, d, m) { const sc = SCENES[d.scene]; if (sc && sc.stage) sc.stage(m, cineHelpers()); } },
+  cutscene: {
+    start(s, d, m) { s.over = false; setObjective(''); setMeter(''); aimAt(m, null); playCutscene(d.scene, m, cineHelpers()).then(() => { s.over = true; }); },
+    update(s) { return s.over; },
+  },
+  text: {
+    start(s, d) { s.t = d.wait || 0; later(d.delay || 0, () => text(d.from, d.msg)); s.t += d.delay || 0; },
+    update(s, d, m, dt) { return (s.t -= dt) <= 0; },
+  },
+  card: { // fade to black, a title, time moves on, fade back
+    start(s, d) { s.t = 0; s.shown = false; s.T = d.t || 3.2; titleCard(d.title, d.sub, true); },
+    update(s, d, m, dt) {
+      s.t += dt;
+      if (!s.shown && s.t > 0.7) { s.shown = true; if (d.hour != null && !ctx.online) ctx.hour = d.hour; }
+      if (s.t > s.T + 0.7) { titleCard(null); return s.t > s.T + 1.3; }
+      return false;
+    },
+  },
+  learn: {
+    start(s, d) { const L = unlockList(); let i = 0; for (const k of d.keys) { if (L.includes(k)) continue; L.push(k); const c = CRIMES.find(x => x.key === k), g = GARAGES.find(x => x.key === k); if (c) later(0.4 + i++ * 3.2, () => announce(c)); else if (!g) ctx.unlockTravel && ctx.unlockTravel(k); } ctx.persist(); },
+  },
+  crime: { // do a kind of crime n times (the mission points you at the nearest place for it)
+    start(s, d, m) { s.n = 0; ctx.crimeStep = true; s.off = on('crime:done', e => { if (e.kind === d.kind) s.n++; }); setObjective(d.text); },
+    update(s, d, m) {
+      const need = d.n || 1; ctx.crimeStep = true;
+      const pt = d.at ? place(d.at, m) : nearestCrimeSpot(d.kind);
+      if (d.night && !(ctx.hour >= 21 || ctx.hour < 5)) { setObjective(d.nightText || 'Wait for <em>9 PM</em>.'); aimAt(m, null); return false; }
+      aimAt(m, pt && hyp(pt.x - ctx.focusPos().x, pt.z - ctx.focusPos().z) > 25 ? pt : null, 'beam'); setObjective(d.text);
+      if (need > 1) setMeter(`<b>${s.n}/${need}</b>done`);
+      return s.n >= need;
+    },
+    end(s) { ctx.crimeStep = false; if (s.off) s.off(); },
+  },
 };
+function announce(c) { ctx.notify(`<b>NEW · ${c.name.toUpperCase()}</b> ${c.how}`, 'green', 9000); ctx.sfx.cash(); }
+// what a cutscene needs from the story: places, people, cars, and the subtitles
+function cineHelpers() {
+  return { place: k => place(k, S.m), spawnVehicle, castPed, say: lines => sub.push(lines), said: id => sub.done >= id, speaker: () => sub.cur ? sub.cur.who : null, skipLine: () => sub.skip(), clear: () => sub.clear() };
+}
 function route(v, dest) {
   const r = v && routeEdges(v.pos.x, v.pos.z, dest.x, dest.z); if (!r) return false;
   v.mode = 'rail'; v.driver = 'ai'; v.parked = false; v.speed = v.vel.length();
@@ -729,6 +807,7 @@ function route(v, dest) {
 // ------------------------------------------------------------------ mission flow
 function available(def) {
   const st = ensureSave();
+  if (def.offline && ctx.online) return false;
   if (def.needs && !def.needs.every(id => st.done.includes(id))) return false;
   if (st.done.includes(def.id) && !def.repeat) return false;
   if (def.repeat && st.last[def.id] && (Date.now() - st.last[def.id]) / 1000 < def.repeat) return false;
@@ -776,9 +855,11 @@ function pass() {
   if (!st.done.includes(def.id)) st.done.push(def.id);
   st.last[def.id] = Date.now();
   const title = def.type === 'trial' ? 'TIME TRIAL COMPLETE' : 'MISSION PASSED';
-  if (def.steps[def.steps.length - 1].do !== 'act') ctx.big(title, `+$${rw.money}${rw.note ? ' · ' + rw.note : ''}`, 'pass', 4);
+  if (def.quiet) { }
+  else if (def.steps[def.steps.length - 1].do !== 'act') ctx.big(title, `+$${rw.money}${rw.note ? ' · ' + rw.note : ''}`, 'pass', 4);
   else ctx.notify(`<b>${title}</b> · +$${rw.money}`, 'green', 6000);
-  ctx.sfx.job();
+  if (!def.quiet) ctx.sfx.job();
+  if (def.type === 'main') later(def.quiet ? 0.5 : 4.5, () => nextGoal(true));
   for (const a of def.after || []) later(a.t, () => text(a.text[0], a.text[1]));
   emit('mission:pass', { id: def.id });
   m.passed = true; endMission(); ctx.persist();
@@ -818,7 +899,7 @@ export function storyTarget() { const m = S.m; return m && m.target && m.targetK
 // ------------------------------------------------------------------ givers
 function updateGivers() {
   const f = ctx.focusPos(), want = new Map();
-  if (!S.m) for (const def of MISSIONS) if (available(def)) { const key = def.giver + '@' + def.at; if (!want.has(key)) want.set(key, def); }
+  if (!S.m) for (const def of MISSIONS) if (available(def) && !def.auto) { const key = def.giver + '@' + def.at; if (!want.has(key)) want.set(key, def); }
   for (const [key, def] of want) {
     let g = S.givers.get(key);
     const pt = place(def.at);
@@ -842,6 +923,12 @@ function updateGivers() {
 // ------------------------------------------------------------------ public API
 export function initStory() {
   const st = ensureSave();
+  // saves from before the prologue: anyone past the start has been through it; and whatever their missions taught
+  // (the `learn` steps added since) is theirs too
+  if (st.done.some(id => id !== 'p0-tommy') && !st.done.includes('p0-tommy')) st.done.unshift('p0-tommy');
+  const L = unlockList(); for (const id of st.done) { const def = MISSIONS.find(d => d.id === id); if (def) for (const d of def.steps) if (d.do === 'learn') for (const k of d.keys) if (!L.includes(k)) L.push(k); }
+  ctx.storyPlace = k => place(k); ctx.storyBusy = storyBusy;
+  ctx.storyPlaces = done => MISSIONS.filter(d => done.includes(d.id) && PLACES[d.at]).map(d => place(d.at)).filter(Boolean);
   for (const q of st.props) ctx.addRamp(q.x, q.z, q.rot, q); // ramps you built along the way stay where they are
   if (ctx.ensureAvatar) for (const n of Object.values(CAST_SKINS)) ctx.ensureAvatar(n); // load the cast's own skins in the background
   on('player:died', ({ kind }) => { if (S.m) { S.failPending = kind === 'busted' ? 'You got busted.' : 'You got wasted.'; fail(S.failPending, true); } });
@@ -850,8 +937,18 @@ export function initStory() {
 export function updateStory(dt) {
   if (!S.started) {
     S.started = true;
-    if (!ensureSave().done.includes('a1-homecoming')) later(9, () => text('rosa', 'Mijo, I\'m out front. Come say hello to your mother. (Look for <b>R</b> on your map.)'));
+    // what needs the whole world (and the restored save): map discovery, the map key, garages, street crime
+    try { initFog(ctx.save); } catch (e) { console.error('[fog]', e); }
+    try { initMapKey(); initGarages(); initCrimes(); } catch (e) { console.error('[story extras]', e); }
+    S.autoT = 2.5;
+    if (ensureSave().done.includes('p0-tommy')) later(8, () => nextGoal(false));
   }
+  updateCutscene(dt); updateFog(dt); updateGarages(dt); updateCrimes(dt);
+  // the prologue (and anything else marked auto) starts by itself, offline, once you're in control
+  if (!S.m && !ctx.online && ctx.running && !ctx.player.dead && police.wanted === 0 && !ctx.job) {
+    S.autoT -= dt; if (S.autoT <= 0) { S.autoT = 3; const a = MISSIONS.find(d => d.auto && available(d)); if (a) startMission(a); }
+  }
+  if (S.goalT > 0 && !S.m) { S.goalT -= dt; if (S.goalT <= 0) setObjective(''); }
   for (let i = S.later.length - 1; i >= 0; i--) if (ctx.simTime >= S.later[i].t) { const l = S.later.splice(i, 1)[0]; l.fn(); }
   S.giverT -= dt; if (S.giverT <= 0) { S.giverT = 0.5; updateGivers(); }
   sub.update(dt);
@@ -886,8 +983,9 @@ export function storyMapMarks() {
     return out;
   }
   const seen = new Set();
+  out.push(...crimeMarks());
   for (const def of MISSIONS) {
-    if (!available(def)) continue; const key = def.giver + '@' + def.at; if (seen.has(key)) continue; seen.add(key);
+    if (!available(def) || def.auto) continue; const key = def.giver + '@' + def.at; if (seen.has(key)) continue; seen.add(key);
     const pt = place(def.at), c = CAST[def.giver];
     out.push({ x: pt.x, z: pt.z, color: c ? c.color : '#f3ede1', letter: c ? c.letter : 'T', size: 7, edge: def.type === 'main', label: (c ? c.name + ': ' : 'Time trial: ') + def.title });
   }
@@ -903,11 +1001,14 @@ export function storyJournal() {
   }
   h += `<p>${st.done.filter(id => !main.some(d => d.id === id)).length} side jobs and trials done</p>`;
   if (S.m) h += `<p>On a job: <b>${S.m.def.title}</b>${objHtml ? ' · ' + objHtml : ''}</p>`;
-  const avail = S.m ? [] : MISSIONS.filter(available);
+  else { const n = nextMain(); if (n) h += `<p>Next: see <b>${CAST[n.giver] ? CAST[n.giver].name : n.giver}</b> · ${n.title} · ${esc(PLACES[n.at] ? PLACES[n.at].note : '')}.</p>`; }
+  h += `<p>You've explored about <b>${fogStats().pct}%</b> of the map.</p>`;
+  const avail = S.m ? [] : MISSIONS.filter(d => available(d) && !d.auto);
   if (avail.length) h += '<h3>Open jobs</h3>' + avail.map(d => { const c = CAST[d.giver]; return `<p><span class="who" style="background:${c ? c.color : '#f3ede1'}"></span><b>${d.title}</b> · ${c ? c.name : 'time trial'} · ${esc(PLACES[d.at].note)}. ${esc(d.pitch)}</p>`; }).join('');
   const best = Object.entries(st.best); if (best.length) h += '<h3>Best times</h3>' + best.map(([id, t]) => `<p>${(MISSIONS.find(d => d.id === id) || { title: id }).title}: <b>${fmtT(t)}</b></p>`).join('');
   h += '<h3>People</h3>' + st.met.filter(w => CAST[w]).map(w => `<p><span class="who" style="background:${CAST[w].color}"></span><b>${CAST[w].full}</b> · ${esc(CAST[w].bio)}${st.trust[w] !== undefined ? ` <i>Trust ${st.trust[w]}</i>` : ''}</p>`).join('');
   if (st.voicemails.length) h += '<h3>Tommy\'s voicemails</h3>' + st.voicemails.map(id => `<p><b>${id}</b> · "${(st.vmText && st.vmText[id] || []).join(' ')}"</p>`).join('');
+  h += crimeJournal();
   return h;
 }
 // Debug: jump the story (window.__gtp.story).
@@ -916,4 +1017,14 @@ export const storyDebug = {
   complete: id => { const st = ensureSave(); if (!st.done.includes(id)) st.done.push(id); }, abandon: () => abandonMission(),
   step: () => S.m && { mission: S.m.def.id, step: S.m.si, do: (S.m.def.steps[S.m.si] || {}).do },
   skipStep: () => { const m = S.m; if (!m) return; const d = m.def.steps[m.si]; if (m.st && STEPS[d.do].end) STEPS[d.do].end(m.st, d, m); m.st = null; m.si++; },
+  unlock: k => { const L = unlockList(); for (const x of [].concat(k)) if (!L.includes(x)) L.push(x); }, unlocks: () => unlockList().slice(), fog: fogDebug, crimes: crimeDebug, nextGoal: () => nextGoal(true), sub: () => sub,
 };
+// the main story mission you can start next (Espola Road first, then the others in the order they open)
+function nextMain() { const av = MISSIONS.filter(d => d.type === 'main' && !d.auto && available(d)); return av.find(d => (d.line || 'reyes') === 'reyes') || av[0] || null; }
+// after a main mission (and when you load a game): who to see next, with a waypoint to them
+function nextGoal(route) {
+  if (S.m || ctx.online) return; const n = nextMain(); if (!n) return;
+  const c = CAST[n.giver], name = c ? c.name : n.giver, pt = place(n.at);
+  setObjective(`Next: go and see <em>${name}</em>${n.when && !n.when(ctx) ? ` · ${n.whenText}` : ''}`); S.goalT = 30;
+  if (route && pt && hyp(pt.x - ctx.focusPos().x, pt.z - ctx.focusPos().z) > 60) ctx.setWaypoint(pt.x, pt.z, `${name} · ${n.title}`);
+}

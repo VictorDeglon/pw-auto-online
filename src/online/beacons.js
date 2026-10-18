@@ -1,10 +1,12 @@
 // Other players, findable at a glance. Past a few dozen metres, or out of sight behind a building, each one gets a
 // marker on screen over where they are: their colour, name and distance, drawn over the world so it reads through
 // buildings and at any range. Up close, in plain view, their own name tag with the health bar (remote.js) shows
-// instead, so there is only ever one label per player. Reads REMOTES, so it works whatever net.js talks to.
+// instead, so there is only ever one label per player. Nobody gets a marker in ground you haven't explored yet (the
+// map's fog, src/ui/fog.js). Reads REMOTES, so it works whatever net.js talks to.
 //   updateBeacons(dt)   once a frame, after the camera moved
 import { ctx } from '../ctx.js';
 import { REMOTES } from './remote.js';
+import { fogSeen } from '../ui/fog.js';
 
 const NEAR = 40; // metres: closer than this, with a clear view, the 3D name tag is enough
 const CSS = `
@@ -47,6 +49,7 @@ export function updateBeacons(dt) {
     const at = rem.car ? rem.car.g.position : p.pos, top = at.y + (rem.car ? 2.3 : 2.1);
     const d = Math.hypot(at.x - cam.x, top - cam.y, at.z - cam.z);
     b.losT -= dt; if (b.losT <= 0) { b.losT = 0.2 + Math.random() * 0.1; b.clear = d < NEAR + 10 && ctx.los(cam.x, cam.y, cam.z, at.x, top, at.z); }
+    if (!fogSeen(at.x, at.z)) { hide(b); if (rem.tag) rem.tag.visible = d < NEAR && b.clear; continue; } // somewhere you haven't explored (src/ui/fog.js)
     const show = !(d < NEAR && b.clear);
     if (rem.tag) rem.tag.visible = !show; // one label per player
     if (!show) { hide(b); continue; }

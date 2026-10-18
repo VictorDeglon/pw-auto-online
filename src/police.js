@@ -2,7 +2,10 @@
 //
 // Deputies only know what they can see or what dispatch tells them:
 // - Every unit has a vision cone and needs line of sight. Night, fog and rain shorten it.
-// - Crimes need a witness: a deputy who sees or hears it, or a civilian who calls 911 (with a delay).
+// - Crimes need a witness: a deputy who sees or hears it, a security camera, or a civilian who saw it and calls 911.
+//   A civilian has to be in range (shorter in the dark and the fog, shortest for sleight of hand), looking roughly the
+//   right way and in line of sight. Witnesses get clear first, then dial; the stars come when the call goes through,
+//   so a witness you stop in time (or scare quiet, once you can) never reports anything. Nobody saw it, no stars.
 // - While a unit has eyes on you the stars are solid and the last known position (LKP) follows you.
 //   Once every unit loses you the stars flash, a search area is drawn around the LKP and units
 //   search it. Stay unseen long enough (faster outside the area, faster again in a different car)
@@ -71,7 +74,8 @@ function describe() {
 const WHAT = {
   assault: 'an assault', murder: 'a homicide', carjack: 'a carjacking', theft: 'a vehicle theft', gunfire: 'shots fired',
   copkill: 'a deputy down', explosion: 'an explosion', hitrun: 'a hit-and-run', hitped: 'a pedestrian struck', evade: 'a driver evading',
-  sighting: 'a suspect sighting',
+  sighting: 'a suspect sighting', mugging: 'a mugging', robbery: 'an armed robbery', burglary: 'a burglary', shoplift: 'a shoplifter',
+  pickpocket: 'a pickpocket', skimming: 'ATM tampering', parts: 'a car being stripped', heist: 'an armored car robbery', racket: 'extortion',
 };
 const NEWS = {
   assault: s => `Brawl breaks out on ${s}. Witnesses describe a "very rude" suspect.`,
@@ -83,6 +87,14 @@ const NEWS = {
   explosion: s => `Vehicle explodes on ${s}. "Not very City in the Country," says one local.`,
   hitrun: s => `Hit-and-run on ${s}. The other driver says they'll "never forget that face."`,
   hitped: s => `Pedestrian struck on ${s}. Driver did not stop.`,
+  mugging: s => `Resident robbed at gunpoint on ${s}. "He was very calm about it," says victim.`,
+  robbery: s => `Armed robbery at a store on ${s}. Clerk unharmed, register empty.`,
+  burglary: s => `Break-in on ${s}. Neighborhood app recommends "better locks and fewer posts about vacations."`,
+  shoplift: s => `Shoplifter flees store on ${s}. Loss estimated at "a lot of beef jerky."`,
+  pickpocket: s => `Wallets going missing on ${s}. Sheriff urges residents to use front pockets.`,
+  skimming: s => `Card skimmer found on an ATM near ${s}. Check your statements, Poway.`,
+  parts: s => `Catalytic converter thieves strike again on ${s}. "It sounded like a dentist," says neighbor.`,
+  heist: s => `Armored car hit on ${s}. Guards shaken. Cash gone.`,
 };
 let newsT = 0;
 
@@ -172,9 +184,10 @@ function loseWanted() {
 
 export function crime(kind, x, z, sev, victim) {
   const { save, peds, vehicles, player } = ctx;
-  // Stealing a civilian's car is between you and the owner (they come after you themselves, see revenge() in
-  // index.html); the Sheriff only cares when it's one of theirs.
-  if ((kind === 'carjack' || kind === 'theft') && !(victim && victim.isCop) && sev < 2) { emit('crime', { kind, x, z, sev, victim }); return; }
+  // Dragging a driver out of their car is between you and the owner (they come after you themselves, see revenge()
+  // in index.html); the Sheriff only cares when it's one of theirs. A car stolen off a driveway goes through the
+  // witnesses like anything else.
+  if (kind === 'carjack' && !(victim && victim.isCop) && sev < 2) { emit('crime', { kind, x, z, sev, victim }); return; }
   // Running people over gets the Sheriff called, but on its own it never goes past two stars.
   if (kind === 'hitped') { sev = Math.min(sev, 2); if (police.wanted >= 2 && !police.violent) { emit('crime', { kind, x, z, sev, victim }); return; } }
   if (kind === 'gunfire' || kind === 'assault' || kind === 'murder' || kind === 'copkill' || kind === 'explosion') police.violent = true;
@@ -206,34 +219,78 @@ export function crime(kind, x, z, sev, victim) {
     if (police.wanted) { if (lostFor() > 2.5) { police.lkp = { x, z }; police.cool = Math.max(0, police.cool - 5); radio(`${kind === 'gunfire' ? 'Shots fired' : 'Explosion'} near ${street(x, z)}.`); } }
     else setWanted(Math.max(1, sev), kind === 'gunfire' ? 'Deputies heard the shots.' : 'Deputies heard the blast.', { seen: false, x, z, what: kind });
   } else if (police.wanted > 0 && sev >= 2) bumpHeat(sev);
-  // civilians: scatter, and some of them call it in
-  const radius = loud ? 70 : 32;
+  // civilians: the ones who saw it scatter and some of them call it in; with a gun or a blast, everyone near enough
+  // to hear runs, and a few call about the noise (that's 'shots fired', not what you did)
+  const radius = loud ? 70 : 45, range = eyeRange(SEE_R[kind] || 40), callP = CALL_P[kind] ?? 0.35;
+  let saw = 0, callers = 0, firstSaw = null;
   for (const p of peds) {
-    if (p === victim || p.isCop || p.ai || p.state === 'dead' || p.state === 'fly') continue;
-    const d = hyp(p.pos.x - x, p.pos.z - z); if (d > radius) continue;
-    if (!loud && !ctx.los(p.pos.x, p.pos.y + 1.6, p.pos.z, x, y + 1.2, z)) continue;
+    if (p === victim || p.isCop || p.ai || p.remote || p.state === 'dead' || p.state === 'fly') continue;
+    const d = hyp(p.pos.x - x, p.pos.z - z); if (d > Math.max(radius, range)) continue;
+    const sees = sawIt(p, x, y, z, range);
+    if (!sees && !(loud && d < radius)) continue;
+    if (sees) { saw++; if (!firstSaw) firstSaw = p; }
     if (p.state === 'fight') continue;
-    const brave = p.personality === 'tough' && kind === 'assault' && d < 15 && !player.inCar && Math.random() < 0.35;
-    const quiet = kind === 'theft' || kind === 'hitrun' || kind === 'evade'; // people notice, they don't run for their lives
+    const brave = sees && p.personality === 'tough' && kind === 'assault' && d < 15 && !player.inCar && Math.random() < 0.35;
+    const quiet = QUIET.has(kind); // people notice, they don't run for their lives
     if (brave) { p.anger = 100; p.state = 'fight'; p.timer = 20; p.talk('fight'); }
-    else if (quiet) { if (kind === 'theft' && Math.random() < 0.4) p.talk('theft'); }
+    else if (quiet) { if (sees && Math.random() < 0.5) p.talk('theft'); if (sees && !p.callT) p.flee(x, z, rand(4, 7)); }
     else p.scare(x, z, kind === 'gunfire' ? 'gun' : kind);
-    if (!p.callT && !p.reported && (p.personality === 'karen' || Math.random() < 0.35)) { p.callT = rand(3, 8); p.pendingSev = sev; p.pendingWhy = kind; p.pendingX = x; p.pendingZ = z; }
+    if (p.callT || p.reported) continue;
+    const why = sees ? kind : kind === 'explosion' ? 'explosion' : 'gunfire', pc = sees ? callP : 0.2;
+    if (p.personality === 'karen' && pc > 0 || Math.random() < pc) { witness(p, why, sees ? sev : 1, x, z); callers++; }
   }
+  // a murder somebody saw always gets reported by someone
+  if (firstSaw && !callers && callP >= 0.9 && !firstSaw.reported) { witness(firstSaw, kind, sev, x, z); callers++; }
+  let cams = 0; for (const w of watchers) if (w(kind, x, y, z, sev)) cams++;
   if (victim && !victim.isCop && victim.state !== 'dead') { victim.pendingSev = sev; victim.pendingWhy = kind; victim.pendingX = x; victim.pendingZ = z; }
+  // tell the player how it went, now and then
+  if (REPORTABLE.has(kind) && now() > tellT) {
+    if (!seen && !heard && !saw && !cams && !(victim && victim.state !== 'dead' && !victim.isCop)) { tellT = now() + 6; ctx.notify('<b>No witnesses.</b> Nobody saw that.', 'green', 3000); }
+    else if (!seen && callers) { tellT = now() + 6; ctx.notify(`<b>${callers === 1 ? 'A witness' : callers + ' witnesses'}</b> saw that. Stop them before they reach a phone.`, 'red', 4000); }
+  }
 }
+
+// ------------------------------------------------------------------ witnesses
+// How far a civilian notices a crime (metres, in daylight), and how likely they are to call it in once they have.
+const SEE_R = { murder: 45, copkill: 45, assault: 40, mugging: 30, robbery: 35, carjack: 40, explosion: 120, gunfire: 60, hitped: 45, hitrun: 40,
+  theft: 30, burglary: 25, parts: 30, skimming: 18, shoplift: 12, pickpocket: 7, heist: 60, racket: 20 };
+const CALL_P = { murder: 0.95, copkill: 1, assault: 0.6, mugging: 0.9, robbery: 0.95, carjack: 0.7, explosion: 0.6, gunfire: 0.45, hitped: 0.6, hitrun: 0.5,
+  theft: 0.35, burglary: 0.9, parts: 0.6, skimming: 0.7, shoplift: 0.6, pickpocket: 0.7, heist: 1, racket: 0.5 };
+const QUIET = new Set(['theft', 'hitrun', 'evade', 'shoplift', 'pickpocket', 'skimming', 'parts', 'burglary']);
+const REPORTABLE = new Set(['murder', 'assault', 'mugging', 'robbery', 'burglary', 'shoplift', 'pickpocket', 'skimming', 'parts', 'theft', 'carjack']);
+let tellT = 0;
+const watchers = []; // security cameras and the like: (kind, x, y, z, sev) -> true when it saw that
+export function addWatcher(fn) { watchers.push(fn); }
+// in the dark, in fog or rain, you see less far (headlights and street lights aside, which this doesn't try to count)
+function eyeRange(r) { const w = ctx.weather; return r * (1 - 0.55 * ctx.nightAmount) * (1 - 0.5 * w.fog) * (1 - 0.15 * w.rain); }
+// Did civilian p see something happen at (x, y, z)? Close enough, facing roughly that way (or right next to it), and
+// nothing in between.
+export function sawIt(p, x, y, z, range) {
+  const d = hyp(p.pos.x - x, p.pos.z - z); if (d > range) return false;
+  if (d > 6 && ((x - p.pos.x) * Math.sin(p.rotY) + (z - p.pos.z) * Math.cos(p.rotY)) / d < -0.3) return false; // looking the other way
+  return ctx.los(p.pos.x, p.pos.y + 1.6, p.pos.z, x, y + 1.2, z);
+}
+// p will call the Sheriff about `why` once they're clear (a couple of seconds running, then a few on the phone)
+export function witness(p, why, sev, x, z) {
+  if (p.reported || p.isCop || p.state === 'dead') return;
+  p.callT = (why === 'murder' || why === 'robbery' || why === 'heist' ? rand(2.5, 4.5) : rand(3, 7)) * (p.personality === 'coward' ? 1.4 : 1);
+  p.pendingSev = Math.max(p.pendingSev || 0, sev); p.pendingWhy = why; p.pendingX = x; p.pendingZ = z; p.witness = true;
+}
+// a witness who won't be calling anyone after all (intimidated, bribed, or the call is moot)
+export function silence(p) { p.callT = 0; p.reported = true; p.witness = false; p.pendingSev = 0; if (p.state === 'call') { p.state = 'flee'; p.fleeFrom = [p.pos.x, p.pos.z]; p.timer = 6; } p.setMarker && p.setMarker(null); }
 
 // A civilian finished a 911 call. They describe where the suspect is now if they can still see them,
 // otherwise where it happened.
 export function reportCall(p) {
-  p.reported = true; p.callT = 0;
+  p.reported = true; p.callT = 0; p.witness = false;
   const sev = Math.max(1, p.pendingSev || 1), P = ctx.player;
   if (P.dead || (p.pendingWhy === 'sighting' && !police.wanted)) return;
   const f = ctx.focusPos(), d = hyp(p.pos.x - f.x, p.pos.z - f.z);
   if (d > 600) return;
   const canSee = d < 60 && ctx.los(p.pos.x, p.pos.y + 1.6, p.pos.z, f.x, f.y + 1.2, f.z);
   const x = canSee ? f.x + rand(-15, 15) : (p.pendingX ?? p.pos.x), z = canSee ? f.z + rand(-15, 15) : (p.pendingZ ?? p.pos.z);
-  const why = { assault: 'an assault', murder: 'a body on the street', carjack: 'a carjacking', theft: 'a stolen car', gunfire: 'shots fired', copkill: 'a deputy down', explosion: 'an explosion', hitrun: 'a hit-and-run', hitped: 'a hit-and-run', bump: 'a lunatic', sighting: 'you' }[p.pendingWhy] || 'you';
+  const why = { assault: 'an assault', murder: 'a murder they saw', carjack: 'a carjacking', theft: 'a stolen car', gunfire: 'shots fired', copkill: 'a deputy down', explosion: 'an explosion', hitrun: 'a hit-and-run', hitped: 'a hit-and-run', bump: 'a lunatic', sighting: 'you',
+    mugging: 'a mugging', robbery: 'an armed robbery', burglary: 'a break-in', shoplift: 'a shoplifter', pickpocket: 'a pickpocket', skimming: 'someone messing with an ATM', parts: 'someone under a car with a saw', heist: 'an armored car robbery', racket: 'a shakedown' }[p.pendingWhy] || 'you';
   const lost = police.wanted > 0 && lostFor() > 2.5;
   if (police.wanted >= sev && p.pendingWhy !== 'sighting') bumpHeat(1);
   setWanted(Math.max(sev, police.wanted), `A witness called the Sheriff about ${why}.`, { seen: false, x, z, what: p.pendingWhy });

@@ -3,7 +3,7 @@
 export const CAST = {
   marco: {
     name: 'Marco', full: 'Marco Reyes', color: '#f3ede1', voice: 0.95,
-    bio: '26. Grew up on Cardinal Court, left Poway at 19 after a fight with his brother and never called. Back for Tommy\'s funeral, carrying the call he let go to voicemail.',
+    bio: '26. Grew up a few streets from Poway High, left Poway at 19 after a fight with his brother and never called. Came home because Tommy finally did, and got there in time to watch him die.',
   },
   rosa: {
     name: 'Rosa', full: 'Rosa Reyes', color: '#f29ccf', voice: 1.15, letter: 'R', home: 'home',
@@ -11,8 +11,9 @@ export const CAST = {
     bio: 'Marco\'s mother. Twenty-two years running a school cafeteria, widowed eight. Keeps Tommy\'s room exactly as he left it and wants Marco to stay, and to stay out of it.',
   },
   tommy: {
-    name: 'Tommy', full: 'Tommy Reyes', color: '#f0b23a', voice: 0.9,
-    bio: 'Marco\'s older brother, dead at 30. Poway High quarterback, gifted mechanic, then a knee injury, pills and a debt. Died in a "single-car accident" on Espola Road at 2 AM.',
+    name: 'Tommy', full: 'Tommy Reyes', color: '#f0b23a', voice: 0.9, letter: 'T',
+    look: { skin: '#c68863', shirt: '#2f3a4a', pants: '#2b3a55', hair: '#1a1a1a', hat: '#8a6a2c' },
+    bio: 'Marco\'s older brother, dead at 30. Poway High quarterback, gifted mechanic, then a knee injury, pills and a debt. Called Marco home after six years, and went off Espola Road at 2 AM the same night. The report says "single-car accident."',
   },
   dee: {
     name: 'Dee', full: 'Deandra "Dee" Okafor', color: '#7cc0ff', voice: 1.05, letter: 'D', home: 'deeGarage',
@@ -37,6 +38,11 @@ export const CAST = {
     name: 'Brenda', full: 'Brenda Pruitt', color: '#ff8a65', voice: 1.3, letter: 'B', home: 'brenda',
     look: { skin: '#f6d7bd', shirt: '#e07a5f', pants: '#e5e0d2', hair: '#c9a46b' },
     bio: 'HOA board president and neighborhood-app moderator. Has opinions about your trash cans. Has stronger opinions about porch pirates.',
+  },
+  lucky: {
+    name: 'Lucky', full: 'Lucinda "Lucky" Navarro', color: '#c792ea', voice: 1.1, letter: 'L', home: 'lucky',
+    look: { skin: '#e0ac85', shirt: '#5b2a4e', pants: '#1f2a44', hair: '#2a1d14' },
+    bio: 'Runs Lucky\'s Swap & Loan on Poway Road: guitars, wedding rings, power tools, no questions. Bought half of what Tommy ever stole and liked him anyway.',
   },
   // ---- Sycamore Smoke
   nina: {

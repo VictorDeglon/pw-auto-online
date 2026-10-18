@@ -10,7 +10,10 @@ The town is built from real data: OpenStreetMap streets and buildings, USGS elev
 
 - **Play online:** pick a server, then pick a username. The game asks for your name every time you join. Names must be
   unique on that server (case doesn't count), 3–16 letters, numbers or `_`. Don't use your real name.
-- **Free roam:** offline single player with jobs and story missions.
+- **Free roam:** offline single player with jobs and story missions. A new game opens with Tommy's last night at
+  Lake Poway; the story then opens up street crime a piece at a time (the pause menu's journal lists every crime and
+  what unlocks it). Crimes only bring the Sheriff if somebody sees them: a deputy, a security camera, or a witness who
+  gets to a phone. The map shows only what you've explored.
 - **Character:** choose your look from the Microsoft Rocketbox cast. Other players see it.
 - **Settings:** graphics presets from *Potato* to *Ultra*, picked for your computer automatically, plus dynamic
   resolution that lowers the render scale when the frame rate drops.
