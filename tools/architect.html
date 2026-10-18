@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Poway Procedural Architect - AAA World & Building Studio</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --panel: rgba(18, 23, 33, 0.88);
+      --border: rgba(255, 255, 255, 0.12);
+      --accent: #38bdf8;
+      --gold: #f59e0b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+    }
+    #canvas-container { width: 100%; height: 100%; position: absolute; left: 0; top: 0; }
+
+    /* Top Navigation Header */
+    #top-bar {
+      position: fixed; left: 16px; top: 16px; z-index: 10;
+      background: var(--panel); backdrop-filter: blur(16px);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 10px 18px; display: flex; align-items: center; gap: 14px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .badge {
+      background: linear-gradient(135deg, #6366f1, #0284c7);
+      color: #fff; font-weight: 800; font-size: 10px;
+      padding: 3px 8px; border-radius: 6px; letter-spacing: 0.05em;
+    }
+    .title { font-weight: 700; font-size: 15px; color: #fff; }
+    .subtitle { font-size: 11px; color: var(--muted); }
+
+    /* Left Control Sidebar */
+    #sidebar {
+      position: fixed; left: 16px; top: 80px; bottom: 16px; z-index: 10;
+      width: 320px; background: var(--panel); backdrop-filter: blur(16px);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px; display: flex; flex-direction: column; gap: 14px;
+      overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .section-title {
+      font-size: 10px; font-weight: 800; color: var(--muted);
+      letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .control-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 8px;
+    }
+    .control-label { font-size: 12px; font-weight: 600; color: #e2e8f0; }
+    select, input[type="range"], button {
+      background: #1e293b; color: #fff; border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px; font-size: 12px; outline: none;
+    }
+    select { cursor: pointer; width: 140px; }
+    input[type="range"] { width: 120px; cursor: pointer; }
+    button {
+      cursor: pointer; font-weight: 600; transition: all 0.15s ease;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    button:hover { background: #334155; border-color: var(--accent); }
+    button.primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border: none; padding: 10px; font-size: 13px; border-radius: 8px;
+    }
+    button.primary:hover { opacity: 0.95; transform: translateY(-1px); }
+
+    .preset-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    }
+    .preset-btn {
+      padding: 8px 6px; font-size: 11px; text-align: center;
+      background: #1e293b; border: 1px solid var(--border); border-radius: 6px;
+    }
+    .preset-btn.active {
+      background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent);
+    }
+
+    /* Bottom Keys & Status Bar */
+    #status-bar {
+      position: fixed; right: 16px; bottom: 16px; z-index: 10;
+      background: var(--panel); backdrop-filter: blur(16px);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 16px; display: flex; align-items: center; gap: 16px;
+      color: var(--muted); font-size: 11px;
+    }
+    #status-bar b { color: #fff; }
+  </style>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Header -->
+  <div id="top-bar">
+    <span class="badge">AAA ENGINE</span>
+    <div>
+      <div class="title">Poway Procedural Architect</div>
+      <div class="subtitle">Real-time PBR Architecture, Interiors & SoCal Ecosystem</div>
+    </div>
+  </div>
+
+  <!-- Sidebar Controls -->
+  <div id="sidebar">
+    <!-- Presets -->
+    <div>
+      <div class="section-title">Architectural Presets</div>
+      <div class="preset-grid">
+        <button class="preset-btn active" data-preset="spanish_villa">Spanish Villa</button>
+        <button class="preset-btn" data-preset="suburban_2story">Suburban 2-Story</button>
+        <button class="preset-btn" data-preset="poway_ranch">Poway Ranch</button>
+        <button class="preset-btn" data-preset="commercial_strip">Commercial Plaza</button>
+        <button class="preset-btn" data-preset="modern_luxury">Modern Luxury</button>
+        <button class="preset-btn" id="btnRandom">🎲 Randomize</button>
+      </div>
+    </div>
+
+    <!-- Dimensions -->
+    <div>
+      <div class="section-title">Geometry & Stories</div>
+      <div class="control-row">
+        <span class="control-label">Width</span>
+        <input type="range" id="paramWidth" min="8" max="24" step="1" value="14">
+      </div>
+      <div class="control-row">
+        <span class="control-label">Depth</span>
+        <input type="range" id="paramDepth" min="10" max="28" step="1" value="16">
+      </div>
+      <div class="control-row">
+        <span class="control-label">Stories</span>
+        <select id="paramStories">
+          <option value="1">1 Story (Ranch)</option>
+          <option value="2" selected>2 Stories (Family)</option>
+          <option value="3">3 Stories (Estate)</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Attached Garage</span>
+        <input type="checkbox" id="paramGarage" checked>
+      </div>
+    </div>
+
+    <!-- Roof Style -->
+    <div>
+      <div class="section-title">Roof & Materials</div>
+      <div class="control-row">
+        <span class="control-label">Roof Type</span>
+        <select id="paramRoofStyle">
+          <option value="spanish_tile" selected>Spanish Clay Tile</option>
+          <option value="shingle_gable">Shingle Gable/Hip</option>
+          <option value="commercial_flat">Commercial Parapet</option>
+          <option value="modern_shed">Modern Wood Shed</option>
+        </select>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Roof Pitch</span>
+        <input type="range" id="paramPitch" min="0.15" max="0.6" step="0.05" value="0.35">
+      </div>
+      <div class="control-row">
+        <span class="control-label">Wall Finish</span>
+        <select id="paramWallColor">
+          <option value="0xebe5d8">Desert Sand Stucco</option>
+          <option value="0xf5f5f0">California White</option>
+          <option value="0xd6c2a8">Warm Adobe</option>
+          <option value="0x787d85">Modern Slate Gray</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- X-Ray & Cutaways -->
+    <div>
+      <div class="section-title">Inspection & Interiors</div>
+      <div class="control-row">
+        <span class="control-label">Show Roof</span>
+        <input type="checkbox" id="toggleRoof" checked>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Show Interiors</span>
+        <input type="checkbox" id="toggleInterior" checked>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Yard & Landscaping</span>
+        <input type="checkbox" id="toggleYard" checked>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Pool & Deck</span>
+        <input type="checkbox" id="togglePool" checked>
+      </div>
+    </div>
+
+    <!-- Lighting Atmosphere -->
+    <div>
+      <div class="section-title">Atmosphere & Time</div>
+      <div class="control-row">
+        <span class="control-label">Lighting Preset</span>
+        <select id="paramLighting">
+          <option value="noon" selected>High Noon Sun</option>
+          <option value="golden">Golden Hour Sunset</option>
+          <option value="night">Dramatic Night</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+      <button id="btnWalk" class="primary">🚶 Enter Walk Mode (V)</button>
+      <button id="btnExport" style="background: #10b981; border: none; padding: 10px; font-size: 13px; border-radius: 8px;">
+        💾 Export to Unreal Engine (GLB)
+      </button>
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div id="status-bar">
+    <span>Orbit: <b>Left Click + Drag</b></span>
+    <span>Pan: <b>Right Click</b></span>
+    <span>Zoom: <b>Scroll</b></span>
+    <span>Walk Mode: <b>V (WASD to walk)</b></span>
+    <span>Random: <b>Space</b></span>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { PBRTextureFactory } from './architect/textures.js';
+    import { RoofGenerator } from './architect/roofs.js';
+    import { FacadeGenerator } from './architect/facade.js';
+    import { InteriorGenerator } from './architect/interiors.js';
+    import { LandscapingGenerator } from './architect/landscaping.js';
+    import { SceneExporter } from './architect/exporter.js';
+
+    // --- Setup Three.js Renderer & Scene ---
+    const container = document.getElementById('canvas-container');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x99ccff);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
+    camera.position.set(24, 18, 30);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02; // Prevent going underground
+    controls.target.set(0, 3, 0);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- Lighting ---
+    const hemiLight = new THREE.HemisphereLight(0xddeeff, 0x8a7b60, 0.85);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfff6e5, 2.4);
+    sunLight.position.set(35, 45, 25);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.camera.left = -30;
+    sunLight.shadow.camera.right = 30;
+    sunLight.shadow.camera.top = 30;
+    sunLight.shadow.camera.bottom = -30;
+    sunLight.shadow.camera.near = 1;
+    sunLight.shadow.camera.far = 140;
+    sunLight.shadow.bias = -0.0003;
+    scene.add(sunLight);
+
+    // --- Generator Instances ---
+    const textures = new PBRTextureFactory();
+    const roofGen = new RoofGenerator(textures);
+    const facadeGen = new FacadeGenerator(textures);
+    const interiorGen = new InteriorGenerator(textures);
+    const landscapeGen = new LandscapingGenerator(textures);
+
+    let currentBuildingGroup = null;
+    let currentOptions = {
+      width: 14,
+      depth: 16,
+      stories: 2,
+      height: 6.4,
+      roofStyle: 'spanish_tile',
+      pitch: 0.35,
+      wallColor: 0xebe5d8,
+      hasGarage: true,
+      hasPool: true,
+      hasGate: true,
+      showRoof: true,
+      showInterior: true,
+      showYard: true
+    };
+
+    function buildWorld() {
+      if (currentBuildingGroup) {
+        scene.remove(currentBuildingGroup);
+        currentBuildingGroup.traverse(o => {
+          if (o.geometry) o.geometry.dispose();
+        });
+      }
+
+      currentBuildingGroup = new THREE.Group();
+      currentBuildingGroup.name = 'ProceduralBuildingLot';
+
+      const storyH = 3.1;
+      currentOptions.height = currentOptions.stories * storyH;
+
+      // 1. Landscaping & Hardscaping
+      if (currentOptions.showYard) {
+        const yard = landscapeGen.generate({
+          width: currentOptions.width,
+          depth: currentOptions.depth,
+          hasPool: currentOptions.hasPool,
+          hasGate: currentOptions.hasGate,
+          style: currentOptions.roofStyle
+        });
+        currentBuildingGroup.add(yard);
+      }
+
+      // 2. Exterior Facade & Walls
+      const facade = facadeGen.generate({
+        width: currentOptions.width,
+        depth: currentOptions.depth,
+        height: currentOptions.height,
+        stories: currentOptions.stories,
+        wallColor: currentOptions.wallColor,
+        hasGarage: currentOptions.hasGarage
+      });
+      currentBuildingGroup.add(facade);
+
+      // 3. Procedural Interior
+      if (currentOptions.showInterior) {
+        const interior = interiorGen.generate({
+          width: currentOptions.width,
+          depth: currentOptions.depth,
+          height: currentOptions.height,
+          stories: currentOptions.stories,
+          hasGarage: currentOptions.hasGarage
+        });
+        currentBuildingGroup.add(interior);
+      }
+
+      // 4. Procedural Roof
+      if (currentOptions.showRoof) {
+        const roof = roofGen.generate(
+          currentOptions.roofStyle,
+          currentOptions.width,
+          currentOptions.depth,
+          currentOptions.height,
+          currentOptions.pitch
+        );
+        currentBuildingGroup.add(roof);
+      }
+
+      scene.add(currentBuildingGroup);
+    }
+
+    // --- Presets ---
+    const presets = {
+      spanish_villa: {
+        width: 15, depth: 18, stories: 2, roofStyle: 'spanish_tile',
+        pitch: 0.35, wallColor: 0xebe5d8, hasGarage: true, hasPool: true, hasGate: true
+      },
+      suburban_2story: {
+        width: 13, depth: 15, stories: 2, roofStyle: 'shingle_gable',
+        pitch: 0.42, wallColor: 0xf5f5f0, hasGarage: true, hasPool: true, hasGate: false
+      },
+      poway_ranch: {
+        width: 20, depth: 14, stories: 1, roofStyle: 'shingle_gable',
+        pitch: 0.28, wallColor: 0xd6c2a8, hasGarage: true, hasPool: false, hasGate: true
+      },
+      commercial_strip: {
+        width: 22, depth: 16, stories: 1, roofStyle: 'commercial_flat',
+        pitch: 0.1, wallColor: 0x787d85, hasGarage: false, hasPool: false, hasGate: false
+      },
+      modern_luxury: {
+        width: 16, depth: 16, stories: 2, roofStyle: 'modern_shed',
+        pitch: 0.25, wallColor: 0xf5f5f0, hasGarage: true, hasPool: true, hasGate: true
+      }
+    };
+
+    function applyPreset(name) {
+      if (!presets[name]) return;
+      Object.assign(currentOptions, presets[name]);
+
+      document.getElementById('paramWidth').value = currentOptions.width;
+      document.getElementById('paramDepth').value = currentOptions.depth;
+      document.getElementById('paramStories').value = currentOptions.stories;
+      document.getElementById('paramRoofStyle').value = currentOptions.roofStyle;
+      document.getElementById('paramPitch').value = currentOptions.pitch;
+      document.getElementById('paramWallColor').value = '0x' + currentOptions.wallColor.toString(16);
+      document.getElementById('paramGarage').checked = currentOptions.hasGarage;
+      document.getElementById('togglePool').checked = currentOptions.hasPool;
+
+      document.querySelectorAll('.preset-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-preset') === name);
+      });
+
+      buildWorld();
+    }
+
+    // --- Wire UI Events ---
+    document.querySelectorAll('.preset-btn[data-preset]').forEach(btn => {
+      btn.addEventListener('click', () => applyPreset(btn.getAttribute('data-preset')));
+    });
+
+    document.getElementById('btnRandom').addEventListener('click', randomize);
+
+    function randomize() {
+      const keys = Object.keys(presets);
+      const chosen = keys[Math.floor(Math.random() * keys.length)];
+      applyPreset(chosen);
+      currentOptions.width = 10 + Math.floor(Math.random() * 12);
+      currentOptions.depth = 12 + Math.floor(Math.random() * 12);
+      document.getElementById('paramWidth').value = currentOptions.width;
+      document.getElementById('paramDepth').value = currentOptions.depth;
+      buildWorld();
+    }
+
+    document.getElementById('paramWidth').addEventListener('input', e => {
+      currentOptions.width = Number(e.target.value);
+      buildWorld();
+    });
+    document.getElementById('paramDepth').addEventListener('input', e => {
+      currentOptions.depth = Number(e.target.value);
+      buildWorld();
+    });
+    document.getElementById('paramStories').addEventListener('change', e => {
+      currentOptions.stories = Number(e.target.value);
+      buildWorld();
+    });
+    document.getElementById('paramRoofStyle').addEventListener('change', e => {
+      currentOptions.roofStyle = e.target.value;
+      buildWorld();
+    });
+    document.getElementById('paramPitch').addEventListener('input', e => {
+      currentOptions.pitch = Number(e.target.value);
+      buildWorld();
+    });
+    document.getElementById('paramWallColor').addEventListener('change', e => {
+      currentOptions.wallColor = parseInt(e.target.value, 16);
+      buildWorld();
+    });
+    document.getElementById('paramGarage').addEventListener('change', e => {
+      currentOptions.hasGarage = e.target.checked;
+      buildWorld();
+    });
+
+    document.getElementById('toggleRoof').addEventListener('change', e => {
+      currentOptions.showRoof = e.target.checked;
+      buildWorld();
+    });
+    document.getElementById('toggleInterior').addEventListener('change', e => {
+      currentOptions.showInterior = e.target.checked;
+      buildWorld();
+    });
+    document.getElementById('toggleYard').addEventListener('change', e => {
+      currentOptions.showYard = e.target.checked;
+      buildWorld();
+    });
+    document.getElementById('togglePool').addEventListener('change', e => {
+      currentOptions.hasPool = e.target.checked;
+      buildWorld();
+    });
+
+    document.getElementById('paramLighting').addEventListener('change', e => {
+      const mode = e.target.value;
+      if (mode === 'noon') {
+        scene.background.set(0x99ccff);
+        hemiLight.intensity = 0.85;
+        sunLight.intensity = 2.4;
+        sunLight.color.set(0xfff6e5);
+        sunLight.position.set(35, 45, 25);
+      } else if (mode === 'golden') {
+        scene.background.set(0xfb923c);
+        hemiLight.intensity = 0.6;
+        sunLight.intensity = 2.8;
+        sunLight.color.set(0xff7722);
+        sunLight.position.set(45, 12, 35);
+      } else if (mode === 'night') {
+        scene.background.set(0x070b14);
+        hemiLight.intensity = 0.15;
+        sunLight.intensity = 0.2;
+        sunLight.color.set(0x4466aa);
+        sunLight.position.set(-20, 30, -20);
+      }
+    });
+
+    document.getElementById('btnExport').addEventListener('click', () => {
+      if (currentBuildingGroup) {
+        SceneExporter.exportToGLB(currentBuildingGroup, 'poway_procedural_building.glb');
+      }
+    });
+
+    // --- Walk Mode (First Person inside house) ---
+    let walkMode = false;
+    const walkPos = new THREE.Vector3(0, 1.7, -currentOptions.depth / 2 - 4);
+    const keys = {};
+
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (e.code === 'KeyV') toggleWalkMode();
+      if (e.code === 'Space' && !walkMode) randomize();
+    });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    document.getElementById('btnWalk').addEventListener('click', toggleWalkMode);
+
+    function toggleWalkMode() {
+      walkMode = !walkMode;
+      controls.enabled = !walkMode;
+      document.getElementById('btnWalk').textContent = walkMode ? '🚁 Exit Walk Mode (V)' : '🚶 Enter Walk Mode (V)';
+      if (walkMode) {
+        camera.position.set(0, 1.7, -currentOptions.depth / 2 - 3);
+        controls.target.set(0, 1.7, 0);
+      } else {
+        camera.position.set(24, 18, 30);
+        controls.target.set(0, 3, 0);
+      }
+    }
+
+    // --- Main Animation Loop ---
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+
+      if (walkMode) {
+        const speed = 4.5 * delta;
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        dir.y = 0; dir.normalize();
+        const side = new THREE.Vector3(-dir.z, 0, dir.x);
+
+        if (keys['KeyW']) camera.position.addScaledVector(dir, speed);
+        if (keys['KeyS']) camera.position.addScaledVector(dir, -speed);
+        if (keys['KeyA']) camera.position.addScaledVector(side, -speed);
+        if (keys['KeyD']) camera.position.addScaledVector(side, speed);
+      } else {
+        controls.update();
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // Initial Build
+    buildWorld();
+    animate();
+  </script>
+</body>
+</html>
