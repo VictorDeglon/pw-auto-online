@@ -11,7 +11,7 @@
    "variants": [
     {
      "name": "oak",
-     "lod": null,
+     "lod": "lod/oak.glb",
      "block": [
       0,
       0
@@ -38,7 +38,7 @@
    "variants": [
     {
      "name": "olive",
-     "lod": null,
+     "lod": "lod/olive.glb",
      "block": [
       0,
       0
@@ -65,7 +65,7 @@
    "variants": [
     {
      "name": "scruboak",
-     "lod": null,
+     "lod": "lod/scruboak.glb",
      "block": [
       0,
       0

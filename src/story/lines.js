@@ -9,7 +9,7 @@
 const isNight = h => h >= 20 || h < 5;
 
 export const LINES = {
-  reyes: { name: 'Espola Road', color: '#f0b23a', blurb: 'Tommy Reyes died on Espola Road at 2 AM. The report says accident. His voicemail says otherwise.' },
+  reyes: { name: 'Espola Road', color: '#f0b23a', blurb: 'Tommy Reyes went off Espola Road at 2 AM. The report says accident. You were there.' },
   nina: { name: 'Sycamore Smoke', color: '#ff9f43', blurb: 'Nina Salas keeps the books for her uncle\'s "feed store." She wants the canyon, and she needs a driver who doesn\'t ask.' },
   lang: { name: 'Clean Money', color: '#e1c16e', blurb: 'Victoria Lang builds Poway\'s tomorrow. Somebody has to clear the ground first.' },
   okoye: { name: 'The Lake', color: '#2ecc71', blurb: 'Something is cooking in the chaparral above Lake Poway, and it\'s poisoning the creek. A retired Marine wants it gone.' },
@@ -91,7 +91,9 @@ export const LINE_MISSIONS = [
         ['walt', 'That\'s him. That\'s the car. God forgive me, I should have pushed harder.'],
         ['marco', 'You did what you could.'],
         ['walt', 'No, son. I did what was safe. There\'s a difference, and your brother is buried in it.'],
+        ['walt', 'Take this. A police scanner. I listen to it at night instead of sleeping. Now you\'ll hear them coming, and you\'ll hear who\'s calling them.'],
       ] },
+      { do: 'learn', keys: ['ability:scanner'] },
     ],
   },
   {
@@ -217,7 +219,9 @@ export const LINE_MISSIONS = [
         ['nina', 'You didn\'t open it. Good. I like you already.'],
         ['nina', 'My uncle thinks I\'m the bookkeeper. I\'m the reason his books balance. Someday this canyon is mine.'],
         ['nina', 'Until then, I need people who are mine. Come back tomorrow.'],
+        ['nina', 'And any time you want work, there\'s always a cooler around back that needs to be somewhere else. Fast, and nowhere near a deputy.'],
       ] },
+      { do: 'learn', keys: ['crime:runs'] },
     ],
   },
   {
@@ -235,8 +239,9 @@ export const LINE_MISSIONS = [
         ['nina', 'Forty grand in the passenger seat alone. They\'ll notice. That\'s the point.'],
         ['nina', 'When they come looking, they find my uncle. When my uncle looks for who started it, he finds the Coyotes.'],
         ['marco', 'And you find yourself in charge.'],
-        ['nina', 'See? Rare.'],
+        ['nina', 'See? Rare. Keep a car in the barn if you want. Nobody looks in a feed store\'s barn. That\'s the whole idea of a feed store.'],
       ] },
+      { do: 'learn', keys: ['garage:canyon'] },
     ],
   },
   {
@@ -258,7 +263,9 @@ export const LINE_MISSIONS = [
       { do: 'talk', lines: [
         ['nina', 'Routes, times, and a name: Eddie Cruz. A pilot. Flies their product in, drives it out.'],
         ['nina', 'Take out Cruz and the Coyotes are on foot. Take out Cruz loudly and my uncle starts a war he can\'t win.'],
+        ['nina', 'And Marco. The man at the stash house who saw your face and reached for his phone? You let him. Next time, look at him. Just look. People don\'t dial with a gun on them.'],
       ] },
+      { do: 'learn', keys: ['ability:intimidate'] },
     ],
   },
   {
@@ -305,8 +312,10 @@ export const LINE_MISSIONS = [
       { do: 'goto', to: 'canyonMouth', r: 12, text: 'Bring it to <em>Nina</em>.' },
       { do: 'talk', lines: [
         ['nina', 'That\'s not money. That\'s a down payment on a canyon.'],
+        ['nina', 'The banks on Poway Road use the same armored company. Same trucks, same routes, same bored guards. Remember that.'],
         ['nina', 'My uncle wants us both at dinner Sunday. He never invites me to dinner.'],
       ] },
+      { do: 'learn', keys: ['crime:heist'] },
     ],
   },
   {
@@ -331,7 +340,9 @@ export const LINE_MISSIONS = [
       { do: 'phone', from: 'nina', lines: [
         ['nina', 'He ran. Out the back, into the canyon. He tried to have us both killed over a plate of carnitas.'],
         ['nina', 'Okay. Okay. No more pretending. He dies, Marco. Tomorrow.'],
+        ['nina', 'Half the shops on Poway Road pay him "insurance." Tomorrow they pay you. Walk in, be polite, mention fire.'],
       ] },
+      { do: 'learn', keys: ['crime:racket'] },
     ],
   },
   {
@@ -514,7 +525,9 @@ export const LINE_MISSIONS = [
       { do: 'phone', from: 'lang', lines: [
         ['lang', 'They weren\'t at dinner. Two of them, anyway. That\'s... unfortunate.'],
         ['lang', 'Harlan knows it was us now. He has bodyguards and a temper. We finish this tomorrow.'],
+        ['lang', 'Oh, and my claims adjuster says a rear-end collision is the easiest money in California. Brake hard in front of somebody sometime. He\'ll handle the paperwork.'],
       ] },
+      { do: 'learn', keys: ['crime:fraud'] },
     ],
   },
   {
@@ -591,7 +604,9 @@ export const LINE_MISSIONS = [
       { do: 'talk', lines: [
         ['okoye', 'Armed lookouts on a hiking trail. That\'s a lab. A big one.'],
         ['okoye', 'I did two tours. I swore I was done. Turns out a dead dog undoes a lot of swearing.'],
+        ['okoye', 'Park in the boat lot whenever you need to. The rangers think you\'re my nephew.'],
       ] },
+      { do: 'learn', keys: ['garage:lake'] },
     ],
   },
   {

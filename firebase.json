@@ -2,7 +2,7 @@
   "database": { "rules": "database.rules.json" },
   "hosting": {
     "public": ".",
-    "ignore": ["firebase.json", "database.rules.json", "**/.*", "**/.*/**", "gha-creds-*.json", "**/node_modules/**", "tools/**", "server/**", "docs/**", "*.md"],
+    "ignore": ["firebase.json", "database.rules.json", "**/.*", "**/.*/**", "gha-creds-*.json", "nakama.local.json", "**/node_modules/**", "tools/**", "server/**", "docs/**", "*.md"],
     "headers": [
       { "source": "assets/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] },
       { "source": "**/*.@(js|mjs)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }] }

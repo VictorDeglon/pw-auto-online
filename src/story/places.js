@@ -4,7 +4,7 @@
 //   snap 'road'     → nearest point on a road named in `names` (race lines, car spawns)
 // Real places are fine; businesses and people here are fictional (docs/roadmap README, legal path).
 export const PLACES = {
-  home: { special: 'home', note: 'The Reyes house on Cardinal Court (the game spawn point)' },
+  home: { special: 'home', note: 'The Reyes house (fictional), a few streets from Poway High' },
   sheriff: { special: 'sheriff', note: 'Poway Sheriff Station (OSM police POI)' },
   oldPoway: { lat: 32.969598, lon: -117.036831, snap: 'sidewalk', note: 'Old Poway Park, Midland Road (depot of the Poway-Midland Railroad)' },
   deeGarage: { lat: 32.934851, lon: -117.039283, snap: 'sidewalk', note: "Dee's Garage (fictional), Kirkham Way business park" },
@@ -35,4 +35,6 @@ export const PLACES = {
   woodsonTop: { special: 'summit', note: 'Mt Woodson, the summit' },
   woodsonRamp: { special: 'summit', below: 1, note: 'Mt Woodson, the road down' },
   hospital: { special: 'hospital', note: 'Palomar Medical Center Poway' },
+  // street jobs (src/story/streets.js, crimes.js)
+  lucky: { lat: 32.9560, lon: -117.0447, snap: 'sidewalk', names: ['Poway Road'], note: 'Lucky\'s Swap & Loan (fictional), Poway Road' },
 };

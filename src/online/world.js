@@ -92,9 +92,10 @@ function applyCrowd(e) {
   for (const tok of e.split(';')) {
     const f = tok.slice(1).split(':'); if (f.length < 7) continue;
     if (tok[0] === 'P') {
-      const [id, av, x, z, r, s, po] = [f[0], +f[1], +f[2] / 10, +f[3] / 10, +f[4] / 100, ST[+f[5]] || 'walk', POSE[+f[6]] || ''];
+      const [id, av, x, z, r, s, po] = [f[0], f[1], +f[2] / 10, +f[3] / 10, +f[4] / 100, ST[+f[5]] || 'walk', POSE[+f[6]] || '']; // av: the avatar's name, as text
       seenP.add(id); let p = WORLD.peds.get(id);
-      if (!p || p.removed) { p = H.makePuppetPed(x, z, H.avatarName(av)); p.puppet = { id }; p.rotY = r; WORLD.peds.set(id, p); }
+      if (p && !p.removed && av && p.puppet.av !== av) { p.remove(); p = null; } // the leader's person got their real body: rebuild ours to match
+      if (!p || p.removed) { p = H.makePuppetPed(x, z, H.avatarName(av)); p.puppet = { id, av }; p.rotY = r; WORLD.peds.set(id, p); }
       const P = p.puppet; if (P.tx !== undefined) { const dtS = Math.max(0.2, (now - P.at) / 1000); P.vx = (x - P.tx) / dtS; P.vz = (z - P.tz) / dtS; }
       P.tx = x; P.tz = z; P.tr = r; P.st = s; P.pose = po; P.at = now;
     } else if (tok[0] === 'C' && f.length >= 9) {

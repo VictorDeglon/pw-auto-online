@@ -1,6 +1,7 @@
 // Achievements: 30 badges, each with its own emblem (drawn in SVG) and its own unlock animation. Saved locally.
 //   initAchievements({ save, persist, bus, sfx, probe })   probe() -> live numbers (speed mph, air time, wanted, ...)
 //   tickAchievements(dt)   unlock(id)   renderAchievements(el)
+import { emit as emitEvent } from '../events.js';
 const TIER = { b: ['#c98a4b', '#7a4a1f'], s: ['#d9dee6', '#7d8794'], g: ['#ffd23f', '#a8760a'], p: ['#9ff0ff', '#3a7f99'] };
 // icon: a few SVG primitives in a 64x64 box. anim: how the badge arrives.
 const A = [
@@ -98,6 +99,7 @@ export function tickAchievements(dt) {
 export function unlock(id) {
   if (!O || O.save.ach[id]) return; const a = ACHIEVEMENTS.find(x => x.id === id); if (!a) return;
   O.save.ach[id] = Date.now(); O.persist(); queue.push(a); if (queue.length === 1) showNext();
+  emitEvent('ach:unlock', { id }); // XP for it, once (src/progress.js)
 }
 function showNext() {
   const a = queue[0]; if (!a) return; const el = document.getElementById('achtoast');

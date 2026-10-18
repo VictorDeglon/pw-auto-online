@@ -38,14 +38,22 @@ const STYLE = {
 export function createComposer(AC, dest) {
   const out = AC.createGain(); out.gain.value = 0.5;
   const comp = AC.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.005; comp.release.value = 0.2;
-  const bus = AC.createGain(); bus.connect(comp).connect(out).connect(dest);
+  const busMain = AC.createGain(); busMain.connect(comp).connect(out).connect(dest);
   // reverb send: generated impulse; delay send for leads
   const rev = AC.createConvolver(); { const L = Math.round(AC.sampleRate * 2.2), b = AC.createBuffer(2, L, AC.sampleRate); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < L; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / L, 3.2); } rev.buffer = b; }
-  const revG = AC.createGain(); revG.gain.value = 0.25; revG.connect(rev).connect(comp);
-  const dly = AC.createDelay(1.5), dlyFb = AC.createGain(), dlyG = AC.createGain(); dlyFb.gain.value = 0.32; dlyG.gain.value = 0.18; dlyG.connect(dly); dly.connect(dlyFb).connect(dly); dly.connect(comp);
+  const revIn = AC.createGain(); revIn.gain.value = 0.25; revIn.connect(rev).connect(comp);
+  const dly = AC.createDelay(1.5), dlyFb = AC.createGain(), dlyIn = AC.createGain(); dlyFb.gain.value = 0.32; dlyIn.gain.value = 0.18; dlyIn.connect(dly); dly.connect(dlyFb).connect(dly); dly.connect(comp);
   const noiseBuf = (() => { const L = AC.sampleRate, b = AC.createBuffer(1, L, AC.sampleRate), d = b.getChannelData(0); for (let i = 0; i < L; i++) d[i] = Math.random() * 2 - 1; return b; })();
-  const dist = (() => { const s = AC.createWaveShaper(), n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / n * 2 - 1; c[i] = Math.tanh(x * 6) * 0.8; } s.curve = c; return s; })();
-  dist.connect(bus);
+  const shaper = (() => { const s = AC.createWaveShaper(), n = 1024, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / n * 2 - 1; c[i] = Math.tanh(x * 6) * 0.8; } s.curve = c; return s; })();
+  shaper.connect(busMain);
+  // this song's inputs to the mix. Notes are scheduled up to a second ahead (so a long frame can't drop a bar); a new
+  // song gets fresh inputs and the old ones are cut, so the notes already queued don't bleed into it.
+  let bus, revG, dlyG, dist;
+  function freshInputs() {
+    if (bus) { const old = [bus, revG, dlyG, dist], t = AC.currentTime; for (const g of old) { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.03); } setTimeout(() => old.forEach(g => g.disconnect()), 1600); }
+    bus = AC.createGain(); bus.connect(busMain); revG = AC.createGain(); revG.connect(revIn); dlyG = AC.createGain(); dlyG.connect(dlyIn); dist = AC.createGain(); dist.connect(shaper);
+  }
+  freshInputs();
 
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
   function env(g, t, a, peak, d, sus, rel, end) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.setTargetAtTime(peak * sus, t + a, d); g.gain.setTargetAtTime(0.0001, end, rel); }
@@ -152,7 +160,7 @@ export function createComposer(AC, dest) {
   let cur = null, timer = 0;
   function pump() {
     if (!cur) return;
-    const ahead = AC.currentTime + 0.35;
+    const ahead = AC.currentTime + 1.0; // a second of music queued: survives a long frame (an explosion, a level loading)
     while (cur.next < ahead) {
       const W = cur.W; if (cur.bar >= W.bars) { const c = cur; cur = null; clearInterval(timer); setTimeout(() => api.onend && api.onend(c.song), Math.max(0, (c.next - AC.currentTime) * 1000)); return; }
       let b = cur.bar, si = 0; while (b >= W.form[si][1]) { b -= W.form[si][1]; si++; }
@@ -168,7 +176,7 @@ export function createComposer(AC, dest) {
       pump(); timer = setInterval(pump, 60);
       return { bpm: W.bpm, length: W.bars * barT };
     },
-    stop() { if (timer) clearInterval(timer); timer = 0; cur = null; out.gain.cancelScheduledValues(AC.currentTime); out.gain.setTargetAtTime(0, AC.currentTime, 0.05); },
+    stop() { if (timer) clearInterval(timer); timer = 0; if (cur) freshInputs(); cur = null; out.gain.cancelScheduledValues(AC.currentTime); out.gain.setTargetAtTime(0, AC.currentTime, 0.05); },
     vol: 0.5, volume(v) { api.vol = v; if (cur) out.gain.setTargetAtTime(v, AC.currentTime, 0.1); },
     fade(v, secs) { out.gain.cancelScheduledValues(AC.currentTime); out.gain.setValueAtTime(out.gain.value, AC.currentTime); out.gain.linearRampToValueAtTime(v, AC.currentTime + secs); },
     get level() { return out.gain.value; },

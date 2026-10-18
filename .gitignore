@@ -6,3 +6,11 @@ __pycache__/
 node_modules/
 .firebase/
 *.log
+
+# game server address and key (written at deploy time; see server/nakama/README.md)
+nakama.json
+nakama.local.json
+
+# server secrets (server/nakama/gen-secrets.sh > server/nakama/.env)
+.env
+*.env

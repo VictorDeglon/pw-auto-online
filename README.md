@@ -10,10 +10,15 @@ The town is built from real data: OpenStreetMap streets and buildings, USGS elev
 
 - **Play online:** pick a server, then pick a username. The game asks for your name every time you join. Names must be
   unique on that server (case doesn't count), 3–16 letters, numbers or `_`. Don't use your real name.
-- **Free roam:** offline single player with jobs and story missions.
+- **Free roam:** offline single player with jobs and story missions. A new game opens with Tommy's last night at
+  Lake Poway; the story then opens up street crime a piece at a time (the pause menu's journal lists every crime and
+  what unlocks it). Crimes only bring the Sheriff if somebody sees them: a deputy, a security camera, or a witness who
+  gets to a phone. The map shows only what you've explored.
 - **Character:** choose your look from the Microsoft Rocketbox cast. Other players see it.
 - **Settings:** graphics presets from *Potato* to *Ultra*, picked for your computer automatically, plus dynamic
-  resolution that lowers the render scale when the frame rate drops.
+  resolution that lowers the render scale when the frame rate drops. From *Medium* up the sky lights and reflects in
+  the scene and haze gathers in the valley; *High* adds ambient occlusion and sharper shadows near you. The *Look* is
+  *Realistic* (bloom, eye adaptation, a film tone curve) by default, or the half-cartoon *Stylized* look.
 
 Online you can see other players on the minimap and the big map (M), chat (Enter), check who's on (hold L), and
 fight. Kills, deaths and busts show in the feed at the top of the screen.
@@ -97,7 +102,8 @@ cheat. That's fine for playing with friends; it isn't an anti-cheat system.
 
 - `index.html`: the game (HTML, CSS, main script)
 - `src/`: modules. `src/online/` (Firebase, remote players), `src/ui/shell.js` (menus, chat, feed), `src/gfx.js`
-  (graphics presets)
+  (graphics presets), `src/post.js` (the looks), `src/skyenv.js` (sky light and reflections), `src/atmos.js` (height
+  fog and aerial perspective), `src/cascades.js` (shadow cascades)
 - `poway-data.js`: map data (roads, buildings, terrain) as `window.POWAY_DATA`
 - `assets/`: models, textures, imagery, people, music
 - `vendor/firebase.mjs`: the Firebase JS SDK (Apache-2.0), bundled by `tools/vendor/build_firebase.sh`
@@ -106,8 +112,9 @@ cheat. That's fine for playing with friends; it isn't an anti-cheat system.
 ## Credits
 
 Map data © OpenStreetMap contributors (ODbL). Building footprints also from Microsoft (ODbL). Aerial imagery: USGS
-NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles, USGS 3DEP. Textures: Poly Haven (CC0). Vehicles and trees:
-Kenney (CC0). People: Microsoft Rocketbox Avatar Library (MIT, see `assets/humans/LICENSE-Rocketbox.md`). Music: Kevin
+NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles, USGS 3DEP. Textures and trees: Poly Haven (CC0). Vehicles:
+Kenney and Quaternius (CC0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY
+3.0, see `assets/aircraft/LICENSE.md`). People: Microsoft Rocketbox Avatar Library (MIT, see `assets/humans/LICENSE-Rocketbox.md`). Music: Kevin
 MacLeod, incompetech.com (CC BY 4.0). Firebase JS SDK (Apache-2.0).
 
 A fan-made game. Not affiliated with or endorsed by the City of Poway, Poway Unified School District or any business

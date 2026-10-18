@@ -5,24 +5,51 @@
 // Story bible and Acts II-IV: docs/roadmap/03-story-and-characters.md.
 
 import { LINES, LINE_MISSIONS } from './lines.js';
+import { STREET_MISSIONS } from './streets.js';
 export { LINES };
 
 const isNight = h => h >= 20 || h < 5;
 
 const BASE = [
+  // ================================================================== PROLOGUE
+  // Six years of silence, then Tommy calls. Marco drives down from LA, parks by Poway High, and gets a text.
+  {
+    id: 'p0-tommy', title: 'Tommy', giver: 'tommy', at: 'lakeGate', type: 'main', act: 1, auto: true, offline: true, quiet: true,
+    pitch: 'Tommy finally called. He wants to meet at Lake Poway, after dark, alone.',
+    reward: { money: 0 },
+    steps: [
+      { do: 'marcosCar' },
+      { do: 'text', from: 'tommy', delay: 1.5, wait: 2.5, msg: 'You actually came. Lake Poway, the gate at the top of Lake Poway Road. Come alone. Don\'t go to Ma\'s yet, she\'ll make you eat.' },
+      { do: 'stage', scene: 'tommy' },
+      { do: 'goto', to: '@tommy', r: 45, text: 'Go and talk to <em>Tommy</em>. He\'s at the <em>Lake Poway</em> gate.' },
+      { do: 'goto', to: '@tommy', r: 4, foot: true, text: 'Talk to <em>Tommy</em>.' },
+      { do: 'cutscene', scene: 'tommy' },
+      { do: 'wait', t: 1.2 },
+      { do: 'talk', lines: [['marco', 'Black sedan. No lights. A bar across the front. It hit him like it had done it before.']] },
+      { do: 'act', big: 'ESPOLA ROAD', title: 'Go see Rosa. She should hear it from you.' },
+    ],
+  },
   // ================================================================== ACT I · HOMECOMING
   {
-    id: 'a1-homecoming', title: 'Homecoming', giver: 'rosa', at: 'home', type: 'main', act: 1,
-    pitch: 'Rosa needs flowers for Tommy\'s memorial.',
+    id: 'a1-homecoming', title: 'Homecoming', giver: 'rosa', at: 'home', type: 'main', act: 1, needs: ['p0-tommy'],
+    pitch: 'Rosa is on the porch, waiting up for a son who isn\'t coming home.',
     reward: { money: 150, trust: { rosa: 10, walt: 5 } },
     steps: [
       { do: 'talk', lines: [
-        ['rosa', 'Marco. Mijo. Let me look at you. Six years and you couldn\'t call your mother?'],
-        ['marco', 'I\'m here now, Ma.'],
-        ['rosa', 'You\'re here because your brother is gone. Don\'t say it like it\'s a gift.'],
-        ['rosa', '...I\'m sorry. I haven\'t slept. The memorial is Sunday, at Old Poway Park.'],
+        ['rosa', 'Marco? Mijo, it\'s the middle of the night. Tommy said you might come. He wouldn\'t say why.'],
+        ['rosa', 'Why do you smell like smoke?'],
+        ['marco', 'Ma. Sit down.'],
+        ['marco', 'A car ran him off the road. Espola, at the lake turn. It had no lights on. I was there. I watched it.'],
+        ['rosa', 'No. He called me at ten. He said he\'d fix the porch light Sunday. He said...'],
+        ['rosa', '...Go inside, Marco. Your room is still your room. I need to sit out here a while.'],
+      ] },
+      { do: 'card', title: 'FOUR DAYS LATER', sub: 'The Reyes house, Poway', t: 3.4, hour: 10.5 },
+      { do: 'talk', lines: [
+        ['rosa', 'The Sheriff closed it. "Single-car accident, excessive speed." Sergeant Kessler brought the report himself. With a casserole.'],
+        ['marco', 'There were two cars, Ma. I told them. Nobody wrote it down.'],
+        ['rosa', 'Then tell it to someone who can do something with it. I have a memorial to plan. Sunday, at Old Poway Park.'],
         ['rosa', 'Walt is holding sunflowers for me at the train depot. Tommy\'s favorite. Go get them.'],
-        ['rosa', 'Take Tommy\'s car. The gold one. It\'s just sitting there, and it hates sitting.'],
+        ['rosa', 'Take Tommy\'s car. The gold one. He left it in the driveway that night with the keys on the visor. He never left that car anywhere.'],
       ] },
       { do: 'ensureTommysCar', as: 'tommy' },
       { do: 'enterCar', car: 'tommy', text: 'Get in <em>Tommy\'s car</em>.' },
@@ -32,18 +59,21 @@ const BASE = [
       { do: 'talk', lines: [
         ['walt', 'Well, I\'ll be. Little Marco Reyes. You got tall and you got sad. Both look about right.'],
         ['walt', 'Your brother fixed my Studebaker when he was twelve. Charged me one root beer.'],
-        ['marco', 'He never told me that.'],
-        ['walt', 'Tommy didn\'t tell anybody anything. That was his whole problem.'],
-        ['walt', 'Sunflowers. Mind the stems. And come see me. Old men are good for two things: stories and errands.'],
+        ['marco', 'Walt, the Sheriff says he crashed alone. He didn\'t. I saw the other car.'],
+        ['walt', '...Did you, now. Did you tell that to Kessler?'],
+        ['marco', 'He didn\'t ask.'],
+        ['walt', 'No. He wouldn\'t. Sunflowers. Mind the stems. And come see me when you want an old man\'s story. I\'ve got one about that night.'],
       ] },
       { do: 'goto', to: 'home', r: 10, text: 'Take the sunflowers <em>home</em> to Rosa.' },
       { do: 'talk', lines: [
         ['rosa', 'They\'re beautiful. He\'d pretend he didn\'t care, then stick one in his sun visor.'],
+        ['rosa', 'The funeral home wants nine thousand dollars. I have eleven hundred and a casserole dish.'],
         ['rosa', 'Dee called. Tommy\'s friend from the garage. She asked if you were "still alive, or just still gone."'],
         ['marco', 'That sounds like Dee.'],
         ['rosa', 'Go see her. And Marco... whatever Tommy was mixed up in, it ends with him. Promise me.'],
         ['marco', '...I promise, Ma.'],
       ] },
+      { do: 'learn', keys: ['crime:shoplift'] },
     ],
     after: [{ t: 5, text: ['dee', 'Heard you\'re back. Garage on Kirkham Way. Don\'t make me come get you.'] }],
   },
@@ -56,6 +86,8 @@ const BASE = [
         ['dee', 'Look who found the 15 north. You missed the casseroles, and the part where your mom stopped eating.'],
         ['marco', 'I came as soon as I heard.'],
         ['dee', 'You came as soon as it was too late. Different thing.'],
+        ['marco', 'I was there, Dee. At the lake. I saw the car that did it.'],
+        ['dee', '...Rosa told me. She also told me you haven\'t slept since. Okay. Okay.'],
         ['dee', 'Anyway. I\'m short on rent. A guy on High Valley Road owes me nine grand in repairs and stopped answering.'],
         ['dee', 'His SUV\'s sitting in his driveway. Bring it here and it becomes collateral. Tommy used to do these for me.'],
         ['dee', 'Don\'t scratch it. And do not bring the Sheriff to my door.'],
@@ -66,8 +98,12 @@ const BASE = [
       { do: 'talk', lines: [
         ['dee', 'Not bad. Tommy would\'ve done it faster, but he\'d also have eaten a burrito in it.'],
         ['dee', 'That\'s not a compliment. It\'s... it\'s nice having a Reyes in the shop again.'],
-        ['dee', 'Come back when you\'re ready. There\'s something about Tommy you should see for yourself.'],
+        ['dee', 'Here. Tommy\'s picks. He could open a Lexus faster than its owner. No alarm, no broken glass, no neighbor at the window.'],
+        ['dee', 'And this is my list. People who stopped paying me. Their cars sit in their driveways at night. Bring me one, I pay you. Collateral.'],
+        ['marco', 'That\'s stealing, Dee.'],
+        ['dee', 'It\'s collections. Tommy called it stealing too, right before he took the money. Come back when you\'re ready. There\'s something about him you should see.'],
       ] },
+      { do: 'learn', keys: ['ability:lockpick', 'crime:repo', 'garage:dee'] },
     ],
   },
   {
@@ -85,10 +121,10 @@ const BASE = [
         parLabel: 'Tommy\'s record', text: 'Beat <em>Tommy\'s record</em> to the Lake Poway gate.', failText: 'Tommy\'s record stands. Try again.' },
       { do: 'phone', from: 'dee', lines: [
         ['dee', '...You beat it. Huh. He\'d have hated that. Then bought you a shake at the Hamburger Factory.'],
-        ['dee', 'Marco, the Sheriff says he crashed on the curve by Lake Poway Road. 2 AM. Alone.'],
+        ['dee', 'The Sheriff says he took the lake-road curve at ninety. 2 AM. Alone.'],
         ['dee', 'Tommy drove that road ten thousand times. He didn\'t miss that curve.'],
-        ['marco', 'Then what happened?'],
-        ['dee', 'Come by the shop. Not on the phone.'],
+        ['marco', 'He didn\'t miss it. Somebody put him through it. Black sedan, no lights, a bar across the front.'],
+        ['dee', '...A push bar. You know who puts push bars on black sedans, Marco? Come by the shop. Not on the phone.'],
       ] },
     ],
   },
@@ -116,7 +152,10 @@ const BASE = [
         ['dee', 'So it\'s true. Vance runs stolen cars through that ranch, and Tommy was driving them.'],
         ['marco', 'And when Tommy wanted out, he ended up on Espola Road at 2 AM.'],
         ['dee', 'Say it slow and it sounds like something we can prove. Say it fast and it sounds like revenge.'],
+        ['dee', 'One more thing. The cars Vance doesn\'t want end up behind the business park. A salvage yard. Guy called Torque. No paperwork, cash on the hood.'],
+        ['dee', 'Tommy sold him a few. Now you know too. I\'m not saying use it. I\'m saying I can\'t pay you what this is going to cost.'],
       ] },
+      { do: 'learn', keys: ['crime:chop'] },
     ],
   },
   {
@@ -137,6 +176,7 @@ const BASE = [
         ['kessler', 'Phone, wallet, some receipts. The rest went with the car.'],
         ['marco', 'The car went off a curve he drove every week.'],
         ['kessler', 'People drive tired. People drive high. Your brother had both in his history, son.'],
+        ['kessler', 'And I hear you\'re telling people about a second car. At two in the morning. In the dark. From a hundred yards.'],
         ['kessler', 'Take the box. Take care of your mother. Let the rest go. That advice is free. It won\'t stay free.'],
       ] },
       { do: 'release', as: 'kessler' },
@@ -149,15 +189,16 @@ const BASE = [
         ['rosa', 'His phone still works. It\'s been buzzing in that box for weeks. I couldn\'t look.'],
       ] },
       { do: 'voicemail', id: 'tommy-01', lines: [
-        ['tommy', 'Hey. It\'s me. I know you\'re mad. You\'ve been mad for six years. I get it.'],
-        ['tommy', 'Listen. I did some things for Garrett Vance. Bad things. I\'m getting out, and I\'m taking proof with me.'],
-        ['tommy', 'If something happens... it wasn\'t an accident. Okay? Call me back, Marco. Please.'],
+        ['tommy', 'Hey. It\'s me. Practicing what I\'m going to say to you tonight, because I\'ll chicken out in person.'],
+        ['tommy', 'I did things for Garrett Vance. Bad things. The proof is his own book, and I know where he keeps it.'],
+        ['tommy', 'If tonight goes wrong, it wasn\'t an accident. Okay? Don\'t let them call it an accident.'],
       ] },
       { do: 'talk', lines: [
-        ['marco', 'He called me. The night he died. I watched it ring.'],
+        ['marco', 'Garrett Vance. He said the name on the phone. He knew they were coming, and he called me anyway.'],
         ['rosa', 'Mijo...'],
         ['marco', 'I\'m done promising, Ma.'],
       ] },
+      { do: 'learn', keys: ['crime:mugging'] },
       { do: 'act', n: 1, title: 'Homecoming' },
     ],
   },
@@ -194,7 +235,7 @@ const BASE = [
           [['walt', 'When I moved here, Poway Road was two lanes and a feed store. Now it\'s two lanes, a feed store and eleven boba shops.']],
           [['walt', 'Your father and I fished the lake before sunrise. He talked about you boys the whole time. Scared off every fish.']],
           [['walt', 'That curve on Espola by the lake road. I pass it every morning.'], ['marco', 'Walt?'],
-           ['walt', 'I was on the water that night. I heard it, son. Two engines. Not one.'], ['walt', 'Ask me again another day. When I\'m braver.']],
+           ['walt', 'I was on the water that night. I heard it too, son. Two engines. One of them had that big V8 burble the county cars have.'], ['walt', 'Ask me again another day. When I\'m braver.']],
         ] },
       { do: 'dropoff', as: 'walt' },
       { do: 'talk', lines: [['walt', 'Smooth as a Sunday. You drive like your father. Don\'t tell him I said so, wherever he is.']] },
@@ -243,4 +284,4 @@ const BASE = [
     ],
   },
 ];
-export const MISSIONS = [...BASE, ...LINE_MISSIONS];
+export const MISSIONS = [...BASE, ...LINE_MISSIONS, ...STREET_MISSIONS];

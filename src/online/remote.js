@@ -1,15 +1,17 @@
 // Other players in the world. Each one is a Ped (so bullets, punches, explosions and car hits already find them)
-// driven by network state instead of AI, plus, while they drive, a car body that follows them. Damage you deal to
+// driven by network state instead of AI, plus, while they drive, a car body that follows them. A player riding as a
+// passenger (state.ride) is hidden inside the driver's car. Damage you deal to
 // them is not applied here: it is sent to them (net.sendHit) and their own game applies it, so everyone agrees on
 // who is alive. Their shots arrive as a counter in their state and are replayed as tracers and sound.
 import { RESERVED } from '../reserved.js';
 import { ctx } from '../ctx.js';
 import { NET, on, unpack } from './net.js';
 import { HUMANS, ensureAvatar } from '../humans.js';
+import { makeAircraft } from '../aircraft.js';
 
 const R = new Map(); // uid -> remote
 export const REMOTES = R;
-const LERP = 12, DRAW = 650, TAG = 140; // smoothing rate; draw distance (m); name tag distance (m)
+const LERP = 12, DRAW = 650, TAG = 140, AIR_DRAW = 6000; // smoothing rate; draw distance (m); name tag distance (m); aircraft are seen from far
 
 // name tag with a health bar under the name; redrawn when their health changes
 function drawTag(s, text, color, hp) {
@@ -61,6 +63,9 @@ async function spawnPed(rem) { // keeps the old body (if any) on screen until th
 function update(d) {
   const rem = R.get(d.id); if (!rem) return add(d);
   const st = unpack(d.p); if (!st) return;
+  const was = rem.st && rem.st.ride; // someone getting in or out of your car
+  if (st.ride === NET.uid && was !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(d.n || rem.name)}</b> hopped in.`, '', 2500);
+  else if (was === NET.uid && st.ride !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(d.n || rem.name)}</b> got out.`, '', 2000);
   rem.st = st; rem.lastT = performance.now(); rem.name = d.n;
   if (d.s && d.s !== rem.skin && !rem.building) { // they changed skin: rebuild the body
     rem.skin = d.s; rem.building = true; const old = rem.ped;
@@ -70,6 +75,7 @@ function update(d) {
 function despawn(rem) {
   if (rem.ped) { rem.ped.remote = null; rem.ped.remove(); rem.ped = null; }
   if (rem.car) { ctx.scene.remove(rem.car.g); rem.car = null; }
+  if (rem.air) { ctx.scene.remove(rem.air.g); rem.air = null; }
 }
 function removeRemote(id) { const rem = R.get(id); if (!rem) return; R.delete(id); if (!rem.building) despawn(rem); }
 
@@ -88,7 +94,9 @@ function remoteAI(p, dt) {
 }
 
 // every frame: dead / alive, cars, visibility, shots
+let _ap = null, _aq = null;
 export function updateRemotes(dt) {
+  if (!_ap) { _ap = new ctx.THREE.Vector3(); _aq = new ctx.THREE.Quaternion(); }
   const { THREE, camera } = ctx, cam = camera.position;
   for (const rem of R.values()) {
     const p = rem.ped; if (!p || rem.building) continue;
@@ -99,24 +107,45 @@ export function updateRemotes(dt) {
     if (p.state === 'dead') p.timer = 0; // never cleaned up as a corpse
     if (p.state === 'fly' || p.state === 'down' || p.state === 'flee' || p.state === 'fight' || p.state === 'idle') p.state = 'walk';
     // driving: a car body at their position; the person hidden inside
-    const key = st.car ? `${st.car.type}|${st.car.tint}|${st.car.model || ''}` : '';
+    const key = st.car ? `${st.car.type}|${st.car.tint}|${st.car.model || ''}|${st.car.pt || ''}` : '';
     if (key !== rem.carKey) {
       if (rem.car) { ctx.scene.remove(rem.car.g); rem.car = null; }
-      if (st.car && ctx.CAR[st.car.type]) { rem.car = ctx.buildCar(st.car.type, st.car.tint, st.car.model || undefined); ctx.scene.add(rem.car.g); rem.car.g.position.copy(p.pos); }
+      if (st.car && ctx.CAR[st.car.type]) {
+        rem.car = ctx.buildCar(st.car.type, st.car.tint, st.car.model || undefined); ctx.scene.add(rem.car.g); rem.car.g.position.copy(p.pos);
+        if (st.car.pt && ctx.applyParts) try { ctx.applyParts({ m: rem.car, spec: { L: rem.car.L, W: rem.car.W, H: rem.car.H } }, { parts: JSON.parse(st.car.pt) }); } catch (e) { } // their body-shop parts
+      }
       rem.carKey = key;
     }
     p.netCar = rem.car;
+    // flying: their aircraft (the cheat jet, a plane, a helicopter), at their height and attitude, seen from far away
+    const akey = st.air ? st.air.k : '';
+    if (akey !== rem.airKey) {
+      if (rem.air) { ctx.scene.remove(rem.air.g); rem.air = null; }
+      if (!st.air) rem.airKey = '';
+      else if (st.air.k.startsWith('boat:')) { if (ctx.boatModel) { const g = ctx.boatModel(st.air.k.slice(5)); rem.air = { g }; g.position.set(st.x, st.y, st.z); ctx.scene.add(g); } rem.airKey = akey; } // a boat
+      else if (ctx.AIR) { const a = makeAircraft(ctx.AIR, st.air.k, { center: true }); if (a) { rem.air = a; a.g.position.set(st.x, st.y, st.z); ctx.scene.add(a.g); } rem.airKey = akey; }
+    }
+    if (rem.air) {
+      const g = rem.air.g, age = Math.min(0.4, (performance.now() - rem.lastT) / 1000), k = 1 - Math.exp(-dt * LERP);
+      _ap.set(st.x + Math.sin(st.r) * st.spd * age, st.y, st.z + Math.cos(st.r) * st.spd * age);
+      if (g.position.distanceToSquared(_ap) > 250000) g.position.copy(_ap); else g.position.lerp(_ap, k);
+      g.quaternion.slerp(_aq.fromArray(st.air.q), k); g.visible = Math.hypot(st.x - cam.x, st.z - cam.z) < AIR_DRAW;
+      if (rem.air.spin) rem.air.spin(dt, 30); // props and rotors turn
+      if (rem.tag && rem.tag.parent !== g) { g.add(rem.tag); rem.tag.position.set(0, 3.2, 0); }
+    }
     const show = d < DRAW;
-    p.rig.g.visible = show && !rem.car;
-    if (rem.tag) { rem.tag.visible = d < TAG; rem.tag.position.y = rem.car ? 2.4 : 2.25; const hp = st.dead ? 0 : Math.round(st.hp ?? 100); if (hp !== rem.tag.userData.hp) drawTag(rem.tag, rem.name, rem.color, hp); }
+    p.rig.g.visible = show && !rem.car && !st.ride && !rem.air; // driving, flying, or riding in someone's car: the person is inside
+    if (rem.tag) { rem.tag.visible = d < (rem.air ? 900 : TAG); rem.tag.position.y = rem.air ? 3.2 : rem.car ? 2.4 : 2.25; const hp = st.dead ? 0 : Math.round(st.hp ?? 100); if (hp !== rem.tag.userData.hp) drawTag(rem.tag, rem.name, rem.color, hp); }
     if (rem.car) {
       const g = rem.car.g; g.visible = show;
       if (rem.tag && rem.tag.parent !== g) { g.add(rem.tag); }
-      g.position.lerp(p.pos, 1 - Math.exp(-dt * LERP)); if (p.pos.distanceToSquared(g.position) > 1600) g.position.copy(p.pos);
+      const ox = g.position.x, oz = g.position.z;
+      g.position.lerp(p.pos, 1 - Math.exp(-dt * LERP)); if (p.pos.distanceToSquared(g.position) > 1600) { g.position.copy(p.pos); rem.car.vx = rem.car.vz = 0; }
+      else if (dt > 0) { const k2 = 1 - Math.exp(-dt * 8); rem.car.vx = (rem.car.vx || 0) + ((g.position.x - ox) / dt - (rem.car.vx || 0)) * k2; rem.car.vz = (rem.car.vz || 0) + ((g.position.z - oz) / dt - (rem.car.vz || 0)) * k2; } // how the car moves as drawn: crashes go by this
       g.rotation.set(st.car.p, p.rotY, st.car.rl, 'YXZ');
       rem.wheel = (rem.wheel || 0) + (st.spd * dt) / (rem.car.wr || 0.35);
       for (const w of rem.car.wheels) w.w.rotation.x = rem.wheel;
-    } else if (rem.tag && rem.tag.parent !== p.rig.g) p.rig.g.add(rem.tag);
+    } else if (!rem.air && rem.tag && rem.tag.parent !== p.rig.g) p.rig.g.add(rem.tag);
     // their shots: tracer from the gun along their heading
     if ((st.shots || 0) !== rem.shots) {
       const n = Math.min(3, ((st.shots || 0) - rem.shots + 1000) % 1000); rem.shots = st.shots || 0;
