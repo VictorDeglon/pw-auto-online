@@ -3982,7 +3982,15 @@ function lampsNear(x, z, r) {
 
 // ============================================================ named places
 const POIS = D.pois.map(p => ({ name: p[0], type: p[1], x: p[2], z: p[3] }));
-const LANDMARK_TYPES = new Set(['school', 'park', 'water', 'hospital', 'police', 'library', 'fire_station']);
+// Add 5 Hyper-Realistic Major Plazas to the Map
+POIS.push(
+  { name: 'Poway Town Center', type: 'mall', x: -320.0, z: 432.0, area: 12000 },
+  { name: 'Poway Valley Center', type: 'mall', x: -702.0, z: 402.0, area: 10000 },
+  { name: 'Twin Peaks Plaza', type: 'mall', x: -2437.0, z: -2322.0, area: 15000 },
+  { name: 'Carmel Mountain Promenade', type: 'mall', x: -4250.0, z: -2260.0, area: 22000 },
+  { name: 'Costco Tech Center', type: 'mall', x: -4260.0, z: -2640.0, area: 35000 }
+);
+const LANDMARK_TYPES = new Set(['school', 'park', 'water', 'hospital', 'police', 'library', 'fire_station', 'mall']);
 const LANDMARKS = POIS.filter(p => LANDMARK_TYPES.has(p.type));
 function areaAt(x, z) {
   let best = null, bd = 450 * 450;

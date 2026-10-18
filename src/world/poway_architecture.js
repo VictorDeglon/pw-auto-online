@@ -29,6 +29,7 @@
  *    - Seamless over-the-shoulder interior zoom (2.0m dist) with ceiling and wall collision clamping.
  */
 import * as THREE from 'three';
+import { buildMajorPlazas } from './plazas/plaza_builder.js';
 
 export function createPowayArchitecture(ctx) {
   const { THREE, scene, camera, player, heightAt, sfx, notify, addInteract, hour } = ctx;
@@ -36,6 +37,9 @@ export function createPowayArchitecture(ctx) {
   const group = new THREE.Group();
   group.name = 'PowayArchitectureWorld';
   scene.add(group);
+
+  // Modular Major Plazas Ecosystem (5 Major Plazas across Poway)
+  const majorPlazas = buildMajorPlazas(ctx);
 
   // Material Palette
   const canvasTextures = new Map();
@@ -911,16 +915,18 @@ export function createPowayArchitecture(ctx) {
   // POPULATE ALL POWAY PLAZAS & RESIDENTIAL ZONES
   // =========================================================================
   function buildAll() {
+    // Merge Major Plazas into interior bounds for camera clipping
+    if (majorPlazas && majorPlazas.interiorBounds) {
+      interiorBounds.push(...majorPlazas.interiorBounds);
+    }
+
     // 1. Big-Box Commercial Anchors (Separated from residential!)
     buildTargetStore();
-    buildCostcoWholesale();
     buildWalmartStore();
 
     // 2. Strip Plaza Retail & Dining
-    buildSubwayStore(-329.0, 547.1);       // Poway Road Strip
     buildSubwayStore(-4489.0, -1934.9);    // Carmel Mountain Plaza Strip
     buildGreatClipsStore(-2384.9, -2215.2); // Community Plaza
-    buildGreatClipsStore(-520.0, 480.0);   // Poway Valley Center
 
     // 3. Residential Neighborhoods (Villas, Ranches, Modern Estates)
     // Green Valley Villas
@@ -978,6 +984,11 @@ export function createPowayArchitecture(ctx) {
   let currentInterior = null;
 
   function update(dt) {
+    // Tick moving door animations and motion sensors
+    if (majorPlazas && majorPlazas.update) {
+      majorPlazas.update(dt);
+    }
+
     const pPos = player.pos;
     const interior = getActiveInterior(pPos);
 
