@@ -19,6 +19,7 @@ export function createSky(THREE) {
     top: { value: new THREE.Color(0x4a8fd8) }, horizon: { value: new THREE.Color(0xbfd8ee) }, sunDir: { value: new THREE.Vector3(0, 1, 0) },
     sunCol: { value: new THREE.Color(0xfff0c0) }, cloud: { value: 0.1 }, time: { value: 0 }, night: { value: 0 }, flash: { value: 0 }, dusk: { value: 0 },
     moonDir: { value: new THREE.Vector3(0, -1, 0) }, moonLit: { value: 1 }, starAng: { value: 0 }, glow: { value: 1 }, rain: { value: 0 }, fog: { value: 0 },
+    env: { value: 0 }, // 1 while src/skyenv.js renders the sky into the environment map: no sun disc
   };
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), new THREE.ShaderMaterial({
     uniforms: U, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
@@ -46,7 +47,7 @@ export function createSky(THREE) {
 }
 
 const FRAG = /* glsl */`
-uniform vec3 top, horizon, sunDir, sunCol, moonDir; uniform float cloud, time, night, flash, dusk, moonLit, starAng, glow, rain, fog;
+uniform vec3 top, horizon, sunDir, sunCol, moonDir; uniform float cloud, time, night, flash, dusk, moonLit, starAng, glow, rain, fog, env;
 varying vec3 vDir;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float hash3(vec3 p){ p = fract(p * vec3(.1031, .1030, .0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
@@ -98,7 +99,7 @@ void main(){
   vec3 sc = mix(sunCol, vec3(1., .38, .12), dusk * .8);
   col += sc * mie * (1. - cloud * .8) * (1. - night * .9);
   float disc = smoothstep(.9994 - dusk * .0006, .99975 - dusk * .0003, cs);
-  col += sc * disc * (7. + dusk * 3.) * (1. - cloud * .9) * (1. - smoothstep(-.02, -.06, sy));
+  col += sc * disc * (7. + dusk * 3.) * (1. - cloud * .9) * (1. - smoothstep(-.02, -.06, sy)) * (1. - env);
   // crepuscular rays at golden hour
   vec3 t1 = normalize(cross(sunDir, vec3(0., 1., 0.)) + 1e-5), t2 = cross(t1, sunDir); float ang = atan(dot(d, t2), dot(d, t1));
   float rays = noise(vec2(ang * 18., time * .05)) * .6 + noise(vec2(ang * 41., time * .08)) * .4;
