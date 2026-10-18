@@ -161,6 +161,13 @@ export function makeHuman(name, props = {}) {
   return r;
 }
 
+// a rig that's gone for good: its skeleton's bone texture is the GPU's to free (one per character, never shared)
+export function freeHuman(r) {
+  if (!r || !r.human) return;
+  r.g.traverse(o => { if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose(); });
+  if (r.mixer) { r.mixer.stopAllAction(); r.mixer.uncacheRoot(r.inst); }
+}
+
 function setAction(r, k, fade = 0.25) {
   if (!r.actions[k]) { const c = (HUMANS.clips[r.sex] || {})[k]; if (c) { r.actions[k] = r.mixer.clipAction(c); r.actions[k].play(); r.actions[k].setEffectiveWeight(0); } else k = 'idle'; } // clips that arrived after this rig was made
   if (r.cur === k) return;

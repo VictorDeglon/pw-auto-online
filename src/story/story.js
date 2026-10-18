@@ -40,6 +40,7 @@ import { unlockList } from './unlocks.js';
 import { initFog, updateFog, fogStats, fogDebug } from '../ui/fog.js';
 import { initGarages, updateGarages, GARAGES } from '../world/garages.js';
 import { initMapKey } from '../ui/mapkey.js';
+import { freeHuman } from '../humans.js';
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -138,7 +139,7 @@ function spawnVehicle(type, model, x, z, rot, tint) {
 }
 function makePed(look, x, z, o = {}) {
   const p = new ctx.Ped(x, z, {});
-  ctx.scene.remove(p.rig.g); p.rig = ctx.buildRig(look); ctx.scene.add(p.rig.g); p.rig.gun.visible = !!look.gun;
+  ctx.scene.remove(p.rig.g); freeHuman(p.rig); p.rig = ctx.buildRig(look); ctx.scene.add(p.rig.g); p.rig.gun.visible = !!look.gun;
   Object.assign(p, { keep: true, money: o.money ?? 0, state: 'ai', agent: null, ai: o.ai || npcIdle, invuln: !!o.invuln, who: o.who || null, voice: o.voice || 1, personality: 'normal', reported: true });
   if (o.hp) p.health = o.hp;
   p.maxHp = p.health; if (o.rot !== undefined) p.rotY = o.rot;
@@ -1002,7 +1003,7 @@ export function storyJournal() {
   h += `<p>${st.done.filter(id => !main.some(d => d.id === id)).length} side jobs and trials done</p>`;
   if (S.m) h += `<p>On a job: <b>${S.m.def.title}</b>${objHtml ? ' · ' + objHtml : ''}</p>`;
   else { const n = nextMain(); if (n) h += `<p>Next: see <b>${CAST[n.giver] ? CAST[n.giver].name : n.giver}</b> · ${n.title} · ${esc(PLACES[n.at] ? PLACES[n.at].note : '')}.</p>`; }
-  h += `<p>You've explored about <b>${fogStats().pct}%</b> of the map.</p>`;
+  h += `<p>You've explored about <b>${fogStats().pct}%</b> of Poway.</p>`;
   const avail = S.m ? [] : MISSIONS.filter(d => available(d) && !d.auto);
   if (avail.length) h += '<h3>Open jobs</h3>' + avail.map(d => { const c = CAST[d.giver]; return `<p><span class="who" style="background:${c ? c.color : '#f3ede1'}"></span><b>${d.title}</b> · ${c ? c.name : 'time trial'} · ${esc(PLACES[d.at].note)}. ${esc(d.pitch)}</p>`; }).join('');
   const best = Object.entries(st.best); if (best.length) h += '<h3>Best times</h3>' + best.map(([id, t]) => `<p>${(MISSIONS.find(d => d.id === id) || { title: id }).title}: <b>${fmtT(t)}</b></p>`).join('');

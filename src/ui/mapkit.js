@@ -49,8 +49,8 @@ function boxBlur(a, nx, nz, r) {
 // rect: the photo's [x0, z0, x1, z1] in game metres; roads / buildings: D.roads / D.buildings; keep: [{ x, z, r }]
 // places that stay on the photo however few streets they have (the named regions out in the hills).
 // Returns { canvas, x0, z0, x1, z1 }: an alpha mask in game coordinates, drawn scaled up (so it blurs) over the photo.
-export function buildPhotoMask(rect, roads, buildings, keep = []) {
-  const C = 40, PAD = 600; // metres per cell; margin around everything a map draws
+export function buildPhotoMask(rect, roads, buildings, keep = [], C = 40) { // C: metres per cell
+  const PAD = Math.max(600, C * 4); // margin around everything a map draws
   const x0 = rect[0] - PAD, z0 = rect[1] - PAD, nx = Math.ceil((rect[2] - rect[0] + PAD * 2) / C), nz = Math.ceil((rect[3] - rect[1] + PAD * 2) / C), N = nx * nz;
   const occ = new Uint8Array(N);
   const put = (x, z) => { const i = Math.floor((x - x0) / C), j = Math.floor((z - z0) / C); if (i >= 0 && j >= 0 && i < nx && j < nz) occ[j * nx + i] = 1; };
@@ -70,10 +70,10 @@ export function buildPhotoMask(rect, roads, buildings, keep = []) {
   while (q.length) { const k = q.pop(), i = k % nx; if (i > 0) seed(k - 1); if (i < nx - 1) seed(k + 1); if (k >= nx) seed(k - nx); if (k < N - nx) seed(k + nx); }
   const inward = chamfer(out, nx, nz), a = new Float32Array(N);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const k = j * nx + i, x = x0 + (i + 0.5) * C, z = z0 + (j + 0.5) * C, n = fbm(x / 1500, z / 1500);
-    const land = sstep(100, 750, inward[k] * C - n * 300); // fades out a few hundred metres past the last streets
-    const ed = Math.min(x - rect[0], rect[2] - x, z - rect[1], rect[3] - z) - n * 420; // ragged, never a straight line
-    a[k] = land * sstep(0, 420, ed);
+    const k = j * nx + i, x = x0 + (i + 0.5) * C, z = z0 + (j + 0.5) * C, n = fbm(x / (1500 * C / 40), z / (1500 * C / 40));
+    const f = C / 40, land = sstep(100 * f, 750 * f, inward[k] * C - n * 300 * f); // fades out a few hundred metres past the last streets
+    const ed = Math.min(x - rect[0], rect[2] - x, z - rect[1], rect[3] - z) - n * 420 * f; // ragged, never a straight line
+    a[k] = land * sstep(0, 420 * f, ed);
   }
   boxBlur(a, nx, nz, 2); boxBlur(a, nx, nz, 2);
   const canvas = document.createElement('canvas'); canvas.width = nx; canvas.height = nz;
@@ -154,6 +154,14 @@ function glyph(g, k, x, y, r, col) {
     case 'school': g.beginPath(); g.moveTo(-6.8 * u, -1.2 * u); g.lineTo(0, -4.8 * u); g.lineTo(6.8 * u, -1.2 * u); g.lineTo(0, 2.4 * u); g.closePath(); g.fill(); g.fillRect(-3.8 * u, 0, 7.6 * u, 4.4 * u); g.fillRect(5.1 * u, -1.4 * u, 1.2 * u, 5.6 * u); break;
     case 'library': g.beginPath(); g.moveTo(0, -3.4 * u); g.lineTo(-6 * u, -5 * u); g.lineTo(-6 * u, 4 * u); g.lineTo(0, 5.4 * u); g.lineTo(6 * u, 4 * u); g.lineTo(6 * u, -5 * u); g.closePath(); g.fill(); g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1 * u; g.beginPath(); g.moveTo(0, -3.4 * u); g.lineTo(0, 5.4 * u); g.stroke(); break;
     case 'fire_station': g.beginPath(); g.moveTo(0, -6.4 * u); g.bezierCurveTo(4.6 * u, -1.8 * u, 6 * u, 1.2 * u, 4.4 * u, 4 * u); g.bezierCurveTo(2.6 * u, 6.6 * u, -2.6 * u, 6.6 * u, -4.4 * u, 4 * u); g.bezierCurveTo(-5.8 * u, 1.2 * u, -3.2 * u, -1 * u, 0, -6.4 * u); g.fill(); break;
+    case 'university': g.beginPath(); g.moveTo(-6.8 * u, -1.2 * u); g.lineTo(0, -4.8 * u); g.lineTo(6.8 * u, -1.2 * u); g.lineTo(0, 2.4 * u); g.closePath(); g.fill(); g.fillRect(-3.8 * u, 0, 7.6 * u, 4.4 * u); break;
+    case 'beach': g.beginPath(); g.arc(0, -1.2 * u, 3.6 * u, Math.PI, 0); g.fill(); g.beginPath(); g.moveTo(-6 * u, 3.6 * u); g.bezierCurveTo(-3 * u, 0.8 * u, -1 * u, 6.4 * u, 1.5 * u, 3.6 * u); g.bezierCurveTo(3.5 * u, 1 * u, 5 * u, 5 * u, 6 * u, 3 * u); g.stroke(); break;
+    case 'airport': g.beginPath(); g.moveTo(0, -6.5 * u); g.lineTo(1.2 * u, -1.5 * u); g.lineTo(6.5 * u, 1.5 * u); g.lineTo(6.5 * u, 2.8 * u); g.lineTo(1.2 * u, 1.5 * u); g.lineTo(0.9 * u, 4.5 * u); g.lineTo(2.6 * u, 5.8 * u); g.lineTo(2.6 * u, 6.6 * u); g.lineTo(0, 5.8 * u); g.lineTo(-2.6 * u, 6.6 * u); g.lineTo(-2.6 * u, 5.8 * u); g.lineTo(-0.9 * u, 4.5 * u); g.lineTo(-1.2 * u, 1.5 * u); g.lineTo(-6.5 * u, 2.8 * u); g.lineTo(-6.5 * u, 1.5 * u); g.lineTo(-1.2 * u, -1.5 * u); g.closePath(); g.fill(); break;
+    case 'stadium': g.lineWidth = 2.2 * u; g.beginPath(); g.ellipse(0, 0, 6 * u, 4 * u, 0, 0, TAU); g.stroke(); g.beginPath(); g.ellipse(0, 0, 2.6 * u, 1.4 * u, 0, 0, TAU); g.fill(); break;
+    case 'attraction': case 'military': star(g, 0, 0.6 * u, 6.4 * u, 2.7 * u); if (k === 'military') { g.lineWidth = 1.2 * u; g.stroke(); } else g.fill(); break;
+    case 'mall': g.fillRect(-4.6 * u, -2 * u, 9.2 * u, 7.6 * u); g.lineWidth = 1.6 * u; g.beginPath(); g.arc(0, -2 * u, 2.6 * u, Math.PI, 0); g.stroke(); break;
+    case 'pier': g.fillRect(-1.2 * u, -6 * u, 2.4 * u, 12 * u); for (const yy of [-4, 0, 4]) g.fillRect(-4 * u, (yy - 0.6) * u, 8 * u, 1.2 * u); break;
+    case 'peak': g.beginPath(); g.moveTo(-6.4 * u, 5 * u); g.lineTo(-1 * u, -5.4 * u); g.lineTo(1.6 * u, -0.6 * u); g.lineTo(3 * u, -2.6 * u); g.lineTo(6.4 * u, 5 * u); g.closePath(); g.fill(); break;
     case 'dead': g.lineWidth = 2.4 * u; g.beginPath(); g.moveTo(-4 * u, -4 * u); g.lineTo(4 * u, 4 * u); g.moveTo(4 * u, -4 * u); g.lineTo(-4 * u, 4 * u); g.stroke(); break;
     case 'shop': k = '$'; // falls through: a letter
     default: g.font = `700 ${(k.length > 1 ? 9.5 : 12.5) * u}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(k, 0, 0.8 * u);

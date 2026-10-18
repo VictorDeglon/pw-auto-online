@@ -541,7 +541,7 @@ import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
-import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll } from './src/humans.js';
+import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll, freeHuman } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
@@ -571,6 +571,7 @@ import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, stor
 import * as MAPKIT from './src/ui/mapkit.js';
 import { setGroundTint } from './src/nature/ground.js';
 import { updateBeacons } from './src/online/beacons.js';
+import { createOuter } from './src/world/outer.js';
 import { drawFog, fogSeen, FOG } from './src/ui/fog.js'; // map discovery (fog of war)
 import { garageMarks } from './src/world/garages.js';
 import { CINE } from './src/story/cutscene.js';
@@ -812,6 +813,10 @@ function clampUnderRoads(grid, nx, ny, at, cell) {
   return n;
 }
 function terrainAt(x, z) { // natural terrain only
+  if (OUTER.ready && !inCorePhoto(x, z)) { const h = OUTER.terrainAt(x, z); if (h !== null) return h; }
+  return coreTerrainAt(x, z);
+}
+function coreTerrainAt(x, z) {
   if (ZH) {
     zonePx(x, z, _tmpZ); const px = _tmpZ[0], py = _tmpZ[1];
     if (px >= ZONE.core0 && px < ZONE.core1 && py >= ZONE.core0 && py < ZONE.core1) {
@@ -832,6 +837,10 @@ function signOk(x, z) { return !ROADS || !ROADS.onAsphalt(x, z, 0.5); } // poles
 function offLimits(x, z, margin = 1) { return !!ROADS && ROADS.onRoad(x, z, margin); }
 function groundAt(x, z) { const g = meshAt(x, z); return g !== null ? g : builtAt(x, z); }
 function meshAt(x, z) {
+  const g = coreMeshAt(x, z); if (g !== null) return g;
+  return OUTER.ready ? OUTER.meshAt(x, z) : null;
+}
+function coreMeshAt(x, z) {
   if (ZMESH) {
     zonePx(x, z, _tmpZ); const gx = (_tmpZ[0] - ZONE.core0) / ZCELL, gy = (_tmpZ[1] - ZONE.core0) / ZCELL;
     if (gx >= 0 && gy >= 0 && gx < ZMN - 1 && gy < ZMN - 1) {
@@ -1092,10 +1101,15 @@ function groundTri(gb, ax, az, bx, bz, cx, cz, lift, col, ua, ub, uc) {
 }
 const CHUNK = 400;
 const chunks = new Map();
+function newChunk(cx, cz) {
+  return { cx, cz, wall: [new GB(true), new GB(true), new GB(true), new GB(true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), facade: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } };
+}
+let CHUNK_SINK = null; // while an outer-world tile is being built (src/world/outer.js), every chunk asked for is that tile's
 function chunkAt(x, z) {
+  if (CHUNK_SINK) return typeof CHUNK_SINK === 'function' ? CHUNK_SINK(x, z) : CHUNK_SINK;
   const k = Math.floor(x / CHUNK) + ',' + Math.floor(z / CHUNK);
   let c = chunks.get(k);
-  if (!c) { c = { cx: (Math.floor(x / CHUNK) + 0.5) * CHUNK, cz: (Math.floor(z / CHUNK) + 0.5) * CHUNK, wall: [new GB(true), new GB(true), new GB(true), new GB(true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), facade: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } }; chunks.set(k, c); }
+  if (!c) { c = newChunk((Math.floor(x / CHUNK) + 0.5) * CHUNK, (Math.floor(z / CHUNK) + 0.5) * CHUNK); chunks.set(k, c); }
   return c;
 }
 
@@ -1113,12 +1127,14 @@ function gridAdd(minx, minz, maxx, maxz, kind, idx) {
       c[kind].push(idx);
     }
 }
+let POLY_HOLD = null; // an outer tile being built keeps its walls out of the collision grid until they're drawn
 function addPoly(flat, base, top) {
   let minx = 1e9, maxx = -1e9, minz = 1e9, maxz = -1e9;
   for (let i = 0; i < flat.length; i += 2) { minx = Math.min(minx, flat[i]); maxx = Math.max(maxx, flat[i]); minz = Math.min(minz, flat[i + 1]); maxz = Math.max(maxz, flat[i + 1]); }
   const idx = polys.length; polys.push({ p: Float32Array.from(flat), base, top, minx, maxx, minz, maxz, stamp: 0 });
-  gridAdd(minx, minz, maxx, maxz, 'b', idx);
+  if (POLY_HOLD) POLY_HOLD.push(idx); else gridAdd(minx, minz, maxx, maxz, 'b', idx);
 }
+function releasePolys(list) { for (const i of list) { const P = polys[i]; if (P && !P.gone) gridAdd(P.minx, P.minz, P.maxx, P.maxz, 'b', i); } list.length = 0; }
 const _hitN = { x: 0, z: 0, depth: 0 };
 function collideCircle(pos, r, withTrees = true, y) { // y: the bottom of whatever is moving; above a roof or a treetop there's nothing to hit
   let hit = null; const st = ++stampN;
@@ -1326,7 +1342,8 @@ function crossW(e, n) {
   return c;
 }
 // e.r0 / e.r1: where lane runs end near node a / b; vehicles cross the junction on a curve between runs (signal approach = stop line)
-for (const e of edges) {
+for (const e of edges) edgeRuns(e);
+function edgeRuns(e) {
   const r = [0, 0], sig = [false, false];
   for (let k = 0; k < 2; k++) {
     const n = k ? e.b : e.a, deg = nodeEdges[n].length;
@@ -1374,10 +1391,13 @@ const stopKeys = new Set(), stopD = new Map(); // key = edge * 2 + (arriving at 
 // right of way for every (edge, node) arrival at a junction: sig | in (inside a signalised intersection) | stop |
 // yield (minor road / T-junction stem) | yr (equal roads: yield to the right) | free (priority road)
 const ctlAt = new Map(), RANK = { stop: 0, yield: 1, yr: 2, free: 3, in: 3, sig: 3 };
-for (let n = 0; n < nodeCount; n++) {
-  const es = nodeEdges[n]; if (es.length < 3) continue;
+for (let n = 0; n < nodeCount; n++) junctionRules(n);
+// stops: [x, z] stop signs near the junction (outer world: OpenStreetMap stop nodes have no heading, so the minor legs stop)
+function junctionRules(n, stops) {
+  const es = nodeEdges[n]; if (es.length < 3) return;
   const key = e => e.i * 2 + (e.b === n ? 1 : 0), legs = es.map(i => edges[i]).filter(e => e.a !== e.b), arr = legs.filter(e => canArrive(e, n));
-  if (inters.byNode.has(n)) { for (const e of arr) { const ap = inters.approachAt.get(`${e.i}:${n}`); ctlAt.set(key(e), ap ? { k: 'sig', ap } : { k: 'in' }); } continue; }
+  if (inters.byNode.has(n)) { for (const e of arr) { const ap = inters.approachAt.get(`${e.i}:${n}`); ctlAt.set(key(e), ap ? { k: 'sig', ap } : { k: 'in' }); } return; }
+  if (stops && stops.some(([x, z]) => hyp(x - NX[n * 2], z - NX[n * 2 + 1]) < 30)) { const m = Math.min(...legs.map(e => e.t)), same = legs.every(e => e.t === m); for (const e of arr) if (same || e.t > m) stopKeys.add(key(e)); }
   const st = arr.filter(e => stopKeys.has(key(e))), all = st.length === arr.length && arr.length >= 2, mt = Math.min(...legs.map(e => e.t)), top = legs.filter(e => e.t === mt);
   let thru = top.length === 2 ? top : null;
   if (top.length === 3) for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
@@ -1632,16 +1652,28 @@ function walls(ch, flat, base, top, wallC, matIdx) {
   }
   return S;
 }
-function addBuilding(b) {
+// buildings are registered once (collision, destruction record, colours) and drawn when their chunk is built; the core's
+// chunks are built near you and dropped far away (lazy), an outer tile's when the tile is (src/world/outer.js)
+function addBuilding(b, lazy) {
   const [h, kind, flat, rs, bcol, rcol] = b; const n = flat.length / 2; if (n < 3) return;
-  const [mn, mx, cx, cz] = footprintHeights(flat); const base = mn - 0.6, top = mx + h; const ch = chunkAt(cx, cz);
+  const [mn, mx, cx, cz] = footprintHeights(flat); const base = mn - 0.6, top = mx + h;
   const big = kind === 2 || (kind === 1 && h > 8);
   const wallC = bcol >= 0 ? hex(bcol) : pick(big ? WALL_BIG : WALL_HOUSE);
   const matIdx = kind === 0 ? 0 : big ? (srand() < 0.2 ? 2 : srand() < 0.5 ? 1 : 3) : (srand() < 0.5 ? 0 : 3);
+  const photo = !!(b[12] > 0 && TX.roofs[b[14] || 0]), roofK = photo ? 'P' : kind === 0 ? (srand() < 0.5 ? 'C' : 'S') : 'F';
+  const roofC = photo ? hex(0xffffff) : (rcol >= 0 ? hex(rcol) : (kind === 0 ? pick(roofK === 'C' ? ROOF_CLAY : ROOF_SHINGLE) : hex(0xb8b4ac)));
+  const poly = polys.length; addPoly(flat, base, top + 2);
+  let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
+  const B = { ranges: [], flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false, b, big, wallC, matIdx, roofK, roofC, photo };
+  B.hp0 = B.hp; B.i = BLD.length; BLD.push(B); bldOfPoly.set(poly, B);
+  if (lazy) { const L = lazyOf(chunkAt(cx, cz)); L.blds.push(B); B.lazy = L; } else buildingGeom(B, chunkAt(cx, cz));
+}
+// walls, roof and facade of a registered building into chunk ch (B.ranges: its vertices there, for collapsing)
+function buildingGeom(B, ch) {
+  const { b, flat, base, top, cx, cz, big, wallC, matIdx, roofC, photo } = B, kind = b[1], rs = b[3], n = flat.length / 2;
   const gbs0 = new Map(chunkGBs(ch).map(g => [g, g.p.length / 3]));
   const S = walls(ch, flat, base, top, wallC, matIdx);
-  const photo = b[12] > 0 && TX.roofs[b[14] || 0]; const roofG = photo ? ch.roofP[b[14] || 0] : (kind === 0 ? (srand() < 0.5 ? ch.roofC : ch.roofS) : ch.roofF);
-  const roofC = photo ? hex(0xffffff) : (rcol >= 0 ? hex(rcol) : (kind === 0 ? pick(roofG === ch.roofC ? ROOF_CLAY : ROOF_SHINGLE) : hex(0xb8b4ac)));
+  const roofG = B.roofK === 'P' ? ch.roofP[b[14] || 0] : B.roofK === 'C' ? ch.roofC : B.roofK === 'S' ? ch.roofS : ch.roofF;
   const uvOf = photo ? (x, z) => roofUV(b, x, z) : (x, z) => [x / 3, z / 3];
   if (rs !== 0 && n <= 10) { // hip roof: pyramid to the centroid
     const rh = Math.min(3.2, Math.sqrt(Math.abs(flat.reduce((a, _, i, f) => i % 2 ? a : a + (f[i] * f[(i + 3) % f.length] - f[(i + 2) % f.length] * f[i + 1]), 0) / 2)) * 0.22);
@@ -1657,15 +1689,12 @@ function addBuilding(b) {
     for (const t of tris) tri(roofG, [contour[t[0]].x, top, contour[t[0]].y], [contour[t[1]].x, top, contour[t[1]].y], [contour[t[2]].x, top, contour[t[2]].y], roofC, roofC, roofC, uvOf(contour[t[0]].x, contour[t[0]].y), uvOf(contour[t[1]].x, contour[t[1]].y), uvOf(contour[t[2]].x, contour[t[2]].y), 0, 1, 0);
     if (big) { const dark = wallC.clone().multiplyScalar(0.85); const gb = ch.wall[matIdx]; for (let i = 0; i < n; i++) { const j = (i + 1) % n; const ax = flat[i * 2], az = flat[i * 2 + 1], bx = flat[j * 2], bz = flat[j * 2 + 1]; const ox = S > 0 ? bz - az : az - bz, oz = S > 0 ? ax - bx : bx - ax; tri(gb, [ax, top, az], [bx, top, bz], [bx, lip, bz], dark, dark, dark, [0, 0], [0.1, 0], [0.1, 0.1], ox, 0, oz); tri(gb, [ax, top, az], [bx, lip, bz], [ax, lip, az], dark, dark, dark, [0, 0], [0.1, 0.1], [0, 0.1], ox, 0, oz); } }
   }
-  const poly = polys.length; addPoly(flat, base, top + 2);
   if (kind === 0 && ZONE && inCore(cx, cz)) facadeDetails(ch, flat, S, base, top, cx, cz);
-  const ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) ranges.push([g, a, e]); }
-  let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
-  const B = { ranges, flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false };
-  B.hp0 = B.hp; B.i = BLD.length; BLD.push(B); bldOfPoly.set(poly, B);
+  B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); }
+  B.drawn = true;
 }
 // ---- destruction: every building knows its vertex ranges in the chunk meshes, so it can come down
-const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [];
+const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [], BLD_HURT = new Set(); // BLD_HURT: damaged or fallen, for the repair scan
 function chunkGBs(ch) { const a = [...ch.wall, ...ch.roofP, ch.roofC, ch.roofS, ch.roofF, ch.facade]; for (const g of ch.roofGs.values()) a.push(g); return a; }
 function buildingsNear(x, z, R) {
   const out = [], st = ++stampN;
@@ -1681,7 +1710,7 @@ function blastBuildings(x, z, R, by) {
     let d = 1e9; const f = B.flat, n = f.length / 2;
     if (pip(x, z, f)) d = 0; else for (let i = 0, j = n - 1; i < n; j = i++) { const q = segClosest(x, z, f[j * 2], f[j * 2 + 1], f[i * 2], f[i * 2 + 1]); d = Math.min(d, Math.hypot(q[0] - x, q[1] - z)); }
     if (d > R * 1.6) continue;
-    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6)); B.hurtAt = simTime;
+    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6)); B.hurtAt = simTime; BLD_HURT.add(B);
     if (B.hp <= 0 && by === 'net') B.hp = 1;
     else if (B.hp <= 0) { const dx = B.cx - x, dz = B.cz - z, L = Math.hypot(dx, dz) || 1; collapseBuilding(B, dx / L, dz / L, by); }
     else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
@@ -1698,7 +1727,7 @@ function busyAt(x, z) {
 }
 const REBUILD_S = 120; // a collapsed building stands back up two minutes later (online ruins expire on the same clock)
 function collapseBuilding(B, dirx, dirz, by, instant, lite) { // instant: already rubble when you arrived (online ruins); lite: no flying blocks (a nuke flattens dozens)
-  if (B.dead) return; B.dead = true; polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
+  if (B.dead) return; B.dead = true; BLD_HURT.add(B); polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
   B.repairAt = simTime + REBUILD_S; B.fall = { dirx, dirz };
   if (online && by !== 'net') { sendEvent('col', { i: B.i, dx: dirx, dz: dirz }); setRuin(B.i, B.cx, B.cz); }
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
@@ -1753,8 +1782,9 @@ function updateRepairs(dt) {
   repairScanT -= dt;
   if (repairScanT <= 0) {
     repairScanT = 1;
-    for (const B of BLD) {
-      if (!B.dead) { if (B.hp < B.hp0 && B.hurtAt != null && simTime - B.hurtAt > REBUILD_S) { B.hp = B.hp0; B.smoking = false; B.hurtAt = null; } continue; }
+    for (const B of BLD_HURT) {
+      if (B.gone) { BLD_HURT.delete(B); continue; } // its outer tile was unloaded
+      if (!B.dead) { if (B.hp < B.hp0 && B.hurtAt != null && simTime - B.hurtAt > REBUILD_S) { B.hp = B.hp0; B.smoking = false; B.hurtAt = null; } if (B.hp >= B.hp0) BLD_HURT.delete(B); continue; }
       if (B.repairing || B.repairAt == null || simTime < B.repairAt || !B.anims) continue;
       if (collapsing.some(c => c.B === B)) continue;
       const inside = (x, z) => pip(x, z, B.flat); // never rebuild on top of someone
@@ -1769,7 +1799,7 @@ function updateRepairs(dt) {
       for (let j = 0; j < A.k; j++) { const h = A.y0[j] - B.base; if (k >= 1) A.pos.setXYZ(A.a + j, A.x0[j], A.y0[j], A.z0[j]); else A.pos.setXYZ(A.a + j, A.x0[j] + dirx * h * e * 0.35, B.base + h * (1 - e) - e * 0.8, A.z0[j] + dirz * h * e * 0.35); }
       if (A.pos.addUpdateRange) A.pos.addUpdateRange(A.a * 3, A.k * 3); A.pos.needsUpdate = true;
     }
-    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
+    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (B.lazy && B.lazy.built && !B.drawn) B.lazy.dirty = true; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
   }
 }
 // garage door + front door on the wall that faces the street, mailbox at the curb (detail zone only)
@@ -2064,6 +2094,46 @@ async function plantNature() {
   console.info('[nature] trees', filt.stats, placed.counts, 'extra shrubs', NATURE.shrubs, 'ground cover instances', NATURE.gc ? NATURE.gc.instances : 0);
 }
 
+// asphalt, walks, gutters and markings for one road (p: densified centre line); in the chunk at its middle
+function paveRoad(t, w, p) {
+  const n = p.length / 2;
+  const ch = chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1]);
+  if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.045, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.045, [0.85, 0.84, 0.8], 3); }
+  ribbon(ch.road, p, w, 0, ROAD_TOP, t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1], 7);
+  // markings from the same lane layout traffic drives by (src/roadnet.js laneOffset): a centre gap of 2.8 m or more is
+  // a two-way left-turn lane (as on Espola Road), a 1.2 m+ shoulder is a bike lane, dividers sit between real lanes
+  const YEL = [0.85, 0.66, 0.12], WHT = [0.86, 0.86, 0.83];
+  if (t <= 3 && w >= 9) {
+    const n = w >= 21 ? 3 : w >= 15 ? 2 : 1, lw = clamp(w / 2 / n, 2.8, 3.7), base = Math.max(0, w / 2 - n * lw) * 0.5, sh = w / 2 - base - n * lw;
+    for (const sg of [1, -1]) {
+      if (base >= 1.4) { dashes(ch.line, p, 0.14, sg * base, 0.06, YEL, 1, 0, 9); dashes(ch.line, p, 0.12, sg * (base - 0.3), 0.06, YEL, 3, 6, 9); } // turn lane: solid outside, broken inside
+      else dashes(ch.line, p, 0.16, sg * 0.14, 0.06, YEL, 1, 0, 9); // double yellow
+      for (let k = 1; k < n; k++) dashes(ch.line, p, 0.12, sg * (base + k * lw), 0.06, WHT, 3, 6, 9);
+      if (sh >= 1.2) dashes(ch.line, p, 0.15, sg * (w / 2 - sh + 0.1), 0.06, WHT, 1, 0, 9); // bike lane / shoulder line
+    }
+  } else if (t === 4 && w >= 8) dashes(ch.line, p, 0.12, 0, 0.06, [0.8, 0.62, 0.15], 2.5, 5, 10);
+  if (t >= 1 && t <= 5 && w >= 6) { // concrete gutters along the curb, storm drains near each end of the block
+    ribbon(ch.side, p, 0.5, w / 2 - 0.25, 0.04, [0.72, 0.71, 0.68], 3); ribbon(ch.side, p, 0.5, -(w / 2 - 0.25), 0.04, [0.72, 0.71, 0.68], 3);
+    const n2 = p.length / 2; if (n2 >= 2) for (const end of [0, 1]) {
+      const i0 = end ? n2 - 1 : 0, i1 = end ? n2 - 2 : 1, dx = p[i1 * 2] - p[i0 * 2], dz = p[i1 * 2 + 1] - p[i0 * 2 + 1], L = Math.hypot(dx, dz); if (L < 14) continue;
+      const tx = dx / L, tz = dz / L, sg = end ? -1 : 1, o = w / 2 - 0.3, x = p[i0 * 2] + tx * 12 - tz * o * sg, z = p[i0 * 2 + 1] + tz * 12 + tx * o * sg;
+      bar(ch.line, x, z, tx, tz, 0.95, 0.45, 0.065, [0.16, 0.16, 0.17]);
+    }
+  }
+}
+// a chunk's geometry -> meshes in grp; returns the small stuff (hidden far away) as lod
+function meshChunk(ch, grp) { const out = { lod: [] }; for (const _ of meshChunkSteps(ch, grp, out)); return out; }
+function* meshChunkSteps(ch, grp, out) { // one mesh per step (the outer tiles spread them over frames)
+  const lod = out.lod;
+  for (let i = 0; i < ch.wall.length; i++) { const m = ch.wall[i].mesh(M.walls[i], true); if (m) grp.add(m); yield; }
+  ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true); if (m) grp.add(m); }); ch.roofP = null;
+  { const m = ch.facade.mesh(M.facade, false); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.facade = null; }
+  for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
+    const m = ch[key].mesh(mat, sh); if (m) { if (LOD_KEYS.has(key)) { m.userData.lod = 1; lod.push(m); } grp.add(m); } ch[key] = null; yield;
+  }
+  for (const [gi, gb] of ch.roofGs) { const mat = M.terrain[gi]; const m = gb.mesh(mat ? new THREE.MeshStandardMaterial({ map: mat.map, roughness: 0.95 }) : M.roofShingle, true); if (m) grp.add(m); }
+  ch.wall = null; ch.roofGs = null;
+}
 async function buildWorld() {
   const tick = () => new Promise(r => setTimeout(r, 0));
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
@@ -2116,36 +2186,14 @@ async function buildWorld() {
     const idx = []; const inner = (i, j) => { const px = R0 + i * step, py = R0 + j * step; return px > step && py > step && px < AER.W - step && py < AER.H - step; };
     for (let j = 0; j < H - 1; j++) for (let i = 0; i < W - 1; i++) { if (inner(i, j) && inner(i + 1, j) && inner(i, j + 1) && inner(i + 1, j + 1)) continue; const a = j * W + i, b = a + 1, c = a + W, d = c + 1; idx.push(a, d, b, a, c, d); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); g.setIndex(idx); g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, M.outer); mesh.receiveShadow = true; scene.add(mesh);
+    const mesh = new THREE.Mesh(g, M.outer); mesh.receiveShadow = true; scene.add(mesh); OUTER_HILLS = mesh;
   }
   MESH_READY = true; // from here on, off-road ground heights come from the mesh just built
   // ---- roads
   progress('Paving ' + D.roads.length.toLocaleString() + ' streets…'); await tick();
   D.roads.forEach((r, ri) => {
-    const [ni, t, w, p0] = r; const p = densify(p0, 3); const n = p.length / 2; // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
-    const ch = chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1]);
-    if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.045, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.045, [0.85, 0.84, 0.8], 3); }
-    ribbon(ch.road, p, w, 0, ROAD_TOP, t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1], 7);
-    // markings from the same lane layout traffic drives by (src/roadnet.js laneOffset): a centre gap of 2.8 m or more is
-    // a two-way left-turn lane (as on Espola Road), a 1.2 m+ shoulder is a bike lane, dividers sit between real lanes
-    const YEL = [0.85, 0.66, 0.12], WHT = [0.86, 0.86, 0.83];
-    if (t <= 3 && w >= 9) {
-      const n = w >= 21 ? 3 : w >= 15 ? 2 : 1, lw = clamp(w / 2 / n, 2.8, 3.7), base = Math.max(0, w / 2 - n * lw) * 0.5, sh = w / 2 - base - n * lw;
-      for (const sg of [1, -1]) {
-        if (base >= 1.4) { dashes(ch.line, p, 0.14, sg * base, 0.06, YEL, 1, 0, 9); dashes(ch.line, p, 0.12, sg * (base - 0.3), 0.06, YEL, 3, 6, 9); } // turn lane: solid outside, broken inside
-        else dashes(ch.line, p, 0.16, sg * 0.14, 0.06, YEL, 1, 0, 9); // double yellow
-        for (let k = 1; k < n; k++) dashes(ch.line, p, 0.12, sg * (base + k * lw), 0.06, WHT, 3, 6, 9);
-        if (sh >= 1.2) dashes(ch.line, p, 0.15, sg * (w / 2 - sh + 0.1), 0.06, WHT, 1, 0, 9); // bike lane / shoulder line
-      }
-    } else if (t === 4 && w >= 8) dashes(ch.line, p, 0.12, 0, 0.06, [0.8, 0.62, 0.15], 2.5, 5, 10);
-    if (t >= 1 && t <= 5 && w >= 6) { // concrete gutters along the curb, storm drains near each end of the block
-      ribbon(ch.side, p, 0.5, w / 2 - 0.25, 0.04, [0.72, 0.71, 0.68], 3); ribbon(ch.side, p, 0.5, -(w / 2 - 0.25), 0.04, [0.72, 0.71, 0.68], 3);
-      const n2 = p.length / 2; if (n2 >= 2) for (const end of [0, 1]) {
-        const i0 = end ? n2 - 1 : 0, i1 = end ? n2 - 2 : 1, dx = p[i1 * 2] - p[i0 * 2], dz = p[i1 * 2 + 1] - p[i0 * 2 + 1], L = Math.hypot(dx, dz); if (L < 14) continue;
-        const tx = dx / L, tz = dz / L, sg = end ? -1 : 1, o = w / 2 - 0.3, x = p[i0 * 2] + tx * 12 - tz * o * sg, z = p[i0 * 2 + 1] + tz * 12 + tx * o * sg;
-        bar(ch.line, x, z, tx, tz, 0.95, 0.45, 0.065, [0.16, 0.16, 0.17]);
-      }
-    }
+    const [ni, t, w, p0] = r; const p = densify(p0, 3), n = p.length / 2; // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
+    lazyOf(chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1])).roads.push([t, w, p0]); // paved when its chunk is near
     const bb = bbox(p0); mapRoads.push({ t, w, p: p0, name: NAMES[ni] || '' }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', ri);
     for (let k = 0; k < p0.length / 2 - 1; k++) {
       const mx = Math.min(p0[k * 2], p0[k * 2 + 2]), Mx = Math.max(p0[k * 2], p0[k * 2 + 2]), mz = Math.min(p0[k * 2 + 1], p0[k * 2 + 3]), Mz = Math.max(p0[k * 2 + 1], p0[k * 2 + 3]);
@@ -2181,7 +2229,7 @@ async function buildWorld() {
   launchBoats(); initPilot(); // every boat on the lakes can be taken (src/pilot.js)
   progress('Raising ' + D.buildings.length.toLocaleString() + ' mapped buildings…'); await tick();
   let count = 0;
-  for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b); if (++count % 2500 === 0) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); } } // PHS
+  for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true); if (++count % 2500 === 0) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); } } // PHS; drawn chunk by chunk near you (lazyOf)
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
@@ -2204,17 +2252,7 @@ async function buildWorld() {
     cap: { potato: 10, low: 18, medium: 30, high: 42, ultra: 56 }[GFX.id] || 30,
   }); const n = PARK.build(D.areas); console.info('[parking]', PARK.lots.length, 'lots,', n, 'stalls'); }
   // ---- chunk meshes
-  for (const ch of chunks.values()) {
-    const grp = ch.group; grp.position.set(0, 0, 0); scene.add(grp);
-    ch.wall.forEach((gb, i) => { const m = gb.mesh(M.walls[i], true); if (m) grp.add(m); });
-    ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true); if (m) grp.add(m); }); ch.roofP = null;
-    { const m = ch.facade.mesh(M.facade, false); if (m) { m.userData.lod = 1; grp.add(m); } ch.facade = null; }
-    for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
-      const m = ch[key].mesh(mat, sh); if (m) { if (LOD_KEYS.has(key)) m.userData.lod = 1; grp.add(m); } ch[key] = null;
-    }
-    for (const [gi, gb] of ch.roofGs) { const mat = M.terrain[gi]; const m = gb.mesh(mat ? new THREE.MeshStandardMaterial({ map: mat.map, roughness: 0.95 }) : M.roofShingle, true); if (m) grp.add(m); }
-    ch.wall = null; ch.roofGs = null;
-  }
+  for (const ch of chunks.values()) { const grp = ch.group; grp.position.set(0, 0, 0); grp.matrixAutoUpdate = false; grp.updateMatrix(); scene.add(grp); meshChunk(ch, grp); }
   // ---- street lamps (a spot computed off one road can land on a crossing street's asphalt: drop those)
   if (ROADS) { let o = 0; for (let i = 0; i < lampSpots.length; i += 3) if (!ROADS.onAsphalt(lampSpots[i], lampSpots[i + 1], 1.2)) { lampSpots[o++] = lampSpots[i]; lampSpots[o++] = lampSpots[i + 1]; lampSpots[o++] = lampSpots[i + 2]; } lampSpots.length = o; }
   {
@@ -2230,13 +2268,238 @@ async function buildWorld() {
     }
     for (let i = 0; i < n; i++) addProp({ kind: 'lamp', x: lampSpots[i * 3], z: lampSpots[i * 3 + 1], rot: lampSpots[i * 3 + 2], i, inst: [poles, heads, glows], alive: true });
     poles.castShadow = true; poles.computeBoundingSphere(); heads.computeBoundingSphere(); glows.computeBoundingSphere();
-    scene.add(poles, heads, glows);
+    scene.add(poles, heads, glows); CORE_LAMPS = [poles, heads, glows];
   }
   // ---- traffic signals: Caltrans mast arms, 12" heads with flashing-yellow-arrow lefts, countdown ped heads, lit
   // street-name signs, video detection cameras, controller cabinets, limit lines and crosswalks (src/signals.js)
   SIGNALS = createSignals(THREE, { inters, edges, nodeEdges, NX, heightAt, addPoly, lineY: 0.04, school: inSchoolZone, drawDist: { potato: 380, low: 520, medium: 720, high: 900, ultra: 1100 }[GFX.id] || 720 });
   scene.add(SIGNALS.group);
 }
+// ============================================================ the outer world (src/world/outer.js, assets/world)
+// 50 km on every side of the core, streamed in 2 km tiles. These hooks hand the tiles the core's own builders (road
+// paving, buildings, collision, the road graph), so the two halves of the world look and behave the same.
+let OUTER_HILLS = null; // the procedural ring around the photo: replaced by the outer tiles when they exist
+// ---- the core's streets and buildings, chunk by chunk: built within view (a few ms a frame), dropped far away. Their
+// collision, destruction records and the road surface exist from the start; only the drawn geometry comes and goes.
+function lazyOf(ch) { return ch.lazy || (ch.lazy = { ch, roads: [], blds: [], built: false, dirty: false, meshes: [], job: null }); }
+const lazyQueue = []; let lazyJob = null;
+function* buildLazy(L) {
+  const lc = newChunk(L.ch.cx, L.ch.cz), due = lazyDue;
+  CHUNK_SINK = lc;
+  for (const [t, w, p0] of L.roads) { paveRoad(t, w, densify(p0, 3)); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
+  for (const B of L.blds) { if (B.dead || B.gone) { B.drawn = false; continue; } buildingGeom(B, lc); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
+  CHUNK_SINK = null;
+  const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [] })) if (due()) yield;
+  L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
+  L.built = true; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
+}
+function dropLazy(L) {
+  for (const m of L.meshes) { L.ch.group.remove(m); m.geometry.dispose(); }
+  L.meshes = []; L.built = false; L.dirty = false; for (const B of L.blds) { B.ranges = []; B.drawn = false; }
+}
+let lazyT0 = 0; const lazyDue = () => performance.now() - lazyT0 > 3;
+function updateLazy(budget) { // every frame: run the nearest pending chunk build for a few ms
+  const t0 = performance.now();
+  while (performance.now() - t0 < budget) {
+    if (!lazyJob) { const L = lazyQueue.shift(); if (!L) return; if (L.built) continue; lazyJob = { L, it: buildLazy(L) }; }
+    lazyT0 = performance.now(); if (lazyJob.it.next().done) lazyJob = null;
+  }
+}
+// which chunks are wanted (called with the chunk visibility pass, twice a second)
+function planLazy(fx, fz) {
+  const want = GFX.view + 200, drop = GFX.view + 1200, add = [];
+  for (const ch of chunks.values()) {
+    const L = ch.lazy; if (!L) continue;
+    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7);
+    if (L.built && (d > drop || L.dirty)) { if (lazyJob && lazyJob.L === L) lazyJob = null; dropLazy(L); }
+    if (!L.built && d < want && !(lazyJob && lazyJob.L === L)) add.push([d, L]);
+  }
+  lazyQueue.length = 0; for (const [, L] of add.sort((a, b) => a[0] - b[0])) lazyQueue.push(L);
+}
+function buildLazyNear(x, z) { planLazy(x, z); while (lazyQueue.length || lazyJob) updateLazy(1e9); } // at load: everything in view, at once
+// far from Poway (out in the county), the core's town-wide meshes (300k plant impostors, every lamp and sign, the
+// signals, the grass) aren't drawn at all; its chunks already hide by distance (updateChunkVisibility)
+let CORE_LAMPS = null, coreFar = false, coreFarT = 0;
+function cullCore(dt) {
+  if ((coreFarT -= dt) > 0) return; coreFarT = 0.5;
+  const f = focusPos(), far = Math.hypot(Math.max(B.minx - f.x, 0, f.x - B.maxx), Math.max(B.minz - f.z, 0, f.z - B.maxz)) > GFX.view + 400;
+  if (far === coreFar) return; coreFar = far;
+  const wide = [...(CORE_LAMPS || []), SIGNMESH, SIGNPOLE, SIGNALS && SIGNALS.group];
+  if (NATURE.veg && NATURE.veg.meshes) wide.push(...NATURE.veg.meshes.values());
+  if (NATURE.gc) for (const L of NATURE.gc.layers) wide.push(L.mesh);
+  for (const m of wide) if (m) m.visible = !far;
+}
+const PHOTO_R = photoRect();
+function inCorePhoto(x, z, m = 0) { return x >= PHOTO_R[0] + m && x <= PHOTO_R[2] - m && z >= PHOTO_R[1] + m && z <= PHOTO_R[3] - m; }
+// ---- the road graph grows as tiles are built: nodes by their OpenStreetMap id, edges once each
+const outerNodes = new Map(), outerEdgeKeys = new Set(), CORE_EDGES = edges.length;
+function graphEdge(a, b, t, w, ow, name, pts, mph, outer) {
+  { const q = [pts[0], pts[1]]; for (let k = 2; k < pts.length; k += 2) if (Math.hypot(pts[k] - q[q.length - 2], pts[k + 1] - q[q.length - 1]) > 0.05) q.push(pts[k], pts[k + 1]); // no zero-length legs: directions at the ends must exist
+    if (q.length < 4) { const x = q[0], z = q[1]; q.push(x + 0.1, z); } pts = Float32Array.from(q); }
+  const n = pts.length / 2, cum = new Float32Array(n);
+  for (let k = 1; k < n; k++) cum[k] = cum[k - 1] + Math.hypot(pts[k * 2] - pts[k * 2 - 2], pts[k * 2 + 1] - pts[k * 2 - 1]);
+  const e = { i: edges.length, a, b, t, w, ow, name, pts, cum, len: Math.max(cum[n - 1], 0.1), mph, inI: null, outer };
+  edges.push(e); nodeEdges[a].push(e.i); nodeEdges[b].push(e.i); edgeMitre(e); edgeRuns(e); // usable at once (traffic may spawn on it before the tile is done)
+  const seen = new Set();
+  for (let k = 0; k < pts.length; k += 2) { const key = ckey(Math.floor(pts[k] / EG), Math.floor(pts[k + 1] / EG)); if (seen.has(key)) continue; seen.add(key); let c = egrid.get(key); if (!c) egrid.set(key, c = []); c.push(e.i); }
+  return e;
+}
+function graphNode(x, z) { const n = NX.length / 2; NX.push(x, z); nodeEdges.push([]); return n; }
+// an outer road that runs onto one of the core's: join the core road's graph at both of its ends, along its own line
+function joinCore(n, x, z) {
+  const ne = nearestEdge(x, z, 24, e => !e.outer && e.t <= 5); if (!ne) return;
+  const e = edges[ne.e], p = e.pts, fwd = [x, z], back = [x, z]; // the core line from the stub on to b, and back to a
+  for (let k = 0; k < p.length; k += 2) if (e.cum[k / 2] > ne.d) fwd.push(p[k], p[k + 1]);
+  for (let k = p.length - 2; k >= 0; k -= 2) if (e.cum[k / 2] <= ne.d) back.push(p[k], p[k + 1]);
+  const made = [];
+  if (fwd.length >= 4) made.push(graphEdge(n, e.b, e.t, e.w, e.ow, e.name, Float32Array.from(fwd), e.mph, true));
+  if (back.length >= 4) {
+    if (!e.ow) made.push(graphEdge(n, e.a, e.t, e.w, 0, e.name, Float32Array.from(back), e.mph, true));
+    else { const r = []; for (let k = back.length - 2; k >= 0; k -= 2) r.push(back[k], back[k + 1]); made.push(graphEdge(e.a, n, e.t, e.w, 1, e.name, Float32Array.from(r), e.mph, true)); } // one-way: a -> stub
+  }
+  for (const m of made) m.link = true; // along the core's own road: never paved twice
+  return made.map(m => m.i);
+}
+function* addOuterEdges(list, t, due) {
+  const touched = new Set();
+  const node = (id, x, z) => { let n = outerNodes.get(id); if (n !== undefined) return n; n = graphNode(x, z); outerNodes.set(id, n); if (id[0] === 's') for (const ei of joinCore(n, x, z) || []) { touched.add(edges[ei].a); touched.add(edges[ei].b); } return n; };
+  const stops = (t.d.stop || []).map(q => [t.x0 + q[0] * 0.1, t.z0 + q[1] * 0.1]);
+  list.forEach((e, k) => {
+    const key = t.k + ':' + k; if (outerEdgeKeys.has(key)) return; outerEdgeKeys.add(key);
+    const p = e.p, a = node(e.a, p[0], p[1]), b = node(e.b, p[p.length - 2], p[p.length - 1]);
+    graphEdge(a, b, e.t, e.w, e.ow ? 1 : 0, e.name, Float32Array.from(p), e.mph, true); touched.add(a); touched.add(b);
+  });
+  for (const n of touched) { for (const ei of nodeEdges[n]) edgeRuns(edges[ei]); junctionRules(n, stops); if (due()) yield; } // lane runs and right of way at the junctions that changed
+}
+// ---- collision and buildings of a tile that's going away
+function dropPolys([a, b]) {
+  for (let i = a; i < b; i++) {
+    const P = polys[i]; if (!P || P.gone) continue; P.dead = true; P.gone = true;
+    for (let gx = Math.floor(P.minx / CELL); gx <= Math.floor(P.maxx / CELL); gx++) for (let gz = Math.floor(P.minz / CELL); gz <= Math.floor(P.maxz / CELL); gz++) {
+      const c = cgrid.get(ckey(gx, gz)); if (!c) continue; const j = c.b.indexOf(i); if (j >= 0) c.b.splice(j, 1);
+    }
+    P.p = new Float32Array(0);
+  }
+}
+function dropBuildings([a, b]) { for (let i = a; i < b; i++) { const B = BLD[i]; if (!B) continue; B.dead = true; B.gone = true; B.ranges = []; bldOfPoly.delete(B.poly); } }
+// ---- street furniture of a tile: lamps along the bigger streets (and the mapped ones), stop signs, crosswalks
+const _kq = new THREE.Quaternion(), _kv = new THREE.Vector3(), _ks = new THREE.Vector3(1, 1, 1), _km = new THREE.Matrix4(), _ku = new THREE.Vector3(0, 1, 0);
+function* outerKit(t, d, kit, due) {
+  const spots = [], x0 = t.x0, z0 = t.z0;
+  for (const e of t.edges) {
+    if (e.t < 1 || e.t > 3) continue; const p = e.p; let acc = rand(0, 30), side = 1;
+    for (let k = 0; k < p.length / 2 - 1; k++) {
+      const ax = p[k * 2], az = p[k * 2 + 1], bx = p[k * 2 + 2], bz = p[k * 2 + 3], l = Math.hypot(bx - ax, bz - az); if (l < 0.1) continue;
+      const tx = (bx - ax) / l, tz = (bz - az) / l;
+      while (acc < l) { const o = (e.w / 2 + 2.6) * side; spots.push(ax + tx * acc - tz * o, az + tz * acc + tx * o, Math.atan2(tz * side, -tx * side)); side = -side; acc += 42; }
+      acc -= l;
+    }
+  }
+  for (const q of d.lamp || []) spots.push(x0 + q[0] * 0.1, z0 + q[1] * 0.1, 0);
+  const lamps = []; for (let i = 0; i < spots.length; i += 3) { if (!ROADS.onAsphalt(spots[i], spots[i + 1], 1.2) && !inCorePhoto(spots[i], spots[i + 1], -60)) lamps.push(spots[i], spots[i + 1], spots[i + 2]); if (due()) yield; }
+  const n = lamps.length / 3;
+  if (n) {
+    const poleG = new THREE.CylinderGeometry(0.07, 0.11, 7, 6).translate(0, 3.5, 0), armG = new THREE.CylinderGeometry(0.04, 0.05, 1.8, 5).rotateX(Math.PI / 2).translate(0, 7, 0.9);
+    const poles = new THREE.InstancedMesh(BGU.mergeGeometries([poleG, armG]), M.pole, n), heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.35, 0.14, 0.9).translate(0, 7, 1.6), M.lampHead, n), glows = new THREE.InstancedMesh(new THREE.PlaneGeometry(12, 12).rotateX(-Math.PI / 2).translate(0, 0.2, 1.6), M.lampGlow, n);
+    for (let i = 0; i < n; i++) { const x = lamps[i * 3], z = lamps[i * 3 + 1]; _kq.setFromAxisAngle(_ku, lamps[i * 3 + 2]); _km.compose(_kv.set(x, heightAt(x, z), z), _kq, _ks); poles.setMatrixAt(i, _km); heads.setMatrixAt(i, _km); glows.setMatrixAt(i, _km); }
+    poles.castShadow = true; for (const m of [poles, heads, glows]) { m.computeBoundingSphere(); m.matrixAutoUpdate = false; kit.meshes.push(m); t.group.add(m); } // drawn as they become props
+    for (let i = 0; i < n; i++) { const pr = { kind: 'lamp', x: lamps[i * 3], z: lamps[i * 3 + 1], rot: lamps[i * 3 + 2], i, inst: [poles, heads, glows], alive: true }; addProp(pr); kit.props.push(pr); }
+    glows.userData.lod = 1;
+  }
+  // stop signs: beside the road, facing the traffic that has to stop; a limit line across its lane
+  const stopG = [], ch = chunkAt(0, 0);
+  for (const q of d.stop || []) {
+    const x = x0 + q[0] * 0.1, z = z0 + q[1] * 0.1, ne = nearestEdge(x, z, 25, e => e.outer); if (!ne) continue;
+    const e = edges[ne.e], ea = hyp(x - NX[e.a * 2], z - NX[e.a * 2 + 1]), eb = hyp(x - NX[e.b * 2], z - NX[e.b * 2 + 1]);
+    const sg = eb < ea ? 1 : -1, hx = ne.tx * sg, hz = ne.tz * sg, rx = hz, rz = -hx; if (e.ow && sg < 0) continue;
+    const sx = ne.x + rx * (e.w / 2 + 1.1), sz = ne.z + rz * (e.w / 2 + 1.1); if (OUTER.onAsphalt(sx, sz, 0.3)) continue;
+    stopG.push([sx, sz, -hx, -hz]);
+    bar(ch.line, ne.x + rx * e.w * 0.25, ne.z + rz * e.w * 0.25, rx, rz, e.ow ? e.w * 0.9 : e.w * 0.45, 0.5, 0.06, [0.92, 0.92, 0.9]);
+    if (due()) yield;
+  }
+  if (stopG.length) {
+    const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.04, 2.4, 6).translate(0, 1.2, 0), M.pole, stopG.length);
+    const face = new THREE.InstancedMesh(new THREE.CircleGeometry(0.38, 8).rotateZ(Math.PI / 8).translate(0, 2.1, 0.05), stopSignMat(), stopG.length);
+    stopG.forEach(([x, z, fx, fz], i) => { _kq.setFromAxisAngle(_ku, Math.atan2(fx, fz)); _km.compose(_kv.set(x, heightAt(x, z), z), _kq, _ks); post.setMatrixAt(i, _km); face.setMatrixAt(i, _km); const pr = { kind: 'sign', x, z, h: 2.4, i, inst: [post, face], alive: true }; addProp(pr); kit.props.push(pr); });
+    for (const m of [post, face]) { m.computeBoundingSphere(); m.matrixAutoUpdate = false; kit.meshes.push(m); t.group.add(m); }
+  }
+  // crosswalk stripes where OpenStreetMap has a crossing
+  for (const q of d.cr || []) {
+    const x = x0 + q[0] * 0.1, z = z0 + q[1] * 0.1, ne = nearestEdge(x, z, 12, e => e.outer && e.t <= 4); if (!ne) continue;
+    const e = edges[ne.e], nx = -ne.tz, nz = ne.tx;
+    for (let s = -e.w / 2 + 0.5; s < e.w / 2 - 0.4; s += 1.1) bar(ch.line, ne.x + nx * s, ne.z + nz * s, ne.tx, ne.tz, 2.4, 0.55, 0.06, [0.93, 0.93, 0.9]);
+    if (due()) yield;
+  }
+}
+function dropOuterKit(kit) {
+  for (const pr of kit.props) { pr.alive = false; const c = propGrid.get(pkey(pr.x, pr.z)); if (c) { const j = c.indexOf(pr); if (j >= 0) c.splice(j, 1); } }
+  const gone = new Set(kit.props); for (let i = PROPS.length - 1; i >= 0; i--) if (gone.has(PROPS[i])) PROPS.splice(i, 1);
+  for (const m of kit.meshes) { m.geometry.dispose(); m.dispose && m.dispose(); }
+}
+let _stopMat = null;
+function stopSignMat() { // a red octagon with STOP on it
+  if (_stopMat) return _stopMat;
+  const t = canvasTex(128, 128, g => { g.fillStyle = '#c8102e'; g.beginPath(); for (let i = 0; i < 8; i++) { const a = Math.PI / 8 + i * Math.PI / 4; g.lineTo(64 + Math.cos(a) * 62, 64 + Math.sin(a) * 62); } g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 5; g.stroke(); g.fillStyle = '#fff'; g.font = 'bold 38px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('STOP', 64, 66); });
+  return (_stopMat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, side: THREE.DoubleSide }));
+}
+// the core's road surface, with the outer tiles answering wherever the core has no road
+function outerRoads(core) {
+  const o = Object.create(core);
+  o.onRoad = (x, z, m) => core.onRoad(x, z, m) || (OUTER.ready && OUTER.onRoad(x, z, m));
+  o.onAsphalt = (x, z, m) => core.onAsphalt(x, z, m) || (OUTER.ready && OUTER.onAsphalt(x, z, m));
+  o.surfaceAt = (x, z, ter) => { const h = core.surfaceAt(x, z, ter); return h !== null ? h : OUTER.ready ? OUTER.surfaceAt(x, z) : null; };
+  o.carveAt = (x, z, d) => core.carveAt(x, z, d) || (OUTER.ready ? OUTER.carveAt(x, z, d) : 0);
+  return o;
+}
+const OUTER = createOuter({
+  THREE, scene, M, ROAD_SCALE, exag, HBASE: () => HBASE, focus: () => focusPos(),
+  view: () => GFX.view, lodNear: () => LOD_NEAR, shadowNear: () => SHADOW_NEAR, hurry: () => !!worldHold,
+  inCorePhoto, coreTerrainAt, coreMeshAt, newChunk, meshChunk, meshChunkSteps, setSink: ch => { CHUNK_SINK = ch; },
+  holdPolys: list => { POLY_HOLD = list; }, releasePolys,
+  paveRoad: (t, w, p) => paveRoad(t, w, p),
+  mapRoad: e => { const bb = bbox(e.p); mapRoads.push({ t: e.t, w: e.w, p: e.p, name: e.name }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', mapRoads.length - 1); },
+  addEdges: addOuterEdges, addBuilding, bldCount: () => BLD.length, polyCount: () => polys.length, dropPolys, dropBuildings,
+  streetKit: outerKit, dropKit: dropOuterKit, plantTiles: plantTile, dropTrees,
+  terrainMaterial: proc => { const m = new THREE.MeshStandardMaterial({ map: proc ? null : (M.outerHold || (M.outerHold = holdTex(0x8a8260))), roughness: 1 }); m.onBeforeCompile = groundPatch(TX.ground, { photoBias: 1.5, procedural: !!proc }); return m; }, // one shared stand-in until the photo's in
+  loadPhoto: url => loadTex(url, true, false).then(t => { if (t) t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t; }),
+  mapPhoto: (t, img) => { const i = groundImgs.findIndex(g => g.tile === t.k); if (i >= 0) groundImgs.splice(i, 1); if (img) groundImgs.splice(groundImgs[0] && groundImgs[0].tile === 'overview' ? 1 : 0, 0, { img, x0: t.x0, z0: t.z0, x1: t.x0 + 2000, z1: t.z0 + 2000, tile: t.k }); }, // over the overview, under the core's photos
+  seaLevel: () => exag(0) - HBASE, seaMat: () => M.sea || (M.sea = waterMat(0x1d4a66, 0.012, 0.35)),
+});
+OUTER.onBuilt = t => outerSpots(t);
+// an outer tile's trees and brush, read off its photo (dark green canopy, olive-brown chaparral), never on a road or in a
+// building; trees are solid and can be knocked down, like the core's
+function plantTile(t, img) {
+  if (!NATURE.lib) return null;
+  const N = 256, C = 2000 / N, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); g.drawImage(img, 0, 0, N, N);
+  const px = g.getImageData(0, 0, N, N).data, veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U), probe = { x: 0, z: 0 };
+  const dens = new Map(); for (const b of t.blds) { const k = Math.floor(b[2][0] / 125) * 100000 + Math.floor(b[2][1] / 125); dens.set(k, (dens.get(k) || 0) + 1); }
+  const kit = { veg, ti: [], props: [] }; let nt = 0, ns = 0;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const k = (j * N + i) * 4, r = px[k], gg = px[k + 1], b = px[k + 2], lum = 0.2126 * r + 0.7152 * gg + 0.0722 * b;
+    const tree = lum < 92 && gg >= r - 6 && gg > b + 4, brush = !tree && lum < 125 && lum > 40 && r >= gg - 12 && r - b > 8;
+    if (!(tree && Math.random() < 0.55) && !(brush && Math.random() < 0.28)) continue;
+    const x = t.x0 + (i + Math.random()) * C, z = t.z0 + (j + Math.random()) * C;
+    if (inCorePhoto(x, z, -20) || offLimits(x, z, 2)) continue; // any road, the core's too (they reach past its edge)
+    probe.x = x; probe.z = z; if (collideCircle(probe, tree ? 2.2 : 1.2, false)) continue;
+    const y = groundAt(x, z); if (y < OUTER.seaLevel() + 0.3) continue;
+    if (tree && nt < 5000) {
+      const town = (dens.get(Math.floor(x / 125) * 100000 + Math.floor(z / 125)) || 0) >= 3, sp = town ? 'olive' : 'oak', s2 = rand(0.8, 1.35), tint = [rand(0.85, 1.05), rand(0.9, 1.08), rand(0.85, 1)];
+      if (!veg.add(sp, x, y, z, rand(0, TAU), s2, 0, tint)) continue;
+      const ti = treeC.length / 2; treeC.push(x, z); gridAdd(x, z, x, z, 't', ti); kit.ti.push(ti);
+      const pr = { kind: 'tree', x, z, ti, veg: [sp, veg.inst.get(sp).x.length - 1], vegObj: veg, alive: true }; addProp(pr); kit.props.push(pr); nt++;
+    } else if (brush && ns < 7000) { if (veg.add('scruboak', x, y, z, rand(0, TAU), rand(0.55, 1.15), 0, [rand(0.85, 1.05), rand(0.9, 1.05), rand(0.85, 1)])) ns++; }
+  }
+  veg.build(); for (const m of [...(veg.meshes || new Map()).values(), ...veg.near.values()]) { m.matrixAutoUpdate = false; m.updateMatrix(); }
+  return kit;
+}
+function dropTrees(kit) {
+  for (const ti of kit.ti) { treeDead.add(ti); const x = treeC[ti * 2], z = treeC[ti * 2 + 1], c = cgrid.get(ckey(Math.floor(x / CELL), Math.floor(z / CELL))); if (c) { const j = c.t.indexOf(ti); if (j >= 0) c.t.splice(j, 1); } }
+  dropOuterKit({ props: kit.props, meshes: [] });
+  const V = kit.veg; for (const m of [...(V.meshes || new Map()).values(), ...V.near.values()]) { scene.remove(m); m.geometry && m.geometry.dispose(); }
+}
+// the outer world's named places, as landmarks on the maps
+const OUTER_POI = { 'amenity=school': 'school', 'amenity=college': 'school', 'amenity=university': 'university', 'leisure=park': 'park', 'leisure=nature_reserve': 'park', 'leisure=golf_course': 'park', 'amenity=hospital': 'hospital', 'amenity=police': 'police', 'amenity=fire_station': 'fire_station', 'amenity=library': 'library', 'natural=beach': 'beach', 'leisure=marina': 'water', 'natural=bay': 'water', 'tourism=museum': 'attraction', 'tourism=zoo': 'attraction', 'tourism=aquarium': 'attraction', 'tourism=theme_park': 'attraction', 'tourism=attraction': 'attraction', 'man_made=lighthouse': 'attraction', 'man_made=pier': 'pier', 'leisure=stadium': 'stadium', 'amenity=stadium': 'stadium', 'aeroway=aerodrome': 'airport', 'military=base': 'military', 'military=airfield': 'military', 'landuse=military': 'military', 'shop=mall': 'mall', 'natural=peak': 'peak' };
+function addOuterLandmarks() { for (const [name, k, x, z, area] of OUTER.idx.pois || []) { const type = OUTER_POI[k]; if (type) LANDMARKS.push({ name, type, x, z, area: area || 0, outer: true }); } }
 // ---- where swimwear makes sense: the big public pools (Poway High's among them), the Lake Poway shore, and the
 // Carmel Mountain Plaza club strip at night. Sports_* avatars only ever spawn there (src/reserved.js).
 let SWIMS = null;
@@ -2349,9 +2612,11 @@ function updateSignals() { if (SIGNALS) SIGNALS.update(signalAspect, nightAmount
 // facade details, pools) goes too, and only chunks near you cast shadows. Most of the draw calls were far detail.
 const LOD_KEYS = new Set(['side', 'line', 'pool', 'poolWall', 'coping']), LOD_NEAR = { potato: 380, low: 520, medium: 680, high: 850, ultra: 1100 }[GFX.id] || 680, SHADOW_NEAR = 520;
 function updateChunkVisibility(fx, fz) {
-  let shown = 0, detail = 0;
+  let shown = 0, detail = 0; planLazy(fx, fz);
   for (const ch of chunks.values()) {
-    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120; ch.group.visible = vis; if (!vis) continue; shown++;
+    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120; ch.group.visible = vis;
+    if (!vis) { if (ch.gpu && d > GFX.view + 1500) { ch.gpu = false; ch.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); } continue; } // far: off the GPU
+    ch.gpu = true; shown++;
     const near = d < LOD_NEAR, sh = d < SHADOW_NEAR; if (near) detail++;
     if (ch.lodNear === near && ch.shNear === sh) continue; ch.lodNear = near; ch.shNear = sh;
     for (const m of ch.group.children) { if (m.userData.lod) m.visible = near; if (m.userData.cast === undefined) m.userData.cast = m.castShadow; m.castShadow = m.userData.cast && sh; }
@@ -3176,7 +3441,7 @@ class Ped {
     if (this.marker) { this.rig.g.remove(this.marker); this.marker = null; }
     if (mat) { this.marker = new THREE.Sprite(mat); this.marker.scale.set(0.5, 0.5, 1); this.marker.position.y = 2.35; this.rig.g.add(this.marker); }
   }
-  remove() { this.removed = true; scene.remove(this.rig.g); const i = peds.indexOf(this); if (i >= 0) peds.splice(i, 1); }
+  remove() { this.removed = true; scene.remove(this.rig.g); freeHuman(this.rig); const i = peds.indexOf(this); if (i >= 0) peds.splice(i, 1); }
   talk(kind, cls) { if (this.sayCd > 0) return; this.sayCd = 3.5; say(this, pick(LINES[kind]), cls ?? (this.isCop ? 'cop' : (kind === 'greet' ? '' : 'mad'))); }
   knock(vx, vy, vz, dmg, by) {
     if (this.remote) { remoteHurt(this, dmg, by); return; }
@@ -3663,7 +3928,7 @@ function areaAt(x, z) {
   return best ? 'Near ' + best.name : 'Poway';
 }
 function streetAt(x, z) {
-  const gx = Math.floor(x / RSG), gz = Math.floor(z / RSG); const c = roadSegGrid.get(ckey(gx, gz)); if (!c) return '';
+  const gx = Math.floor(x / RSG), gz = Math.floor(z / RSG); const c = roadSegGrid.get(ckey(gx, gz)); if (!c) return OUTER.ready ? OUTER.streetAt(x, z) : '';
   let best = '', bd = 1e9;
   for (let i = 0; i < c.length; i += 2) {
     const r = mapRoads[c[i]], k = c[i + 1], p = r.p; if (!r.name) continue;
@@ -4318,10 +4583,21 @@ function avengerAI(v, dt) {
 let DEALER = null; const DEALERS = [];
 const DEALER_SPOTS = [
   ['Kirkham Kit', 32.934851, -117.039283], ['Poway Road Pawn', 32.9626, -117.0355], ['Twin Peaks Trading', 32.98334, -117.061123], ['Parkway Surplus', 32.939374, -117.050813],
+  // out in the wider county (src/world/outer.js): they open up when that part of the world streams in
+  ['Bayside Arms', 32.7118, -117.1596], ['Sunset Surplus', 32.7470, -117.2490], ['Mesa Armory', 32.9150, -117.1430], ['Grand Ave Outfitters', 33.1230, -117.0830],
+  ['Pier Trading Post', 33.1960, -117.3790], ['Valley Pawn', 32.7950, -116.9600], ['Southbay Supply', 32.6400, -117.0840], ['Backcountry Feed & Arms', 33.0410, -116.8700],
 ];
+const dealersWaiting = []; // outer spots not built yet: [index, name, x, z]
 function setupDealer() {
   for (const [di, [name, lat, lon]] of DEALER_SPOTS.entries()) {
-    const kp = ll(lat, lon), base = kp ? sidewalkNear(kp.x, kp.z) : null; if (!base || base.x < B.minx || base.x > B.maxx || base.z < B.minz || base.z > B.maxz) continue;
+    const kp = ll(lat, lon); if (!kp) continue;
+    if (kp.x < B.minx || kp.x > B.maxx || kp.z < B.minz || kp.z > B.maxz) { if (OUTER.ready) dealersWaiting.push([di, name, kp.x, kp.z]); continue; }
+    addDealer(di, name, kp);
+  }
+}
+function addDealer(di, name, kp) {
+  {
+    const base = sidewalkNear(kp.x, kp.z); if (!base) return;
     const ne = base.ne, tx = ne ? ne.tx : 1, tz = ne ? ne.tz : 0;
     const q = { x: base.x + tx * 22 + tz * 4, z: base.z + tz * 22 - tx * 4 }; collideCircle(q, 0.5);
     const rig = buildRig({ skin: '#8d5a3b', shirt: '#1d1d1d', pants: '#2b2b2b', hair: '#111111' });
@@ -4331,7 +4607,7 @@ function setupDealer() {
     const lid = crate.clone(); lid.scale.set(1, 0.12, 1); lid.position.y += 0.42; lid.rotation.z = 0.5; scene.add(lid);
     const D = { x: q.x, z: q.z, rig, name }; DEALERS.push(D); if (!DEALER) DEALER = D;
     const own = DEALER_SKINS[di % DEALER_SKINS.length]; // each dealer wears their own skin (src/reserved.js), nobody else does
-    if (HUMANS.manifest) ensureAvatar(own).then(ok => { if (!ok) return; const nr = buildRig({ kind: 'civ', avatar: own }); if (!nr.human) return; nr.g.position.copy(D.rig.g.position); nr.g.rotation.copy(D.rig.g.rotation); scene.remove(D.rig.g); D.rig = nr; scene.add(nr.g); });
+    if (HUMANS.manifest) ensureAvatar(own).then(ok => { if (!ok) return; const nr = buildRig({ kind: 'civ', avatar: own }); if (!nr.human) return; nr.g.position.copy(D.rig.g.position); nr.g.rotation.copy(D.rig.g.rotation); scene.remove(D.rig.g); freeHuman(D.rig); D.rig = nr; scene.add(nr.g); });
     addInteract({ x: q.x, z: q.z, r: 3.4, label: () => `<b>${name}</b>: guns, ammo, upgrades`, when: () => !player.inCar, onUse: () => openShop(D) });
   }
 }
@@ -4374,6 +4650,11 @@ function setupTravel() {
   for (let z = B.minz + 200; z < B.maxz - 200; z += 60) for (let x = B.minx + 200; x < B.maxx - 200; x += 60) { const h = terrainAt(x, z); if (!top || h > top.h) top = { x, z, h }; }
   TRAVEL = spots.filter(s => s[1] && s[1].x > B.minx && s[1].x < B.maxx && s[1].z > B.minz && s[1].z < B.maxz).map(([name, p]) => ({ name, x: p.x, z: p.z, road: true }));
   if (top) TRAVEL.push({ name: 'Mt Woodson summit (bring a car)', x: top.x, z: top.z, road: false, summit: true });
+  if (OUTER.ready) for (const [name, lat, lon] of [ // the wider county (src/world/outer.js): streamed in when you arrive
+    ['Downtown San Diego · Gaslamp', 32.7118, -117.1596], ['Balboa Park', 32.7310, -117.1500], ['Coronado', 32.6800, -117.1780], ['Ocean Beach pier', 32.7490, -117.2490],
+    ['Mission Beach', 32.7710, -117.2510], ['Pacific Beach · Crystal Pier', 32.7960, -117.2540], ['La Jolla Cove', 32.8490, -117.2700], ['Torrey Pines Gliderport', 32.8900, -117.2500],
+    ['Del Mar', 32.9590, -117.2640], ['Oceanside pier', 33.1940, -117.3820], ['Miramar Road', 32.8820, -117.1610], ['Escondido · Grand Avenue', 33.1220, -117.0820],
+    ['El Cajon', 32.7948, -116.9625], ['Chula Vista bayfront', 32.6300, -117.0950], ['Julian', 33.0787, -116.6022]]) { const p = ll(lat, lon); if (p) TRAVEL.push({ name, x: p.x, z: p.z, road: true, outer: true }); }
   // some of the map has to be earned: these open up as you play the storylines (src/story/missions.js `unlock` steps)
   const LOCKS = { 'Scripps Poway Parkway': ['parkway', 'Espola Road, mission 7'], 'Sycamore Canyon': ['canyon', 'Espola Road, mission 9'], 'Mt Woodson summit (bring a car)': ['woodson', 'Espola Road, the finale'],
     'Lake Poway': ['lake', 'The Lake, mission 1'], 'Carmel Mountain Plaza · AMC': ['plaza', 'Clean Money, mission 1'], 'High Valley': ['highvalley', 'Sycamore Smoke, the finale'] };
@@ -4413,6 +4694,10 @@ function travelTo(i) {
   const T = TRAVEL[i]; if (!T) return;
   if (T.locked && T.locked()) { notify(`<b>${T.name}</b> is locked. ${T.why || 'Play the story to open it up.'}`, 'red', 3000); return; }
   travelOpen = false; $('travel').hidden = true; lockPointer(); ACH.addTo('travelled', T.name);
+  arrive(T);
+}
+function arrive(T) {
+  if (!OUTER.builtAt(T.x, T.z)) { holdFor(T.x, T.z, () => arrive(T)); return; } // the outer world streams in first
   let x = T.x, z = T.z, rot = player.rotY;
   if (T.road) { const ne = nearestEdge(x, z, 400, e => e.t >= 1 && e.t <= 5); if (ne) { x = ne.x; z = ne.z; rot = Math.atan2(ne.tx, ne.tz); if (!player.inCar) { const o = walkOff(edges[ne.e]); x -= ne.tz * o; z += ne.tx * o; } } }
   const v = player.inCar;
@@ -4424,6 +4709,17 @@ function travelTo(i) {
   cam.yaw = rot + Math.PI; notify(T.name, '', 2000);
 }
 
+// far away in the outer world: wait (held where you're going) until its tiles are built, then finish the move
+let worldHold = null;
+function holdFor(x, z, then) { worldHold = { x, z, then, t: 0 }; notify('Loading the area…', '', 2500); }
+function updateHold(dt) {
+  const H = worldHold; if (!H) return; H.t += dt;
+  const v = player.inCar, y = heightAt(H.x, H.z) + 2;
+  if (v) { v.pos.set(H.x, y, H.z); v.vel.set(0, 0); player.pos.copy(v.pos); } else { player.pos.set(H.x, y, H.z); player.air = 0; }
+  if (OUTER.builtAt(H.x, H.z) || H.t > 30) { worldHold = null; H.then(); }
+}
+// jump anywhere (the travel menu, tests): onto the nearest street, once that part of the world is there
+function teleport(x, z, name) { arrive({ name: name || streetAt(x, z) || 'Somewhere', x, z, road: true }); }
 function initExtras() {
   if (HUMANS.ready) { // the player becomes the Rocketbox main character
     const old = player.rig, nr = buildRig({ kind: 'player' });
@@ -4462,8 +4758,9 @@ function fellProp(p, dx, dz, fromNet) {
   const g = new THREE.Group(); g.position.set(p.x, heightAt(p.x, p.z), p.z);
   if (p.kind === 'tree') {
     treeDead.add(p.ti);
-    const real = NATURE.veg && p.veg && NATURE.veg.standalone ? NATURE.veg.standalone(p.veg[0], p.veg[1]) : null; // the tree you saw, not a stand-in
-    const r = NATURE.veg && p.veg ? NATURE.veg.hide(p.veg[0], p.veg[1]) : null, H = r ? r.h : 6, W = r ? r.w : 4;
+    const V = p.vegObj || NATURE.veg; // vegObj: an outer tile's plants
+    const real = V && p.veg && V.standalone ? V.standalone(p.veg[0], p.veg[1]) : null; // the tree you saw, not a stand-in
+    const r = V && p.veg ? V.hide(p.veg[0], p.veg[1]) : null, H = r ? r.h : 6, W = r ? r.w : 4;
     if (real) g.add(real);
     else { // no near model for this plant: a simple trunk and crown
       const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12 * H / 6, 0.2 * H / 6, H * 0.55, 7).translate(0, H * 0.275, 0), fallMat.bark);
@@ -4476,8 +4773,9 @@ function fellProp(p, dx, dz, fromNet) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 7, 6).translate(0, 3.5, 0), M.pole); const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.14, 0.9).translate(0, 7, 0.9), M.lampHead);
     g.add(pole, head); g.rotation.y = p.rot; tone(140, 0.3, 'triangle', 0.3 * volAt(p.x, p.z), 60);
   } else { // sign post: the pole and its sign fold over
-    if (SIGNPOLE) { SIGNPOLE.setMatrixAt(p.i, ZERO4); SIGNPOLE.instanceMatrix.needsUpdate = true; }
-    hideSignFaces(p.x, p.z);
+    if (p.inst) p.inst.forEach(m => { m.setMatrixAt(p.i, ZERO4); m.instanceMatrix.needsUpdate = true; }); // an outer tile's stop sign
+    else { if (SIGNPOLE) { SIGNPOLE.setMatrixAt(p.i, ZERO4); SIGNPOLE.instanceMatrix.needsUpdate = true; }
+    hideSignFaces(p.x, p.z); }
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, p.h, 6).translate(0, p.h / 2, 0), M.pole); const face = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.03).translate(0, p.h - 0.35, 0), new THREE.MeshStandardMaterial({ color: 0xd9d4c8 }));
     g.add(pole, face); tone(900, 0.08, 'square', 0.2 * volAt(p.x, p.z));
   }
@@ -4689,27 +4987,54 @@ function setupGarage() {
   const base = spawnPt && spawnPt.curb || spawnPt; if (!base || !base.ne) return;
   const tx = base.ne.tx, tz = base.ne.tz, nx = -tz, nz = tx;
   // 70 m back along the road, set off the far side of the sidewalk
-  const cx = base.x - tx * 70 + nx * 9, cz = base.z - tz * 70 + nz * 9, y = heightAt(cx, cz), rot = Math.atan2(nx, nz);
+  GARAGE = garageAt(base.x - tx * 70 + nx * 9, base.z - tz * 70 + nz * 9, Math.atan2(nx, nz), 'GARAGE', 'Your garage');
+  GARAGES.push(GARAGE);
+  // on load, owned cars that were out come back here; and spawn the last-used one at the bay
+  const e = ownedEntry(save.lastCar); if (e && !liveOwned(e.id) && !(player.inCar && player.inCar.ownedId === e.id)) spawnOwned(e, GARAGE.x, GARAGE.z, GARAGE.rot);
+}
+// a garage bay facing the road: store, repair and tune your cars at any of them
+const GARAGES = [];
+let GARAGE_AT = null; // the one whose menu is open
+function garageAt(cx, cz, rot, title, name) {
+  const y = heightAt(cx, cz);
   const g = new THREE.Group(); g.position.set(cx, y, cz); g.rotation.y = rot;
   const wall = new THREE.MeshStandardMaterial({ color: 0xd8cdb6, roughness: 0.9 }), roofM = new THREE.MeshStandardMaterial({ color: 0x5a3a2a, roughness: 0.8 }), trim = new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.6 });
   const box = (w, h, d, x, yy, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, yy, z); o.castShadow = o.receiveShadow = true; g.add(o); return o; };
   box(0.3, 4, 11, -4.2, 2, 4, wall); box(0.3, 4, 11, 4.2, 2, 4, wall); box(8.7, 4, 0.3, 0, 2, 9.5, wall); box(9.2, 0.35, 11.6, 0, 4.15, 4, roofM); box(8.4, 0.05, 11, 0, 0.03, 4, trim);
   box(8.7, 0.6, 0.35, 0, 3.7, -1.5, trim);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.8), new THREE.MeshBasicMaterial({ map: canvasTex(512, 102, c => { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, 512, 102); c.fillStyle = '#f0b23a'; c.font = 'bold 64px Arial'; c.textAlign = 'center'; c.fillText('GARAGE', 256, 75); }) }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.8), new THREE.MeshBasicMaterial({ map: canvasTex(512, 102, c => { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, 512, 102); c.fillStyle = '#f0b23a'; c.font = `bold ${title.length > 10 ? 44 : 64}px Arial`; c.textAlign = 'center'; c.fillText(title, 256, 75); }) }));
   sign.position.set(0, 3.7, -1.69); sign.rotation.y = Math.PI; g.add(sign);
   const lamp = new THREE.PointLight(0xffe2b0, 30, 18); lamp.position.set(0, 3.6, 4); g.add(lamp);
   scene.add(g);
   // walls block you; the open front faces the road
   const wpt = (lx, lz) => [cx + Math.cos(rot) * lx + Math.sin(rot) * lz, cz - Math.sin(rot) * lx + Math.cos(rot) * lz];
   for (const [x0, z0, x1, z1] of [[-4.35, -1.5, -4.05, 9.65], [4.05, -1.5, 4.35, 9.65], [-4.35, 9.35, 4.35, 9.65]]) { const a = wpt(x0, z0), b = wpt(x1, z0), c = wpt(x1, z1), d = wpt(x0, z1); addPoly([...a, ...b, ...c, ...d], y, y + 4); }
-  const bay = wpt(0, 4);
-  GARAGE = { x: bay[0], z: bay[1], rot: rot + Math.PI, door: wpt(0, -3) };
-  addInteract({ x: bay[0], z: bay[1], r: 7, label: () => player.inCar ? 'Garage: save / repair / mechanic' : 'Garage: your cars', onUse: openGarage });
-  // on load, owned cars that were out come back here; and spawn the last-used one at the bay
-  const e = ownedEntry(save.lastCar); if (e && !liveOwned(e.id) && !(player.inCar && player.inCar.ownedId === e.id)) spawnOwned(e, GARAGE.x, GARAGE.z, GARAGE.rot);
+  const bay = wpt(0, 4), G = { x: bay[0], z: bay[1], rot: rot + Math.PI, door: wpt(0, -3), name, group: g };
+  addInteract({ x: bay[0], z: bay[1], r: 7, label: () => player.inCar ? `${name}: save / repair / mechanic` : `${name}: your cars`, onUse: () => openGarage(G) });
+  return G;
 }
-function openGarage() {
-  if (garageOpen) return; garageOpen = true; travelOpen = true; keys.clear(); mouseDown = rightDown = false;
+// out in the county: a bay set back from the road wherever there's room (the first time that tile is built)
+const GARAGE_SPOTS = [['Downtown Auto Body', 32.7090, -117.1530], ['Kearny Mesa Motors', 32.8270, -117.1350], ['Pacific Beach Garage', 32.8000, -117.2480], ['Escondido Body Shop', 33.1170, -117.0900],
+  ['Oceanside Motor Works', 33.1990, -117.3700], ['El Cajon Garage', 32.7980, -116.9550], ['Chula Vista Auto', 32.6350, -117.0800], ['Ramona Garage', 33.0440, -116.8740]];
+const garagesWaiting = GARAGE_SPOTS.map(([name, lat, lon]) => { const k = ll(lat, lon); return k && [name, k.x, k.z]; }).filter(Boolean);
+function outerGarage(name, x, z) {
+  const ne = nearestEdge(x, z, 300, e => e.outer && e.t >= 2 && e.t <= 4 && e.len > 60); if (!ne) return false;
+  const e = edges[ne.e], probe = { x: 0, z: 0 };
+  for (const along of [0, 25, -25, 50, -50, 75, -75]) for (const side of [1, -1]) {
+    const nx = -ne.tz * side, nz = ne.tx * side, off = e.w / 2 + 12, cx = ne.x + ne.tx * along + nx * off, cz = ne.z + ne.tz * along + nz * off;
+    probe.x = cx; probe.z = cz; if (collideCircle(probe, 8, false) || OUTER.onRoad(cx, cz, 4)) continue;
+    GARAGES.push(garageAt(cx, cz, Math.atan2(nx, nz), 'GARAGE', name)); return true;
+  }
+  return false;
+}
+// outer tiles just built: open the shops and garages that were waiting for them
+function outerSpots(t) {
+  const inT = (x, z) => x >= t.x0 && x < t.x0 + 2000 && z >= t.z0 && z < t.z0 + 2000;
+  for (let i = dealersWaiting.length - 1; i >= 0; i--) { const [di, name, x, z] = dealersWaiting[i]; if (!inT(x, z)) continue; dealersWaiting.splice(i, 1); addDealer(di, name, { x, z }); }
+  for (let i = garagesWaiting.length - 1; i >= 0; i--) { const [name, x, z] = garagesWaiting[i]; if (!inT(x, z)) continue; garagesWaiting.splice(i, 1); outerGarage(name, x, z); }
+}
+function openGarage(G) {
+  if (garageOpen) return; GARAGE_AT = G || GARAGE; garageOpen = true; travelOpen = true; keys.clear(); mouseDown = rightDown = false;
   if (document.pointerLockElement) document.exitPointerLock();
   let el = $('garage'); if (!el) { el = document.createElement('div'); el.id = 'garage'; document.body.appendChild(el); el.addEventListener('click', garageClick); }
   el.style.cssText = 'position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(10,12,16,.75);font:600 15px/1.35 var(--ui,system-ui);color:#f3efe6';
@@ -4746,7 +5071,7 @@ function garageClick(ev) {
   if (act === 'paint' && e) { if (save.money >= 50) { save.money -= 50; e.paint = PAINTS[+arg][1]; applyMods(player.inCar, e); sfx.cash(); } }
   if (act === 'part' && e) { const [slot, idx] = [arg, +b.dataset.act.split(':')[2]], c = PARTS[slot].opts[idx][1]; if (save.money >= c) { save.money -= c; (e.parts || (e.parts = {}))[slot] = idx; if (idx) ACH.bump('parts'); applyMods(player.inCar, e); sfx.cash(); notify(`${PARTS[slot].name}: ${PARTS[slot].opts[idx][0]}.`, 'green', 1800); } }
   if (act === 'neon' && e) { if (save.money >= 150) { save.money -= 150; e.neon = NEONS[+arg][1]; applyMods(player.inCar, e); sfx.cash(); } }
-  if (act === 'take' && !player.inCar) { const c = ownedEntry(arg); let lv = liveOwned(arg); if (lv) lv.remove(); const nv = spawnOwned(c, GARAGE.x, GARAGE.z, GARAGE.rot); player.inCar = nv; nv.driver = 'player'; nv.mode = 'free'; player.rig.g.visible = false; cam.dist = 9; save.lastCar = c.id; closeGarage(); return; }
+  if (act === 'take' && !player.inCar) { const c = ownedEntry(arg); let lv = liveOwned(arg); if (lv) lv.remove(); const nv = spawnOwned(c, (GARAGE_AT || GARAGE).x, (GARAGE_AT || GARAGE).z, (GARAGE_AT || GARAGE).rot); player.inCar = nv; nv.driver = 'player'; nv.mode = 'free'; player.rig.g.visible = false; cam.dist = 9; save.lastCar = c.id; closeGarage(); return; }
   if (act === 'sell') { const i = garageList().findIndex(c => c.id === arg); if (i >= 0) { const lv = liveOwned(arg); if (lv && lv !== player.inCar) lv.remove(); else if (lv) lv.ownedId = null; garageList().splice(i, 1); notify('Scrapped.', '', 1500); } }
   persist(); renderGarage();
 }
@@ -4775,7 +5100,10 @@ function respawn() {
 }
 // ============================================================ updates: player
 const _tmp = { x: 0, z: 0, tx: 0, tz: 0 }, _tmp2 = { x: 0, z: 0, tx: 0, tz: 0 };
-function boundsClamp(p) { p.x = clamp(p.x, B.minx - 150, B.maxx + 150); p.z = clamp(p.z, B.minz - 150, B.maxz + 150); }
+function boundsClamp(p) { // the edge of the world: the core, or the outer world's when it's there
+  if (OUTER.ready) { const b = OUTER.bounds(); p.x = clamp(p.x, b[0] + 100, b[2] - 100); p.z = clamp(p.z, b[1] + 100, b[3] - 100); return; }
+  p.x = clamp(p.x, B.minx - 150, B.maxx + 150); p.z = clamp(p.z, B.minz - 150, B.maxz + 150);
+}
 let greetCd = 0;
 function updatePlayer(dt) {
   player.punchCd -= dt; player.shootCd -= dt;
@@ -4914,7 +5242,8 @@ function updatePlayer(dt) {
 // next = browser testing + tuning (gridlock, red runs, lane use, perf).
 // Lane runs: a vehicle drives leg runs [s0, s1] (travel coords along an edge, lateral offset = lane centre) and crosses
 // every node on a cubic connector between runs. Mitre normals keep offset lanes continuous across polyline vertices.
-for (const e of edges) {
+for (const e of edges) edgeMitre(e);
+function edgeMitre(e) {
   const p = e.pts, n = p.length / 2, m = new Float32Array(n * 2);
   for (let k = 0; k < n; k++) {
     let ax = 0, az = 0, bx = 0, bz = 0;
@@ -5882,7 +6211,9 @@ function prepMapImages() {
     groundImgs.push({ img: t.map.image, x0: a[0], z0: a[1], x1: b[0], z1: b[1] });
   }
 }
-function drawAerial(ctx, alpha) { ctx.globalAlpha = alpha; for (const g of groundImgs) ctx.drawImage(g.img, g.x0, g.z0, g.x1 - g.x0, g.z1 - g.z0); ctx.globalAlpha = 1; }
+function drawAerial(ctx, alpha, r) { // r: [x0, z0, x1, z1] in view (skip the photos outside it)
+  ctx.globalAlpha = alpha; for (const g of groundImgs) if (!r || (g.x1 > r[0] && g.x0 < r[2] && g.z1 > r[1] && g.z0 < r[3])) ctx.drawImage(g.img, g.x0, g.z0, g.x1 - g.x0, g.z1 - g.z0); ctx.globalAlpha = 1;
+}
 // the photo's rectangle in game metres. Both maps fade the photo (and the streets on it) out along a natural edge
 // (src/ui/mapkit.js); the 3D terrain fades it into the outer hills (src/nature/ground.js).
 function photoRect() { const a = aerInv(0, 0, [0, 0]), b = aerInv(AER.W, AER.H, [0, 0]); return [a[0], a[1], b[0], b[1]]; }
@@ -5902,16 +6233,27 @@ function groundTint() {
   setGroundTint(TX.ground, tex, r);
 }
 let photoMask = null; const mmLayer = document.createElement('canvas'), bmLayer = document.createElement('canvas');
-function mapMask() { return photoMask || (photoMask = MAPKIT.buildPhotoMask(photoRect(), D.roads, D.buildings, REGIONS.map(r => ({ x: r.x, z: r.z, r: 700 })))); }
-const LM_COLOR = { school: '#f2c14e', park: '#7fc25a', water: '#4fb3e8', hospital: '#ff5a5a', police: '#3b7bff', library: '#d8b98a', fire_station: '#ff8a3d' };
-const LM_PLURAL = { school: 'schools', park: 'parks', water: 'lakes', hospital: 'hospitals', police: 'police stations', library: 'libraries', fire_station: 'fire stations' };
+function mapMask() {
+  if (photoMask) return photoMask;
+  if (OUTER.ready) { const I = OUTER.idx, r = [I.i0 * I.tile, I.j0 * I.tile, (I.i1 + 1) * I.tile, (I.j1 + 1) * I.tile]; return (photoMask = MAPKIT.buildPhotoMask(r, [], [], [{ x: (r[0] + r[2]) / 2, z: (r[1] + r[3]) / 2, r: 1e6 }], 400)); }
+  return (photoMask = MAPKIT.buildPhotoMask(photoRect(), D.roads, D.buildings, REGIONS.map(r => ({ x: r.x, z: r.z, r: 700 }))));
+}
+const LM_COLOR = { school: '#f2c14e', park: '#7fc25a', water: '#4fb3e8', hospital: '#ff5a5a', police: '#3b7bff', library: '#d8b98a', fire_station: '#ff8a3d', university: '#f2c14e', beach: '#f5d58a', attraction: '#c98cff', pier: '#b8c6d0', stadium: '#ffb14a', airport: '#9ad0ff', military: '#a8a07a', mall: '#ff7eb6', peak: '#c9b49a' };
+const LM_PLURAL = { school: 'schools', park: 'parks', water: 'lakes', hospital: 'hospitals', police: 'police stations', library: 'libraries', fire_station: 'fire stations', university: 'campuses', beach: 'beaches', attraction: 'sights', pier: 'piers', stadium: 'stadiums', airport: 'airports', military: 'bases', mall: 'malls', peak: 'peaks' };
+const MAJOR_LM = new Set(['water', 'hospital', 'police', 'beach', 'airport', 'stadium', 'military', 'university', 'pier']);
+// the county's places by how much they matter at this zoom: kind plus size (area 0: a mapped point, size unknown)
+const LM_WEIGHT = { airport: 3, stadium: 3, university: 3, beach: 2.5, attraction: 2.5, military: 2, hospital: 2, mall: 2, pier: 1.5, peak: 1.5, park: 1, water: 1, police: 1, school: 0.5, library: 0.5, fire_station: 0.5 };
+function outerLmShown(p, mpp) {
+  const score = (LM_WEIGHT[p.type] || 0.5) + (p.area > 0 ? Math.log10(p.area) / 2 : 1);
+  return score > (mpp <= 3 ? 0 : mpp <= 6 ? 3.2 : mpp <= 12 ? 4.4 : mpp <= 30 ? 5.2 : 5.9);
+}
 // every marker the two maps show; MAPKIT clusters them, keeps their labels apart and stacks them by priority:
 // 0 you, 1 other players, 2 missions / job / waypoint, 3 shops / garage / services, 4 everything else
 function mapMarks(big) {
   const out = [], f = focusPos(), fl = Math.floor(simTime * 4) % 2;
   if (big) { // places; zoomed far out, only the big ones
     for (const p of LANDMARKS) {
-      if (mapView.mpp > 9 && !(p.type === 'water' || p.type === 'hospital' || p.type === 'police' || /High School|Community Park|Old Poway/.test(p.name))) continue;
+      if (p.outer ? !outerLmShown(p, mapView.mpp) : mapView.mpp > 9 && !(MAJOR_LM.has(p.type) || p.area > 250000 || /High School|Community Park|Old Poway/.test(p.name))) continue;
       out.push({ kind: 'icon', pri: 4, x: p.x, z: p.z, glyph: p.type, color: LM_COLOR[p.type] || '#ddd', label: p.name, group: 'lm:' + p.type, plural: LM_PLURAL[p.type] });
     }
   } else { // cops, fights, the helicopter, an owner coming for their car; where you wake up
@@ -5924,7 +6266,8 @@ function mapMarks(big) {
   // gun shops (only the nearest one waits at the minimap's edge), your garage
   let near = null, nd = Infinity; for (const S of DEALERS) { const d = hyp(S.x - f.x, S.z - f.z); if (d < nd) { nd = d; near = S; } }
   for (const S of DEALERS) out.push({ kind: 'icon', pri: 3, x: S.x, z: S.z, glyph: 'shop', color: '#ff3cac', label: S.name, group: 'shop', plural: 'gun shops', edge: !big && S === near });
-  out.push(...garageMarks(GARAGE)); // yours, and the ones the story opens (src/world/garages.js)
+  out.push(...garageMarks(GARAGES[0] || GARAGE)); // yours, and the ones the story opens (src/world/garages.js)
+  for (const G of GARAGES.slice(1)) out.push({ kind: 'icon', pri: 3, x: G.x, z: G.z, glyph: 'garage', color: '#d9dde3', label: G.name, group: 'garage', plural: 'garages' }); // out in the county
   // missions, the courier job, your waypoint
   for (const b of storyMapMarks()) {
     if (b.letter) out.push({ kind: 'icon', pri: 2, x: b.x, z: b.z, glyph: b.letter, color: b.color, label: b.label, edge: b.edge, group: 'giver', plural: 'jobs' });
@@ -5950,7 +6293,7 @@ function drawMinimap() {
   const seenR = new Set();
   for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const c = mapBins.get(ckey(gx, gz)); if (!c) continue; c.r.forEach(i => seenR.add(i)); }
   MAPKIT.drawMasked(mctx, mmLayer, mapMask(), g => { // photo and streets, faded out past the edge of town
-    g.save(); g.beginPath(); g.rect(f.x - span, f.z - span, span * 2, span * 2); g.clip(); drawAerial(g, 0.9); g.restore();
+    g.save(); g.beginPath(); g.rect(f.x - span, f.z - span, span * 2, span * 2); g.clip(); drawAerial(g, 0.9, [f.x - span, f.z - span, f.x + span, f.z + span]); g.restore();
     g.lineCap = g.lineJoin = 'round'; g.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
     for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; g.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
     for (const pass of [1, 0]) for (const i of seenR) {
@@ -5995,20 +6338,24 @@ function bigMapBase(W, H, dpr) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#11161a'; g.fillRect(0, 0, W, H);
   g.save(); g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-v.cx, -v.cz);
   MAPKIT.drawMasked(g, bmLayer, mapMask(), L => {
-    L.imageSmoothingEnabled = true; drawAerial(L, 1);
+    L.imageSmoothingEnabled = true; drawAerial(L, 1, [v.cx - W / 2 * v.mpp / dpr, v.cz - H / 2 * v.mpp / dpr, v.cx + W / 2 * v.mpp / dpr, v.cz + H / 2 * v.mpp / dpr]);
     // half real, half cartoon: the photo underneath, pushed warmer and flatter, each region washed in its own colour
     L.globalCompositeOperation = 'soft-light'; L.fillStyle = 'rgba(255,214,150,.55)'; L.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
     L.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = L.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1300); gr.addColorStop(0, r.col + '55'); gr.addColorStop(1, r.col + '00'); L.fillStyle = gr; L.fillRect(r.x - 1300, r.z - 1300, 2600, 2600); }
     L.globalCompositeOperation = 'source-over';
     L.lineCap = L.lineJoin = 'round';
+    const vr = [v.cx - W / 2 * v.mpp / dpr - 50, v.cz - H / 2 * v.mpp / dpr - 50, v.cx + W / 2 * v.mpp / dpr + 50, v.cz + H / 2 * v.mpp / dpr + 50], inView = new Set();
+    if (v.mpp < 20) { for (let gx = Math.floor(vr[0] / MB); gx <= Math.floor(vr[2] / MB); gx++) for (let gz = Math.floor(vr[1] / MB); gz <= Math.floor(vr[3] / MB); gz++) { const c = mapBins.get(ckey(gx, gz)); if (c) for (const i of c.r) inView.add(i); } }
+    else for (let i = 0; i < mapRoads.length; i++) if (mapRoads[i].t <= 2) inView.add(i); // far out: just the highways and big roads
+    const viewRoads = [...inView].map(i => mapRoads[i]);
     L.strokeStyle = 'rgba(18,22,28,.9)'; // ink outline under every road
-    for (const r of mapRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
-    for (const pass of [0, 1]) for (const r of mapRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    for (const r of viewRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    for (const pass of [0, 1]) for (const r of viewRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
   });
   drawFog(g); // what you haven't explored (src/ui/fog.js)
   g.restore();
   const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
-  { // 1 km sector grid, labelled along the top and left edges like a paper street atlas
+  if (v.mpp < 20) { // 1 km sector grid, labelled along the top and left edges like a paper street atlas
     g.save(); g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = dpr; g.setLineDash([4 * dpr, 6 * dpr]);
     g.font = `700 ${12 * dpr}px "Barlow Condensed", Arial`; g.textAlign = 'center'; g.textBaseline = 'middle';
     for (let c = 0; c <= SECTOR.cols; c++) { const [x] = toS(SECTOR.x0 + c * SECTOR.size, 0); if (x < -50 || x > W + 50) continue; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
@@ -6023,10 +6370,11 @@ function bigMapBase(W, H, dpr) {
     const a = clamp((v.mpp - 1.6) / 2.5, 0, 1); if (a > 0.02) {
       g.save(); g.globalAlpha = a; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       for (const r of REGIONS) {
+        if (v.mpp > 22 && (!r.outer || r.r < 2600) && r.id !== 'town-center') continue; // far out: the towns, and Poway once
         const [x, y] = toS(r.x, r.z); if (x < -200 || y < -60 || x > W + 200 || y > H + 60 || !fogSeen(r.x, r.z, 0.3)) continue;
         const fs = clamp(24 - v.mpp * 0.4, 15, 26) * dpr * (r.district === 'Poway' ? 1 : 0.85);
         g.save(); g.translate(x, y); g.rotate(((r.x * 13 + r.z * 7) % 7 - 3) * 0.012);
-        g.font = `400 ${fs}px Anton, Impact, sans-serif`; const t = r.name.toUpperCase();
+        g.font = `400 ${fs}px Anton, Impact, sans-serif`; const t = (v.mpp > 22 && r.id === 'town-center' ? 'Poway' : r.name).toUpperCase();
         g.lineWidth = 5 * dpr; g.strokeStyle = 'rgba(12,14,20,.85)'; g.strokeText(t, 0, 0); g.fillStyle = '#f3ede1'; g.fillText(t, 0, 0);
         g.fillStyle = r.col; g.fillRect(-fs * 1.2, fs * 0.62, fs * 2.4, 3 * dpr);
         if (a > 0.4) { const w = g.measureText(t).width / 2 + 4 * dpr; regions.push([x - w, y - fs * 0.62, x + w, y + fs * 0.75]); }
@@ -6102,7 +6450,7 @@ function clearWaypoint(quiet) { waypoint = null; wpBeam.visible = false; gps = n
     }
     drag = null;
   });
-  bm.addEventListener('wheel', e => { e.preventDefault(); e.stopPropagation(); const k = e.deltaY > 0 ? 1.2 : 1 / 1.2; mapView.mpp = clamp(mapView.mpp * k, 0.8, 14); drawBigMap(); }, { passive: false });
+  bm.addEventListener('wheel', e => { e.preventDefault(); e.stopPropagation(); const k = e.deltaY > 0 ? 1.2 : 1 / 1.2; mapView.mpp = clamp(mapView.mpp * k, 0.8, OUTER.ready ? 110 : 14); drawBigMap(); }, { passive: false });
 }
 function updateGps(dt) {
   gpsT -= dt; const target = job || storyTarget() || waypoint; if (!target) { gps = null; return; }
@@ -6145,6 +6493,7 @@ function tick(rdt) {
   scaleStep(rdt);
   if (!worldReady) return;
   if (NATURE.veg) NATURE.veg.update(rdt, camera, sun, SKYENV ? vegHemi : hemi);
+  OUTER.vegNear(rdt, camera.position); // the outer tiles' plants: near meshes around the camera
   WATER_T.value += rdt; updateBoats(rdt);
   if (NATURE.gc) { const v = player.inCar; NATURE.gc.update(camera, v ? [[v.pos.x, v.pos.z, v.spec.L / 2 + 0.6]] : [[player.pos.x, player.pos.z, 0.9]]); }
   if (!running) {
@@ -6165,6 +6514,7 @@ function tick(rdt) {
   if (paused || mapOpen || travelOpen || CHEAT.open) { drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
+  OUTER.update(rdt); updateLazy(worldHold ? 30 : 4); cullCore(rdt); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
@@ -6174,7 +6524,7 @@ function tick(rdt) {
   sigT -= rdt; if (sigT <= 0) { sigT = 0.1; updateSignals(); }
   smoke.update(dt); fire.update(dt); NUKE_FX.update(rdt, skyU.horizon.value);
   for (let i = tracers.length - 1; i >= 0; i--) { tracers[i].t -= dt; if (tracers[i].t <= 0) { scene.remove(tracers[i].l); tracers[i].l.geometry.dispose(); tracers.splice(i, 1); } }
-  updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap(); updateBeacons(rdt);
+  updateHold(rdt); updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); drawMinimap(); updateBeacons(rdt);
   const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); }
   if (bigTimer > 0) { bigTimer -= rdt; if (bigTimer <= 0) $('big').hidden = true; }
   NIGHTL.update(camera, nightAmount, lampsNear, rdt); if (AIRT) AIRT.update(dt, nightAmount, focusPos()); // street lamps' light, aircraft
@@ -6199,7 +6549,8 @@ let worldReady = false;
   else { terData = new Uint8ClampedArray(4 * 4 * 4).fill(128); terW = terH = 4; }
   buildHeightGrid();
   progress('Grading the roads…'); await new Promise(r => setTimeout(r, 0));
-  ROADS = new RoadSurface(D.roads, D.buildings);
+  ROADS = outerRoads(new RoadSurface(D.roads, D.buildings));
+  if (await OUTER.init()) addOuterLandmarks(); // the outer world's tile index (assets/world), when there is one
   progress('Loading textures and models…');
   if (ZONE) {
     if (ZONE.dem) { const zi = await loadImage('assets/zone/dem.png'); if (zi) buildZoneGrid(zi); }
@@ -6219,6 +6570,11 @@ let worldReady = false;
   const phsCtx = { THREE, scene, gltfLoader, heightAt, addPoly, onAsphalt: (x, z, m) => !!ROADS && ROADS.onAsphalt(x, z, m), notify, LAT0, LON0, KX, KZ, aniso: Math.min(8, MAXANISO) }; // PHS
   await PHS.initPHS(phsCtx); // PHS: campus polygon for the skips + GTP_NATURE_EXCLUDE, starts the GLB download
   await buildWorld();
+  if (OUTER.ready) { // the outer tiles carry on where the core photo ends: no procedural ring, no fade at the photo's edge
+    if (OUTER_HILLS) scene.remove(OUTER_HILLS);
+    for (const u of TX.ground.users || []) u.gEdgeOn.value = 0;
+    loadImage('assets/world/overview.jpg').then(img => { const b = OUTER.bounds(); if (img) groundImgs.splice(0, 0, { img, x0: OUTER.idx.i0 * OUTER.idx.tile, z0: OUTER.idx.j0 * OUTER.idx.tile, x1: (OUTER.idx.i1 + 1) * OUTER.idx.tile, z1: (OUTER.idx.j1 + 1) * OUTER.idx.tile, tile: 'overview' }); photoMask = null; });
+  }
   progress('Building Poway High…'); await PHS.loadPHS(phsCtx); // PHS
   prepMapImages();
   pickSpawn();
@@ -6247,7 +6603,7 @@ let worldReady = false;
   });
   initPolice(); initStory(); initExtras(); SHELL.achSub();
   restoreSave();
-  const sp0 = focusPos();
+  const sp0 = focusPos(); progress('Building the streets around you…'); buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Warming up the effects…'); await FX.warm(renderer, camera); await NUKE_FX.warm(renderer, camera);
@@ -6275,7 +6631,7 @@ async function loadLater() {
   await step('ground photos', loadGroundPhotos);
   await step('crowd', async () => { if (await loadCrowd()) upgradePeds(); });
   await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
-  await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); });
+  await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
   await step('roof photos', loadRoofPhotos);
   console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's');
@@ -6287,7 +6643,8 @@ async function loadGroundPhotos() {
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO);
     const old = m.map; m.map = t; if (old && old.isDataTexture) old.dispose();
   }));
-  groundImgs.length = 0; prepMapImages(); // the minimap and the big map draw the photo too
+  for (let i = groundImgs.length - 1; i >= 0; i--) if (!groundImgs[i].tile) groundImgs.splice(i, 1); // the core's stand-ins (the outer world's photos stay)
+  prepMapImages(); // the minimap and the big map draw the photo too
   groundTint();
 }
 async function loadRoofPhotos() {
@@ -6333,6 +6690,10 @@ function restoreSave() {
   voices = save.settings.voices !== false; radio.st = clamp(save.settings.radio | 0, 0, STATIONS.length - 1); radio.on = save.settings.radioOn !== false;
   if (save.weather && WEATHERS[save.weather]) setWeather(save.weather, true);
   const sp = save.player;
+  if (sp && Number.isFinite(sp.x) && OUTER.ready && !(sp.x > B.minx && sp.x < B.maxx && sp.z > B.minz && sp.z < B.maxz)) { // out in the county: back there once it has streamed in
+    const b = OUTER.bounds(); if (sp.x > b[0] && sp.x < b[2] && sp.z > b[1] && sp.z < b[3]) holdFor(sp.x, sp.z, () => { player.pos.set(sp.x, heightAt(sp.x, sp.z), sp.z); player.rotY = sp.rotY || 0; cam.yaw = player.rotY + Math.PI; });
+    return;
+  }
   if (!sp || !Number.isFinite(sp.x) || sp.x < B.minx || sp.x > B.maxx || sp.z < B.minz || sp.z > B.maxz) return;
   player.pos.set(sp.x, heightAt(sp.x, sp.z), sp.z); player.rotY = sp.rotY || 0; cam.yaw = player.rotY + Math.PI;
   player.health = clamp(sp.health || 100, 35, 100); player.ammo = Math.max(0, sp.ammo ?? player.ammo); if (sp.arsenal && typeof sp.arsenal === 'object') for (const w of WEAPONS) { const n = sp.arsenal[w.id]; if (w.max && Number.isFinite(n)) player.arsenal[w.id] = clamp(Math.floor(n), 0, maxOf(w)); } /* only known weapons, finite counts */ player.weapon = WEAPONS[sp.weapon] && owned(sp.weapon) ? sp.weapon : 0;
@@ -6351,7 +6712,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { OUTER, teleport, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
