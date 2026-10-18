@@ -143,13 +143,13 @@ function realistic(THREE, renderer, U, O, VS) {
   // the 13-tap filter from Call of Duty: Advanced Warfare (Jimenez 2014). On the first step each 2x2 group is weighted by
   // 1 / (1 + luma) (Karis) so a single hot pixel (a sun glint) can't flicker into a big blob.
   const TAPS = /* glsl */`
-    vec3 A = texture2D(tSrc, vUv + uTx * vec2(-2., 2.)).rgb, B = texture2D(tSrc, vUv + uTx * vec2(0., 2.)).rgb, C = texture2D(tSrc, vUv + uTx * vec2(2., 2.)).rgb;
-    vec3 D = texture2D(tSrc, vUv + uTx * vec2(-2., 0.)).rgb, E = texture2D(tSrc, vUv).rgb, F = texture2D(tSrc, vUv + uTx * vec2(2., 0.)).rgb;
-    vec3 G = texture2D(tSrc, vUv + uTx * vec2(-2., -2.)).rgb, H = texture2D(tSrc, vUv + uTx * vec2(0., -2.)).rgb, I = texture2D(tSrc, vUv + uTx * vec2(2., -2.)).rgb;
-    vec3 J = texture2D(tSrc, vUv + uTx * vec2(-1., 1.)).rgb, K = texture2D(tSrc, vUv + uTx * vec2(1., 1.)).rgb;
-    vec3 L = texture2D(tSrc, vUv + uTx * vec2(-1., -1.)).rgb, M = texture2D(tSrc, vUv + uTx * vec2(1., -1.)).rgb;`;
+    vec3 A = TAP(-2., 2.), B = TAP(0., 2.), C = TAP(2., 2.), D = TAP(-2., 0.), E = TAP(0., 0.), F = TAP(2., 0.);
+    vec3 G = TAP(-2., -2.), H = TAP(0., -2.), I = TAP(2., -2.), J = TAP(-1., 1.), K = TAP(1., 1.), L = TAP(-1., -1.), M = TAP(1., -1.);`;
   const down0 = sm(/* glsl */`
     uniform sampler2D tSrc; uniform vec2 uTx;
+    // the scene straight from the HDR target: clamped, so a stray NaN or infinity (one bad pixel) can't spread through
+    // the whole bloom chain into a glowing block
+    #define TAP(x, y) clamp(texture2D(tSrc, vUv + uTx * vec2(x, y)).rgb, 0., 60.)
     float lu(vec3 c) { return dot(c, vec3(.2126, .7152, .0722)); }
     vec3 kw(vec3 a, vec3 b, vec3 c, vec3 d) { vec3 s = (a + b + c + d) * .25; return s / (1. + lu(s)); }
     void main() {
@@ -163,6 +163,7 @@ function realistic(THREE, renderer, U, O, VS) {
   const downU = { tSrc: { value: null }, uTx: { value: new THREE.Vector2() } };
   const down = sm(/* glsl */`
     uniform sampler2D tSrc; uniform vec2 uTx;
+    #define TAP(x, y) texture2D(tSrc, vUv + uTx * vec2(x, y)).rgb
     void main() {
       ${TAPS}
       float aE = texture2D(tSrc, vUv).a, aJ = texture2D(tSrc, vUv + uTx * vec2(-1., 1.)).a, aK = texture2D(tSrc, vUv + uTx * vec2(1., 1.)).a;
@@ -269,16 +270,17 @@ function realistic(THREE, renderer, U, O, VS) {
     ${FILM}
     void main() {
       vec2 px = 1. / uRes, c = vUv - .5; float r2 = dot(c, c);
-      vec3 col = texture2D(tCol, vUv).rgb;
-      vec3 cE = texture2D(tCol, vUv + vec2(px.x, 0.)).rgb, cW = texture2D(tCol, vUv - vec2(px.x, 0.)).rgb, cN = texture2D(tCol, vUv + vec2(0., px.y)).rgb, cS = texture2D(tCol, vUv - vec2(0., px.y)).rgb;
+      #define CTAP(o) clamp(texture2D(tCol, vUv + (o)).rgb, 0., 60.)
+      vec3 col = CTAP(vec2(0.));
+      vec3 cE = CTAP(vec2(px.x, 0.)), cW = CTAP(-vec2(px.x, 0.)), cN = CTAP(vec2(0., px.y)), cS = CTAP(-vec2(0., px.y));
       float sharp = .18;
       if (uAA > 0.) { // without MSAA: where the contrast says there's an edge, blend along it (FXAA's idea, the cheap way)
         float lM = lt(col), lN = lt(cN), lS = lt(cS), lE = lt(cE), lW = lt(cW);
         float lMin = min(lM, min(min(lN, lS), min(lE, lW))), lMax = max(lM, max(max(lN, lS), max(lE, lW))), rng = lMax - lMin;
         if (rng > max(.03, lMax * .12)) {
           vec2 t = normalize(vec2(lS - lN, lE - lW) + 1e-5) * px;                       // along the edge
-          vec3 a = (texture2D(tCol, vUv + t * .5).rgb + texture2D(tCol, vUv - t * .5).rgb) * .5;
-          vec3 b = (a + (texture2D(tCol, vUv + t * 1.75).rgb + texture2D(tCol, vUv - t * 1.75).rgb) * .5) * .5;
+          vec3 a = (CTAP(t * .5) + CTAP(-t * .5)) * .5;
+          vec3 b = (a + (CTAP(t * 1.75) + CTAP(-t * 1.75)) * .5) * .5;
           float lb = lt(b);
           col = mix(col, lb < lMin || lb > lMax ? a : b, .8);
           sharp = 0.;

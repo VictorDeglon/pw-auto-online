@@ -69,7 +69,10 @@ float cumulus(vec2 uv, float th){
 void main(){
   vec3 d = normalize(vDir); float h = max(d.y, 0.), sy = sunDir.y;
   float cs = dot(d, sunDir), sd = max(cs, 0.);
-  vec2 sh = normalize(sunDir.xz + 1e-5), dh = normalize(d.xz + 1e-5); float az = dot(sh, dh) * .5 + .5; // 1 toward the sun
+  vec2 sh = normalize(sunDir.xz + 1e-5), dh = normalize(d.xz + 1e-5);
+  // 1 toward the sun. Clamped: straight toward or away from the sun the dot product rounds a hair past +-1, and pow() of
+  // a negative number is NaN (a column of black, or blooming white, squares on that line of the sky)
+  float az = clamp(dot(sh, dh) * .5 + .5, 0., 1.);
 
   // ---- base gradient, with a thicker warm horizon the lower the sun
   vec3 col = mix(horizon, top, pow(h, .45 + dusk * .25));
