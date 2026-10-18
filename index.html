@@ -676,6 +676,7 @@ const SKYFX = createSky(THREE), skyU = SKYFX.U, sky = SKYFX.mesh; scene.add(sky)
 const SKYENV = GFX.ibl ? createSkyEnv(THREE, renderer, SKYFX, GFX.ibl) : null;
 if (SKYENV) scene.environment = SKYENV.texture;
 const vegHemi = { color: new THREE.Color(), groundColor: new THREE.Color(), intensity: 1 }; // what the impostor trees light themselves with
+window.__gtpFX = { SKYENV, ATM, CASC, hemi, sun }; // for tests: the light and camera tiers
 
 // ============================================================ geo: aerial pixel space + terrain
 const AER = D.aerial, TER = D.terrain;
@@ -6153,7 +6154,6 @@ $('newgame').addEventListener('click', () => {
 });
 requestAnimationFrame(frame);
 window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
-window.__gtp.POSTFX = { SKYENV, ATM, CASC, hemi, sun }; // the light and camera tiers (tests)
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
