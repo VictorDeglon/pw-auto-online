@@ -89,7 +89,7 @@ export function createOuter(E) {
     if (!O.building) {
       let best = null, bd = 1e9;
       for (const t of O.tiles.values()) {
-        if (t.built || !t.ready) continue;
+        if (t.built || !t.ready || t.broken) continue;
         const d = rectDist(t, f); if (d > view + BUILD_PAD) continue;
         let ok = true;
         for (let b = -1; b <= 1 && ok; b++) for (let a = -1; a <= 1; a++) {
@@ -108,7 +108,10 @@ export function createOuter(E) {
     }
     if (O.building) { // run the builder for a few milliseconds
       const b = O.building;
-      while (performance.now() - t0 < budget) { const s0 = stepT0 = performance.now(), r = b.job.next(); slow('build:' + (b.phase || ''), performance.now() - s0, b); if (r.done) { b.job = null; O.building = null; O.stats.lastBuild = { tile: b.k, wallS: +((performance.now() - b.b0) / 1000).toFixed(1), workMs: Math.round(b.work + performance.now() - t0) }; break; } }
+      while (performance.now() - t0 < budget) {
+        let r; const s0 = stepT0 = performance.now();
+        try { r = b.job.next(); } catch (e) { console.error('[outer] tile', b.k, e); E.setSink(null); E.holdPolys(null); unbuild(b); b.broken = true; break; } // one bad tile mustn't stop the frame
+        slow('build:' + (b.phase || ''), performance.now() - s0, b); if (r.done) { b.job = null; O.building = null; O.stats.lastBuild = { tile: b.k, wallS: +((performance.now() - b.b0) / 1000).toFixed(1), workMs: Math.round(b.work + performance.now() - t0) }; break; } }
       if (O.building === b) b.work += performance.now() - t0;
     }
     // culling, twice a second: each 500 m piece drawn within view, its small stuff within the detail range, shadows near

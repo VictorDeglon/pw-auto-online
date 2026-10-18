@@ -2402,7 +2402,7 @@ function* outerKit(t, d, kit, due) {
     const poleG = new THREE.CylinderGeometry(0.07, 0.11, 7, 6).translate(0, 3.5, 0), armG = new THREE.CylinderGeometry(0.04, 0.05, 1.8, 5).rotateX(Math.PI / 2).translate(0, 7, 0.9);
     const poles = new THREE.InstancedMesh(BGU.mergeGeometries([poleG, armG]), M.pole, n), heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.35, 0.14, 0.9).translate(0, 7, 1.6), M.lampHead, n), glows = new THREE.InstancedMesh(new THREE.PlaneGeometry(12, 12).rotateX(-Math.PI / 2).translate(0, 0.2, 1.6), M.lampGlow, n);
     for (let i = 0; i < n; i++) { const x = lamps[i * 3], z = lamps[i * 3 + 1]; _kq.setFromAxisAngle(_ku, lamps[i * 3 + 2]); _km.compose(_kv.set(x, heightAt(x, z), z), _kq, _ks); poles.setMatrixAt(i, _km); heads.setMatrixAt(i, _km); glows.setMatrixAt(i, _km); }
-    poles.castShadow = true; for (const m of [poles, heads, glows]) { m.computeBoundingSphere(); kit.meshes.push(m); }
+    poles.castShadow = true; for (const m of [poles, heads, glows]) { m.computeBoundingSphere(); m.matrixAutoUpdate = false; kit.meshes.push(m); t.group.add(m); } // drawn as they become props
     for (let i = 0; i < n; i++) { const pr = { kind: 'lamp', x: lamps[i * 3], z: lamps[i * 3 + 1], rot: lamps[i * 3 + 2], i, inst: [poles, heads, glows], alive: true }; addProp(pr); kit.props.push(pr); }
     glows.userData.lod = 1;
   }
@@ -2421,7 +2421,7 @@ function* outerKit(t, d, kit, due) {
     const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.04, 2.4, 6).translate(0, 1.2, 0), M.pole, stopG.length);
     const face = new THREE.InstancedMesh(new THREE.CircleGeometry(0.38, 8).rotateZ(Math.PI / 8).translate(0, 2.1, 0.05), stopSignMat(), stopG.length);
     stopG.forEach(([x, z, fx, fz], i) => { _kq.setFromAxisAngle(_ku, Math.atan2(fx, fz)); _km.compose(_kv.set(x, heightAt(x, z), z), _kq, _ks); post.setMatrixAt(i, _km); face.setMatrixAt(i, _km); const pr = { kind: 'sign', x, z, h: 2.4, i, inst: [post, face], alive: true }; addProp(pr); kit.props.push(pr); });
-    for (const m of [post, face]) { m.computeBoundingSphere(); kit.meshes.push(m); }
+    for (const m of [post, face]) { m.computeBoundingSphere(); m.matrixAutoUpdate = false; kit.meshes.push(m); t.group.add(m); }
   }
   // crosswalk stripes where OpenStreetMap has a crossing
   for (const q of d.cr || []) {
@@ -2430,7 +2430,6 @@ function* outerKit(t, d, kit, due) {
     for (let s = -e.w / 2 + 0.5; s < e.w / 2 - 0.4; s += 1.1) bar(ch.line, ne.x + nx * s, ne.z + nz * s, ne.tx, ne.tz, 2.4, 0.55, 0.06, [0.93, 0.93, 0.9]);
     if (due()) yield;
   }
-  for (const m of kit.meshes) { m.matrixAutoUpdate = false; t.group.add(m); }
 }
 function dropOuterKit(kit) {
   for (const pr of kit.props) { pr.alive = false; const c = propGrid.get(pkey(pr.x, pr.z)); if (c) { const j = c.indexOf(pr); if (j >= 0) c.splice(j, 1); } }
