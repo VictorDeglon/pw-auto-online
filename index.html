@@ -760,6 +760,7 @@ function zoneInv(px, py, out) {
 }
 function inCore(x, z, margin = 0) { if (!ZONE) return false; zonePx(x, z, _tmpZ); return _tmpZ[0] >= ZONE.core0 + margin && _tmpZ[0] < ZONE.core1 - margin && _tmpZ[1] >= ZONE.core0 + margin && _tmpZ[1] < ZONE.core1 - margin; }
 function coarseHeightAt(x, z) {
+  if (!HG) return 0;
   aerPx(x, z, _tmpB); const px = _tmpB[0] / CELLPX, py = _tmpB[1] / CELLPX;
   if (px < 0 || py < 0 || px >= HGW - 1 || py >= HGH - 1) { const lat = LAT0 - z / KZ, lon = LON0 + x / KX; return exag(terrainRaw(lat, lon)) - HBASE; }
   const i = Math.floor(px), j = Math.floor(py), fx = px - i, fy = py - j;
@@ -3573,12 +3574,15 @@ initBuilder();
 let ARCH_WORLD = null;
 function initArchWorld() {
   if (ARCH_WORLD) return ARCH_WORLD;
-  ARCH_WORLD = createPowayArchitecture({
-    THREE, scene, camera, player, cam, heightAt, sfx, notify, addInteract, hour: () => hour
-  });
+  try {
+    ARCH_WORLD = createPowayArchitecture({
+      THREE, scene, camera, player, cam, heightAt, sfx, notify, addInteract, hour: () => hour
+    });
+  } catch (e) {
+    console.error('[architecture] Failed to build Poway architecture:', e);
+  }
   return ARCH_WORLD;
 }
-initArchWorld();
 // two light planes parked on open grass in parks near the start: flat, clear of buildings and well off the road
 function parkPlanes() {
   if (!AIR || !initPilot()) return; const placed = [];
@@ -6732,6 +6736,8 @@ let worldReady = false;
   const phsCtx = { THREE, scene, gltfLoader, heightAt, addPoly, onAsphalt: (x, z, m) => !!ROADS && ROADS.onAsphalt(x, z, m), notify, LAT0, LON0, KX, KZ, aniso: Math.min(8, MAXANISO) }; // PHS
   await PHS.initPHS(phsCtx); // PHS: campus polygon for the skips + GTP_NATURE_EXCLUDE, starts the GLB download
   await buildWorld();
+  progress('Raising commercial architecture & plazas…'); await tick();
+  initArchWorld();
   if (OUTER.ready) { // the outer tiles carry on where the core photo ends: no procedural ring, no fade at the photo's edge
     if (OUTER_HILLS) scene.remove(OUTER_HILLS);
     for (const u of TX.ground.users || []) u.gEdgeOn.value = 0;
