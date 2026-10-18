@@ -781,9 +781,10 @@ let ROADS = null; // src/world/roadsurface.js: the built surface (crowned asphal
 // exists, the mesh itself (so feet, wheels, grass and houses sit on the ground you see, not on a smooth function the
 // 12.8 m triangles only approximate); before that, the road bed / terrain the mesh is built from
 let MESH_READY = false;
-const ROAD_TOP = 0.03; // asphalt sits this far above the ground mesh (the road IS the ground; this just keeps it on top)
+const ROAD_TOP = 0.06; // asphalt sits cleanly above the road bed mesh to prevent ground poke-through
 function heightAt(x, z) {
-  if (MESH_READY) { const g = meshAt(x, z); if (g !== null) return g + (ROADS && ROADS.onRoad(x, z, 0) ? ROAD_TOP : 0); }
+  if (ROADS && ROADS.onRoad(x, z, 0.2)) return builtAt(x, z) + ROAD_TOP;
+  if (MESH_READY) { const g = meshAt(x, z); if (g !== null) return g; }
   return builtAt(x, z);
 }
 function builtAt(x, z) {
@@ -1032,23 +1033,23 @@ async function loadAssets() {
   M.roofClay = new THREE.MeshStandardMaterial({ map: clay, normalMap: clayN, vertexColors: true, roughness: 0.9 });
   M.roofShingle = new THREE.MeshStandardMaterial({ map: shingle, vertexColors: true, roughness: 0.95 });
   M.roofFlat = new THREE.MeshStandardMaterial({ map: cwall, vertexColors: true, roughness: 1 });
-  asphalt.repeat.set(1, 1); M.road = new THREE.MeshStandardMaterial({ map: asphalt, normalMap: asphaltN, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
-  M.side = new THREE.MeshStandardMaterial({ map: concrete, vertexColors: true, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-  M.line = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -10 });
+  asphalt.repeat.set(1, 1); M.road = new THREE.MeshStandardMaterial({ map: asphalt, normalMap: asphaltN, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
+  M.side = new THREE.MeshStandardMaterial({ map: concrete, vertexColors: true, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+  M.line = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
   M.water = waterMat(0x24566e, 0.035, 0.3); M.pool = waterMat(0x3fb4c8, 0.22, 0.25);
   M.pole = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.6, metalness: 0.4 });
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0x777777 });
   M.lampGlow = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
   M.signal = new THREE.MeshBasicMaterial({ color: 0xffffff });
   // terrain: photo colour far away, photo-classified PBR ground layers up close (src/nature/ground.js)
-  M.outer = new THREE.MeshStandardMaterial({ roughness: 1 }); // beyond the photo: procedural chaparral / grassland
+  M.outer = new THREE.MeshStandardMaterial({ roughness: 1, polygonOffset: true, polygonOffsetFactor: 1.5, polygonOffsetUnits: 3.0 }); // beyond the photo: procedural chaparral / grassland
   M.outer.onBeforeCompile = groundPatch(ground, { procedural: true });
   M.terrainShader = photoBias => groundPatch(ground, { photoBias, edge: photoRect() }); // near its edge the photo fades into the outer hills
   M.terrain = [];
   const gm = AER.ground;
   if (gm) { // the aerial photo tiles stream in after the loading screen (loadGroundPhotos); till then, plain ground colour
     for (let j = 0; j < gm.gny; j++) for (let i = 0; i < gm.gnx; i++) {
-      const m = new THREE.MeshStandardMaterial({ map: holdTex(0x8a8260), roughness: 1 });
+      const m = new THREE.MeshStandardMaterial({ map: holdTex(0x8a8260), roughness: 1, polygonOffset: true, polygonOffsetFactor: 1.5, polygonOffsetUnits: 3.0 });
       m.onBeforeCompile = M.terrainShader(1.5); M.terrain.push(m);
     }
   }
@@ -1089,8 +1090,11 @@ function tri(gb, a, b, c, ca, cb, cc, ua, ub, uc, hx, hy, hz) {
   gb.c.push(ca.r, ca.g, ca.b, cb.r, cb.g, cb.b, cc.r, cc.g, cc.b);
   if (gb.uv) gb.uv.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
 }
-// ground-hugging triangle: y per vertex from the terrain + lift; uv optional (per vertex [u,v])
-function drapeAt(x, z) { const g = MESH_READY ? meshAt(x, z) : null; return g !== null ? g : builtAt(x, z); }
+function drapeAt(x, z) {
+  if (ROADS && ROADS.onRoad(x, z, 0.5)) return builtAt(x, z);
+  const g = MESH_READY ? meshAt(x, z) : null;
+  return g !== null ? g : builtAt(x, z);
+}
 function groundTri(gb, ax, az, bx, bz, cx, cz, lift, col, ua, ub, uc) {
   if ((bz - az) * (cx - ax) - (bx - ax) * (cz - az) < 0) { let t = bx; bx = cx; cx = t; t = bz; bz = cz; cz = t; t = ub; ub = uc; uc = t; }
   const ay = drapeAt(ax, az) + lift, by = drapeAt(bx, bz) + lift, cy = drapeAt(cx, cz) + lift;
@@ -2105,7 +2109,7 @@ async function plantNature() {
 function paveRoad(t, w, p) {
   const n = p.length / 2;
   const ch = chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1]);
-  if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.045, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.045, [0.85, 0.84, 0.8], 3); }
+  if (t >= 1 && t <= 5) { ribbon(ch.side, p, 2.2, w / 2 + 1.0, 0.065, [0.85, 0.84, 0.8], 3); ribbon(ch.side, p, 2.2, -(w / 2 + 1.0), 0.065, [0.85, 0.84, 0.8], 3); }
   ribbon(ch.road, p, w, 0, ROAD_TOP, t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1], 7);
   // markings from the same lane layout traffic drives by (src/roadnet.js laneOffset): a centre gap of 2.8 m or more is
   // a two-way left-turn lane (as on Espola Road), a 1.2 m+ shoulder is a bike lane, dividers sit between real lanes
@@ -2113,18 +2117,18 @@ function paveRoad(t, w, p) {
   if (t <= 3 && w >= 9) {
     const n = w >= 21 ? 3 : w >= 15 ? 2 : 1, lw = clamp(w / 2 / n, 2.8, 3.7), base = Math.max(0, w / 2 - n * lw) * 0.5, sh = w / 2 - base - n * lw;
     for (const sg of [1, -1]) {
-      if (base >= 1.4) { dashes(ch.line, p, 0.14, sg * base, 0.06, YEL, 1, 0, 9); dashes(ch.line, p, 0.12, sg * (base - 0.3), 0.06, YEL, 3, 6, 9); } // turn lane: solid outside, broken inside
-      else dashes(ch.line, p, 0.16, sg * 0.14, 0.06, YEL, 1, 0, 9); // double yellow
-      for (let k = 1; k < n; k++) dashes(ch.line, p, 0.12, sg * (base + k * lw), 0.06, WHT, 3, 6, 9);
-      if (sh >= 1.2) dashes(ch.line, p, 0.15, sg * (w / 2 - sh + 0.1), 0.06, WHT, 1, 0, 9); // bike lane / shoulder line
+      if (base >= 1.4) { dashes(ch.line, p, 0.14, sg * base, 0.08, YEL, 1, 0, 9); dashes(ch.line, p, 0.12, sg * (base - 0.3), 0.08, YEL, 3, 6, 9); } // turn lane: solid outside, broken inside
+      else dashes(ch.line, p, 0.16, sg * 0.14, 0.08, YEL, 1, 0, 9); // double yellow
+      for (let k = 1; k < n; k++) dashes(ch.line, p, 0.12, sg * (base + k * lw), 0.08, WHT, 3, 6, 9);
+      if (sh >= 1.2) dashes(ch.line, p, 0.15, sg * (w / 2 - sh + 0.1), 0.08, WHT, 1, 0, 9); // bike lane / shoulder line
     }
-  } else if (t === 4 && w >= 8) dashes(ch.line, p, 0.12, 0, 0.06, [0.8, 0.62, 0.15], 2.5, 5, 10);
+  } else if (t === 4 && w >= 8) dashes(ch.line, p, 0.12, 0, 0.08, [0.8, 0.62, 0.15], 2.5, 5, 10);
   if (t >= 1 && t <= 5 && w >= 6) { // concrete gutters along the curb, storm drains near each end of the block
-    ribbon(ch.side, p, 0.5, w / 2 - 0.25, 0.04, [0.72, 0.71, 0.68], 3); ribbon(ch.side, p, 0.5, -(w / 2 - 0.25), 0.04, [0.72, 0.71, 0.68], 3);
+    ribbon(ch.side, p, 0.5, w / 2 - 0.25, 0.062, [0.72, 0.71, 0.68], 3); ribbon(ch.side, p, 0.5, -(w / 2 - 0.25), 0.062, [0.72, 0.71, 0.68], 3);
     const n2 = p.length / 2; if (n2 >= 2) for (const end of [0, 1]) {
       const i0 = end ? n2 - 1 : 0, i1 = end ? n2 - 2 : 1, dx = p[i1 * 2] - p[i0 * 2], dz = p[i1 * 2 + 1] - p[i0 * 2 + 1], L = Math.hypot(dx, dz); if (L < 14) continue;
       const tx = dx / L, tz = dz / L, sg = end ? -1 : 1, o = w / 2 - 0.3, x = p[i0 * 2] + tx * 12 - tz * o * sg, z = p[i0 * 2 + 1] + tz * 12 + tx * o * sg;
-      bar(ch.line, x, z, tx, tz, 0.95, 0.45, 0.065, [0.16, 0.16, 0.17]);
+      bar(ch.line, x, z, tx, tz, 0.95, 0.45, 0.085, [0.16, 0.16, 0.17]);
     }
   }
 }
@@ -2151,7 +2155,11 @@ async function buildWorld() {
   const inZ = new Uint8Array(HGW * HGH); // coarse vertices inside the detail core
   MESHG = new Float32Array(HGW * HGH);
   if (ZH) for (let J = 0; J < HGH; J++) for (let I = 0; I < HGW; I++) { aerInv(I * CELLPX, J * CELLPX, _tmpA); inZ[J * HGW + I] = inCore(_tmpA[0], _tmpA[1]) ? 1 : 0; }
-  for (let J = 0; J < HGH; J++) for (let I = 0; I < HGW; I++) { aerInv(I * CELLPX, J * CELLPX, _tmpA); MESHG[J * HGW + I] = heightAt(_tmpA[0], _tmpA[1]) - (inZ[J * HGW + I] ? 0.35 : 0); } // roads are part of the ground: the mesh IS the road bed (no carving under them)
+  for (let J = 0; J < HGH; J++) for (let I = 0; I < HGW; I++) {
+    aerInv(I * CELLPX, J * CELLPX, _tmpA);
+    const crv = ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1], 0.18) : 0;
+    MESHG[J * HGW + I] = heightAt(_tmpA[0], _tmpA[1]) - (inZ[J * HGW + I] ? 0.35 : 0) - crv;
+  }
   for (let cj = 0; cj < nchz; cj++) for (let ci = 0; ci < nchx; ci++) {
     const i0 = ci * cellsPer, j0 = cj * cellsPer, i1 = Math.min(HGW - 1, i0 + cellsPer), j1 = Math.min(HGH - 1, j0 + cellsPer);
     if (i1 <= i0 || j1 <= j0) continue;
@@ -2172,7 +2180,11 @@ async function buildWorld() {
     progress('Sculpting the detail zone…'); await tick();
     const TP = ZONE.tilePx, cells = TP / ZCELL;
     ZMN = ZONE.tiles * cells + 1; ZMESH = new Float32Array(ZMN * ZMN);
-    for (let j = 0; j < ZMN; j++) for (let i = 0; i < ZMN; i++) { zoneInv(ZONE.core0 + i * ZCELL, ZONE.core0 + j * ZCELL, _tmpA); ZMESH[j * ZMN + i] = heightAt(_tmpA[0], _tmpA[1]); }
+    for (let j = 0; j < ZMN; j++) for (let i = 0; i < ZMN; i++) {
+      zoneInv(ZONE.core0 + i * ZCELL, ZONE.core0 + j * ZCELL, _tmpA);
+      const crv = ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1], 0.18) : 0;
+      ZMESH[j * ZMN + i] = heightAt(_tmpA[0], _tmpA[1]) - crv;
+    }
     for (let tj = 0; tj < ZONE.tiles; tj++) for (let ti = 0; ti < ZONE.tiles; ti++) {
       const W = cells + 1, pos = new Float32Array(W * W * 3), uv = new Float32Array(W * W * 2), idx = [];
       for (let j = 0; j <= cells; j++) for (let i = 0; i <= cells; i++) {
@@ -6492,6 +6504,44 @@ function bigMapBase(W, H, dpr) {
       L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.85);
       L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke();
     }
+    // Render 3D mapped building footprints & commercial plaza parcels
+    const PLAZA_MAP_PARCELS = [
+      { name: 'Poway Town Center', cx: -320.0, cz: 432.0, w: 104, d: 82, col: '#ff7eb6' },
+      { name: 'Poway Valley Center', cx: -702.0, cz: 402.0, w: 96, d: 74, col: '#ff7eb6' },
+      { name: 'Twin Peaks Plaza', cx: -2437.0, cz: -2322.0, w: 120, d: 90, col: '#ff7eb6' },
+      { name: 'Carmel Mountain Promenade', cx: -4250.0, cz: -2260.0, w: 150, d: 110, col: '#ff7eb6' },
+      { name: 'Costco Tech Center', cx: -4260.0, cz: -2640.0, w: 180, d: 130, col: '#ff7eb6' }
+    ];
+    if (v.mpp < 14) {
+      for (const pz of PLAZA_MAP_PARCELS) {
+        if (pz.cx + pz.w / 2 < vr[0] || pz.cx - pz.w / 2 > vr[2] || pz.cz + pz.d / 2 < vr[1] || pz.cz - pz.d / 2 > vr[3]) continue;
+        L.fillStyle = 'rgba(24, 32, 47, 0.78)';
+        L.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+        L.lineWidth = 2.0;
+        L.beginPath();
+        L.roundRect ? L.roundRect(pz.cx - pz.w / 2, pz.cz - pz.d / 2, pz.w, pz.d, 6) : L.rect(pz.cx - pz.w / 2, pz.cz - pz.d / 2, pz.w, pz.d);
+        L.fill();
+        L.stroke();
+      }
+    }
+    if (v.mpp < 8 && D.buildings) {
+      L.fillStyle = 'rgba(15, 23, 42, 0.72)';
+      L.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+      L.lineWidth = 1.0;
+      for (const b of D.buildings) {
+        const flat = b[2];
+        if (!flat || flat.length < 6) continue;
+        const bx = flat[0], bz = flat[1];
+        if (bx < vr[0] || bx > vr[2] || bz < vr[1] || bz > vr[3]) continue;
+        L.beginPath();
+        for (let k = 0; k < flat.length; k += 2) {
+          k ? L.lineTo(flat[k], flat[k + 1]) : L.moveTo(flat[k], flat[k + 1]);
+        }
+        L.closePath();
+        L.fill();
+        L.stroke();
+      }
+    }
   });
   drawFog(g); // discovery cloud with feathered falloff
   g.restore();
@@ -6729,7 +6779,7 @@ let worldReady = false;
   if (ZONE) {
     progress('Loading the detail-zone photo tiles…');
     const tiles = await Promise.all(Array.from({ length: ZONE.tiles * ZONE.tiles }, (_, k) => loadTex(`assets/zone/t_${k % ZONE.tiles}_${Math.floor(k / ZONE.tiles)}.jpg`, true, false)));
-    for (const t of tiles) { if (!t) { M.zoneTiles.push(null); continue; } t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO); const m = new THREE.MeshStandardMaterial({ map: t, roughness: 1 }); m.onBeforeCompile = M.terrainShader(3.0); M.zoneTiles.push(m); }
+    for (const t of tiles) { if (!t) { M.zoneTiles.push(null); continue; } t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO); const m = new THREE.MeshStandardMaterial({ map: t, roughness: 1, polygonOffset: true, polygonOffsetFactor: 1.5, polygonOffsetUnits: 3.0 }); m.onBeforeCompile = M.terrainShader(3.0); M.zoneTiles.push(m); }
   }
   // facade atlas: garage door (top-left quarter) + front door (next quarter)
   { const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d'); g.clearRect(0, 0, 512, 512);
