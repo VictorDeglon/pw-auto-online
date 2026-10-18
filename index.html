@@ -3692,9 +3692,9 @@ function spawnJet() {
   if (!JET.m) { JET.m = jetModel(); scene.add(JET.m); }
   const f = player.pos, yaw = cam.yaw + Math.PI;
   JET.pos.set(f.x, Math.max(heightAt(f.x, f.z) + 90, f.y + 60), f.z); JET.q.setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ'));
-  JET.vel.set(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(70); JET.thr = 0.6; JET.on = true; JET.m.visible = true;
-  player.rig.g.visible = false; cam.dist = 20; flash = 1; sfx.whoosh(1);
-  notify('<b>Fighter jet</b> · mouse steers · W/S throttle · A/D roll · click for missiles · F to bail out', 'green', 6000);
+  JET.vel.set(Math.sin(yaw), 0, Math.cos(yaw)).multiplyScalar(240); JET.thr = 0.8; JET.on = true; JET.m.visible = true;
+  player.rig.g.visible = false; cam.dist = 24; flash = 1; sfx.whoosh(1);
+  notify('<b>Supersonic Fighter Jet</b> · mouse steers · W/S throttle · Shift afterburner · A/D roll · click for missiles · F to bail out', 'green', 6000);
 }
 function leaveJet() { // bail out: you keep its height and speed and fall (or float down in god mode)
   if (!JET.on) return; JET.on = false; JET.abandoned = 6;
@@ -3710,22 +3710,46 @@ function updateJet(dt) {
     return;
   }
   const up = keys.has('KeyW') ? 1 : 0, dn = keys.has('KeyS') ? 1 : 0, rl = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
-  JET.thr = clamp(JET.thr + (up - dn) * dt * 0.5, 0.15, 1);
+  const afterburn = keys.has('ShiftLeft') || keys.has('ShiftRight') || keys.has('Shift');
+  JET.thr = clamp(JET.thr + (up - dn) * dt * 0.8, 0.25, 1);
   const want = _jf.set(-Math.sin(cam.yaw) * Math.cos(cam.pitch - 0.25), -Math.sin(cam.pitch - 0.25), -Math.cos(cam.yaw) * Math.cos(cam.pitch - 0.25)).normalize(); // fly where you look
   const fwd = _jw.set(0, 0, 1).applyQuaternion(JET.q), turn = _jq.setFromUnitVectors(fwd, want);
-  JET.q.premultiply(new THREE.Quaternion().slerp(turn, Math.min(1, dt * 1.6)));
-  _je.setFromQuaternion(JET.q, 'YXZ'); const bank = clamp(-wrapA(Math.atan2(want.x, want.z) - _je.y) * 2.2, -1.1, 1.1) + rl * 0.9; _je.z += (bank - _je.z) * Math.min(1, dt * 3); JET.q.setFromEuler(_je);
-  const sp = 40 + JET.thr * 150; fwd.set(0, 0, 1).applyQuaternion(JET.q);
-  JET.vel.lerp(_jf.copy(fwd).multiplyScalar(sp), 1 - Math.exp(-dt * 1.4)); if (sp < 60) JET.vel.y -= (60 - sp) * 0.3 * dt;
+  const turnRate = afterburn ? 2.4 : 3.0;
+  JET.q.premultiply(new THREE.Quaternion().slerp(turn, Math.min(1, dt * turnRate)));
+  _je.setFromQuaternion(JET.q, 'YXZ');
+  const bank = clamp(-wrapA(Math.atan2(want.x, want.z) - _je.y) * 2.4, -1.25, 1.25) + rl * 1.2;
+  _je.z += (bank - _je.z) * Math.min(1, dt * 4.5);
+  JET.q.setFromEuler(_je);
+
+  // Supersonic speeds: base cruise 160-520 m/s (~360 - 1160 mph), afterburner boost up to 880 m/s (~Mach 2.6)!
+  const baseSp = 160 + JET.thr * 360;
+  const boostMult = afterburn ? 1.7 : 1.0;
+  const sp = baseSp * boostMult;
+  fwd.set(0, 0, 1).applyQuaternion(JET.q);
+  JET.vel.lerp(_jf.copy(fwd).multiplyScalar(sp), 1 - Math.exp(-dt * 3.0));
+  if (sp < 120) JET.vel.y -= (120 - sp) * 0.2 * dt;
   JET.pos.addScaledVector(JET.vel, dt); boundsClamp(JET.pos);
-  JET.m.position.copy(JET.pos); JET.m.quaternion.copy(JET.q); const fl = JET.m.userData.flame; fl.scale.set(1, 1, 0.4 + JET.thr * 1.4 + Math.random() * 0.2);
+
+  JET.m.position.copy(JET.pos); JET.m.quaternion.copy(JET.q);
+  const fl = JET.m.userData.flame;
+  if (fl) {
+    const flameL = (0.8 + JET.thr * 2.2) * (afterburn ? 2.4 : 1.0) + Math.random() * 0.3;
+    const flameW = afterburn ? 1.6 : 1.0;
+    fl.scale.set(flameW, flameW, flameL);
+  }
   player.pos.copy(JET.pos); player.rotY = _je.y; player.air = 0;
-  if (mouseDown && JET.cd <= 0) { JET.cd = 0.3; const side = (JET.side = -(JET.side || 1)); launchProjectile('rocket', JET.pos.clone().addScaledVector(fwd, 4).add(new THREE.Vector3(Math.cos(_je.y) * 2.5 * side, -0.6, -Math.sin(_je.y) * 2.5 * side)), fwd.clone()); }
-  if (S2) { S2.engine(sp * 0.5, JET.thr, true); S2.wind(clamp(sp / 150, 0, 1)); }
+  cam.dist = clamp(20 + (sp / 880) * 16, 20, 38);
+
+  if (mouseDown && JET.cd <= 0) {
+    JET.cd = 0.12; // Rapid-fire missile salvo
+    const side = (JET.side = -(JET.side || 1));
+    launchProjectile('rocket', JET.pos.clone().addScaledVector(fwd, 6).add(new THREE.Vector3(Math.cos(_je.y) * 2.5 * side, -0.6, -Math.sin(_je.y) * 2.5 * side)), fwd.clone());
+  }
+  if (S2) { S2.engine(sp * 0.35, JET.thr * boostMult, true); S2.wind(clamp(sp / 300, 0, 1)); }
   const gy = heightAt(JET.pos.x, JET.pos.z), _p = { x: JET.pos.x, z: JET.pos.z };
   if (JET.pos.y < gy + 1.5 || collideCircle(_p, 2.5, false, JET.pos.y)) { // into the ground or a building
-    if (CH.god) { JET.pos.y = gy + 25; JET.vel.y = Math.abs(JET.vel.y) + 10; return; }
-    explosionAt(JET.pos.x, JET.pos.y, JET.pos.z, 16, 'player'); JET.on = false; JET.m.visible = false; player.rig.g.visible = true; cam.dist = 6.5; hurtPlayer(999, 'explosion');
+    if (CH.god) { JET.pos.y = gy + 35; JET.vel.y = Math.abs(JET.vel.y) + 20; return; }
+    explosionAt(JET.pos.x, JET.pos.y, JET.pos.z, 18, 'player'); JET.on = false; JET.m.visible = false; player.rig.g.visible = true; cam.dist = 6.5; hurtPlayer(999, 'explosion');
   }
 }
 // aimbot: the nearest living target within ~20 degrees of the crosshair, in range and in sight
