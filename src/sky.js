@@ -19,6 +19,7 @@ export function createSky(THREE) {
     top: { value: new THREE.Color(0x4a8fd8) }, horizon: { value: new THREE.Color(0xbfd8ee) }, sunDir: { value: new THREE.Vector3(0, 1, 0) },
     sunCol: { value: new THREE.Color(0xfff0c0) }, cloud: { value: 0.1 }, time: { value: 0 }, night: { value: 0 }, flash: { value: 0 }, dusk: { value: 0 },
     moonDir: { value: new THREE.Vector3(0, -1, 0) }, moonLit: { value: 1 }, starAng: { value: 0 }, glow: { value: 1 }, rain: { value: 0 }, fog: { value: 0 },
+    env: { value: 0 }, // 1 while src/skyenv.js renders the sky into the environment map: no sun disc
   };
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(50, 48, 24), new THREE.ShaderMaterial({
     uniforms: U, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
@@ -46,7 +47,7 @@ export function createSky(THREE) {
 }
 
 const FRAG = /* glsl */`
-uniform vec3 top, horizon, sunDir, sunCol, moonDir; uniform float cloud, time, night, flash, dusk, moonLit, starAng, glow, rain, fog;
+uniform vec3 top, horizon, sunDir, sunCol, moonDir; uniform float cloud, time, night, flash, dusk, moonLit, starAng, glow, rain, fog, env;
 varying vec3 vDir;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float hash3(vec3 p){ p = fract(p * vec3(.1031, .1030, .0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
@@ -68,7 +69,10 @@ float cumulus(vec2 uv, float th){
 void main(){
   vec3 d = normalize(vDir); float h = max(d.y, 0.), sy = sunDir.y;
   float cs = dot(d, sunDir), sd = max(cs, 0.);
-  vec2 sh = normalize(sunDir.xz + 1e-5), dh = normalize(d.xz + 1e-5); float az = dot(sh, dh) * .5 + .5; // 1 toward the sun
+  vec2 sh = normalize(sunDir.xz + 1e-5), dh = normalize(d.xz + 1e-5);
+  // 1 toward the sun. Clamped: straight toward or away from the sun the dot product rounds a hair past +-1, and pow() of
+  // a negative number is NaN (a column of black, or blooming white, squares on that line of the sky)
+  float az = clamp(dot(sh, dh) * .5 + .5, 0., 1.);
 
   // ---- base gradient, with a thicker warm horizon the lower the sun
   vec3 col = mix(horizon, top, pow(h, .45 + dusk * .25));
@@ -98,7 +102,7 @@ void main(){
   vec3 sc = mix(sunCol, vec3(1., .38, .12), dusk * .8);
   col += sc * mie * (1. - cloud * .8) * (1. - night * .9);
   float disc = smoothstep(.9994 - dusk * .0006, .99975 - dusk * .0003, cs);
-  col += sc * disc * (7. + dusk * 3.) * (1. - cloud * .9) * (1. - smoothstep(-.02, -.06, sy));
+  col += sc * disc * (7. + dusk * 3.) * (1. - cloud * .9) * (1. - smoothstep(-.02, -.06, sy)) * (1. - env);
   // crepuscular rays at golden hour
   vec3 t1 = normalize(cross(sunDir, vec3(0., 1., 0.)) + 1e-5), t2 = cross(t1, sunDir); float ang = atan(dot(d, t2), dot(d, t1));
   float rays = noise(vec2(ang * 18., time * .05)) * .6 + noise(vec2(ang * 41., time * .08)) * .4;

@@ -423,7 +423,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     <header><h2>Settings</h2><p id="gfxnote">Graphics are picked for this computer automatically.</p></header>
     <div class="presets" id="presets"></div>
     <label class="check"><input type="checkbox" id="dynres"> Dynamic resolution <small>lowers the render scale when the frame rate drops</small></label>
-    <div class="row look"><span>Look</span><div class="seg" id="lookseg"><button data-l="2">Stylized</button><button data-l="1">Clean</button><button data-l="0">Off</button></div><small>Stylized adds ink outlines and film grain. Off is fastest.</small></div>
+    <div class="row look"><span>Look</span><div class="seg" id="lookseg"><button data-l="3">Realistic</button><button data-l="2">Stylized</button><button data-l="1">Clean</button><button data-l="0">Off</button></div><small>Realistic: bloom, eye adaptation and a film tone curve. Stylized is the half-cartoon look with ink outlines. Off is fastest.</small></div>
     <label class="check"><input type="checkbox" id="voiceson"> Character voices</label>
     <label class="range">Mouse sensitivity <input type="range" id="sens" min="0.4" max="2" step="0.05"> <output id="sensv"></output></label>
     <label class="check"><input type="checkbox" id="skylock"> Lock my time and weather <small>on your screen only. Online, everyone else keeps the server's shared time and weather.</small></label>
@@ -552,6 +552,9 @@ import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } f
 import { createNightLights, headlightBeam } from './src/nightlights.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
+import { createAtmosphere } from './src/atmos.js';
+import { createSkyEnv } from './src/skyenv.js';
+import { createCascades } from './src/cascades.js';
 import { createComposer, procSongs } from './src/audio/composer.js';
 import { createSfx2 } from './src/audio/sfx2.js';
 import { buildPlaza, PLAZA_CENTER } from './src/world/plaza.js';
@@ -653,11 +656,13 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 $('view').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xbfd4e6, 300, 1500);
+const ATM = GFX.atmos ? createAtmosphere(THREE) : null; // Medium and up: height fog + aerial perspective in every material (src/atmos.js)
 const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.5, 2600);
-// the look (src/post.js): 0 off, 1 clean grade, 2 stylized (ink outlines). Default by preset, overridable in Settings.
+// the look (src/post.js): 0 off, 1 clean grade, 2 stylized (ink outlines), 3 realistic (bloom, eye adaptation, filmic).
+// Default by preset, overridable in Settings.
 const POST_KEY = 'pw-auto-online-post';
-const postLevel = () => { try { const v = localStorage.getItem(POST_KEY); if (v !== null) return +v; } catch (e) { } return GFX.id === 'potato' ? 0 : GFX.id === 'low' ? 1 : 2; };
-const POST = createPost(THREE, renderer, camera, postLevel());
+const postLevel = () => { try { const v = localStorage.getItem(POST_KEY); if (v !== null) return +v; } catch (e) { } return GFX.look ?? 2; };
+const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa ? GFX.msaa ?? 4 : 0, ao: !!GFX.ao });
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 const MAXANISO = renderer.capabilities.getMaxAnisotropy();
 
@@ -667,10 +672,17 @@ sun.castShadow = GFX.shadows > 0; sun.shadow.mapSize.set(GFX.shadows || 1024, GF
 Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 900 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.08;
 scene.add(sun, sun.target);
+// High and Ultra: a sharp shadow map near the camera and a coarse one out to 300 m (src/cascades.js)
+const CASC = GFX.csm && GFX.shadows ? createCascades(THREE, scene, sun, { near: Math.min(2048, GFX.shadows), far: GFX.shadows }) : null;
 
 // sky dome (src/sky.js): sunset bands, lit cumulus and cirrus, a real star field and Milky Way, the moon at its phase,
 // the town's glow on the night sky. updateWeather sets its uniforms.
 const SKYFX = createSky(THREE), skyU = SKYFX.U, sky = SKYFX.mesh; scene.add(sky);
+// Medium and up: that sky, filtered into the environment map everything reflects and is lit by (src/skyenv.js)
+const SKYENV = GFX.ibl ? createSkyEnv(THREE, renderer, SKYFX, GFX.ibl) : null;
+if (SKYENV) scene.environment = SKYENV.texture;
+const vegHemi = { color: new THREE.Color(), groundColor: new THREE.Color(), intensity: 1 }; // what the impostor trees light themselves with
+window.__gtpFX = { SKYENV, ATM, CASC, hemi, sun }; // for tests: the light and camera tiers
 
 // ============================================================ geo: aerial pixel space + terrain
 const AER = D.aerial, TER = D.terrain;
@@ -2760,15 +2772,16 @@ function buildCar(type, tint, model) {
     if (!mats.has(o.material)) {
       const src = o.material, nm = src.name || '';
       let m;
-      if (!q || /^Body/.test(nm)) { // car paint: clear-coated
+      if (!q || /^Body/.test(nm)) { // car paint: clear-coated. With the sky map (Medium and up) the coat is glassier: it mirrors the sky
         const fixed = q && T.dim.fixed != null && nm === 'Body';
-        m = new THREE.MeshPhysicalMaterial({ map: src.map || null, color: q ? 0xffffff : src.color, roughness: 0.32, metalness: 0.35, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.1 });
+        m = new THREE.MeshPhysicalMaterial({ map: src.map || null, color: q ? 0xffffff : src.color, roughness: SKYENV ? 0.38 : 0.32, metalness: SKYENV ? 0.3 : 0.35, clearcoat: 1, clearcoatRoughness: SKYENV ? 0.03 : 0.08, envMapIntensity: SKYENV ? 1 : 1.1 });
         if (nm === 'BodyLower') { m.color.set(0x2a2b2d); m.clearcoat = 0.3; }
         else if (fixed) m.color.set(T.dim.fixed);
         else { m.userData.base = q ? new THREE.Color(1, 1, 1) : src.color.clone(); m.color = m.userData.base.clone().multiply(hex(tint)); }
       } else if (/Accent|SignPlate/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: type === 'police' ? 0x1f4a2c : src.color, roughness: 0.4, metalness: 0.2 });
       else if (/PoliceLight(Red|Blue)/.test(nm)) m = new THREE.MeshBasicMaterial({ color: /Red/.test(nm) ? 0x400000 : 0x000a40 });
-      else if (/Glass|Window/i.test(nm)) m = new THREE.MeshPhysicalMaterial({ color: 0x101418, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6 });
+      else if (/Glass|Window/i.test(nm)) m = SKYENV ? new THREE.MeshPhysicalMaterial({ color: 0x0a0d10, roughness: 0.02, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.01, envMapIntensity: 1.3 }) // dark cabin behind glass that reflects (Fresnel)
+        : new THREE.MeshPhysicalMaterial({ color: 0x101418, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6 });
       else if (/Headlight|LightFront|PoliceLightWhite/i.test(nm)) { m = new THREE.MeshStandardMaterial({ color: 0xfff4d8, emissive: 0xffe6b0, emissiveIntensity: 0.25, roughness: 0.2 }); m.userData.lamp = 'head'; } // brighter at night (src/nightlights.js)
       else if (/TailLight|LightRear/i.test(nm)) { m = new THREE.MeshStandardMaterial({ color: 0xa01010, emissive: 0x600000, emissiveIntensity: 0.4, roughness: 0.3 }); m.userData.lamp = 'tail'; }
       else if (/Grey|TrimDark|PoliceLightBar/i.test(nm)) m = new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.5, metalness: 0.6 });
@@ -3495,6 +3508,41 @@ const C = {
 };
 const sunDir = new THREE.Vector3(), _nightDir = new THREE.Vector3(), _moonCol = hex('#a9bde8'), _nightSky = hex('#6f86bf'), _nightGround = hex('#4a3b2c');
 let nightAmount = 0;
+// Medium and up: the sky light (src/skyenv.js) and the haze and air in front of everything (src/atmos.js). The sky
+// environment map now lights the scene from above, so by day the hemisphere light drops back to the part the map lacks
+// (and keeps the night fill that makes the streets readable); the impostor trees keep lighting themselves with the full
+// amount, as their near meshes get the sky from the map.
+const _hz = new THREE.Color(), _air = new THREE.Color(), _sc = new THREE.Color(), _gN = new THREE.Color(), _gF = new THREE.Color(), _sky = new THREE.Color();
+const SODIUM = hex('#ff9a5c'), GROUND_ALB = hex('#3a342b');
+function updateAtmos(dt, day, night, hor, top, ld) {
+  vegHemi.color.copy(hemi.color); vegHemi.groundColor.copy(hemi.groundColor); vegHemi.intensity = hemi.intensity;
+  if (SKYENV) {
+    // sky light: a fraction of the map under a clear sky (the sun does the rest), most of it when it's grey. The
+    // hemisphere fill steps back as soon as the sun is up (golden hour included: the low sun gives it its contrast); by
+    // night the map is near black and the fill carries on, as before
+    SKYENV.diffuse = 0.4 + 0.5 * weather.cloud;
+    hemi.intensity *= lerp(1, 0.3, Math.min(1, day * 2) * (1 - weather.cloud * 0.35));
+    // the env map's lower half: dry Poway ground lit by the sun (a third of it in shade) and the sky, the town's glow at night
+    _sky.copy(hor).lerp(top, 0.4).multiplyScalar(Math.PI * 0.85);
+    _gN.copy(sun.color).multiplyScalar(sun.intensity * Math.max(ld.y, 0) * 0.66).add(_sky).multiply(GROUND_ALB).multiplyScalar(1 / Math.PI);
+    _gN.add(_sc.copy(SODIUM).multiplyScalar(0.012 * night));
+    _gF.copy(_gN).lerp(hor, 0.35); _hz.copy(hor);
+    SKYENV.setGround(_gN, _gF, _hz);
+    SKYENV.update(dt);
+  }
+  if (ATM) {
+    const fc = scene.fog.color, l = fc.r * 0.2126 + fc.g * 0.7152 + fc.b * 0.0722;
+    _hz.copy(fc).lerp(_sky.setScalar(l), 0.12).add(_sc.copy(SODIUM).multiplyScalar(0.02 * night * skyU.glow.value)); // haze: lit by the sky
+    _air.copy(fc).lerp(top, 0.3);                                                                                      // air: blue-grey
+    _sc.copy(sun.color).multiplyScalar(sun.intensity * 0.12);
+    ATM.update({
+      sunDir: ld, sunCol: _sc, haze: _hz, air: _air,
+      hazeDensity: 0.00024 + Math.pow(weather.fog, 1.6) * 0.014 + weather.rain * 0.0016 + weather.haze * 0.0007 + weather.cloud * 0.00015,
+      hazeScale: 150 + weather.fog * 260 + weather.rain * 120, airDensity: 0.00013 + weather.rain * 0.0003 + weather.haze * 0.0002,
+      glow: 1 - weather.cloud * 0.8, mieG: 0.72 + skyU.dusk.value * 0.08,
+    });
+  }
+}
 function updateWeather(dt) {
   const mode = SKY.lock ? 'lock' : online && NET.server ? 'shared' : 'own';
   if (mode === 'lock') { if (weather.key !== SKY.weather) setWeather(SKY.weather, true); }
@@ -3520,7 +3568,7 @@ function updateWeather(dt) {
   flash = Math.max(0, flash - dt * 4); skyU.flash.value = flash * 0.5;
   scene.fog.color.copy(hor).lerp(hex('#e98a52'), skyU.dusk.value * 0.35); scene.background = null; POST.U.uDusk.value = skyU.dusk.value;
   const far = Math.min(GFX.view, lerp(2300, 140, Math.pow(weather.fog, 0.8))) * (1 - weather.rain * 0.3) * (1 - weather.haze * 0.25);
-  scene.fog.far = far; scene.fog.near = far * (weather.fog > 0.5 ? 0.05 : 0.22);
+  scene.fog.far = far; scene.fog.near = far * (ATM ? 0.62 : weather.fog > 0.5 ? 0.05 : 0.22); // with ATM the near/far pair is only the fade at the end of the view
   const cfar = Math.min(2600, far + 200); if (Math.abs(camera.far - cfar) > 30) { camera.far = cfar; camera.updateProjectionMatrix(); }
   // by night the key light is the moon when it's up (stronger the fuller it is), else soft light from high overhead;
   // it fades out for a moment as the sun hands over so the shadows don't jump
@@ -3534,12 +3582,17 @@ function updateWeather(dt) {
   hemi.color.copy(hor).lerp(hex('#ffffff'), 0.3).lerp(_nightSky, night); hemi.groundColor.setRGB(0.45 * (0.2 + day), 0.4 * (0.2 + day), 0.3 * (0.2 + day)).lerp(_nightGround, night);
   const f = focusPos();
   sun.position.set(f.x + ld.x * 300, f.y + ld.y * 300 + 20, f.z + ld.z * 300); sun.target.position.set(f.x, f.y, f.z);
+  if (CASC) CASC.update(camera, ld);
   renderer.toneMappingExposure = 0.95 + night * 0.6; // the eye adapts to the dark
+  if (SKYENV || ATM) updateAtmos(dt, day, night, hor, top, ld);
   const lights = smooth(0.15, 0.6, night + weather.cloud * 0.25 * (weather.rain + weather.fog)); nightAmount = lights;
-  for (const m of M.walls) m.emissiveIntensity = lights * 0.9;
+  const real = POST.level === 3; // realistic look: warm lit windows that bloom, not white squares
+  for (const m of M.walls) { m.emissiveIntensity = lights * (real ? 0.6 : 0.9); m.emissive.setHex(real ? 0xffc896 : 0xffffff); }
   M.lampHead.color.setRGB(0.45 + lights * 0.55, 0.45 + lights * 0.45, 0.45 + lights * 0.2);
+  if (real) M.lampHead.color.multiplyScalar(1 + lights * 5); // a real lamp is far brighter than white: it blooms
   M.lampGlow.opacity = lights * 0.35; // the nearest lamps also cast real light (src/nightlights.js)
-  M.road.color.setScalar(1 - weather.wet * 0.35); M.side.color.setScalar(1 - weather.wet * 0.3); M.road.roughness = 0.9 - weather.wet * 0.6;
+  M.road.color.setScalar(1 - weather.wet * 0.35); M.side.color.setScalar(1 - weather.wet * 0.3); M.road.roughness = 0.9 - weather.wet * (SKYENV ? 0.72 : 0.6);
+  if (SKYENV) M.side.roughness = 0.95 - weather.wet * 0.45; // wet concrete shines too, once there's a sky to reflect
   const count = Math.floor(weather.rain * RAIN_N);
   rainGeo.setDrawRange(0, count * 2);
   if (count) {
@@ -5994,7 +6047,7 @@ function frame(now) {
 function tick(rdt) {
   scaleStep(rdt);
   if (!worldReady) return;
-  if (NATURE.veg) NATURE.veg.update(rdt, camera, sun, hemi);
+  if (NATURE.veg) NATURE.veg.update(rdt, camera, sun, SKYENV ? vegHemi : hemi);
   WATER_T.value += rdt; updateBoats(rdt);
   if (NATURE.gc) { const v = player.inCar; NATURE.gc.update(camera, v ? [[v.pos.x, v.pos.z, v.spec.L / 2 + 0.6]] : [[player.pos.x, player.pos.z, 0.9]]); }
   if (!running) {

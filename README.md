@@ -16,7 +16,9 @@ The town is built from real data: OpenStreetMap streets and buildings, USGS elev
   gets to a phone. The map shows only what you've explored.
 - **Character:** choose your look from the Microsoft Rocketbox cast. Other players see it.
 - **Settings:** graphics presets from *Potato* to *Ultra*, picked for your computer automatically, plus dynamic
-  resolution that lowers the render scale when the frame rate drops.
+  resolution that lowers the render scale when the frame rate drops. From *Medium* up the sky lights and reflects in
+  the scene and haze gathers in the valley; *High* adds ambient occlusion and sharper shadows near you. The *Look* is
+  *Realistic* (bloom, eye adaptation, a film tone curve) by default, or the half-cartoon *Stylized* look.
 
 Online you can see other players on the minimap and the big map (M), chat (Enter), check who's on (hold L), and
 fight. Kills, deaths and busts show in the feed at the top of the screen.
@@ -100,7 +102,8 @@ cheat. That's fine for playing with friends; it isn't an anti-cheat system.
 
 - `index.html`: the game (HTML, CSS, main script)
 - `src/`: modules. `src/online/` (Firebase, remote players), `src/ui/shell.js` (menus, chat, feed), `src/gfx.js`
-  (graphics presets)
+  (graphics presets), `src/post.js` (the looks), `src/skyenv.js` (sky light and reflections), `src/atmos.js` (height
+  fog and aerial perspective), `src/cascades.js` (shadow cascades)
 - `poway-data.js`: map data (roads, buildings, terrain) as `window.POWAY_DATA`
 - `assets/`: models, textures, imagery, people, music
 - `vendor/firebase.mjs`: the Firebase JS SDK (Apache-2.0), bundled by `tools/vendor/build_firebase.sh`
