@@ -151,6 +151,8 @@ body.scoped #cross{opacity:.5}
 #subs small{font:700 12px/1 var(--ui);letter-spacing:.24em;color:var(--dim);vertical-align:3px;margin-right:8px}
 #subs.vm{font-style:italic;color:#f6e3b4}
 #objective{left:50%;bottom:calc(60px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(820px,88vw);text-align:center;font:600 21px/1.3 var(--ui);color:var(--paper)}
+#helpline:not([hidden]) ~ #objective{bottom:calc(104px + env(safe-area-inset-bottom,0px))} /* above the key hints, not over them */
+#helpline:not([hidden]) ~ #subs{bottom:calc(144px + env(safe-area-inset-bottom,0px))}
 #objective em{font-style:normal;color:var(--gold)}
 #mstat{top:calc(280px + env(safe-area-inset-top,0px));right:18px;text-align:right;font:600 17px/1.3 var(--ui);color:var(--paper)}
 #mstat b{color:var(--gold);font:400 28px/1 var(--display);display:block;letter-spacing:.02em}
