@@ -1,5 +1,6 @@
 // Other players in the world. Each one is a Ped (so bullets, punches, explosions and car hits already find them)
-// driven by network state instead of AI, plus, while they drive, a car body that follows them. Damage you deal to
+// driven by network state instead of AI, plus, while they drive, a car body that follows them. A player riding as a
+// passenger (state.ride) is hidden inside the driver's car. Damage you deal to
 // them is not applied here: it is sent to them (net.sendHit) and their own game applies it, so everyone agrees on
 // who is alive. Their shots arrive as a counter in their state and are replayed as tracers and sound.
 import { RESERVED } from '../reserved.js';
@@ -61,6 +62,9 @@ async function spawnPed(rem) { // keeps the old body (if any) on screen until th
 function update(d) {
   const rem = R.get(d.id); if (!rem) return add(d);
   const st = unpack(d.p); if (!st) return;
+  const was = rem.st && rem.st.ride; // someone getting in or out of your car
+  if (st.ride === NET.uid && was !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(d.n || rem.name)}</b> hopped in.`, '', 2500);
+  else if (was === NET.uid && st.ride !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(d.n || rem.name)}</b> got out.`, '', 2000);
   rem.st = st; rem.lastT = performance.now(); rem.name = d.n;
   if (d.s && d.s !== rem.skin && !rem.building) { // they changed skin: rebuild the body
     rem.skin = d.s; rem.building = true; const old = rem.ped;
@@ -107,7 +111,7 @@ export function updateRemotes(dt) {
     }
     p.netCar = rem.car;
     const show = d < DRAW;
-    p.rig.g.visible = show && !rem.car;
+    p.rig.g.visible = show && !rem.car && !st.ride; // driving, or riding in someone's car: the person is inside
     if (rem.tag) { rem.tag.visible = d < TAG; rem.tag.position.y = rem.car ? 2.4 : 2.25; const hp = st.dead ? 0 : Math.round(st.hp ?? 100); if (hp !== rem.tag.userData.hp) drawTag(rem.tag, rem.name, rem.color, hp); }
     if (rem.car) {
       const g = rem.car.g; g.visible = show;

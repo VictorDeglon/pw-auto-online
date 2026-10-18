@@ -200,6 +200,7 @@ function pack(st) {
   if (st.aim) o.a = 1;
   if (st.shots) o.sh = st.shots % 1000;
   if (st.car) { o.c = st.car.type; o.ct = st.car.tint; o.cm = st.car.model || ''; o.cp = q(st.car.p || 0); o.cl = q(st.car.rl || 0); o.cd = st.car.dead ? 1 : 0; }
+  if (st.ride) o.rd = String(st.ride).slice(0, 40); // riding as a passenger in that player's car
   return o;
 }
 let lastSent = '';
@@ -216,7 +217,7 @@ export function sendState(st, skin) {
 export function unpack(p) {
   if (!p) return null;
   return { x: p.x, y: p.y ?? 0, z: p.z, r: p.r || 0, spd: p.v || 0, hp: p.h ?? 100, w: p.w || '', aim: !!p.a, dead: p.d || 0, shots: p.sh || 0,
-    car: p.c ? { type: p.c, tint: p.ct, model: p.cm || null, p: p.cp || 0, rl: p.cl || 0, dead: !!p.cd } : null };
+    car: p.c ? { type: p.c, tint: p.ct, model: p.cm || null, p: p.cp || 0, rl: p.cl || 0, dead: !!p.cd } : null, ride: typeof p.rd === 'string' ? p.rd : null };
 }
 
 export function sendChat(text) {

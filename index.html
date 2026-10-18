@@ -441,7 +441,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <kbd>Shift</kbd><span>Sprint</span><kbd>Space</kbd><span>Jump / handbrake / glide</span>
       <kbd>Click</kbd><span>Punch / shoot</span><kbd>Right click</kbd><span>Aim</span>
       <kbd>1–0, wheel</kbd><span>Weapons (buy more at the dealers, pink on the map)</span><kbd>G</kbd><span>Detonate sticky bombs</span>
-      <kbd>F</kbd><span>Enter, exit, carjack</span><kbd>E</kbd><span>Talk, use</span>
+      <kbd>F</kbd><span>Enter, exit, carjack · online: ride with another player</span><kbd>E</kbd><span>Talk, use</span>
       <kbd>K</kbd><span>Fast travel</span><kbd>N</kbd><span>Call your car</span>
       <kbd>C</kbd><span>Crouch (sprint + C slides)</span><kbd>X</kbd><span>Dodge roll</span>
       <kbd>Q</kbd><span>Aim lock (no right click needed)</span><kbd>Z</kbd><span>Scope zoom while aiming</span>
@@ -543,7 +543,7 @@ import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWe
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
-import { initRemotes, updateRemotes, remoteBlips, clearRemotes } from './src/online/remote.js';
+import { initRemotes, updateRemotes, remoteBlips, clearRemotes, REMOTES } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
@@ -3201,6 +3201,7 @@ function remoteHurt(p, amt, by) {
   if (p.state === 'dead' || by !== 'player' || !p.remote) return;
   blood(p.pos.x, p.pos.y + 1.2, p.pos.z, Math.min(20, amt / 3));
   const w = player.inCar && !(player.weapon > 0 && (mouseDown || player.aiming)) ? 'car' : (WEAPONS[player.weapon] || {}).name || 'fists';
+  if (w === 'car' && p.remote.st && p.remote.st.ride) return; // they're sitting in a car (maybe yours): bumping it isn't running them over
   sendHit(p.remote.id, amt, w);
 }
 function killPed(p, by) {
@@ -3829,8 +3830,36 @@ function nearestCar(maxD) {
   for (const v of vehicles) { if (v.dead) continue; const d = hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z); if (d < bd) { bd = d; best = v; } }
   return best;
 }
+// ---- riding with another player (online): F next to their car takes the passenger seat, F again gets you out.
+// You sit in their car as your screen draws it; everyone else sees you hidden inside it (state.ride = their id).
+function nearestRemoteCar(maxD) {
+  let best = null, bd = maxD;
+  for (const r of REMOTES.values()) { if (!r.car || !r.st || r.st.dead || r.st.ride) continue; const g = r.car.g.position, d = hyp(g.x - player.pos.x, g.z - player.pos.z); if (d < bd) { bd = d; best = r; } }
+  return best ? { r: best, d: bd } : null;
+}
+const escName = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); // player names into notify() HTML
+function startRide(r) { player.ride = { id: r.id, name: r.name }; player.rig.g.visible = false; cam.dist = 9; keys.clear(); player.fling = null; notify(`Riding with <b style="color:${r.color}">${escName(r.name)}</b>. <kbd>F</kbd> to get out.`, '', 3200); tone(420, 0.06, 'square', 0.15); }
+function endRide(why) {
+  const R0 = player.ride; if (!R0) return; player.ride = null;
+  const r = REMOTES.get(R0.id), car = r && r.car, yaw = car ? car.g.rotation.y : player.rotY, sx = Math.cos(yaw), sz = -Math.sin(yaw), w = car && car.W || 1.9;
+  player.pos.set(player.pos.x + sx * (w / 2 + 0.9), 0, player.pos.z + sz * (w / 2 + 0.9)); collideCircle(player.pos, 0.35); // out the passenger side
+  player.pos.y = heightAt(player.pos.x, player.pos.z); player.air = 0; player.vy = 0; player.fling = null;
+  player.rig.g.visible = true; cam.dist = 6.5; if (why) notify(why, '', 2400);
+}
+function updateRide() {
+  const r = REMOTES.get(player.ride.id);
+  if (!online || !r || !r.car || r.st.dead) { endRide(!online || !r ? 'Your driver left.' : r.st.dead ? 'Your driver is down.' : 'Your driver got out.'); return; }
+  const g = r.car.g, yaw = g.rotation.y, side = (r.car.W || 1.9) * 0.22;
+  player.pos.set(g.position.x + Math.cos(yaw) * side, g.position.y, g.position.z - Math.sin(yaw) * side); player.rotY = yaw; player.air = 0; player.vy = 0; player.fling = null;
+  if (mouseDown && player.weapon > 0 && player.shootCd <= 0) playerShoot(); // drive-by from the passenger seat
+}
 function toggleCar() {
   if (player.dead) return;
+  if (player.ride) { endRide(); return; }
+  if (!player.inCar && online) { // another player's car within reach (and nearer than any other car): ride with them
+    const rc = nearestRemoteCar(4.5), v = nearestCar(4.5);
+    if (rc && (!v || hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z) > rc.d)) { startRide(rc.r); return; }
+  }
   if (player.inCar) {
     const v = player.inCar, sx = v.fz, sz = -v.fx;
     player.pos.set(v.pos.x + sx * (v.spec.W / 2 + 0.8), 0, v.pos.z + sz * (v.spec.W / 2 + 0.8));
@@ -4640,11 +4669,12 @@ function boundsClamp(p) { p.x = clamp(p.x, B.minx - 150, B.maxx + 150); p.z = cl
 let greetCd = 0;
 function updatePlayer(dt) {
   player.punchCd -= dt; player.shootCd -= dt;
-  if (player.dead) { player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
+  if (player.dead) { if (player.ride) endRide(); player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
   if (JET.on) { if (keys.has('KeyF')) { keys.delete('KeyF'); leaveJet(); } else { updateJet(dt); return; } }
   { const rg = skill('regen'), cap = 50 + 15 * rg; if (simTime - player.lastHurt > 6 && player.health < cap) player.health = Math.min(cap, player.health + dt * 2 * (1 + 0.5 * rg)); } // Second Wind
   player.aiming = (rightDown || aimLock) && player.weapon > 0 && !player.inCar;
   if (!player.aiming) scope = 0;
+  if (player.ride) { updateRide(); return; }
   if (player.inCar) {
     const v = player.inCar;
     const thr = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
@@ -5277,7 +5307,7 @@ function updateVehicles(dt) {
         if (d < 4.5 && d > 2.2) { p.anger += 30; p.talk('nearMiss'); if (Math.random() < 0.3) p.scare(v.pos.x, v.pos.z); }
       }
       if (v.driver !== 'player' && !player.inCar && !player.dead && v.mode !== 'rail') {
-        for (let k = 0; k < 2; k++) if (hyp(player.pos.x - c[k * 2], player.pos.z - c[k * 2 + 1]) < r && sp > 4) { hurtPlayer(sp * 2.5, 'car'); player.knock = 0.8; }
+        for (let k = 0; k < 2; k++) if (!player.ride && hyp(player.pos.x - c[k * 2], player.pos.z - c[k * 2 + 1]) < r && sp > 4) { hurtPlayer(sp * 2.5, 'car'); player.knock = 0.8; }
       }
     }
     const g = v.m.g, hc = v.spec.H / 2; g.rotation.set(v.pitch, v.rotY, v.roll, 'YXZ'); // pivot about the centre so tumbles look right
@@ -6181,7 +6211,7 @@ function netState() {
   const v = player.inCar, p = v ? v.pos : player.pos;
   return { x: p.x, y: p.y, z: p.z, r: v ? v.rotY : player.rotY, spd: _spd, hp: player.health, w: player.weapon > 0 ? WEAPONS[player.weapon].id : '',
     aim: !!(player.weapon > 0 && (player.aiming || mouseDown)), dead: player.dead ? (player.deadKind === 'busted' ? 2 : 1) : 0, shots: player.shots || 0,
-    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead } : null };
+    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead } : null, ride: player.ride ? player.ride.id : null };
 }
 function netTick(rdt) {
   const f = focusPos(); _npT += rdt;
