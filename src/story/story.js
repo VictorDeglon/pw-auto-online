@@ -55,6 +55,7 @@ const gold = 0xf0b23a;
 const S = { m: null, later: [], givers: new Map(), pool: new Map(), giverT: 0, failPending: null, started: false, letterMats: new Map(), beam: null, arrow: null };
 
 export function ensureSave() {
+  if (!ctx.save) return { act: 1, done: [], flags: {}, best: {}, last: {}, voicemails: [], trust: { rosa: 20, dee: 0, walt: 10 }, met: ['marco', 'rosa', 'tommy'], unlocks: [], props: [] };
   const st = ctx.save.story || (ctx.save.story = {});
   st.act ??= 1; st.done ||= []; st.flags ||= {}; st.best ||= {}; st.last ||= {}; st.voicemails ||= [];
   st.trust ||= { rosa: 20, dee: 0, walt: 10 }; st.met ||= ['marco', 'rosa', 'tommy']; st.unlocks ||= []; st.props ||= [];
@@ -82,8 +83,8 @@ function place(key, m) {
       pt = ne ? { x: ne.x, z: ne.z } : { x, z };
     } else if (P.names) { // the sidewalk of that street, on the side the place is on
       const ne = ctx.nearestEdge(x, z, 300, e => P.names.includes(e.name)); if (ne) { const e = ctx.edges[ne.e], nx = -ne.tz, nz = ne.tx, sd = (x - ne.x) * nx + (z - ne.z) * nz >= 0 ? 1 : -1, o = ctx.walkOff(e); pt = { x: ne.x + nx * o * sd, z: ne.z + nz * o * sd }; }
-      else { const s = ctx.sidewalkNear(x, z); pt = { x: s.x, z: s.z }; }
-    } else { const s = ctx.sidewalkNear(x, z); pt = { x: s.x, z: s.z }; }
+      else { const s = ctx.sidewalkNear ? ctx.sidewalkNear(x, z) : null; pt = s ? { x: s.x, z: s.z } : { x, z }; }
+    } else { const s = ctx.sidewalkNear ? ctx.sidewalkNear(x, z) : null; pt = s ? { x: s.x, z: s.z } : { x, z }; }
   }
   placeCache.set(key, pt); return pt;
 }

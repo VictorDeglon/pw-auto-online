@@ -59,14 +59,29 @@ export function createWheel(o) {
       if (!byScroll) { byScroll = true; api.sticky = true; el.classList.add('sticky'); if (help) help.textContent = o.scrollHelp || 'Scroll to choose · it equips when you stop'; }
       settle();
     },
-    choose(i) { if (!items[i] || items[i].off) return; setSel(i); api.commit(); },
+    choose(i) { if (!items[i]) return; setSel(i); api.commit(); },
     release() { // the key came up: a quick tap leaves the wheel open for the touchpad, a hold takes what's highlighted
       if (!api.open) return;
-      if (!moved && performance.now() - openedAt < TAP_MS) { api.sticky = true; el.classList.add('sticky'); if (help) help.textContent = o.stickyHelp || 'Swipe or ← → to choose · click or Enter to take · Esc to close'; return; }
+      if (!moved && performance.now() - openedAt < TAP_MS) {
+        api.sticky = true;
+        el.classList.add('sticky');
+        if (help) help.textContent = o.stickyHelp || 'Swipe or ← → to choose · click or Enter to take · Esc to close';
+        if (document.pointerLockElement) document.exitPointerLock();
+        return;
+      }
       api.commit();
     },
-    commit() { if (!api.open) return; const i = sel; api.cancel(); if (i >= 0 && items[i] && !items[i].off) o.onPick(i); },
-    cancel() { clearTimeout(settleT); api.open = false; api.sticky = false; byScroll = false; el.classList.remove('in', 'sticky'); el.hidden = true; },
+    commit() { if (!api.open) return; const i = sel; api.cancel(); if (i >= 0 && items[i]) o.onPick(i); },
+    cancel() {
+      clearTimeout(settleT);
+      const wasSticky = api.sticky;
+      api.open = false;
+      api.sticky = false;
+      byScroll = false;
+      el.classList.remove('in', 'sticky');
+      el.hidden = true;
+      if (wasSticky && o.onClose) o.onClose();
+    },
   };
   function settle() { if (!byScroll) return; clearTimeout(settleT); settleT = setTimeout(() => { if (api.open && byScroll) api.commit(); }, 700); }
   function setSel(i) { if (i !== sel) { sel = i; mark(); o.tick && o.tick(); } }
@@ -85,18 +100,25 @@ export function createWheel(o) {
       const a0 = i * step - step / 2 + gap, a1 = i * step + step / 2 - gap, p = (a, r) => [C + Math.sin(a) * r, C - Math.cos(a) * r];
       const [x0, y0] = p(a0, R), [x1, y1] = p(a1, R), [x2, y2] = p(a1, r0), [x3, y3] = p(a0, r0), lg = step > Math.PI ? 1 : 0;
       const [ix, iy] = p(i * step, (R + r0) / 2), wpn = !!it.wide;
-      svg += `<g class="wseg${it.off ? ' off' : ''}" style="--c:${it.color || '#f0b23a'}"><path d="M${x0} ${y0}A${R} ${R} 0 ${lg} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${lg} 0 ${x3} ${y3}Z"/>`;
+      svg += `<g class="wseg${it.off ? ' off' : ''}" data-idx="${i}" style="--c:${it.color || '#f0b23a'};cursor:pointer"><path d="M${x0} ${y0}A${R} ${R} 0 ${lg} 1 ${x1} ${y1}L${x2} ${y2}A${r0} ${r0} 0 ${lg} 0 ${x3} ${y3}Z"/>`;
       svg += `<svg x="${ix - (wpn ? 34 : 20)}" y="${iy - (wpn ? 22 : 24)}" width="${wpn ? 68 : 40}" height="${wpn ? 34 : 40}" viewBox="0 0 ${wpn ? 64 : 32} ${wpn ? 32 : 32}" class="wicon">${it.icon || ''}</svg>`;
       if (it.count != null) svg += `<text x="${ix}" y="${iy + (wpn ? 26 : 26)}" class="wcount">${it.count}</text>`;
       if (it.short) svg += `<text x="${ix}" y="${iy + 28}" class="wshort">${String(it.short).replace(/[<>&]/g, '')}</text>`;
       svg += '</g>';
     });
     svg += '</svg>';
-    el.innerHTML = `<div class="wtitle">${o.title}</div>${svg}<div class="wcenter"></div><div class="whelp"></div>`;
+    el.innerHTML = `<div class="wtitle">${o.title}</div>${svg}<div class="wcenter" style="cursor:pointer"></div><div class="whelp"></div>`;
     help = el.querySelector('.whelp'); help.textContent = o.help || 'Point to choose · let go to pick · tap to keep it open';
     dot = document.createElement('i'); dot.className = 'wdot';
     dot.style.cssText = 'position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.35),0 0 14px rgba(255,255,255,.6);opacity:0;transition:opacity .1s;pointer-events:none';
     el.append(dot);
+    el.querySelectorAll('.wseg').forEach((seg, i) => {
+      seg.addEventListener('pointerenter', () => { setSel(i); aimAt(i); });
+      seg.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); api.choose(i); });
+    });
+    const ctr = el.querySelector('.wcenter');
+    if (ctr) ctr.addEventListener('pointerdown', e => { e.stopPropagation(); api.commit(); });
+    el.addEventListener('pointerdown', e => { if (e.target === el) api.cancel(); });
     mark();
   }
   return api;

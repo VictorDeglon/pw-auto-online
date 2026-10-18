@@ -101,8 +101,9 @@ body.scoped #cross{opacity:.5}
 #travel[hidden]{display:none}
 /* radial wheels (src/ui/wheel.js) */
 .wheel{position:fixed;inset:0;z-index:45;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 50%,rgba(6,9,16,.35),rgba(6,9,16,.72));pointer-events:none;opacity:0;transition:opacity .12s}
-.wheel.in{opacity:1}.wheel[hidden]{display:none}
-.wheel svg{overflow:visible;filter:drop-shadow(0 12px 30px rgba(0,0,0,.55));transform:scale(.92);transition:transform .16s cubic-bezier(.2,.9,.3,1.3)}.wheel.in svg{transform:none}
+.wheel.in{opacity:1;pointer-events:auto}.wheel[hidden]{display:none}
+.wheel svg{overflow:visible;filter:drop-shadow(0 12px 30px rgba(0,0,0,.55));transform:scale(.92);transition:transform .16s cubic-bezier(.2,.9,.3,1.3);pointer-events:auto}.wheel.in svg{transform:none}
+.wseg{cursor:pointer;pointer-events:auto}
 .wseg path{fill:rgba(14,21,40,.82);stroke:rgba(255,255,255,.08);stroke-width:1.5;transition:fill .1s}
 .wseg .wicon{fill:#e9e4d6;color:#e9e4d6}.wseg.off .wicon{opacity:.25}.wseg.off path{fill:rgba(14,21,40,.6)}
 .wseg.sel path{fill:color-mix(in srgb,var(--c) 70%,#0e1528);stroke:var(--c);stroke-width:3}.wseg.sel .wicon{fill:#0e1013;color:#0e1013}
@@ -3638,8 +3639,9 @@ function runCheat(id, arg) {
     case 'build': if (BUILDER) BUILDER.toggle(); return;
     case 'tester_fast_travel': {
       TESTER_FAST_TRAVEL = true;
+      for (const w of WEAPONS) if (w.max) player.arsenal[w.id] = maxOf(w);
       if (!mapOpen) toggleMap();
-      notify('⚡ <b>TESTER FAST TRAVEL ACTIVE</b><br>Click anywhere on the map to teleport instantly.', '#38bdf8', 6000);
+      notify('⚡ <b>TESTER MODE ACTIVE</b><br>Full arsenal unlocked & click map to fast travel anywhere.', '#38bdf8', 6000);
       drawBigMap();
       return;
     }
@@ -4483,24 +4485,36 @@ function equipGuns(rig) { // swap the holder's contents for one model per weapon
 function showGun(rig, id) { if (!rig.guns) return; for (const k in rig.guns) rig.guns[k].visible = k === id; }
 function selectWeapon(i) {
   if (!WEAPONS[i]) return;
-  if (!owned(i)) { notify(`No ${WEAPONS[i].name.toLowerCase()} yet. Buy one from a dealer (pink markers on the map).`, '', 2200); return; }
+  if (!owned(i)) {
+    notify(`No ${WEAPONS[i].name.toLowerCase()} yet. Buy one from a dealer (pink markers on the map).`, '', 2200);
+    tone(220, 0.08, 'sawtooth', 0.25);
+    return;
+  }
   player.weapon = i; player.shootCd = Math.max(player.shootCd, 0.15);
+  tone(1200, 0.03, 'sine', 0.15);
+  if (player.rig) { const w = WEAPONS[player.weapon]; showGun(player.rig, w.id); }
+  {
+    const w = WEAPONS[player.weapon];
+    $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · Tab or scroll for weapons';
+    const wepEl = $('weapon'); wepEl.classList.remove('swap'); void wepEl.offsetWidth; wepEl.classList.add('swap');
+  }
 }
 function cycleWeapon(dir) {
   let i = player.weapon;
-  for (let k = 0; k < WEAPONS.length; k++) { i = (i + dir + WEAPONS.length) % WEAPONS.length; if (owned(i)) { player.weapon = i; break; } }
+  for (let k = 0; k < WEAPONS.length; k++) { i = (i + dir + WEAPONS.length) % WEAPONS.length; if (owned(i)) { selectWeapon(i); break; } }
 }
 // ---- weapon wheel (Tab or scroll) and radio wheel (Q in a car): src/ui/wheel.js
 const STATION_COLORS = ['#ff4fd8', '#ffb020', '#8fd3ff', '#d9a35b', '#ff5d3d', '#7dff6a', '#ffd43d', '#c08bff', '#4dffb8', '#ff8a65', '#9ad0ec'];
 const WW = createWheel({ title: 'Weapons', help: 'Point to choose · let go of Tab to equip · tap Tab to keep it open',
   stickyHelp: 'Swipe, ← → or a number to choose · click, Enter or Tab to equip · Esc to close', scrollHelp: 'Scroll to choose · equips when you stop · click to take it now',
   items: () => WEAPONS.map((w, i) => ({ label: w.name, sub: i ? `${player.arsenal[w.id] | 0} / ${maxOf(w)}` : 'Bare hands', icon: WICONS[w.id], off: !owned(i), offText: 'Buy one from a dealer', wide: true, count: i && owned(i) ? player.arsenal[w.id] | 0 : null, color: '#f0b23a' })),
-  current: () => player.weapon, onPick: i => selectWeapon(i), tick: () => tone(1500, 0.015, 'square', 0.05) });
+  current: () => player.weapon, onPick: i => selectWeapon(i), onClose: () => { if (running && !paused && !openMenu()) lockPointer(); }, tick: () => tone(1500, 0.015, 'square', 0.05) });
 const RW = createWheel({ title: 'Radio', help: 'Point to choose · let go of Q to tune · tap Q to keep it open',
   stickyHelp: 'Swipe, ← → or a number to choose · click, Enter or Q to tune · Esc to close',
   items: () => [...STATIONS.map((S, i) => ({ label: S.name, sub: S.proc ? 'Original music · live' : 'Kevin MacLeod (CC BY)', icon: WICONS.radio, color: STATION_COLORS[i % STATION_COLORS.length], short: S.name.replace(/ ·.*/, '').replace(/\s*\d+(\.\d+)?$/, '').slice(0, 12) })), { label: 'Radio off', sub: 'Silence', icon: WICONS.off, color: '#8a8f98', short: 'OFF' }],
   current: () => radio.on ? radio.st : STATIONS.length,
-  onPick: i => { if (i >= STATIONS.length) { radio.on = false; radioStop(); return; } radio.on = true; radio.st = i; radio.track = -1; sfx.tune(); radioPlay(false); }, tick: () => tone(1500, 0.015, 'square', 0.05) });
+  onPick: i => { if (i >= STATIONS.length) { radio.on = false; radioStop(); return; } radio.on = true; radio.st = i; radio.track = -1; sfx.tune(); radioPlay(false); },
+  onClose: () => { if (running && !paused && !openMenu()) lockPointer(); }, tick: () => tone(1500, 0.015, 'square', 0.05) });
 const WHEEL = { get open() { return WW.open || RW.open; }, cur() { return WW.open ? WW : RW; }, cancel() { WW.cancel(); RW.cancel(); } };
 const WHEEL_DIGITS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'];
 function wheelKey(e) { // an open wheel has the keyboard: ← → (A D) step, a number picks, Enter or Space takes it
