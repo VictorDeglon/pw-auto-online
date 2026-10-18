@@ -14,7 +14,7 @@ export function createSkyEnv(THREE, renderer, SKYFX, size = 128) {
   const U = SKYFX.U;
   // Rough surfaces also lose most of their reflection to their own micro-shadowing (Unreal takes it from AO as
   // "specular occlusion"); without that a dry road or hillside seen at a low angle turns sky-coloured.
-  const DIFF = { value: 0.4 }, ROUGH = { value: 0.4 };
+  const DIFF = { value: 0.4 }, ROUGH = { value: 0.25 };
   const C = THREE.ShaderChunk;
   C.envmap_physical_pars_fragment = C.envmap_physical_pars_fragment
     .replace('#ifdef USE_ENVMAP', '#ifdef USE_ENVMAP\n\tuniform float envDiffuse, envRough;')

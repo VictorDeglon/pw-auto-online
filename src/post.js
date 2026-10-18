@@ -275,7 +275,7 @@ function realistic(THREE, renderer, U, O, VS) {
       col *= mix(vec3(1.), vec3(1.1, 1., .86), uDusk);                                   // golden-hour white balance
       vec3 t = filmic(col);
       float l = dot(t, vec3(.2126, .7152, .0722));
-      t = max(mix(vec3(l), t, 1.06 + .08 * uDusk), 0.);                                 // a little more colour
+      t = max(mix(vec3(l), t, 1.12 + .06 * uDusk), 0.);                                 // a little more colour
       // after dark the eye sees less colour and shifts blue (Purkinje); at golden hour the highlights warm a touch
       t = mix(t, vec3(l) * vec3(.86, .96, 1.18), uNight * .3 * (1. - smoothstep(.04, .35, l)));
       t *= mix(vec3(1.), vec3(1.05, 1., .93), uDusk * smoothstep(.15, .8, l));
