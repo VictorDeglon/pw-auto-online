@@ -541,7 +541,7 @@ import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
-import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll } from './src/humans.js';
+import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll, freeHuman } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
@@ -3442,7 +3442,7 @@ class Ped {
     if (this.marker) { this.rig.g.remove(this.marker); this.marker = null; }
     if (mat) { this.marker = new THREE.Sprite(mat); this.marker.scale.set(0.5, 0.5, 1); this.marker.position.y = 2.35; this.rig.g.add(this.marker); }
   }
-  remove() { this.removed = true; scene.remove(this.rig.g); const i = peds.indexOf(this); if (i >= 0) peds.splice(i, 1); }
+  remove() { this.removed = true; scene.remove(this.rig.g); freeHuman(this.rig); const i = peds.indexOf(this); if (i >= 0) peds.splice(i, 1); }
   talk(kind, cls) { if (this.sayCd > 0) return; this.sayCd = 3.5; say(this, pick(LINES[kind]), cls ?? (this.isCop ? 'cop' : (kind === 'greet' ? '' : 'mad'))); }
   knock(vx, vy, vz, dmg, by) {
     if (this.remote) { remoteHurt(this, dmg, by); return; }
@@ -4608,7 +4608,7 @@ function addDealer(di, name, kp) {
     const lid = crate.clone(); lid.scale.set(1, 0.12, 1); lid.position.y += 0.42; lid.rotation.z = 0.5; scene.add(lid);
     const D = { x: q.x, z: q.z, rig, name }; DEALERS.push(D); if (!DEALER) DEALER = D;
     const own = DEALER_SKINS[di % DEALER_SKINS.length]; // each dealer wears their own skin (src/reserved.js), nobody else does
-    if (HUMANS.manifest) ensureAvatar(own).then(ok => { if (!ok) return; const nr = buildRig({ kind: 'civ', avatar: own }); if (!nr.human) return; nr.g.position.copy(D.rig.g.position); nr.g.rotation.copy(D.rig.g.rotation); scene.remove(D.rig.g); D.rig = nr; scene.add(nr.g); });
+    if (HUMANS.manifest) ensureAvatar(own).then(ok => { if (!ok) return; const nr = buildRig({ kind: 'civ', avatar: own }); if (!nr.human) return; nr.g.position.copy(D.rig.g.position); nr.g.rotation.copy(D.rig.g.rotation); scene.remove(D.rig.g); freeHuman(D.rig); D.rig = nr; scene.add(nr.g); });
     addInteract({ x: q.x, z: q.z, r: 3.4, label: () => `<b>${name}</b>: guns, ammo, upgrades`, when: () => !player.inCar, onUse: () => openShop(D) });
   }
 }
