@@ -3,10 +3,11 @@
 #   index.json          tile grid, which tiles exist, region-wide lists (POIs, places)
 #   t/<i>_<j>.json      one 2 km tile: terrain posts, roads (graph edges), buildings, trees, POIs, signals, stops, crossings
 #   p/<i>_<j>.jpg       the tile's aerial photo (USGS / NAIP, public domain), 512 px
-# Coordinates in tiles are decimetres from the tile's corner. Anything inside the hand-built core (poway-data.js)
+# Coordinates in tiles are decimetres from the tile's corner, delta-coded (each point is the step from the one before;
+# the terrain posts row by row), and the file is gzipped: about a quarter of plain JSON. Anything inside the hand-built core (poway-data.js)
 # is left out: the core already has it, and the game snaps the outer roads to the core's at the seam.
 # Usage: build.py [roads] [photos] [only i,j]   (no arguments: everything)
-import json, math, os, pickle, re, sys, time
+import gzip, json, math, os, pickle, re, sys, time
 from collections import defaultdict
 import numpy as np
 from config import *
@@ -273,9 +274,12 @@ def main(args):
         t = tiles.get((i, j))
         if not land and not (t and (t['e'] or t['b'])): continue
         rel = lambda x, z: [round((x - x0) * 10), round((z - z0) * 10)]
-        def relp(p): return [v for q in p for v in rel(*q)]
-        def relf(flat): return [v for k in range(0, len(flat), 2) for v in rel(flat[k], flat[k + 1])]
-        tj = {'i': i, 'j': j, 'h': np.round(h * 10).astype(int).ravel().tolist()}
+        def delta(a): # [x0, z0, dx1, dz1, ...]
+            return a[:2] + [a[k] - a[k - 2] for k in range(2, len(a))]
+        def relp(p): return delta([v for q in p for v in rel(*q)])
+        def relf(flat): return delta([v for k in range(0, len(flat), 2) for v in rel(flat[k], flat[k + 1])])
+        hd = np.round(h * 10).astype(int); hd[:, 1:] = np.diff(hd, axis=1) # each row: first post, then steps
+        tj = {'i': i, 'j': j, 'v': 2, 'h': hd.ravel().tolist()}
         if t:
             loc_names = {}; nl = []
             def ln(n):
@@ -291,7 +295,7 @@ def main(args):
             tj['sig'] = [rel(*q) for q in t['sig']]; tj['stop'] = [rel(*q) for q in t['stop']]; tj['cr'] = [rel(*q) for q in t['cr']]
             tj['tr'] = [rel(*q) for q in t['tr']]; tj['lamp'] = [rel(*q) for q in t['lamp']]
         s = json.dumps(tj, separators=(',', ':'))
-        with open(os.path.join(OUT, 't', f'{i}_{j}.json'), 'w') as f: f.write(s)
+        with gzip.open(os.path.join(OUT, 't', f'{i}_{j}.json.gz'), 'wt', compresslevel=9) as f: f.write(s)
         exist[f'{i}_{j}'] = 1 | (2 if land else 0)
         nwrite += 1; total += len(s)
         if nwrite % 200 == 0: log('tiles', nwrite, f'{total / 1e6:.0f} MB')

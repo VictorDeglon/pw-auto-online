@@ -56,17 +56,26 @@ def photo():
     run(jobs, 6)
 
 def osm():
-    # Mexico is not in the SoCal extract: everything south of the border inside the outer world, from Overpass
-    s, w, n, e = bbox_ll(500)
-    q = f'[out:json][timeout:900];(way["highway"]({s},{w},{min(n, 32.545)},{e});way["building"]({s},{w},{min(n, 32.545)},{e}););out body geom;'
-    path = os.path.join(RAW, 'mexico.json')
-    if not os.path.exists(path):
-        for url in ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']:
-            try:
-                req = urllib.request.Request(url, data=('data=' + urllib.request.quote(q)).encode(), headers=UA)
-                with urllib.request.urlopen(req, timeout=1200) as r: data = r.read()
-                json.loads(data); open(path, 'wb').write(data); print('mexico.json', len(data)); break
-            except Exception as ex: print('overpass', url, ex)
+    # Mexico is not in the SoCal extract: everything south of the border inside the outer world, from Overpass, in
+    # strips (one big answer needed gigabytes to parse): raw/mexico-<k>.json
+    s, w, n, e = bbox_ll(500); n = min(n, 32.545)
+    parts = 8
+    for k in range(parts):
+        w0, w1 = w + (e - w) * k / parts, w + (e - w) * (k + 1) / parts
+        part = os.path.join(RAW, f'mexico-{k}.json')
+        if not os.path.exists(part):
+            q = f'[out:json][timeout:600];(way["highway"]({s},{w0},{n},{w1});way["building"]({s},{w0},{n},{w1}););out body geom;'
+            for url in ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']:
+                try:
+                    req = urllib.request.Request(url, data=('data=' + urllib.request.quote(q)).encode(), headers=UA)
+                    with urllib.request.urlopen(req, timeout=900) as r, open(part + '.part', 'wb') as f:
+                        while True:
+                            b = r.read(1 << 20)
+                            if not b: break
+                            f.write(b)
+                    os.replace(part + '.part', part); print('strip', k, os.path.getsize(part)); break
+                except Exception as ex: print('overpass', k, url, ex)
+    # osm.py mexico reads the strips one at a time
 
 if __name__ == '__main__':
     {'terrain': terrain, 'photo': photo, 'osm': osm}[sys.argv[1]]()

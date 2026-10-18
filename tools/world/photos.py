@@ -64,22 +64,36 @@ def main(args):
     for j in range(J0, J1 + 1):
         for i in range(I0, I1 + 1):
             if only and (i, j) != only: continue
-            if not os.path.exists(os.path.join(OUT, 't', f'{i}_{j}.json')): continue
-            path = os.path.join(OUT, 'p', f'{i}_{j}.jpg')
+            if not os.path.exists(os.path.join(OUT, 't', f'{i}_{j}.json.gz')): continue
+            path = os.path.join(OUT, 'p', f'{i}_{j}.webp')
             if os.path.exists(path) and not only: im = Image.open(path).convert('RGB')
             else:
                 im = tile_photo(i, j)
-                if im is None: continue
-                im.save(path, quality=72, optimize=True)
+                if im is None: # no imagery (south of the border): plain ground on the overview, not sea
+                    if not sea_mostly(i, j): ov.paste((122, 112, 92), ((i - I0) * S, (j - J0) * S, (i - I0 + 1) * S, (j - J0 + 1) * S))
+                    continue
+                im.save(path, 'WEBP', quality=70, method=5)
             ov.paste(im.resize((S, S), Image.LANCZOS), ((i - I0) * S, (j - J0) * S))
             n += 1
             if n % 200 == 0: print(f'{n} photos {time.time() - t0:.0f}s', flush=True)
     if not only:
+        # the big roads on top, so the zoomed-out map shows the network everywhere (also where nothing's loaded yet)
+        import json
+        from PIL import ImageDraw
+        dr = ImageDraw.Draw(ov); px = lambda x, z: ((x - I0 * TILE) / TILE * S, (z - J0 * TILE) / TILE * S)
+        import gzip, itertools
+        for f in sorted(os.listdir(os.path.join(OUT, 't'))):
+            tj = json.load(gzip.open(os.path.join(OUT, 't', f), 'rt')); x0, z0 = tj['i'] * TILE, tj['j'] * TILE
+            for e in tj.get('e', []):
+                if e[2] > 2: continue
+                p = e[6]; xs = list(itertools.accumulate(p[0::2])); zs = list(itertools.accumulate(p[1::2])) # delta-coded
+                pts = [px(x0 + xs[k] * 0.1, z0 + zs[k] * 0.1) for k in range(len(xs))]
+                dr.line(pts, fill=(242, 226, 182) if e[2] == 0 else (228, 223, 208), width=2 if e[2] == 0 else 1)
         ov.save(os.path.join(OUT, 'overview.jpg'), quality=80, optimize=True)
         # index: bit 4 = this tile has a photo (so the game never asks for one that isn't there)
         import json
         ip = os.path.join(OUT, 'index.json'); idx = json.load(open(ip))
-        for k in idx['tiles']: idx['tiles'][k] = (idx['tiles'][k] & 3) | (4 if os.path.exists(os.path.join(OUT, 'p', k + '.jpg')) else 0)
+        for k in idx['tiles']: idx['tiles'][k] = (idx['tiles'][k] & 3) | (4 if os.path.exists(os.path.join(OUT, 'p', k + '.webp')) else 0)
         json.dump(idx, open(ip, 'w'), separators=(',', ':'))
     print('photos', n, f'{time.time() - t0:.0f}s')
 

@@ -123,20 +123,28 @@ def main():
     print('saved', flush=True)
 
 def mexico(): # adds raw/mexico.json (Overpass) to work/osm.pickle; ways and buildings the US extract already has are skipped
-    path = os.path.join(RAW, 'mexico.json')
-    if not os.path.exists(path): print('no mexico.json'); return
+    import glob
+    paths = sorted(glob.glob(os.path.join(RAW, 'mexico-*.json')))
+    if not paths: print('no raw/mexico-*.json (fetch.py osm)'); return
     global out
     out = pickle.load(open(os.path.join(work, 'osm.pickle'), 'rb'))
-    have = {w[0] for w in out['ways']}
-    d = json.load(open(path)); nw = nb = 0
-    for el in d.get('elements', []):
-        if el.get('type') != 'way' or 'geometry' not in el: continue
+    have = {w[0] for w in out['ways']}; nw = nb = 0
+    def elements(path): # streamed: a strip can be hundreds of MB of JSON
+        try:
+            import ijson
+            with open(path, 'rb') as f: yield from ijson.items(f, 'elements.item', use_float=True)
+        except ImportError: yield from json.load(open(path)).get('elements', [])
+    for el in (el for path in paths for el in elements(path)):
+        if el.get('type') == 'way': have_b = el['id'] in have; have.add(el['id'])
+        else: continue
+        if have_b: continue
+        if 'geometry' not in el: continue
         tags = el.get('tags', {}); g = el['geometry']
-        if tags.get('highway') in ROAD_KEYS and el['id'] not in have:
+        if tags.get('highway') in ROAD_KEYS:
             ids = array('q', el.get('nodes') or [-(el['id'] * 1000 + k) for k in range(len(g))]); xs, zs = array('f'), array('f')
             for q in g: x, z = to_game(q['lat'], q['lon']); xs.append(x); zs.append(z)
             out['ways'].append(way_rec(el['id'], tags, ids, xs, zs)); nw += 1
-        elif tags.get('building') and len(g) >= 4 and g[0]['lat'] < 32.536:
+        elif tags.get('building') and len(g) >= 4 and g[0]['lat'] < 32.5435: # south of the line (the US side is in the extract)
             flat = []
             for q in g[:-1]: x, z = to_game(q['lat'], q['lon']); flat += [x, z]
             out['buildings'].append((tags['building'], tags.get('height', ''), tags.get('building:levels', ''), '', '', array('f', flat))); nb += 1

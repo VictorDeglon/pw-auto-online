@@ -1640,16 +1640,28 @@ function walls(ch, flat, base, top, wallC, matIdx) {
   }
   return S;
 }
-function addBuilding(b) {
+// buildings are registered once (collision, destruction record, colours) and drawn when their chunk is built; the core's
+// chunks are built near you and dropped far away (lazy), an outer tile's when the tile is (src/world/outer.js)
+function addBuilding(b, lazy) {
   const [h, kind, flat, rs, bcol, rcol] = b; const n = flat.length / 2; if (n < 3) return;
-  const [mn, mx, cx, cz] = footprintHeights(flat); const base = mn - 0.6, top = mx + h; const ch = chunkAt(cx, cz);
+  const [mn, mx, cx, cz] = footprintHeights(flat); const base = mn - 0.6, top = mx + h;
   const big = kind === 2 || (kind === 1 && h > 8);
   const wallC = bcol >= 0 ? hex(bcol) : pick(big ? WALL_BIG : WALL_HOUSE);
   const matIdx = kind === 0 ? 0 : big ? (srand() < 0.2 ? 2 : srand() < 0.5 ? 1 : 3) : (srand() < 0.5 ? 0 : 3);
+  const photo = !!(b[12] > 0 && TX.roofs[b[14] || 0]), roofK = photo ? 'P' : kind === 0 ? (srand() < 0.5 ? 'C' : 'S') : 'F';
+  const roofC = photo ? hex(0xffffff) : (rcol >= 0 ? hex(rcol) : (kind === 0 ? pick(roofK === 'C' ? ROOF_CLAY : ROOF_SHINGLE) : hex(0xb8b4ac)));
+  const poly = polys.length; addPoly(flat, base, top + 2);
+  let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
+  const B = { ranges: [], flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false, b, big, wallC, matIdx, roofK, roofC, photo };
+  B.hp0 = B.hp; B.i = BLD.length; BLD.push(B); bldOfPoly.set(poly, B);
+  if (lazy) { const L = lazyOf(chunkAt(cx, cz)); L.blds.push(B); B.lazy = L; } else buildingGeom(B, chunkAt(cx, cz));
+}
+// walls, roof and facade of a registered building into chunk ch (B.ranges: its vertices there, for collapsing)
+function buildingGeom(B, ch) {
+  const { b, flat, base, top, cx, cz, big, wallC, matIdx, roofC, photo } = B, kind = b[1], rs = b[3], n = flat.length / 2;
   const gbs0 = new Map(chunkGBs(ch).map(g => [g, g.p.length / 3]));
   const S = walls(ch, flat, base, top, wallC, matIdx);
-  const photo = b[12] > 0 && TX.roofs[b[14] || 0]; const roofG = photo ? ch.roofP[b[14] || 0] : (kind === 0 ? (srand() < 0.5 ? ch.roofC : ch.roofS) : ch.roofF);
-  const roofC = photo ? hex(0xffffff) : (rcol >= 0 ? hex(rcol) : (kind === 0 ? pick(roofG === ch.roofC ? ROOF_CLAY : ROOF_SHINGLE) : hex(0xb8b4ac)));
+  const roofG = B.roofK === 'P' ? ch.roofP[b[14] || 0] : B.roofK === 'C' ? ch.roofC : B.roofK === 'S' ? ch.roofS : ch.roofF;
   const uvOf = photo ? (x, z) => roofUV(b, x, z) : (x, z) => [x / 3, z / 3];
   if (rs !== 0 && n <= 10) { // hip roof: pyramid to the centroid
     const rh = Math.min(3.2, Math.sqrt(Math.abs(flat.reduce((a, _, i, f) => i % 2 ? a : a + (f[i] * f[(i + 3) % f.length] - f[(i + 2) % f.length] * f[i + 1]), 0) / 2)) * 0.22);
@@ -1665,15 +1677,12 @@ function addBuilding(b) {
     for (const t of tris) tri(roofG, [contour[t[0]].x, top, contour[t[0]].y], [contour[t[1]].x, top, contour[t[1]].y], [contour[t[2]].x, top, contour[t[2]].y], roofC, roofC, roofC, uvOf(contour[t[0]].x, contour[t[0]].y), uvOf(contour[t[1]].x, contour[t[1]].y), uvOf(contour[t[2]].x, contour[t[2]].y), 0, 1, 0);
     if (big) { const dark = wallC.clone().multiplyScalar(0.85); const gb = ch.wall[matIdx]; for (let i = 0; i < n; i++) { const j = (i + 1) % n; const ax = flat[i * 2], az = flat[i * 2 + 1], bx = flat[j * 2], bz = flat[j * 2 + 1]; const ox = S > 0 ? bz - az : az - bz, oz = S > 0 ? ax - bx : bx - ax; tri(gb, [ax, top, az], [bx, top, bz], [bx, lip, bz], dark, dark, dark, [0, 0], [0.1, 0], [0.1, 0.1], ox, 0, oz); tri(gb, [ax, top, az], [bx, lip, bz], [ax, lip, az], dark, dark, dark, [0, 0], [0.1, 0.1], [0, 0.1], ox, 0, oz); } }
   }
-  const poly = polys.length; addPoly(flat, base, top + 2);
   if (kind === 0 && ZONE && inCore(cx, cz)) facadeDetails(ch, flat, S, base, top, cx, cz);
-  const ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) ranges.push([g, a, e]); }
-  let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
-  const B = { ranges, flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false };
-  B.hp0 = B.hp; B.i = BLD.length; BLD.push(B); bldOfPoly.set(poly, B);
+  B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); }
+  B.drawn = true;
 }
 // ---- destruction: every building knows its vertex ranges in the chunk meshes, so it can come down
-const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [];
+const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [], BLD_HURT = new Set(); // BLD_HURT: damaged or fallen, for the repair scan
 function chunkGBs(ch) { const a = [...ch.wall, ...ch.roofP, ch.roofC, ch.roofS, ch.roofF, ch.facade]; for (const g of ch.roofGs.values()) a.push(g); return a; }
 function buildingsNear(x, z, R) {
   const out = [], st = ++stampN;
@@ -1689,7 +1698,7 @@ function blastBuildings(x, z, R, by) {
     let d = 1e9; const f = B.flat, n = f.length / 2;
     if (pip(x, z, f)) d = 0; else for (let i = 0, j = n - 1; i < n; j = i++) { const q = segClosest(x, z, f[j * 2], f[j * 2 + 1], f[i * 2], f[i * 2 + 1]); d = Math.min(d, Math.hypot(q[0] - x, q[1] - z)); }
     if (d > R * 1.6) continue;
-    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6)); B.hurtAt = simTime;
+    B.hp -= 520 * R / 7 * Math.max(0.15, 1 - d / (R * 1.6)); B.hurtAt = simTime; BLD_HURT.add(B);
     if (B.hp <= 0 && by === 'net') B.hp = 1;
     else if (B.hp <= 0) { const dx = B.cx - x, dz = B.cz - z, L = Math.hypot(dx, dz) || 1; collapseBuilding(B, dx / L, dz / L, by); }
     else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
@@ -1706,7 +1715,7 @@ function busyAt(x, z) {
 }
 const REBUILD_S = 120; // a collapsed building stands back up two minutes later (online ruins expire on the same clock)
 function collapseBuilding(B, dirx, dirz, by, instant, lite) { // instant: already rubble when you arrived (online ruins); lite: no flying blocks (a nuke flattens dozens)
-  if (B.dead) return; B.dead = true; polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
+  if (B.dead) return; B.dead = true; BLD_HURT.add(B); polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
   B.repairAt = simTime + REBUILD_S; B.fall = { dirx, dirz };
   if (online && by !== 'net') { sendEvent('col', { i: B.i, dx: dirx, dz: dirz }); setRuin(B.i, B.cx, B.cz); }
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
@@ -1761,8 +1770,9 @@ function updateRepairs(dt) {
   repairScanT -= dt;
   if (repairScanT <= 0) {
     repairScanT = 1;
-    for (const B of BLD) {
-      if (!B.dead) { if (B.hp < B.hp0 && B.hurtAt != null && simTime - B.hurtAt > REBUILD_S) { B.hp = B.hp0; B.smoking = false; B.hurtAt = null; } continue; }
+    for (const B of BLD_HURT) {
+      if (B.gone) { BLD_HURT.delete(B); continue; } // its outer tile was unloaded
+      if (!B.dead) { if (B.hp < B.hp0 && B.hurtAt != null && simTime - B.hurtAt > REBUILD_S) { B.hp = B.hp0; B.smoking = false; B.hurtAt = null; } if (B.hp >= B.hp0) BLD_HURT.delete(B); continue; }
       if (B.repairing || B.repairAt == null || simTime < B.repairAt || !B.anims) continue;
       if (collapsing.some(c => c.B === B)) continue;
       const inside = (x, z) => pip(x, z, B.flat); // never rebuild on top of someone
@@ -1777,7 +1787,7 @@ function updateRepairs(dt) {
       for (let j = 0; j < A.k; j++) { const h = A.y0[j] - B.base; if (k >= 1) A.pos.setXYZ(A.a + j, A.x0[j], A.y0[j], A.z0[j]); else A.pos.setXYZ(A.a + j, A.x0[j] + dirx * h * e * 0.35, B.base + h * (1 - e) - e * 0.8, A.z0[j] + dirz * h * e * 0.35); }
       if (A.pos.addUpdateRange) A.pos.addUpdateRange(A.a * 3, A.k * 3); A.pos.needsUpdate = true;
     }
-    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
+    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (B.lazy && B.lazy.built && !B.drawn) B.lazy.dirty = true; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
   }
 }
 // garage door + front door on the wall that faces the street, mailbox at the curb (detail zone only)
@@ -2170,8 +2180,8 @@ async function buildWorld() {
   // ---- roads
   progress('Paving ' + D.roads.length.toLocaleString() + ' streets…'); await tick();
   D.roads.forEach((r, ri) => {
-    const [ni, t, w, p0] = r; const p = densify(p0, 3); // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
-    paveRoad(t, w, p);
+    const [ni, t, w, p0] = r; const p = densify(p0, 3), n = p.length / 2; // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
+    lazyOf(chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1])).roads.push([t, w, p0]); // paved when its chunk is near
     const bb = bbox(p0); mapRoads.push({ t, w, p: p0, name: NAMES[ni] || '' }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', ri);
     for (let k = 0; k < p0.length / 2 - 1; k++) {
       const mx = Math.min(p0[k * 2], p0[k * 2 + 2]), Mx = Math.max(p0[k * 2], p0[k * 2 + 2]), mz = Math.min(p0[k * 2 + 1], p0[k * 2 + 3]), Mz = Math.max(p0[k * 2 + 1], p0[k * 2 + 3]);
@@ -2207,7 +2217,7 @@ async function buildWorld() {
   launchBoats();
   progress('Raising ' + D.buildings.length.toLocaleString() + ' mapped buildings…'); await tick();
   let count = 0;
-  for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b); if (++count % 2500 === 0) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); } } // PHS
+  for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true); if (++count % 2500 === 0) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); } } // PHS; drawn chunk by chunk near you (lazyOf)
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
@@ -2230,7 +2240,7 @@ async function buildWorld() {
     cap: { potato: 10, low: 18, medium: 30, high: 42, ultra: 56 }[GFX.id] || 30,
   }); const n = PARK.build(D.areas); console.info('[parking]', PARK.lots.length, 'lots,', n, 'stalls'); }
   // ---- chunk meshes
-  for (const ch of chunks.values()) { const grp = ch.group; grp.position.set(0, 0, 0); scene.add(grp); meshChunk(ch, grp); }
+  for (const ch of chunks.values()) { const grp = ch.group; grp.position.set(0, 0, 0); grp.matrixAutoUpdate = false; grp.updateMatrix(); scene.add(grp); meshChunk(ch, grp); }
   // ---- street lamps (a spot computed off one road can land on a crossing street's asphalt: drop those)
   if (ROADS) { let o = 0; for (let i = 0; i < lampSpots.length; i += 3) if (!ROADS.onAsphalt(lampSpots[i], lampSpots[i + 1], 1.2)) { lampSpots[o++] = lampSpots[i]; lampSpots[o++] = lampSpots[i + 1]; lampSpots[o++] = lampSpots[i + 2]; } lampSpots.length = o; }
   {
@@ -2257,6 +2267,44 @@ async function buildWorld() {
 // 50 km on every side of the core, streamed in 2 km tiles. These hooks hand the tiles the core's own builders (road
 // paving, buildings, collision, the road graph), so the two halves of the world look and behave the same.
 let OUTER_HILLS = null; // the procedural ring around the photo: replaced by the outer tiles when they exist
+// ---- the core's streets and buildings, chunk by chunk: built within view (a few ms a frame), dropped far away. Their
+// collision, destruction records and the road surface exist from the start; only the drawn geometry comes and goes.
+function lazyOf(ch) { return ch.lazy || (ch.lazy = { ch, roads: [], blds: [], built: false, dirty: false, meshes: [], job: null }); }
+const lazyQueue = []; let lazyJob = null;
+function* buildLazy(L) {
+  const lc = newChunk(L.ch.cx, L.ch.cz), due = lazyDue;
+  CHUNK_SINK = lc;
+  for (const [t, w, p0] of L.roads) { paveRoad(t, w, densify(p0, 3)); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
+  for (const B of L.blds) { if (B.dead || B.gone) { B.drawn = false; continue; } buildingGeom(B, lc); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
+  CHUNK_SINK = null;
+  const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [] })) if (due()) yield;
+  L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
+  L.built = true; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
+}
+function dropLazy(L) {
+  for (const m of L.meshes) { L.ch.group.remove(m); m.geometry.dispose(); }
+  L.meshes = []; L.built = false; L.dirty = false; for (const B of L.blds) { B.ranges = []; B.drawn = false; }
+}
+let lazyT0 = 0; const lazyDue = () => performance.now() - lazyT0 > 3;
+function updateLazy(budget) { // every frame: run the nearest pending chunk build for a few ms
+  const t0 = performance.now();
+  while (performance.now() - t0 < budget) {
+    if (!lazyJob) { const L = lazyQueue.shift(); if (!L) return; if (L.built) continue; lazyJob = { L, it: buildLazy(L) }; }
+    lazyT0 = performance.now(); if (lazyJob.it.next().done) lazyJob = null;
+  }
+}
+// which chunks are wanted (called with the chunk visibility pass, twice a second)
+function planLazy(fx, fz) {
+  const want = GFX.view + 200, drop = GFX.view + 1200, add = [];
+  for (const ch of chunks.values()) {
+    const L = ch.lazy; if (!L) continue;
+    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7);
+    if (L.built && (d > drop || L.dirty)) { if (lazyJob && lazyJob.L === L) lazyJob = null; dropLazy(L); }
+    if (!L.built && d < want && !(lazyJob && lazyJob.L === L)) add.push([d, L]);
+  }
+  lazyQueue.length = 0; for (const [, L] of add.sort((a, b) => a[0] - b[0])) lazyQueue.push(L);
+}
+function buildLazyNear(x, z) { planLazy(x, z); while (lazyQueue.length || lazyJob) updateLazy(1e9); } // at load: everything in view, at once
 // far from Poway (out in the county), the core's town-wide meshes (300k plant impostors, every lamp and sign, the
 // signals, the grass) aren't drawn at all; its chunks already hide by distance (updateChunkVisibility)
 let CORE_LAMPS = null, coreFar = false, coreFarT = 0;
@@ -2370,7 +2418,7 @@ function* outerKit(t, d, kit, due) {
     for (let s = -e.w / 2 + 0.5; s < e.w / 2 - 0.4; s += 1.1) bar(ch.line, ne.x + nx * s, ne.z + nz * s, ne.tx, ne.tz, 2.4, 0.55, 0.06, [0.93, 0.93, 0.9]);
     if (due()) yield;
   }
-  for (const m of kit.meshes) t.group.add(m);
+  for (const m of kit.meshes) { m.matrixAutoUpdate = false; t.group.add(m); }
 }
 function dropOuterKit(kit) {
   for (const pr of kit.props) { pr.alive = false; const c = propGrid.get(pkey(pr.x, pr.z)); if (c) { const j = c.indexOf(pr); if (j >= 0) c.splice(j, 1); } }
@@ -2394,13 +2442,13 @@ function outerRoads(core) {
 }
 const OUTER = createOuter({
   THREE, scene, M, ROAD_SCALE, exag, HBASE: () => HBASE, focus: () => focusPos(),
-  view: () => GFX.view, lodNear: () => LOD_NEAR, shadowNear: () => SHADOW_NEAR,
+  view: () => GFX.view, lodNear: () => LOD_NEAR, shadowNear: () => SHADOW_NEAR, hurry: () => !!worldHold,
   inCorePhoto, coreTerrainAt, coreMeshAt, newChunk, meshChunk, meshChunkSteps, setSink: ch => { CHUNK_SINK = ch; },
   paveRoad: (t, w, p) => paveRoad(t, w, p),
   mapRoad: e => { const bb = bbox(e.p); mapRoads.push({ t: e.t, w: e.w, p: e.p, name: e.name }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', mapRoads.length - 1); },
   addEdges: addOuterEdges, addBuilding, bldCount: () => BLD.length, polyCount: () => polys.length, dropPolys, dropBuildings,
   streetKit: outerKit, dropKit: dropOuterKit, plantTiles: plantTile, dropTrees,
-  terrainMaterial: proc => { const m = new THREE.MeshStandardMaterial({ map: proc ? null : holdTex(0x8a8260), roughness: 1 }); m.onBeforeCompile = groundPatch(TX.ground, { photoBias: 1.5, procedural: !!proc }); return m; },
+  terrainMaterial: proc => { const m = new THREE.MeshStandardMaterial({ map: proc ? null : (M.outerHold || (M.outerHold = holdTex(0x8a8260))), roughness: 1 }); m.onBeforeCompile = groundPatch(TX.ground, { photoBias: 1.5, procedural: !!proc }); return m; }, // one shared stand-in until the photo's in
   loadPhoto: url => loadTex(url, true, false).then(t => { if (t) t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t; }),
   mapPhoto: (t, img) => { const i = groundImgs.findIndex(g => g.tile === t.k); if (i >= 0) groundImgs.splice(i, 1); if (img) groundImgs.splice(groundImgs[0] && groundImgs[0].tile === 'overview' ? 1 : 0, 0, { img, x0: t.x0, z0: t.z0, x1: t.x0 + 2000, z1: t.z0 + 2000, tile: t.k }); }, // over the overview, under the core's photos
   seaLevel: () => exag(0) - HBASE, seaMat: () => M.sea || (M.sea = waterMat(0x1d4a66, 0.012, 0.35)),
@@ -2429,7 +2477,7 @@ function plantTile(t, img) {
       const pr = { kind: 'tree', x, z, ti, veg: [sp, veg.inst.get(sp).x.length - 1], vegObj: veg, alive: true }; addProp(pr); kit.props.push(pr); nt++;
     } else if (brush && ns < 7000) { if (veg.add('scruboak', x, y, z, rand(0, TAU), rand(0.55, 1.15), 0, [rand(0.85, 1.05), rand(0.9, 1.05), rand(0.85, 1)])) ns++; }
   }
-  veg.build(); t.group.updateMatrixWorld();
+  veg.build(); for (const m of [...(veg.meshes || new Map()).values(), ...veg.near.values()]) { m.matrixAutoUpdate = false; m.updateMatrix(); }
   return kit;
 }
 function dropTrees(kit) {
@@ -2552,9 +2600,11 @@ function updateSignals() { if (SIGNALS) SIGNALS.update(signalAspect, nightAmount
 // facade details, pools) goes too, and only chunks near you cast shadows. Most of the draw calls were far detail.
 const LOD_KEYS = new Set(['side', 'line', 'pool', 'poolWall', 'coping']), LOD_NEAR = { potato: 380, low: 520, medium: 680, high: 850, ultra: 1100 }[GFX.id] || 680, SHADOW_NEAR = 520;
 function updateChunkVisibility(fx, fz) {
-  let shown = 0, detail = 0;
+  let shown = 0, detail = 0; planLazy(fx, fz);
   for (const ch of chunks.values()) {
-    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120; ch.group.visible = vis; if (!vis) continue; shown++;
+    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120; ch.group.visible = vis;
+    if (!vis) { if (ch.gpu && d > GFX.view + 1500) { ch.gpu = false; ch.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); } continue; } // far: off the GPU
+    ch.gpu = true; shown++;
     const near = d < LOD_NEAR, sh = d < SHADOW_NEAR; if (near) detail++;
     if (ch.lodNear === near && ch.shNear === sh) continue; ch.lodNear = near; ch.shNear = sh;
     for (const m of ch.group.children) { if (m.userData.lod) m.visible = near; if (m.userData.cast === undefined) m.userData.cast = m.castShadow; m.castShadow = m.userData.cast && sh; }
@@ -5902,7 +5952,9 @@ function prepMapImages() {
     groundImgs.push({ img: t.map.image, x0: a[0], z0: a[1], x1: b[0], z1: b[1] });
   }
 }
-function drawAerial(ctx, alpha) { ctx.globalAlpha = alpha; for (const g of groundImgs) ctx.drawImage(g.img, g.x0, g.z0, g.x1 - g.x0, g.z1 - g.z0); ctx.globalAlpha = 1; }
+function drawAerial(ctx, alpha, r) { // r: [x0, z0, x1, z1] in view (skip the photos outside it)
+  ctx.globalAlpha = alpha; for (const g of groundImgs) if (!r || (g.x1 > r[0] && g.x0 < r[2] && g.z1 > r[1] && g.z0 < r[3])) ctx.drawImage(g.img, g.x0, g.z0, g.x1 - g.x0, g.z1 - g.z0); ctx.globalAlpha = 1;
+}
 // the photo's rectangle in game metres. Both maps fade the photo (and the streets on it) out along a natural edge
 // (src/ui/mapkit.js); the 3D terrain fades it into the outer hills (src/nature/ground.js).
 function photoRect() { const a = aerInv(0, 0, [0, 0]), b = aerInv(AER.W, AER.H, [0, 0]); return [a[0], a[1], b[0], b[1]]; }
@@ -5930,15 +5982,19 @@ function mapMask() {
 const LM_COLOR = { school: '#f2c14e', park: '#7fc25a', water: '#4fb3e8', hospital: '#ff5a5a', police: '#3b7bff', library: '#d8b98a', fire_station: '#ff8a3d', university: '#f2c14e', beach: '#f5d58a', attraction: '#c98cff', pier: '#b8c6d0', stadium: '#ffb14a', airport: '#9ad0ff', military: '#a8a07a', mall: '#ff7eb6', peak: '#c9b49a' };
 const LM_PLURAL = { school: 'schools', park: 'parks', water: 'lakes', hospital: 'hospitals', police: 'police stations', library: 'libraries', fire_station: 'fire stations', university: 'campuses', beach: 'beaches', attraction: 'sights', pier: 'piers', stadium: 'stadiums', airport: 'airports', military: 'bases', mall: 'malls', peak: 'peaks' };
 const MAJOR_LM = new Set(['water', 'hospital', 'police', 'beach', 'airport', 'stadium', 'military', 'university', 'pier']);
+// the county's places by how much they matter at this zoom: kind plus size (area 0: a mapped point, size unknown)
+const LM_WEIGHT = { airport: 3, stadium: 3, university: 3, beach: 2.5, attraction: 2.5, military: 2, hospital: 2, mall: 2, pier: 1.5, peak: 1.5, park: 1, water: 1, police: 1, school: 0.5, library: 0.5, fire_station: 0.5 };
+function outerLmShown(p, mpp) {
+  const score = (LM_WEIGHT[p.type] || 0.5) + (p.area > 0 ? Math.log10(p.area) / 2 : 1);
+  return score > (mpp <= 3 ? 0 : mpp <= 6 ? 3.2 : mpp <= 12 ? 4.4 : mpp <= 30 ? 5.2 : 5.9);
+}
 // every marker the two maps show; MAPKIT clusters them, keeps their labels apart and stacks them by priority:
 // 0 you, 1 other players, 2 missions / job / waypoint, 3 shops / garage / services, 4 everything else
 function mapMarks(big) {
   const out = [], f = focusPos(), fl = Math.floor(simTime * 4) % 2;
   if (big) { // places; zoomed far out, only the big ones
     for (const p of LANDMARKS) {
-      if (mapView.mpp > 9 && !(MAJOR_LM.has(p.type) || p.area > 250000 || /High School|Community Park|Old Poway/.test(p.name))) continue;
-      if (mapView.mpp > 30 && !((p.type === 'airport' && p.area > 800000) || (p.type === 'stadium' && p.area > 15000) || (p.type === 'military' && p.area > 3000000) || (p.type === 'university' && p.area > 300000) || (p.type === 'beach' && p.area > 60000) || (p.type === 'attraction' && p.area > 200000))) continue;
-      if (p.outer && mapView.mpp > 9 && (p.type === 'airport' && p.area < 200000 || p.type === 'military' && p.area < 200000)) continue; // airstrips, ranges
+      if (p.outer ? !outerLmShown(p, mapView.mpp) : mapView.mpp > 9 && !(MAJOR_LM.has(p.type) || p.area > 250000 || /High School|Community Park|Old Poway/.test(p.name))) continue;
       out.push({ kind: 'icon', pri: 4, x: p.x, z: p.z, glyph: p.type, color: LM_COLOR[p.type] || '#ddd', label: p.name, group: 'lm:' + p.type, plural: LM_PLURAL[p.type] });
     }
   } else { // cops, fights, the helicopter, an owner coming for their car; where you wake up
@@ -5975,7 +6031,7 @@ function drawMinimap() {
   const seenR = new Set();
   for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const c = mapBins.get(ckey(gx, gz)); if (!c) continue; c.r.forEach(i => seenR.add(i)); }
   MAPKIT.drawMasked(mctx, mmLayer, mapMask(), g => { // photo and streets, faded out past the edge of town
-    g.save(); g.beginPath(); g.rect(f.x - span, f.z - span, span * 2, span * 2); g.clip(); drawAerial(g, 0.9); g.restore();
+    g.save(); g.beginPath(); g.rect(f.x - span, f.z - span, span * 2, span * 2); g.clip(); drawAerial(g, 0.9, [f.x - span, f.z - span, f.x + span, f.z + span]); g.restore();
     g.lineCap = g.lineJoin = 'round'; g.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
     for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; g.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
     for (const pass of [1, 0]) for (const i of seenR) {
@@ -6019,15 +6075,19 @@ function bigMapBase(W, H, dpr) {
   g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#11161a'; g.fillRect(0, 0, W, H);
   g.save(); g.translate(W / 2, H / 2); g.scale(sc, sc); g.translate(-v.cx, -v.cz);
   MAPKIT.drawMasked(g, bmLayer, mapMask(), L => {
-    L.imageSmoothingEnabled = true; drawAerial(L, 1);
+    L.imageSmoothingEnabled = true; drawAerial(L, 1, [v.cx - W / 2 * v.mpp / dpr, v.cz - H / 2 * v.mpp / dpr, v.cx + W / 2 * v.mpp / dpr, v.cz + H / 2 * v.mpp / dpr]);
     // half real, half cartoon: the photo underneath, pushed warmer and flatter, each region washed in its own colour
     L.globalCompositeOperation = 'soft-light'; L.fillStyle = 'rgba(255,214,150,.55)'; L.fillRect(v.cx - W * v.mpp, v.cz - H * v.mpp, W * v.mpp * 2, H * v.mpp * 2);
     L.globalCompositeOperation = 'color'; for (const r of REGIONS) { const gr = L.createRadialGradient(r.x, r.z, 0, r.x, r.z, 1300); gr.addColorStop(0, r.col + '55'); gr.addColorStop(1, r.col + '00'); L.fillStyle = gr; L.fillRect(r.x - 1300, r.z - 1300, 2600, 2600); }
     L.globalCompositeOperation = 'source-over';
     L.lineCap = L.lineJoin = 'round';
+    const vr = [v.cx - W / 2 * v.mpp / dpr - 50, v.cz - H / 2 * v.mpp / dpr - 50, v.cx + W / 2 * v.mpp / dpr + 50, v.cz + H / 2 * v.mpp / dpr + 50], inView = new Set();
+    if (v.mpp < 20) { for (let gx = Math.floor(vr[0] / MB); gx <= Math.floor(vr[2] / MB); gx++) for (let gz = Math.floor(vr[1] / MB); gz <= Math.floor(vr[3] / MB); gz++) { const c = mapBins.get(ckey(gx, gz)); if (c) for (const i of c.r) inView.add(i); } }
+    else for (let i = 0; i < mapRoads.length; i++) if (mapRoads[i].t <= 2) inView.add(i); // far out: just the highways and big roads
+    const viewRoads = [...inView].map(i => mapRoads[i]);
     L.strokeStyle = 'rgba(18,22,28,.9)'; // ink outline under every road
-    for (const r of mapRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
-    for (const pass of [0, 1]) for (const r of mapRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    for (const r of viewRoads) { if (r.t >= 4 && v.mpp > 10) continue; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8) + v.mpp * (r.t <= 3 ? 3.2 : 2.2); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
+    for (const pass of [0, 1]) for (const r of viewRoads) { if ((r.t <= 3) !== !!pass) continue; if (r.t >= 4 && v.mpp > 10) continue; L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.5, v.mpp * 0.8); L.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? L.lineTo(r.p[k], r.p[k + 1]) : L.moveTo(r.p[k], r.p[k + 1]); L.stroke(); }
   });
   g.restore();
   const toS = (x, z) => [W / 2 + (x - v.cx) * sc, H / 2 + (z - v.cz) * sc];
@@ -6187,7 +6247,7 @@ function tick(rdt) {
   if (paused || mapOpen || travelOpen || CHEAT.open) { drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
-  OUTER.update(rdt); cullCore(rdt); // the outer world streams first: nothing else in the frame can hold it up
+  OUTER.update(rdt); updateLazy(worldHold ? 30 : 4); cullCore(rdt); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
@@ -6274,7 +6334,7 @@ let worldReady = false;
   });
   initPolice(); initStory(); initExtras(); SHELL.achSub();
   restoreSave();
-  const sp0 = focusPos();
+  const sp0 = focusPos(); progress('Building the streets around you…'); buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Warming up the effects…'); await FX.warm(renderer, camera); await NUKE_FX.warm(renderer, camera);
@@ -6301,7 +6361,8 @@ async function loadGroundPhotos() {
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO);
     const old = m.map; m.map = t; if (old && old.isDataTexture) old.dispose();
   }));
-  groundImgs.length = 0; prepMapImages(); // the minimap and the big map draw the photo too
+  for (let i = groundImgs.length - 1; i >= 0; i--) if (!groundImgs[i].tile) groundImgs.splice(i, 1); // the core's stand-ins (the outer world's photos stay)
+  prepMapImages(); // the minimap and the big map draw the photo too
   groundTint();
 }
 async function loadRoofPhotos() {

@@ -42,7 +42,11 @@ export function createOuter(E) {
   O.bounds = () => O.idx && O.idx.bounds;
 
   // ---------------------------------------------------------------- per-tile height and road queries
-  const tileOf = (x, z) => O.tiles.get(key(Math.floor(x / T), Math.floor(z / T)));
+  let lastT = null; // height queries come in runs from the same place: check the last tile first
+  const tileOf = (x, z) => {
+    const L = lastT; if (L && x >= L.x0 && x < L.x0 + T && z >= L.z0 && z < L.z0 + T && O.tiles.get(L.k) === L) return L;
+    const t = O.tiles.get(key(Math.floor(x / T), Math.floor(z / T))); if (t) lastT = t; return t;
+  };
   function gridAt(t, g, x, z) { // the tile mesh's triangulation: same split as the core terrain (tri3)
     const gx = (x - t.x0) / HC, gz = (z - t.z0) / HC;
     const i = Math.min(HN - 2, Math.max(0, Math.floor(gx))), j = Math.min(HN - 2, Math.max(0, Math.floor(gz)));
@@ -92,14 +96,14 @@ export function createOuter(E) {
       }
       if (best) { best.job = buildTile(best); O.building = best; best.b0 = performance.now(); best.work = 0; }
     }
-    const t0 = performance.now();
+    const t0 = performance.now(), budget = E.hurry && E.hurry() ? 40 : BUDGET; // waiting on a load screen (fast travel): build faster
     if (O.preps.length) { // tile data: terrain, road surface, carving (nearest tiles first)
       O.preps.sort((a, b) => rectDist(a, f) - rectDist(b, f));
-      while (O.preps.length && performance.now() - t0 < BUDGET * 0.6) { const t = O.preps[0], s0 = stepT0 = performance.now(); const done = !O.tiles.has(t.k) || t.prep.next().done; slow('prep:' + (t.phase || ''), performance.now() - s0); if (done) { O.preps.shift(); t.prep = null; } }
+      while (O.preps.length && performance.now() - t0 < budget * 0.6) { const t = O.preps[0], s0 = stepT0 = performance.now(); const done = !O.tiles.has(t.k) || t.prep.next().done; slow('prep:' + (t.phase || ''), performance.now() - s0); if (done) { O.preps.shift(); t.prep = null; } }
     }
     if (O.building) { // run the builder for a few milliseconds
       const b = O.building;
-      while (performance.now() - t0 < BUDGET) { const s0 = stepT0 = performance.now(), r = b.job.next(); slow('build:' + (b.phase || ''), performance.now() - s0); if (r.done) { b.job = null; O.building = null; O.stats.lastBuild = { tile: b.k, wallS: +((performance.now() - b.b0) / 1000).toFixed(1), workMs: Math.round(b.work + performance.now() - t0) }; break; } }
+      while (performance.now() - t0 < budget) { const s0 = stepT0 = performance.now(), r = b.job.next(); slow('build:' + (b.phase || ''), performance.now() - s0); if (r.done) { b.job = null; O.building = null; O.stats.lastBuild = { tile: b.k, wallS: +((performance.now() - b.b0) / 1000).toFixed(1), workMs: Math.round(b.work + performance.now() - t0) }; break; } }
       if (O.building === b) b.work += performance.now() - t0;
     }
     // culling, twice a second: each 500 m piece drawn within view, its small stuff within the detail range, shadows near
@@ -119,14 +123,15 @@ export function createOuter(E) {
     const t = { i, j, k: key(i, j), x0: i * T, z0: j * T, hN: null, hM: null, rs: null, built: false, group: null, subs: null, polys: [], bld: [0, 0], edges: 0 };
     O.tiles.set(t.k, t);
     try {
-      const r = await fetch(`assets/world/t/${t.k}.json`); if (!r.ok) throw new Error(r.status);
-      const d = await r.json(); if (!O.tiles.has(t.k)) return;
+      const r = await fetch(`assets/world/t/${t.k}.json.gz`); if (!r.ok) throw new Error(r.status);
+      const d = await gunzipJSON(r); if (!O.tiles.has(t.k)) return;
       t.d = d; t.prep = prepare(t); O.preps.push(t); // run a few milliseconds a frame in update()
     } catch (e) { console.warn('[outer] tile', t.k, e); t.failed = true; }
   }
   function* prepare(t) {
     const d = t.d, x0 = t.x0, z0 = t.z0, s = 0.1; t.phase = 'parse';
-    const abs = a => { const out = new Float32Array(a.length); for (let k = 0; k < a.length; k += 2) { out[k] = x0 + a[k] * s; out[k + 1] = z0 + a[k + 1] * s; } return out; };
+    const abs = a => { const out = new Float32Array(a.length); let x = 0, z = 0; for (let k = 0; k < a.length; k += 2) { x += a[k]; z += a[k + 1]; out[k] = x0 + x * s; out[k + 1] = z0 + z * s; } return out; }; // delta-coded decimetres
+    for (let j = 0, h = d.h; j < HN; j++) for (let i = 1; i < HN; i++) h[j * HN + i] += h[j * HN + i - 1]; // the posts: steps along each row
     // terrain: raw metres -> the game's exaggerated relief; inside the core photo, the core's own ground
     const hN = new Float32Array(HN * HN);
     for (let j = 0; j < HN; j++) for (let i = 0; i < HN; i++) {
@@ -140,7 +145,7 @@ export function createOuter(E) {
     t.ownN = roads.length;
     for (const x of d.x || []) roads.push([-1, x[0], x[1] * E.ROAD_SCALE, Array.from(abs(x[2])), 0]);
     t.roads = roads;
-    t.blds = (d.b || []).map(b => [b[0], b[1], Array.from(abs(b[2])), b[3] * 0.1]);
+    t.blds = []; for (const b of d.b || []) { t.blds.push([b[0], b[1], Array.from(abs(b[2])), b[3] * 0.1]); if (due()) yield; }
     yield;
     t.phase = 'paint';
     if (roads.length) { // the road surface, painted a few dozen roads at a time
@@ -172,8 +177,8 @@ export function createOuter(E) {
 
   // ---------------------------------------------------------------- building a tile (a generator: a few ms a frame)
   function* buildTile(t) {
-    const d = t.d, g = new THREE.Group(), C = T / SUB; t.group = g; t.phase = 'terrain';
-    const subs = []; for (let b = 0; b < SUB; b++) for (let a = 0; a < SUB; a++) { const cx = t.x0 + (a + 0.5) * C, cz = t.z0 + (b + 0.5) * C, sg = new THREE.Group(); g.add(sg); subs.push({ cx, cz, ch: E.newChunk(cx, cz), group: sg, near: null, sh: null }); }
+    const d = t.d, g = new THREE.Group(), C = T / SUB; t.group = g; t.phase = 'terrain'; g.matrixAutoUpdate = false; // static: matrices once, not every frame
+    const subs = []; for (let b = 0; b < SUB; b++) for (let a = 0; a < SUB; a++) { const cx = t.x0 + (a + 0.5) * C, cz = t.z0 + (b + 0.5) * C, sg = new THREE.Group(); sg.matrixAutoUpdate = false; g.add(sg); subs.push({ cx, cz, ch: E.newChunk(cx, cz), group: sg, near: null, sh: null }); }
     const ch = (x, z) => subs[Math.min(SUB - 1, Math.max(0, Math.floor((z - t.z0) / C))) * SUB + Math.min(SUB - 1, Math.max(0, Math.floor((x - t.x0) / C)))].ch; // the chunk sink: the piece under (x, z)
     // terrain with the tile's photo, one mesh per piece (so pieces out of view or range aren't drawn)
     {
@@ -187,11 +192,11 @@ export function createOuter(E) {
         }
         if (!idx.length) continue;
         const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals(); geo.computeBoundingSphere();
-        const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; subs[b * SUB + a].group.add(mesh); t.terrains.push(mesh);
+        const mesh = new THREE.Mesh(geo, mat); mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; subs[b * SUB + a].group.add(mesh); t.terrains.push(mesh);
       }
       if (t.terrains.length) {
         t.terrain = t.terrains[0];
-        (O.idx.tiles[t.k] & 4 ? E.loadPhoto(`assets/world/p/${t.k}.jpg`) : Promise.resolve(null)).then(tex => {
+        (O.idx.tiles[t.k] & 4 ? E.loadPhoto(`assets/world/p/${t.k}.webp`) : Promise.resolve(null)).then(tex => {
           if (!tex) { if (t.terrains) { const m2 = E.terrainMaterial(true); for (const m of t.terrains) m.material = m2; t.mat = m2; mat.dispose(); } return; }
           if (!t.group) { tex.dispose(); return; } mat.map = tex; mat.needsUpdate = true; t.photo = tex; E.mapPhoto(t, tex.image); if (t.built && !t.trees) plant(t); });
       }
@@ -199,7 +204,7 @@ export function createOuter(E) {
       const sea = E.seaLevel(); let wet = false; for (let k = 0; k < HN * HN; k++) if (t.hN[k] < sea + 0.5) { wet = true; break; }
       if (wet) {
         const geo = new THREE.PlaneGeometry(T, T, 1, 1).rotateX(-Math.PI / 2).translate(t.x0 + T / 2, sea, t.z0 + T / 2);
-        const m = new THREE.Mesh(geo, E.seaMat()); m.receiveShadow = true; g.add(m);
+        const m = new THREE.Mesh(geo, E.seaMat()); m.receiveShadow = true; m.matrixAutoUpdate = false; g.add(m);
       }
     }
     yield;
@@ -219,7 +224,7 @@ export function createOuter(E) {
     t.phase = 'kit'; t.props = { meshes: [], props: [] }; E.setSink(ch); for (const _ of E.streetKit(t, d, t.props, due)) { E.setSink(null); yield; E.setSink(ch); } E.setSink(null);
     yield;
     // buildings: one footprint makes both the walls you see and the polygon you hit
-    t.phase = 'buildings'; E.setSink(ch); t.bld[0] = E.bldCount(); const p0 = E.polyCount();
+    t.phase = 'buildings'; E.setSink(ch); t.bld[0] = E.bldCount(); const p0 = E.polyCount(); t.polys = [p0, p0]; t.partial = true; // until done, unbuild drops everything added since p0
     n = 0;
     for (const b of t.blds) {
       if (b[2].length < 6) continue;
@@ -227,7 +232,7 @@ export function createOuter(E) {
       E.addBuilding([b[0], kind, b[2], kind === 0 ? 1 : 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // houses get hip roofs
       n++; if (due()) { E.setSink(null); yield; E.setSink(ch); }
     }
-    E.setSink(null); t.bld[1] = E.bldCount(); t.polys = [p0, E.polyCount()];
+    E.setSink(null); t.bld[1] = E.bldCount(); t.polys = [p0, E.polyCount()]; t.partial = false;
     O.stats.buildings += n;
     yield;
     // meshes, one builder at a time, into their pieces
@@ -244,6 +249,11 @@ export function createOuter(E) {
   O.seaLevel = () => E.seaLevel();
   function area(p) { let a = 0; for (let i = 0, n = p.length / 2, j = n - 1; i < n; j = i++) a += (p[j * 2] + p[i * 2]) * (p[j * 2 + 1] - p[i * 2 + 1]); return Math.abs(a) / 2; }
   function slow(k, ms) { const S = O.stats.slow || (O.stats.slow = {}); if (!(ms < (S[k] || 0))) S[k] = Math.round(ms); }
+  async function gunzipJSON(r) { // the tile files are gzipped JSON (a server may have unzipped them already)
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf[0] !== 0x1f || buf[1] !== 0x8b) return JSON.parse(new TextDecoder().decode(buf));
+    return JSON.parse(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+  }
   function densify(p, step) {
     const out = [p[0], p[1]];
     for (let i = 0; i < p.length - 2; i += 2) {
@@ -253,7 +263,10 @@ export function createOuter(E) {
     return out;
   }
   function unbuild(t) {
-    if (O.building === t) { O.building = null; t.job = null; E.setSink(null); }
+    if (O.building === t) { // stopped half way: whatever its buildings added so far goes too (no walls without a building)
+      O.building = null; t.job = null; E.setSink(null);
+      if (t.partial) { t.polys = [t.polys[0], E.polyCount()]; t.bld = [t.bld[0], E.bldCount()]; }
+    }
     if (t.group) { E.scene.remove(t.group); t.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     if (t.mat) t.mat.dispose(); if (t.photo) { t.photo.dispose(); E.mapPhoto(t, null); }
     E.dropPolys(t.polys); E.dropBuildings(t.bld);
