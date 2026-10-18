@@ -1002,7 +1002,7 @@ export function storyJournal() {
   h += `<p>${st.done.filter(id => !main.some(d => d.id === id)).length} side jobs and trials done</p>`;
   if (S.m) h += `<p>On a job: <b>${S.m.def.title}</b>${objHtml ? ' · ' + objHtml : ''}</p>`;
   else { const n = nextMain(); if (n) h += `<p>Next: see <b>${CAST[n.giver] ? CAST[n.giver].name : n.giver}</b> · ${n.title} · ${esc(PLACES[n.at] ? PLACES[n.at].note : '')}.</p>`; }
-  h += `<p>You've explored about <b>${fogStats().pct}%</b> of the map.</p>`;
+  h += `<p>You've explored about <b>${fogStats().pct}%</b> of Poway.</p>`;
   const avail = S.m ? [] : MISSIONS.filter(d => available(d) && !d.auto);
   if (avail.length) h += '<h3>Open jobs</h3>' + avail.map(d => { const c = CAST[d.giver]; return `<p><span class="who" style="background:${c ? c.color : '#f3ede1'}"></span><b>${d.title}</b> · ${c ? c.name : 'time trial'} · ${esc(PLACES[d.at].note)}. ${esc(d.pitch)}</p>`; }).join('');
   const best = Object.entries(st.best); if (best.length) h += '<h3>Best times</h3>' + best.map(([id, t]) => `<p>${(MISSIONS.find(d => d.id === id) || { title: id }).title}: <b>${fmtT(t)}</b></p>`).join('');
