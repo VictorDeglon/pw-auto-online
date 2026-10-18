@@ -54,8 +54,17 @@ export async function initNet() {
   const cfg = EMU ? { apiKey: 'demo-key', projectId: EMULATOR_PROJECT, databaseURL: `http://${EMU === '1' ? '127.0.0.1' : EMU}:9000?ns=${EMULATOR_PROJECT}`, authDomain: `${EMULATOR_PROJECT}.firebaseapp.com` } : FIREBASE_CONFIG || await hostedConfig();
   if (!cfg) return false;
   NET.available = true;
-  if (!app) { // once per page: a failed sign-in can be retried without re-initialising
-    app = FB.initializeApp(cfg, 'pao');
+  if (!app) { // once per tab: unique tab ID gives each tab its own authenticated player
+    let tabId = '';
+    try {
+      tabId = sessionStorage.getItem('pao-tab-id') || '';
+      if (!tabId) {
+        tabId = Math.random().toString(36).slice(2, 8);
+        sessionStorage.setItem('pao-tab-id', tabId);
+      }
+    } catch (e) {}
+    const appName = tabId ? `pao-${tabId}` : 'pao';
+    app = FB.initializeApp(cfg, appName);
     auth = FB.getAuth(app); db = FB.getDatabase(app);
     if (EMU) { const host = EMU === '1' ? '127.0.0.1' : EMU; FB.connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true }); FB.connectDatabaseEmulator(db, host, 9000); }
   }
@@ -102,16 +111,65 @@ async function joinNow(sid, name, skin, state) {
   if (!SERVERS.some(s => s.id === sid)) return { ok: false, err: 'Unknown server.' };
   if (!validName(name)) return { ok: false, err: 'Names are 3 to 16 letters, numbers or underscores.' };
   if (NET.server) await leave();
-  const base = `servers/${sid}`, key = name.toLowerCase(), uid = NET.uid;
-  const names = await FB.get(FB.ref(db, `${base}/names`));
-  const taken = names.val() || {};
-  if (Object.keys(taken).length >= MAX_PLAYERS && taken[key] !== uid) return { ok: false, err: 'That server is full.' };
-  // free any other name this browser still holds on the server (a crash before onDisconnect fired)
-  for (const [k, v] of Object.entries(taken)) if (v === uid && k !== key) await FB.remove(FB.ref(db, `${base}/names/${k}`));
+  const base = `servers/${sid}`, uid = NET.uid;
+  const [namesSnap, playersSnap] = await Promise.all([
+    FB.get(FB.ref(db, `${base}/names`)),
+    FB.get(FB.ref(db, `${base}/players`))
+  ]);
+  const taken = namesSnap.val() || {};
+  const activePlayers = playersSnap.val() || {};
+  const now = serverNow();
+
+  // Prune stale names held by dropped players (heartbeat older than 20s or missing)
+  for (const [k, pUid] of Object.entries(taken)) {
+    if (pUid !== uid) {
+      const p = activePlayers[pUid];
+      if (!p || !p.t || (now - p.t > 20000)) {
+        try { await FB.remove(FB.ref(db, `${base}/names/${k}`)); delete taken[k]; } catch (e) {}
+        try { if (!p || !p.t || (now - p.t > 25000)) await FB.remove(FB.ref(db, `${base}/players/${pUid}`)); } catch (e) {}
+      }
+    }
+  }
+
+  // Free any other name this browser still holds on the server
+  for (const [k, v] of Object.entries(taken)) {
+    if (v === uid && k !== name.toLowerCase()) {
+      try { await FB.remove(FB.ref(db, `${base}/names/${k}`)); delete taken[k]; } catch (e) {}
+    }
+  }
+
+  if (Object.keys(taken).length >= MAX_PLAYERS && taken[name.toLowerCase()] !== uid) return { ok: false, err: 'That server is full.' };
+
+  let finalName = name;
+  let key = finalName.toLowerCase();
+
+  // If the requested name is actively taken by someone else playing right now:
+  if (taken[key] && taken[key] !== uid) {
+    let suffix = 2;
+    while (taken[`${name.toLowerCase()}_${suffix}`] && taken[`${name.toLowerCase()}_${suffix}`] !== uid && suffix < 100) {
+      suffix++;
+    }
+    finalName = `${name.slice(0, 13)}_${suffix}`;
+    key = finalName.toLowerCase();
+  }
+
   let res;
-  try { res = await FB.runTransaction(FB.ref(db, `${base}/names/${key}`), cur => (cur === null || cur === uid) ? uid : undefined); }
-  catch (e) { return { ok: false, err: explain(e) }; }
-  if (!res.committed) return { ok: false, err: `Someone on ${serverName(sid)} is already called "${name}".` };
+  try {
+    res = await FB.runTransaction(FB.ref(db, `${base}/names/${key}`), cur => (cur === null || cur === uid) ? uid : undefined);
+  } catch (e) {
+    return { ok: false, err: explain(e) };
+  }
+
+  if (!res.committed) {
+    finalName = `${name.slice(0, 11)}_${Math.floor(100 + Math.random() * 900)}`;
+    key = finalName.toLowerCase();
+    try {
+      res = await FB.runTransaction(FB.ref(db, `${base}/names/${key}`), cur => (cur === null || cur === uid) ? uid : undefined);
+    } catch (e) {}
+    if (!res || !res.committed) return { ok: false, err: `Could not reserve name. Please try again.` };
+  }
+
+  name = finalName;
   const nameRef = FB.ref(db, `${base}/names/${key}`), meRef = FB.ref(db, `${base}/players/${uid}`);
   await FB.onDisconnect(nameRef).remove();
   await FB.onDisconnect(meRef).remove();
@@ -196,7 +254,8 @@ async function prune(base) {
 // st: { x, y, z, r (heading), spd, car: { type, tint, model, p, rl, dead } | null, hp, w (weapon id), aim, shots (a counter), dead (0 / 1 wasted / 2 busted) }
 function pack(st) {
   if (!st) return { x: 0, z: 0 };
-  const q = v => Math.round(v * 100) / 100, o = { x: q(st.x), y: q(st.y), z: q(st.z), r: q(st.r), v: q(st.spd || 0), h: Math.round(st.hp ?? 100), w: st.w || '', d: st.dead || 0 };
+  const q = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 100) / 100 : 0;
+  const o = { x: q(st.x), y: q(st.y), z: q(st.z), r: q(st.r), v: q(st.spd || 0), h: Math.round(st.hp ?? 100), w: st.w || '', d: st.dead || 0 };
   if (st.aim) o.a = 1;
   if (st.shots) o.sh = st.shots % 1000;
   if (st.car) { o.c = st.car.type; o.ct = st.car.tint; o.cm = st.car.model || ''; o.cp = q(st.car.p || 0); o.cl = q(st.car.rl || 0); o.cd = st.car.dead ? 1 : 0; }

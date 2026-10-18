@@ -12,15 +12,15 @@ const KEY = 'pw-auto-online-gfx';
 
 export const PRESETS = {
   potato: { label: 'Potato', note: 'Old laptops and school Chromebooks. No shadows or grass, short view, few people.',
-    scale: 0.6, minScale: 0.45, aa: false, shadows: 0, grass: 0, view: 750, peds: 20, traffic: 14, pool: 5, pedDraw: 110, veg: 900, fps: 30, look: 0, ibl: 0, atmos: 0, ao: 0, csm: 0 },
+    scale: 0.6, minScale: 0.45, aa: false, shadows: 0, grass: 0, view: 750, peds: 35, traffic: 30, pool: 6, pedDraw: 110, veg: 900, fps: 30, look: 0, ibl: 0, atmos: 0, ao: 0, csm: 0 },
   low: { label: 'Low', note: 'Integrated graphics. Light grass, no shadows.',
-    scale: 0.8, minScale: 0.55, aa: false, shadows: 0, grass: 0.35, view: 1100, peds: 32, traffic: 26, pool: 8, pedDraw: 150, veg: 1400, fps: 40, look: 1, ibl: 0, atmos: 0, ao: 0, csm: 0 },
+    scale: 0.8, minScale: 0.55, aa: false, shadows: 0, grass: 0.35, view: 1100, peds: 60, traffic: 50, pool: 10, pedDraw: 150, veg: 1400, fps: 40, look: 1, ibl: 0, atmos: 0, ao: 0, csm: 0 },
   medium: { label: 'Medium', note: 'Most laptops. Shadows on, grass at medium density, sky reflections, bloom and haze.',
-    scale: 1, minScale: 0.7, aa: true, shadows: 1024, grass: 0.7, view: 1500, peds: 46, traffic: 36, pool: 12, pedDraw: 200, veg: 2000, fps: 50, look: 3, msaa: 0, ibl: 128, atmos: 1, ao: 0, csm: 0 },
+    scale: 1, minScale: 0.7, aa: true, shadows: 1024, grass: 0.7, view: 1500, peds: 85, traffic: 75, pool: 16, pedDraw: 200, veg: 2000, fps: 50, look: 3, msaa: 0, ibl: 128, atmos: 1, ao: 0, csm: 0 },
   high: { label: 'High', note: 'Gaming laptops and desktops. Adds ambient occlusion and sharper shadows near you.',
-    scale: 1.5, minScale: 0.85, aa: true, shadows: 2048, grass: 1, view: 2300, peds: 56, traffic: 46, pool: 14, pedDraw: 260, veg: 2400, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2 },
+    scale: 1.5, minScale: 0.85, aa: true, shadows: 2048, grass: 1, view: 2300, peds: 120, traffic: 105, pool: 20, pedDraw: 260, veg: 2400, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2 },
   ultra: { label: 'Ultra', note: 'Strong desktop GPUs. Dense grass, crisp shadows, longest view.',
-    scale: 2, minScale: 1, aa: true, shadows: 4096, grass: 1.5, view: 2600, peds: 68, traffic: 56, pool: 20, pedDraw: 320, veg: 2600, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2 },
+    scale: 2, minScale: 1, aa: true, shadows: 4096, grass: 1.5, view: 2600, peds: 160, traffic: 140, pool: 28, pedDraw: 320, veg: 2600, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2 },
 };
 export const ORDER = ['potato', 'low', 'medium', 'high', 'ultra'];
 

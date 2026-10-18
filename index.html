@@ -578,6 +578,11 @@ import { garageMarks } from './src/world/garages.js';
 import { CINE } from './src/story/cutscene.js';
 import { createBuilder } from './src/world/builder.js';
 import { createPowayArchitecture } from './src/world/poway_architecture.js';
+import { MILITARY } from './src/military.js';
+import { initAirports, updatePlanes, AIRPORTS } from './src/world/airports.js';
+import { GANG } from './src/gangs.js';
+import { SOCIAL, COMPANIONS } from './src/social.js';
+window.__AIRPORTS = AIRPORTS;
 
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
@@ -1701,7 +1706,7 @@ function buildingGeom(B, ch) {
     for (const t of tris) tri(roofG, [contour[t[0]].x, top, contour[t[0]].y], [contour[t[1]].x, top, contour[t[1]].y], [contour[t[2]].x, top, contour[t[2]].y], roofC, roofC, roofC, uvOf(contour[t[0]].x, contour[t[0]].y), uvOf(contour[t[1]].x, contour[t[1]].y), uvOf(contour[t[2]].x, contour[t[2]].y), 0, 1, 0);
     if (big) { const dark = wallC.clone().multiplyScalar(0.85); const gb = ch.wall[matIdx]; for (let i = 0; i < n; i++) { const j = (i + 1) % n; const ax = flat[i * 2], az = flat[i * 2 + 1], bx = flat[j * 2], bz = flat[j * 2 + 1]; const ox = S > 0 ? bz - az : az - bz, oz = S > 0 ? ax - bx : bx - ax; tri(gb, [ax, top, az], [bx, top, bz], [bx, lip, bz], dark, dark, dark, [0, 0], [0.1, 0], [0.1, 0.1], ox, 0, oz); tri(gb, [ax, top, az], [bx, lip, bz], [ax, lip, az], dark, dark, dark, [0, 0], [0.1, 0.1], [0, 0.1], ox, 0, oz); } }
   }
-  if (kind === 0 && ZONE && inCore(cx, cz)) facadeDetails(ch, flat, S, base, top, cx, cz);
+  if (kind === 0) facadeDetails(ch, flat, S, base, top, cx, cz);
   B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); }
   B.drawn = true;
 }
@@ -1855,6 +1860,8 @@ function addHouse(cx, cz, w, d, ang, h, style) {
     const g0 = P(-hw, -hd, top), g3 = P(-hw, hd, top), g1 = P(hw, -hd, top), g2 = P(hw, hd, top), t0 = P(-hw, 0, top + rh * (hd / rd)), t1 = P(hw, 0, top + rh * (hd / rd));
     const gb = ch.wall[0]; tri(gb, g0, g3, t0, wall, wall, wall, [0, 0], [d / 4, 0], [d / 8, rh / 3.3], -ux, 0, -uz); tri(gb, g1, g2, t1, wall, wall, wall, [0, 0], [d / 4, 0], [d / 8, rh / 3.3], ux, 0, uz);
   }
+  const S = Math.sqrt(w * d);
+  facadeDetails(ch, flat, S, base, top, cx, cz);
   addPoly(flat, base, top + rh);
 }
 // per-chunk roof builders keyed by ground atlas
@@ -4194,7 +4201,21 @@ addEventListener('keydown', e => {
   if (garageOpen) { if (e.code === 'KeyE' || e.code === 'Escape') closeGarage(); return; } // the garage menu has the keyboard
   if (shopOpen) { if (e.code === 'KeyE' || e.code === 'Escape') closeShop(); return; }
   if (e.code === 'KeyF') toggleCar();
-  if (e.code === 'KeyE') { if (!storySkip()) useInteract(); }
+  if (e.code === 'KeyE') {
+    if (!storySkip()) {
+      if (!useInteract()) {
+        const f = focusPos();
+        let nearCiv = null, minDist = 3.5;
+        for (const p of peds) {
+          if (!p.dead && !p.isCop && p.state !== 'down') {
+            const d = Math.hypot(p.pos.x - f.x, p.pos.z - f.z);
+            if (d < minDist) { minDist = d; nearCiv = p; }
+          }
+        }
+        if (nearCiv) SOCIAL.interact(nearCiv);
+      }
+    }
+  }
   if (e.code === 'KeyJ' && !online) startJob();
   if (e.code === 'KeyH' && player.inCar) honk();
   if (e.code === 'KeyR' && (!BUILDER || !BUILDER.active)) radioNext();
@@ -6292,9 +6313,9 @@ function updatePopulation(dt) {
   const hf = hour < 5 || hour >= 23 ? 0.45 : (hour >= 7 && hour < 9) || (hour >= 16 && hour < 18.5) ? 1.15 : 1;
   const wantCars = Math.round(TRAFFIC_N * hf * (1 - nightAmount * 0.25) * (0.75 + busyAt(f.x, f.z) * 1.1)), wantPeds = Math.round(GFX.peds * (1 - nightAmount * 0.5) * (1 - weather.rain * 0.45));
   const carsNow = vehicles.filter(v => !v.mine && !v.dispatched && !v.parked).length;
-  for (let i = carsNow < wantCars * 0.7 ? 2 : 1; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 60 : 150, 340);
+  for (let i = carsNow < wantCars * 0.7 ? 4 : 2; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 40 : 120, 360);
   const pedsNow = peds.filter(p => !p.remote && (!p.isCop || !p.homeCar)).length;
-  if (pedsNow < wantPeds) spawnPed(f.x, f.z, pedsNow < wantPeds * 0.5 ? 25 : 90, 220);
+  if (pedsNow < wantPeds) spawnPed(f.x, f.z, pedsNow < wantPeds * 0.5 ? 20 : 80, 240);
 }
 
 // ============================================================ camera
@@ -6437,9 +6458,8 @@ function mapMarks(big) {
   if (job) out.push({ kind: 'icon', pri: 2, x: job.x, z: job.z, glyph: 'star', color: '#f0b23a', label: job.name, edge: true });
   if (waypoint) out.push({ kind: 'pin', pri: 2, x: waypoint.x, z: waypoint.z, color: '#b06cff', label: (waypoint.name ? waypoint.name + ' · ' : '') + fmtDist(hyp(waypoint.x - f.x, waypoint.z - f.z)), nodist: true, edge: true });
   out.push(...MAPKIT.playerMarks(big)); // other players
-  // what you haven't explored stays hidden (src/ui/fog.js): places and other players under the cloud are left off;
-  // missions, your job and your waypoint always show, and so do the deputies (radar)
-  return out.filter(m => m.pri === 2 || m.always || m.kind === 'dot' || fogSeen(m.x, m.z));
+  // missions, your job and your waypoint always show, and so do other players and the deputies (radar)
+  return out.filter(m => m.pri === 2 || m.always || m.kind === 'dot' || m.kind === 'player' || fogSeen(m.x, m.z));
 }
 function drawMinimap() {
   const W = mm.width, R = W / 2, f = focusPos();
@@ -6748,6 +6768,10 @@ function tick(rdt) {
   OUTER.update(rdt); updateLazy(worldHold ? 30 : 4); cullCore(rdt); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
+  updatePlanes(dt, keys, cam, mouseDown);
+  MILITARY.update(dt);
+  GANG.update(dt);
+  SOCIAL.update(dt);
   updateInteract();
   if (BUILDER) BUILDER.update(dt);
   if (ARCH_WORLD) ARCH_WORLD.update(dt);
@@ -6830,6 +6854,7 @@ let worldReady = false;
     spawnPickup, spawnTraffic, spawnPed, updateChunkVisibility, notify, big, say, speak, sfx, tone, noise, volAt, blood, sparks, tracer, fire, smoke,
     addRamp, explosionAt, keys, ensureAvatar, PLAZA_CENTER, terrainAt, WEAPONS, maxOf, launchCar, unlockTravel: k => refreshTravel(k),
     LINES, buildRig, buildCar, equipGuns, showGun, lam, boxG, canvasTex, heliLight, M, save, persist, weather, setWeather, setWaypoint, clearWaypoint, clock, cam, bus,
+    CH, nukeAt, toggleCar, police, JET, addInteract,
   });
   Object.defineProperties(ctx, {
     sfx2: { get: () => S2 }, simTime: { get: () => simTime }, nightAmount: { get: () => nightAmount }, paused: { get: () => paused }, running: { get: () => running },
@@ -6838,6 +6863,7 @@ let worldReady = false;
     online: { get: () => online }, garage: { get: () => GARAGE, set: g => { GARAGE = g; } }, garageOpen: { get: () => garageOpen }, openGarage: { value: () => openGarage() },
   });
   initPolice(); initStory(); initExtras(); SHELL.achSub();
+  initAirports(scene, THREE); GANG.init();
   restoreSave();
   const sp0 = focusPos(); progress('Building the streets around you…'); buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);

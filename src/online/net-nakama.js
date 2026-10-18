@@ -210,18 +210,15 @@ export async function join(sid, name, skin, state) {
     try {
       await ACCOUNT.setName(name);
     } catch (e) {
-      if (tabGuest) {
-        // Tab guest: if the primary account name is taken, auto-assign a unique variation so both tabs play together
-        const alt = `${name.slice(0, 11)}_${Math.floor(100 + Math.random() * 900)}`;
-        try {
-          await ACCOUNT.setName(alt);
-          name = alt;
-        } catch (e2) {
-          const info = await loadAccount().catch(() => null);
-          if (info && info.username) name = info.username;
-        }
-      } else {
-        throw e;
+      // If the primary account name is taken, auto-assign a unique variation so the player can always join
+      const alt = `${name.slice(0, 11)}_${Math.floor(100 + Math.random() * 900)}`;
+      try {
+        await ACCOUNT.setName(alt);
+        name = alt;
+      } catch (e2) {
+        const info = await loadAccount().catch(() => null);
+        if (info && info.username) name = info.username;
+        else throw e;
       }
     }
     if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; NET.connected = false; } // the socket carries the name: reconnect with it
@@ -299,7 +296,8 @@ function sendOp(op, o) { if (!socket || !matchId || !NET.connected) return; sock
 // ---- state: compact numbers, sent ~15 times a second by the caller (see net-firebase.js for the fields)
 function pack(st) {
   if (!st) return { x: 0, z: 0 };
-  const q = v => Math.round(v * 100) / 100, o = { x: q(st.x), y: q(st.y), z: q(st.z), r: q(st.r), v: q(st.spd || 0), h: Math.round(st.hp ?? 100), w: st.w || '', d: st.dead || 0 };
+  const q = v => (typeof v === 'number' && isFinite(v)) ? Math.round(v * 100) / 100 : 0;
+  const o = { x: q(st.x), y: q(st.y), z: q(st.z), r: q(st.r), v: q(st.spd || 0), h: Math.round(st.hp ?? 100), w: st.w || '', d: st.dead || 0 };
   if (st.aim) o.a = 1;
   if (st.shots) o.sh = st.shots % 1000;
   if (st.car) { o.c = st.car.type; o.ct = st.car.tint; o.cm = st.car.model || ''; o.cp = q(st.car.p || 0); o.cl = q(st.car.rl || 0); o.cd = st.car.dead ? 1 : 0; }

@@ -15,7 +15,7 @@ import { ctx } from '../ctx.js';
 
 const CELL = 24, PAD = 600;      // Poway's cloud: cell size, margin past the core's bounds
 const WCELL = 128, RING = 50000; // the county's: the outer world reaches 50 km past the core (tools/world/config.py)
-const R_FOOT = 340, R_CAR = 460, STEP = 30; // 2x as wide discovery bubble around player on foot / driving
+const R_FOOT = 650, R_CAR = 950, R_PLANE = 1600, STEP = 25; // discovery bubble matching minimap sight range and wider
 const F = { ready: false, fine: null, wide: null, ver: 0, pts: null, lx: 1e9, lz: 1e9, t: 0, seen: 0 };
 export const FOG = F;
 
@@ -99,7 +99,8 @@ export function updateFog(dt) {
   const f = ctx.focusPos(); if (!f || !isFinite(f.x)) return;
   if (Math.hypot(f.x - F.lx, f.z - F.lz) < STEP) return;
   F.lx = f.x; F.lz = f.z;
-  const r = ctx.player && ctx.player.inCar ? R_CAR : R_FOOT;
+  const isPlane = (ctx.player && ctx.player.inPlane) || (ctx.JET && ctx.JET.on);
+  const r = isPlane ? R_PLANE : (ctx.player && ctx.player.inCar ? R_CAR : R_FOOT);
   // nothing new to see here (all of the disc is already open): don't store another spot
   const probe = (x, z) => fogSeen(x, z, 0.99);
   if (probe(f.x, f.z) && probe(f.x + r * 0.7, f.z) && probe(f.x - r * 0.7, f.z) && probe(f.x, f.z + r * 0.7) && probe(f.x, f.z - r * 0.7)) return;

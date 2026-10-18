@@ -13,7 +13,14 @@
 // (config/home, needs its service-account key), or set a fixed wss:// address here (a named tunnel or a domain).
 export const HOME_SERVER_URL = null;
 
-export const FIREBASE_CONFIG = null; // paste { apiKey, authDomain, databaseURL, projectId, appId } here
+export const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDcXrPy8TLEUE6VnVLeymVgPmORmeUeUsQ",
+  appId: "1:836485738852:web:35cce5616109629a4c8a71",
+  authDomain: "pw-auto-online.firebaseapp.com",
+  databaseURL: "https://pw-auto-online-default-rtdb.firebaseio.com",
+  projectId: "pw-auto-online",
+  storageBucket: "pw-auto-online.firebasestorage.app"
+};
 
 // Local testing against the Firebase emulators: open the game with ?emu=1 (or ?emu=host) and run
 //   npx firebase emulators:start --only auth,database --project demo-pw-auto-online

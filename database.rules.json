@@ -8,14 +8,14 @@
         "names": {
           ".read": "auth != null",
           "$name": {
-            ".write": "auth != null && (!data.exists() || data.val() === auth.uid)",
-            ".validate": "$name.matches(/^[a-z0-9_]{3,16}$/) && newData.val() === auth.uid"
+            ".write": "auth != null && (!data.exists() || data.val() === auth.uid || !newData.exists() || !root.child('servers').child($sid).child('players').child(data.val()).exists() || root.child('servers').child($sid).child('players').child(data.val()).child('t').val() < now - 20000)",
+            ".validate": "!newData.exists() || ($name.matches(/^[a-z0-9_]{3,16}$/) && newData.val() === auth.uid)"
           }
         },
         "players": {
           ".read": "auth != null",
           "$uid": {
-            ".write": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && (auth.uid === $uid || (!newData.exists() && (!data.exists() || data.child('t').val() < now - 25000)))",
             ".validate": "newData.hasChildren(['n', 's', 't']) && newData.child('n').isString() && newData.child('n').val().matches(/^[A-Za-z0-9_]{3,16}$/) && root.child('servers').child($sid).child('names').child(newData.child('n').val().toLowerCase()).val() === auth.uid",
             "n": {
               ".validate": "newData.isString()"
