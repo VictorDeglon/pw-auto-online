@@ -23,6 +23,9 @@ export function createCheats(H) {
     async handle(text) {
       const t = String(text || '').trim(); if (!t || t.length > 80 || !crypto.subtle) return false;
       const sp = t.indexOf(' '), head = sp < 0 ? t : t.slice(0, sp), arg = sp < 0 ? '' : t.slice(sp + 1).trim();
+      if (head.toLowerCase() === '/build' || head.toLowerCase() === 'build' || head.toLowerCase() === '/builder') {
+        H.run('build', arg); return true;
+      }
       if (await sha(t) === DATA.master) { try { if (!sheet) { sheet = await unlock(t); ids = await Promise.all(sheet.map(c => sha(String(c.code).split(' ')[0]).then(h => DATA.codes[h] || null))); } show(); } catch (e) { } return true; }
       const id = DATA.codes[await sha(head)]; if (!id) return false;
       H.run(id, arg); return true;

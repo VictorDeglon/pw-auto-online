@@ -148,6 +148,9 @@ function onEvent(ev) {
     case 'nuke': if (typeof ev.x === 'number' && H.nuke) H.nuke(ev.x, ev.z); break;
     case 'col': if (typeof ev.i === 'number') H.collapse(ev.i, ev.dx || 0, ev.dz || 0); break;
     case 'fell': if (typeof ev.x === 'number') H.fell(ev.x, ev.z, ev.dx || 0, ev.dz || 1); break;
+    case 'place_build': if (H.placeBuild) H.placeBuild(ev); break;
+    case 'destroy_build': if (H.destroyBuild) H.destroyBuild(ev); break;
+    case 'dmg_build': if (H.damageBuild) H.damageBuild(ev); break;
     case 'ph': if (ev.to === NET.uid) { const p = findByNid(H.peds(), ev.id); if (p) H.hurtPed(p, ev.d || 10); } break;
     case 'cd': if (ev.to === NET.uid) { const v = findByNid(H.vehicles(), ev.id); if (v) H.damageCar(v, ev.d || 10, !!ev.b); } break;
     case 'claim': { const v = findByNid(H.vehicles(), ev.id); if (v && v !== H.playerCar() && !v.puppet) v.remove(); break; }

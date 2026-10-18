@@ -575,6 +575,7 @@ import { createOuter } from './src/world/outer.js';
 import { drawFog, fogSeen, FOG } from './src/ui/fog.js'; // map discovery (fog of war)
 import { garageMarks } from './src/world/garages.js';
 import { CINE } from './src/story/cutscene.js';
+import { createBuilder } from './src/world/builder.js';
 
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
@@ -1165,6 +1166,10 @@ function collideCircle(pos, r, withTrees = true, y) { // y: the bottom of whatev
       const dx = pos.x - tx, dz = pos.z - tz, d = Math.hypot(dx, dz), rr = r + 0.35;
       if (d < rr && d > 1e-4) { pos.x = tx + dx / d * rr; pos.z = tz + dz / d * rr; hit = _hitN; hit.x = dx / d; hit.z = dz / d; hit.depth = rr - d; }
     }
+  }
+  if (typeof BUILDER !== 'undefined' && BUILDER) {
+    const bHit = BUILDER.collide(pos, r, y);
+    if (bHit) hit = bHit;
   }
   return hit;
 }
@@ -3108,7 +3113,7 @@ const _gp = { y: 0, p: 0, r: 0 };
 // driving up it and off the lip launches the car like any crest. Few at a time, so the check is a short loop.
 const RAMPS = [];
 function rampH(x, z) { let h = -1e9; for (const r of RAMPS) { const dx = x - r.x, dz = z - r.z, u = dx * r.dx + dz * r.dz, w = -dx * r.dz + dz * r.dx; if (u >= 0 && u <= r.len && Math.abs(w) <= r.wid / 2) h = Math.max(h, r.y + r.h * (u / r.len)); } return h; }
-function gh(x, z) { const h = heightAt(x, z); return RAMPS.length ? Math.max(h, rampH(x, z)) : h; }
+function gh(x, z, curY) { const h = heightAt(x, z), rh = RAMPS.length ? rampH(x, z) : -1e9, bh = typeof BUILDER !== 'undefined' && BUILDER ? BUILDER.surfaceAt(x, z, curY) : -1e9; return Math.max(h, rh, bh); }
 const rampMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.2 });
 function addRamp(x, z, rot, o = {}) {
   const len = o.len || 16, wid = o.wid || 6.5, h = o.h || 4.2, dx = Math.sin(rot), dz = Math.cos(rot), y = heightAt(x, z) + 0.02;
@@ -3542,6 +3547,28 @@ function initPilot() { // boats from the start; the helicopter and planes join o
   for (const b of boats) PILOT.addBoat(b);
   return PILOT;
 }
+let BUILDER = null;
+function initBuilder() {
+  if (BUILDER) return BUILDER;
+  BUILDER = createBuilder({
+    scene,
+    camera,
+    player,
+    keys,
+    heightAt,
+    explosionAt,
+    notify,
+    sfx,
+    FX,
+    bus,
+    net: { sendEvent: (k, d) => { if (online) sendEvent(k, d); } },
+    smoke,
+    fire,
+    clock
+  });
+  return BUILDER;
+}
+initBuilder();
 // two light planes parked on open grass in parks near the start: flat, clear of buildings and well off the road
 function parkPlanes() {
   if (!AIR || !initPilot()) return; const placed = [];
@@ -3579,6 +3606,7 @@ function runCheat(id, arg) {
       else { const p = aimPoint(1500); x = p.x; z = p.z; }
       nukeAt(x, z, true, who); return;
     }
+    case 'build': if (BUILDER) BUILDER.toggle(); return;
     case 'god': cheatToast('Immortal', tog('god')); return;
     case 'fly': { const on = tog('fly'); if (on && player.inCar) toggleCar(); cheatToast('Flight', on); return; }
     case 'jet': spawnJet(); return;
@@ -4120,14 +4148,15 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE') { if (!storySkip()) useInteract(); }
   if (e.code === 'KeyJ' && !online) startJob();
   if (e.code === 'KeyH' && player.inCar) honk();
-  if (e.code === 'KeyR') radioNext();
+  if (e.code === 'KeyR' && (!BUILDER || !BUILDER.active)) radioNext();
   if (e.code === 'KeyE') PHS.interactPHS(focusPos()); // PHS: open/close campus doors and gates
   if (e.code === 'KeyN') callCar();
-  if (!garageOpen) { const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'].indexOf(e.code); if (k >= 0) { if (travelOpen) travelTo(k); else selectWeapon(k); } }
+  if (!garageOpen && (!BUILDER || !BUILDER.active)) { const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'].indexOf(e.code); if (k >= 0) { if (travelOpen) travelTo(k); else selectWeapon(k); } }
   if (e.code === 'KeyG') detonateStickies();
-  if (e.code === 'KeyQ' && !player.inCar) { aimLock = !aimLock; notify(aimLock ? 'Aim lock on (Q). Z zooms the scope.' : 'Aim lock off.', '', 1400); }
+  if (e.code === 'KeyQ' && !player.inCar && (!BUILDER || !BUILDER.active)) { aimLock = !aimLock; notify(aimLock ? 'Aim lock on (Q). Z zooms the scope.' : 'Aim lock off.', '', 1400); }
   if (e.code === 'KeyZ' && player.aiming) { scope = (scope + 1) % 3; tone(scope ? 1300 : 900, 0.04, 'square', 0.15); }
-  if (e.code === 'KeyB' && !player.inCar && !player.dead) { const E = ['wave', 'cheer', 'dance', 'laugh']; emote = E[(E.indexOf(emote) + 1) % E.length]; emoteT = emote === 'dance' ? 8 : 3.5; if (emote === 'dance') ACH.bump('danced'); }
+  if (e.code === 'KeyB' && !player.inCar && !player.dead) { if (BUILDER) BUILDER.toggle(); }
+  if (e.code === 'KeyU' && !player.inCar && !player.dead) { const E = ['wave', 'cheer', 'dance', 'laugh']; emote = E[(E.indexOf(emote) + 1) % E.length]; emoteT = emote === 'dance' ? 8 : 3.5; if (emote === 'dance') ACH.bump('danced'); }
   if (e.code === 'KeyK') toggleTravel();
   // Y / T: next weather / +1 hour. With the lock on they move the lock (online too: it's this screen only);
   // online without it the sky is the server's
@@ -4326,8 +4355,14 @@ function hitscan(o, d, range, ignore) {
     const c = carCircles(v);
     for (let k = 0; k < 2; k++) { const t = raySphere(o.x, o.y, o.z, d.x, d.y, d.z, c[k * 2], v.pos.y + 0.9, c[k * 2 + 1], v.spec.W / 2 + 0.15); if (t < best.t) best = { t, car: v }; }
   }
-  if (police.heli) { const h = police.heli; const t = raySphere(o.x, o.y, o.z, d.x, d.y, d.z, h.pos.x, h.pos.y, h.pos.z, 2.6); if (t < best.t) best = { t, heli: h }; }
   const tb = rayBuildings(o.x, o.y, o.z, d.x, d.y, d.z, best.t); if (tb < best.t) best = { t: tb, wall: true };
+  if (typeof BUILDER !== 'undefined' && BUILDER) {
+    const bh = BUILDER.raycast(o, d, best.t);
+    if (bh.t < best.t) {
+      best = { t: bh.t, wall: true, build: bh.build };
+      BUILDER.damageStructure(bh.build, 140, 'player');
+    }
+  }
   const tg = rayTerrain(o.x, o.y, o.z, d.x * best.t, d.y * best.t, d.z * best.t); if (tg < 1) best = { t: tg * best.t, ground: true };
   return best;
 }
@@ -4543,6 +4578,7 @@ function explosionAt(x, y, z, R, by) {
   FX.explosion(x, y, z, R); // fireballs, shockwave, flash, embers, smoke column, flying dirt (src/fx/fx.js)
   decal(x, z, R * 0.55, scorchMat);
   blastBuildings(x, z, R, by);
+  if (typeof BUILDER !== 'undefined' && BUILDER) BUILDER.onExplosion(x, y, z, R, by);
   { // trees, street lights and sign posts in the blast go down
     const g0x = Math.floor((x - R * 1.3) / PG), g1x = Math.floor((x + R * 1.3) / PG), g0z = Math.floor((z - R * 1.3) / PG), g1z = Math.floor((z + R * 1.3) / PG);
     for (let gx = g0x; gx <= g1x; gx++) for (let gz = g0z; gz <= g1z; gz++) for (const p of propGrid.get(gx * 100000 + gz) || []) {
@@ -5218,7 +5254,14 @@ function updatePlayer(dt) {
       if (d < r && d > 1e-3) { player.pos.x = c[k * 2] + dx / d * r; player.pos.z = c[k * 2 + 1] + dz / d * r; }
     }
   }
-  player.pos.y = heightAt(player.pos.x, player.pos.z) + player.air;
+  const baseTer = heightAt(player.pos.x, player.pos.z);
+  const curGround = Math.max(baseTer, typeof BUILDER !== 'undefined' && BUILDER ? BUILDER.surfaceAt(player.pos.x, player.pos.z, player.pos.y) : -1e9);
+  if (player.groundBaseY !== undefined && curGround < player.groundBaseY - 0.25 && player.air <= 0.05) {
+    player.air = Math.max(0, player.pos.y - curGround);
+    player.vy = 0;
+  }
+  player.groundBaseY = curGround;
+  player.pos.y = curGround + player.air;
   if (mouseDown) { if (player.weapon > 0 && player.shootCd <= 0) playerShoot(); else if (player.weapon === 0 && player.punchCd <= 0) playerPunch(); }
   greetCd -= dt;
   for (const p of peds) {
@@ -6542,6 +6585,7 @@ function tick(rdt) {
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
+  if (BUILDER) BUILDER.update(dt);
   PHS.updatePHS(dt, focusPos()); // PHS
   if (PLAZA) PLAZA.update(focusPos(), nightAmount);
   if (PARK && !WORLD.following) PARK.update(dt, focusPos());
@@ -6736,7 +6780,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { OUTER, teleport, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { OUTER, teleport, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
@@ -6851,6 +6895,9 @@ initWorld({
   ruin: (i, old, age) => { const B = BLD[i]; if (B && !B.dead) { collapseBuilding(B, 0, 1, 'net', old); if (age > 0) B.repairAt = simTime + Math.max(3, REBUILD_S - age); } },
   fell: (x, z, dx, dz) => { const c = propGrid.get(pkey(x, z)) || []; let best = null, bd = 2; for (const p of c) { const d = Math.hypot(p.x - x, p.z - z); if (p.alive && d < bd) { bd = d; best = p; } } if (best) fellProp(best, dx, dz, true); },
   hurtPed: (p, d) => p.damage(d, 'net'), damageCar: (v, d, blast) => damageCar(v, d, 'net', blast),
+  placeBuild: d => { if (BUILDER) BUILDER.placeCurrent(d); },
+  destroyBuild: d => { if (BUILDER) { const b = BUILDER.structures.find(s => s.id === d.id); if (b) BUILDER.destroyStructure(b, 'net'); } },
+  damageBuild: d => { if (BUILDER) { const b = BUILDER.structures.find(s => s.id === d.id); if (b) BUILDER.damageStructure(b, d.dmg || 100, 'net'); } },
 });
 SHELL.initShell({
   THREE, gfx: GFX, ready: () => worldReady, state: () => netState(),

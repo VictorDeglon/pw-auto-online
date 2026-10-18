@@ -321,6 +321,148 @@ export class PBRTextureFactory {
     return mat;
   }
 
+  // --- Horizontal Cedar Wood Slat / Rainscreen PBR ---
+  getCedarWood() {
+    const key = 'cedar_wood';
+    if (this.cache.has(key)) return this.cache.get(key);
+
+    const c = this.createCanvas(512, 512);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#b47444';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const slats = 20;
+    const sh = 512 / slats;
+
+    for (let s = 0; s < slats; s++) {
+      const y = s * sh;
+      const shade = (Math.random() - 0.5) * 35;
+      ctx.fillStyle = `rgb(${180 + shade}, ${116 + shade * 0.7}, ${68 + shade * 0.4})`;
+      ctx.fillRect(0, y, 512, sh - 2.5);
+
+      // Fine grain streaks
+      ctx.fillStyle = 'rgba(75, 40, 18, 0.15)';
+      for (let g = 0; g < 3; g++) {
+        ctx.fillRect(0, y + Math.random() * sh, 512, 1);
+      }
+
+      // Deep shadow gap between cedar slats
+      ctx.fillStyle = 'rgba(25, 12, 6, 0.85)';
+      ctx.fillRect(0, y + sh - 2.5, 512, 2.5);
+    }
+
+    const map = new THREE.CanvasTexture(c);
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.colorSpace = THREE.SRGBColorSpace;
+
+    const id = ctx.getImageData(0, 0, 512, 512);
+    const normalMap = new THREE.CanvasTexture(this.createNormalFromHeight(id, 512, 512, 1.6));
+    normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
+
+    const mat = new THREE.MeshStandardMaterial({
+      map,
+      normalMap,
+      roughness: 0.55,
+      metalness: 0.05
+    });
+
+    this.cache.set(key, mat);
+    return mat;
+  }
+
+  // --- Red/Terracotta Running Bond Brick Wainscoting PBR ---
+  getBrick() {
+    const key = 'brick_wainscot';
+    if (this.cache.has(key)) return this.cache.get(key);
+
+    const c = this.createCanvas(512, 512);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#9b4a36';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const rows = 16, cols = 8;
+    const rh = 512 / rows, cw = 512 / cols;
+
+    for (let r = 0; r < rows; r++) {
+      const y = r * rh;
+      const offset = (r % 2) * (cw / 2);
+      for (let col = -1; col <= cols + 1; col++) {
+        const x = col * cw + offset;
+        const shade = (Math.random() - 0.5) * 40;
+        ctx.fillStyle = `rgb(${155 + shade}, ${74 + shade * 0.5}, ${54 + shade * 0.4})`;
+        ctx.fillRect(x + 2, y + 2, cw - 4, rh - 4);
+      }
+      // Mortar horizontal lines
+      ctx.fillStyle = '#c5c0b5';
+      ctx.fillRect(0, y, 512, 2.5);
+    }
+
+    const map = new THREE.CanvasTexture(c);
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.colorSpace = THREE.SRGBColorSpace;
+
+    const id = ctx.getImageData(0, 0, 512, 512);
+    const normalMap = new THREE.CanvasTexture(this.createNormalFromHeight(id, 512, 512, 2.2));
+    normalMap.wrapS = normalMap.wrapT = THREE.RepeatWrapping;
+
+    const mat = new THREE.MeshStandardMaterial({
+      map,
+      normalMap,
+      roughness: 0.88,
+      metalness: 0.02
+    });
+
+    this.cache.set(key, mat);
+    return mat;
+  }
+
+  // --- Commercial Illuminated Facade Signage Texture ---
+  getCommercialSignage(title = 'POWAY PLAZA', color = '#0284c7') {
+    const key = `sign_${title}_${color}`;
+    if (this.cache.has(key)) return this.cache.get(key);
+
+    const c = this.createCanvas(1024, 256);
+    const ctx = c.getContext('2d');
+    // Dark modern aluminum fascia background
+    ctx.fillStyle = '#181b20';
+    ctx.fillRect(0, 0, 1024, 256);
+
+    // Subtle brushed metal streaks
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    for (let i = 0; i < 50; i++) {
+      ctx.fillRect(Math.random() * 1024, 0, Math.random() * 4 + 1, 256);
+    }
+
+    // Glowing border frame
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(16, 16, 992, 224);
+
+    // Glowing Lettering
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 96px "Montserrat", -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 24;
+    ctx.fillText(title, 512, 128);
+
+    const map = new THREE.CanvasTexture(c);
+    map.colorSpace = THREE.SRGBColorSpace;
+
+    const mat = new THREE.MeshStandardMaterial({
+      map,
+      emissive: new THREE.Color(color),
+      emissiveMap: map,
+      emissiveIntensity: 0.85,
+      roughness: 0.25,
+      metalness: 0.3
+    });
+
+    this.cache.set(key, mat);
+    return mat;
+  }
+
   // --- Convert Grayscale Heightmap to Tangent-Space Normal Map ---
   createNormalFromHeight(imageData, w, h, strength = 1.0) {
     const c = this.createCanvas(w, h);

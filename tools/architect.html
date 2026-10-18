@@ -136,11 +136,11 @@
       <div class="section-title">Geometry & Stories</div>
       <div class="control-row">
         <span class="control-label">Width</span>
-        <input type="range" id="paramWidth" min="8" max="24" step="1" value="14">
+        <input type="range" id="paramWidth" min="8" max="48" step="1" value="14">
       </div>
       <div class="control-row">
         <span class="control-label">Depth</span>
-        <input type="range" id="paramDepth" min="10" max="28" step="1" value="16">
+        <input type="range" id="paramDepth" min="8" max="36" step="1" value="16">
       </div>
       <div class="control-row">
         <span class="control-label">Stories</span>
@@ -347,6 +347,7 @@
         depth: currentOptions.depth,
         height: currentOptions.height,
         stories: currentOptions.stories,
+        style: currentOptions.roofStyle,
         wallColor: currentOptions.wallColor,
         hasGarage: currentOptions.hasGarage
       });
@@ -390,11 +391,11 @@
         pitch: 0.42, wallColor: 0xf5f5f0, hasGarage: true, hasPool: true, hasGate: false
       },
       poway_ranch: {
-        width: 20, depth: 14, stories: 1, roofStyle: 'shingle_gable',
-        pitch: 0.28, wallColor: 0xd6c2a8, hasGarage: true, hasPool: false, hasGate: true
+        width: 22, depth: 14, stories: 1, roofStyle: 'poway_ranch',
+        pitch: 0.26, wallColor: 0xd6c2a8, hasGarage: true, hasPool: false, hasGate: true
       },
       commercial_strip: {
-        width: 22, depth: 16, stories: 1, roofStyle: 'commercial_flat',
+        width: 32, depth: 18, stories: 1, roofStyle: 'commercial_flat',
         pitch: 0.1, wallColor: 0x787d85, hasGarage: false, hasPool: false, hasGate: false
       },
       modern_luxury: {
