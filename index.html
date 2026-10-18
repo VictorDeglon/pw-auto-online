@@ -551,6 +551,7 @@ import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
 import { createSky } from './src/sky.js';
 import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } from './src/aircraft.js';
+import { createPilot } from './src/pilot.js';
 import { createNightLights, headlightBeam } from './src/nightlights.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
@@ -2177,7 +2178,7 @@ async function buildWorld() {
     LAKES.push({ p, y, bb, area });
     for (const t of tris) tri(gb, [contour[t[0]].x, y, contour[t[0]].y], [contour[t[1]].x, y, contour[t[1]].y], [contour[t[2]].x, y, contour[t[2]].y], W, W, W, 0, 0, 0, 0, 1, 0);
   });
-  launchBoats();
+  launchBoats(); initPilot(); // every boat on the lakes can be taken (src/pilot.js)
   progress('Raising ' + D.buildings.length.toLocaleString() + ' mapped buildings…'); await tick();
   let count = 0;
   for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b); if (++count % 2500 === 0) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); } } // PHS
@@ -2292,7 +2293,7 @@ function launchBoats() {
       if (!ok) continue;
       const kind = pick(['rowboat', 'rowboat', 'runabout', 'pontoon', 'pontoon']), m = boatModel(kind);
       m.position.set(x, lk.y, z); scene.add(m);
-      boats.push({ m, lake: lk, x, z, h: rand(0, TAU), sp: kind === 'runabout' ? rand(1.2, 3) : rand(0.2, 0.6), ph: rand(0, TAU), turn: 0 });
+      boats.push({ m, lake: lk, kind, x, z, h: rand(0, TAU), sp: kind === 'runabout' ? rand(1.2, 3) : rand(0.2, 0.6), ph: rand(0, TAU), turn: 0 });
     }
   }
 }
@@ -2300,7 +2301,7 @@ function updateBoats(dt) {
   const t = WATER_T.value;
   for (const b of boats) {
     if (Math.abs(b.x - camera.position.x) > 1500 || Math.abs(b.z - camera.position.z) > 1500) { b.m.visible = false; continue; }
-    b.m.visible = true;
+    b.m.visible = true; if (b.piloted) continue; // someone's at the helm (src/pilot.js)
     const nx = b.x + Math.sin(b.h) * b.sp * dt * 6, nz = b.z + Math.cos(b.h) * b.sp * dt * 6; // look ahead
     if (!pip(nx, nz, b.lake.p) || polyEdgeDist2(nx, nz, b.lake.p) < 7) b.turn = 1.2; else if (Math.random() < dt * 0.05) b.turn = rand(-0.4, 0.4);
     b.h += b.turn * dt; b.turn *= Math.exp(-dt * 0.5);
@@ -3268,6 +3269,36 @@ const CHEAT_TOGGLES = ['god', 'fly', 'aimbot', 'ghost', 'speed', 'jump', 'boom',
 const CHEAT = createCheats({ run: (id, arg) => runCheat(id, arg), state: id => CHEAT_TOGGLES.includes(id) ? !!CH[id] : null, onOpen: () => { closeMenus('cheats'); keys.clear(); mouseDown = rightDown = false; if (document.pointerLockElement) document.exitPointerLock(); }, onClose: () => { if (running && !paused) lockPointer(); } });
 const CH = { god: false, fly: false, aimbot: false, ghost: false, speed: false, jump: false, boom: false, punch: false, tank: false, nitro: false, moon: false, slowmo: false, richUntil: 0, richBase: 0, riotT: 0, stormT: 0, stormNext: 0, strikes: [] };
 const JET = { on: false, m: null, pos: new THREE.Vector3(), vel: new THREE.Vector3(), q: new THREE.Quaternion(), thr: 0.6, cd: 0 };
+const FLY = { craft: null }; // a plane, helicopter or boat you're piloting (src/pilot.js)
+let PILOT = null;
+function initPilot() { // boats from the start; the helicopter and planes join once the aircraft models are in
+  if (PILOT) return PILOT;
+  PILOT = createPilot({ THREE, scene, AIR: () => AIR, makeAircraft, keys, cam, player, FLY, heightAt, collideCircle, boundsClamp, explosionAt, hurtPlayer, notify, sfx2: () => S2, pip, edgeDist2: polyEdgeDist2 });
+  for (const b of boats) PILOT.addBoat(b);
+  return PILOT;
+}
+// two light planes parked on open grass in parks near the start: flat, clear of buildings and well off the road
+function parkPlanes() {
+  if (!AIR || !initPilot()) return; const placed = [];
+  const parks = LANDMARKS.filter(l => l.type === 'park').sort((a, b) => hyp(a.x - spawnPt.x, a.z - spawnPt.z) - hyp(b.x - spawnPt.x, b.z - spawnPt.z));
+  for (const pk of parks) {
+    if (placed.length >= 2) break;
+    for (let r = 0; r < 160 && placed.length < 2; r += 20) for (let a = 0; a < TAU && placed.length < 2; a += TAU / Math.max(1, Math.round(r / 12))) {
+      const x = pk.x + Math.cos(a) * r, z = pk.z + Math.sin(a) * r;
+      if (areaKindAt(x, z) !== 1 || offLimits(x, z, 10) || nearestEdge(x, z, 18, () => true) || placed.some(q => hyp(q.x - x, q.z - z) < 45)) continue;
+      const y = heightAt(x, z); let lo = y, hi = y; for (const [dx, dz] of [[12, 0], [-12, 0], [0, 12], [0, -12], [9, 9], [-9, -9], [9, -9], [-9, 9]]) { const h = heightAt(x + dx, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+      if (hi - lo > 1.2 || collideCircle({ x, z }, 14, true, y + 0.5)) continue;
+      // point it down the longest clear run (no buildings, trees or posts, not too steep): its runway
+      let rot = 0, run = 0;
+      for (let k = 0; k < 16; k++) { const a = k / 16 * TAU, dx = Math.sin(a), dz = Math.cos(a); let L = 0;
+        for (let d = 10; d <= 240; d += 10) { const px = x + dx * d, pz = z + dz * d; if (collideCircle({ x: px, z: pz }, 6, false, heightAt(px, pz) + 0.5) || Math.abs(heightAt(px, pz) - y) > d * 0.06 + 1) break; L = d; }
+        if (L > run) { run = L; rot = a; } }
+      if (run < 120) continue; // not enough room to take off
+      const kind = placed.length ? 'trainer' : 'cessna'; if (PILOT.addAircraft(kind, x, y, z, rot)) placed.push({ x, z, kind, run });
+    }
+  }
+  if (placed.length) console.info('[pilot] planes parked:', placed.map(p => `${p.kind} (${p.run} m clear)`).join(', '));
+}
 let AIR = null, AIRT = null; // aircraft models and the air traffic (src/aircraft.js), loaded after the loading screen
 function cheatToast(name, on) { notify(on === undefined ? `<b>${name}</b>` : `<b>${name}</b> ${on ? 'on' : 'off'}`, on === false ? '' : 'green', 1800); tone(on === false ? 520 : 1040, 0.06, 'triangle', 0.12); }
 function aimPoint(maxD = 900) { // where the crosshair lands (ground, wall or a person)
@@ -3908,9 +3939,31 @@ function updateRide() {
   player.pos.set(g.position.x + Math.cos(yaw) * side, g.position.y, g.position.z - Math.sin(yaw) * side); player.rotY = yaw; player.air = 0; player.vy = 0; player.fling = null;
   if (mouseDown && player.weapon > 0 && player.shootCd <= 0) playerShoot(); // drive-by from the passenger seat
 }
+// getting in and out: walk to the driver's door, crouch and slide into the seat (then you're inside); out, the reverse.
+// The car holds its brake until you're in, and you can't walk off until you're out.
+function stepSeatAnim(dt) {
+  const A = player.seatAnim, v = A.v, r = player.rig; A.t += dt; const k = Math.min(1, A.t / A.dur);
+  if (!v || v.removed) { player.seatAnim = null; if (player.inCar) r.g.visible = false; return; }
+  const sx = v.fz, sz = -v.fx, W = v.spec.W, L = v.spec.L;
+  const doorX = v.pos.x + sx * (W / 2 + 0.45) + v.fx * L * 0.08, doorZ = v.pos.z + sz * (W / 2 + 0.45) + v.fz * L * 0.08;
+  const seatX = v.pos.x + sx * W * 0.18 + v.fx * L * 0.05, seatZ = v.pos.z + sz * W * 0.18 + v.fz * L * 0.05;
+  let x, z, rot, low = 0, speed = 0, mode = null;
+  if (A.kind === 'in') {
+    if (k < 0.55) { const t = k / 0.55; x = lerp(A.x0, doorX, t); z = lerp(A.z0, doorZ, t); rot = Math.atan2(doorX - A.x0, doorZ - A.z0); speed = hyp(doorX - A.x0, doorZ - A.z0) / (A.dur * 0.55); }
+    else { const t = (k - 0.55) / 0.45; x = lerp(doorX, seatX, t); z = lerp(doorZ, seatZ, t); rot = v.rotY - (1 - t) * Math.PI / 2; /* facing in through the door, turning to the wheel */ low = t * 0.45; mode = 'crouch'; }
+  } else { const t = k; x = lerp(seatX, A.x1, t); z = lerp(seatZ, A.z1, t); rot = v.rotY; low = (1 - t) * 0.45; mode = t < 0.6 ? 'crouch' : null; speed = t > 0.6 ? 1 : 0; }
+  r.g.visible = true; r.g.position.set(x, Math.max(heightAt(x, z), v.pos.y) - low * 0.5, z); r.g.rotation.y = rot; r.body.rotation.x = 0; r.body.position.y = -low;
+  animRig(r, speed, dt, mode);
+  if (k >= 1) { player.seatAnim = null; if (A.kind === 'in' && player.inCar === v) r.g.visible = false; else { r.body.position.y = 0; player.rotY = rot; } }
+}
 function toggleCar() {
   if (player.dead) return;
+  if (FLY.craft) { PILOT.leave(); return; }
   if (player.ride) { endRide(); return; }
+  if (!player.inCar && PILOT) { // a boat, plane or helicopter within reach, nearer than any car
+    const pc = PILOT.near(player.pos.x, player.pos.z, 3.5), v = nearestCar(4.5);
+    if (pc && (!v || hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z) > pc.d + 1)) { PILOT.board(pc.craft); return; }
+  }
   if (!player.inCar && online) { // another player's car within reach (and nearer than any other car): ride with them
     const rc = nearestRemoteCar(4.5), v = nearestCar(4.5);
     if (rc && (!v || hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z) > rc.d)) { startRide(rc.r); return; }
@@ -3922,6 +3975,7 @@ function toggleCar() {
     if (up > 1.5) { player.air = up; player.vy = Math.min(v.vy || 0, 6); player.fling = [v.vel.x * 0.9, v.vel.y * 0.9]; } // bailing out mid-air: you keep the car's height and speed, and fall
     else { player.air = 0; player.fling = null; } player.pos.y = gy + player.air;
     player.rotY = v.rotY; v.driver = null; player.inCar = null; player.rig.g.visible = true; cam.dist = 6.5;
+    player.seatAnim = up > 1.5 ? null : { kind: 'out', v, t: 0, dur: 0.55, x1: player.pos.x, z1: player.pos.z }; // climb out of the seat
     if (engine) engine.g.gain.value = 0; radioStop();
     bus.emit('car:exit', { vehicle: v }); lastLeft = v;
     return;
@@ -3942,7 +3996,8 @@ function toggleCar() {
     for (const p of peds) if (!p.isCop && (p.state === 'walk' || p.state === 'roam') && hyp(p.pos.x - v.pos.x, p.pos.z - v.pos.z) < 20) { p.talk('theft'); witness = true; revenge(p); break; }
   }
   v.mine = true;
-  player.inCar = v; v.driver = 'player'; v.mode = 'free'; v.parked = false; v.agent = null; player.rig.g.visible = false; cam.dist = 9;
+  player.inCar = v; v.driver = 'player'; v.mode = 'free'; v.parked = false; v.agent = null; cam.dist = 9;
+  player.seatAnim = { kind: 'in', v, t: 0, dur: Math.min(1.1, 0.5 + hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z) * 0.08), x0: player.pos.x, z0: player.pos.z }; // walk to the door, get in
   if (v.vel.length() < 0.1) v.vel.set(0, 0);
   if (radio.on) radioPlay(false);
   bus.emit('car:enter', { vehicle: v, stolen });
@@ -4590,7 +4645,7 @@ function applyParts(v, e) {
     const b0 = o.userData.base; if (b0.r * 0.3 + b0.g * 0.6 + b0.b * 0.1 < 0.18) return;
     o.material.color.copy(rim != null ? new THREE.Color(rim) : b0); o.material.metalness = rim === 0xd8dde2 || rim === 0xd4a017 ? 0.9 : 0.1; o.material.roughness = rim != null ? 0.25 : 0.6;
   });
-  v.rocket = P.rockets ? 1.4 : 1;
+  v.rocket = P.rockets ? 1.4 : 1; v.partsKey = Object.keys(P).length ? JSON.stringify(P).slice(0, 240) : ''; // others see the same parts
   const g = buildParts(v, P); v.m.g.add(g); v.partsG = g;
 }
 
@@ -4724,17 +4779,20 @@ function boundsClamp(p) { p.x = clamp(p.x, B.minx - 150, B.maxx + 150); p.z = cl
 let greetCd = 0;
 function updatePlayer(dt) {
   player.punchCd -= dt; player.shootCd -= dt;
-  if (player.dead) { if (player.ride) endRide(); player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
+  if (player.dead) { if (player.ride) endRide(); if (FLY.craft) PILOT.leave(); player.seatAnim = null; player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
   if (JET.on) { if (keys.has('KeyF')) { keys.delete('KeyF'); leaveJet(); } else { updateJet(dt); return; } }
   { const rg = skill('regen'), cap = 50 + 15 * rg; if (simTime - player.lastHurt > 6 && player.health < cap) player.health = Math.min(cap, player.health + dt * 2 * (1 + 0.5 * rg)); } // Second Wind
   player.aiming = (rightDown || aimLock) && player.weapon > 0 && !player.inCar;
   if (!player.aiming) scope = 0;
   if (player.ride) { updateRide(); return; }
+  if (FLY.craft) return; // piloting a boat or aircraft: src/pilot.js moves you (PILOT.update, below)
+  if (player.seatAnim && player.seatAnim.kind === 'out') { if (player.inCar) player.seatAnim = null; else { stepSeatAnim(dt); return; } } // climbing out
   if (player.inCar) {
-    const v = player.inCar;
-    const thr = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
-    const st = (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0);
-    if (v.dead || v.burn) drivePhysics(v, 0, st, false, true, dt); else drivePhysics(v, thr, st, false, keys.has('Space'), dt);
+    const v = player.inCar, getIn = player.seatAnim && player.seatAnim.kind === 'in' && player.seatAnim.v === v;
+    if (getIn) stepSeatAnim(dt);
+    const thr = getIn ? 0 : (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+    const st = getIn ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0);
+    if (v.dead || v.burn) drivePhysics(v, 0, st, false, true, dt); else drivePhysics(v, thr, st, getIn, !getIn && keys.has('Space'), dt);
     if (v.air && !v.dead) { v.pitchV += thr * 2.4 * dt; v.rollV -= st * 2.8 * dt; } // a little air control
     if (v.air && !v.dead && keys.has('Space')) { // SPACE in the air: glide. Most of gravity cancelled, thrust up to ~140 m/s
       if (v.airT < 0.15 && !v.boosted) { v.vy = Math.max(v.vy, 0) + 14; v.boosted = true; sfx.whoosh(1); shake = Math.max(shake, 0.4); } // the kick off the lip
@@ -5342,16 +5400,21 @@ function updateVehicles(dt) {
       if (v.leaving && !v.driver) { if (hyp(f.x - v.pos.x, f.z - v.pos.z) > 120) v.remove(); }
     }
     if (v.mode !== 'rail' || v === player.inCar) collideCars(v);
+    if (v === player.inCar && online) collideRemoteCars(v);
     const sp = Math.hypot(v.vel.x, v.vel.y) || Math.abs(v.mode === 'rail' ? v.speed : 0);
     if (sp > 2.5 && dP < 150) {
       const c = carCircles(v), r = v.spec.W / 2 + 0.3;
       for (const p of peds) {
         if (p.state === 'dead' || p.state === 'fly' || hyp(p.pos.x - v.pos.x, p.pos.z - v.pos.z) > 5) continue;
+        // another player: they're in a car (that's a car crash, below), or a person who never falls over on this
+        // screen, so one hit per 1.2 s and a capped amount (a car resting against them used to hit every frame)
+        if (p.remote && (!p.remote.st || p.remote.st.car || p.remote.st.ride || simTime - (p.carHitT || -9) < 1.2)) continue;
         for (let k = 0; k < 2; k++) {
           if (hyp(p.pos.x - c[k * 2], p.pos.z - c[k * 2 + 1]) < r) {
             const vx = v.mode === 'rail' ? v.fx * v.speed : v.vel.x, vz = v.mode === 'rail' ? v.fz * v.speed : v.vel.y;
             const by = v.driver === 'player' ? 'player' : null;
-            p.knock(vx * 0.7, 2 + sp * 0.25, vz * 0.7, sp * 7, by); sfx.punch(volAt(p.pos.x, p.pos.z)); damageCar(v, sp * 0.3);
+            if (p.remote) p.carHitT = simTime;
+            p.knock(vx * 0.7, 2 + sp * 0.25, vz * 0.7, p.remote ? clamp(sp * 2.2, 8, 45) : sp * 7, by); sfx.punch(volAt(p.pos.x, p.pos.z)); damageCar(v, sp * 0.3);
             if (by) { crime('hitped', p.pos.x, p.pos.z, p.isCop || p.state === 'dead' ? 2 : 1, p); }
             break;
           }
@@ -5362,7 +5425,7 @@ function updateVehicles(dt) {
         if (d < 4.5 && d > 2.2) { p.anger += 30; p.talk('nearMiss'); if (Math.random() < 0.3) p.scare(v.pos.x, v.pos.z); }
       }
       if (v.driver !== 'player' && !player.inCar && !player.dead && v.mode !== 'rail') {
-        for (let k = 0; k < 2; k++) if (!player.ride && hyp(player.pos.x - c[k * 2], player.pos.z - c[k * 2 + 1]) < r && sp > 4) { hurtPlayer(sp * 2.5, 'car'); player.knock = 0.8; }
+        for (let k = 0; k < 2; k++) if (!player.ride && !FLY.craft && hyp(player.pos.x - c[k * 2], player.pos.z - c[k * 2 + 1]) < r && sp > 4) { hurtPlayer(sp * 2.5, 'car'); player.knock = 0.8; }
       }
     }
     const g = v.m.g, hc = v.spec.H / 2; g.rotation.set(v.pitch, v.rotY, v.roll, 'YXZ'); // pivot about the centre so tumbles look right
@@ -5372,6 +5435,38 @@ function updateVehicles(dt) {
     for (const w of v.m.wheels) { w.w.rotation.x = v.wheelRot; if (w.front) w.piv.rotation.y = v.steer * 0.5; }
     NIGHTL.carLights(v.m, v.driver && !v.dead ? nightAmount : 0); // lights on while someone drives it
     if (v.m.bars) { const on = v.siren && Math.floor(simTime * 6) % 2 === 0; v.m.bars[0].material.color.setHex(v.siren ? (on ? 0xff2020 : 0x300000) : 0x400000); v.m.bars[1].material.color.setHex(v.siren ? (!on ? 0x2050ff : 0x000830) : 0x000a40); }
+  }
+}
+// another player's car: on this screen it is where their game says it is and doesn't move, so my car takes its share
+// of the bounce, by weight and speed (their state), and their game does the same for their car. Damage: each side its own.
+function collideRemoteCars(v) {
+  const c1 = carChain(v), r1 = v.spec.W / 2;
+  for (const rem of REMOTES.values()) {
+    const car = rem.car, st = rem.st; if (!car || !st || !st.car || st.dead) continue;
+    const g = car.g.position, W = car.W || 1.9, L = car.L || 4.5, H = car.H || 1.5;
+    if (hyp(g.x - v.pos.x, g.z - v.pos.z) > 4 + (v.spec.L + L) / 2 || Math.abs(g.y - v.pos.y) > 3) continue;
+    const yaw = car.g.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), o = L / 2 - W / 2, n = Math.max(2, Math.ceil(2 * o / (W * 0.5)) + 1);
+    let pen = 0, nx = 0, nz = 0, px = 0, pz = 0;
+    for (let a = 0; a < c1.length; a += 2) for (let i = 0; i < n; i++) {
+      const t = o - 2 * o * i / (n - 1), bx = g.x + fx * t, bz = g.z + fz * t, dx = bx - c1[a], dz = bz - c1[a + 1], d = Math.hypot(dx, dz), q = r1 + W / 2 - d;
+      if (q > pen && d > 1e-4) { pen = q; nx = dx / d; nz = dz / d; px = (bx + c1[a]) / 2; pz = (bz + c1[a + 1]) / 2; }
+    }
+    if (pen <= 0) continue;
+    v.pos.x -= nx * pen; v.pos.z -= nz * pen; // they don't move on this screen: my car is pushed clear
+    // their velocity as their car is drawn here (it lags their reports a little; their reported speed may already be after
+    // the bounce on their screen, which would make this side feel nothing)
+    const ovx = car.vx ?? Math.sin(st.r) * st.spd, ovz = car.vz ?? Math.cos(st.r) * st.spd, rv = (ovx - v.vel.x) * nx + (ovz - v.vel.y) * nz;
+    if (rv >= 0) continue;
+    const m1 = carMass(v), m2 = clamp(W * L * H * 120, 700, 16000), j = -(1 + 0.22) * rv / (1 / m1 + 1 / m2), imp = -rv;
+    v.vel.x -= j / m1 * nx; v.vel.y -= j / m1 * nz;
+    { const rx = px - v.pos.x, rz = pz - v.pos.z, I = m1 * (v.spec.L * v.spec.L + v.spec.W * v.spec.W) / 12; v.spinV = clamp((v.spinV || 0) + (-j * nx * rz + j * nz * rx) / I * 1.4, -3.5, 3.5); }
+    if (imp > 3) {
+      if (imp > 7) carCrashed(v, imp);
+      bus.emit('car:crash', { a: v, b: null, impact: imp });
+      damageCar(v, imp * 1.6 * clamp(2 * m2 / (m1 + m2), 0.4, 1.6), null);
+      dentCar(v, px, v.pos.y + 0.7, pz, -nx, 0, -nz, Math.min(0.3, Math.max(0, imp - 4) * 0.018), 1.3);
+      sfx.crash(Math.min(1, imp / 12)); sparks(px, v.pos.y + 0.7, pz); shake = Math.min(1, imp / 18);
+    }
   }
 }
 function collideCars(v) {
@@ -6070,7 +6165,7 @@ function tick(rdt) {
   if (paused || mapOpen || travelOpen || CHEAT.open) { drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
-  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
+  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updateInteract();
   PHS.updatePHS(dt, focusPos()); // PHS
@@ -6135,7 +6230,7 @@ let worldReady = false;
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
-  Object.assign(ctx, {
+  Object.assign(ctx, { applyParts, boatModel,
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
     heightAt, los, rayBuildings, collideCircle, addPoly, nearestEdge, edgePos, laneSample, laneOff, walkOff, agentFromNearest, advance, endNode,
     findPath, nearestNode, randomEdgeNear, sidewalkNear, streetAt, areaAt, POIS, LANDMARKS,
@@ -6179,7 +6274,7 @@ async function loadLater() {
   const step = async (name, f) => { try { await f(); } catch (e) { console.warn('[later]', name, e); } };
   await step('ground photos', loadGroundPhotos);
   await step('crowd', async () => { if (await loadCrowd()) upgradePeds(); });
-  await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
+  await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); });
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
   await step('roof photos', loadRoofPhotos);
@@ -6211,7 +6306,7 @@ function parkMedevac() {
     let lo = y, hi = y; for (const [dx, dz] of [[10, 0], [-10, 0], [0, 10], [0, -10], [7, 7], [-7, -7]]) { const h = heightAt(x + dx, z + dz); lo = Math.min(lo, h); hi = Math.max(hi, h); }
     if (hi - lo > 1) continue;
     const rot = Math.atan2(hospital.x - x, hospital.z - z), c = Math.cos(rot), s = Math.sin(rot), pt = (lx, lz) => [x + c * lx + s * lz, z - s * lx + c * lz];
-    helipad(THREE, scene, x, hi, z, rot); parkAircraft(THREE, scene, AIR, 'heli', x, hi, z, rot);
+    helipad(THREE, scene, x, hi, z, rot); if (!(initPilot() && PILOT.addAircraft('heli', x, hi, z, rot))) parkAircraft(THREE, scene, AIR, 'heli', x, hi, z, rot);
     addPoly([...pt(-1.3, -4.5), ...pt(1.3, -4.5), ...pt(1.3, 3.2), ...pt(-1.3, 3.2)], hi, hi + 3); // the cabin is solid
     console.info('[aircraft] medevac pad', Math.round(x), Math.round(z)); return;
   }
@@ -6256,7 +6351,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
@@ -6266,7 +6361,8 @@ function netState() {
   const v = player.inCar, p = v ? v.pos : player.pos;
   return { x: p.x, y: p.y, z: p.z, r: v ? v.rotY : player.rotY, spd: _spd, hp: player.health, w: player.weapon > 0 ? WEAPONS[player.weapon].id : '',
     aim: !!(player.weapon > 0 && (player.aiming || mouseDown)), dead: player.dead ? (player.deadKind === 'busted' ? 2 : 1) : 0, shots: player.shots || 0,
-    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead } : null, ride: player.ride ? player.ride.id : null };
+    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead, pt: v.partsKey || '' } : null, ride: player.ride ? player.ride.id : null,
+    air: JET.on && JET.m ? { k: 'fighter', q: JET.m.quaternion.toArray() } : FLY.craft ? { k: FLY.craft.type === 'boat' ? 'boat:' + FLY.craft.kind : FLY.craft.kind, q: FLY.craft.g.quaternion.toArray() } : null };
 }
 function netTick(rdt) {
   const f = focusPos(); _npT += rdt;

@@ -26,7 +26,7 @@ var OP = {
 var WEAPON_RULES = {
   fists: [26, 8], pistol: [70, 200], 'micro smg': [40, 160], 'pump shotgun': [45, 70], 'assault rifle': [60, 260], 'sniper rifle': [420, 760],
   minigun: [45, 220], 'rocket launcher': [260, 900], 'grenade launcher': [260, 500], grenades: [260, 120], 'sticky bombs': [260, 400],
-  'airstrike flare': [300, 600], car: [260, 40],
+  'airstrike flare': [300, 600], car: [50, 40], // a car hit on a player: capped low, so being run over isn't instant death
 };
 var DPS_CAP = 1300, HEAL_EVERY = 20e3, REGEN_PER_S = 4, TP_EVERY = 15e3, MAX_SPEED = 220, ASSIST_MS = 10e3, RUIN_MS = 120e3;
 
@@ -350,6 +350,7 @@ function onHit(nk, logger, dispatcher, state, P, q) {
   var w = String(q.w || 'fists').toLowerCase(), rule = WEAPON_RULES[w] || [60, 200];
   var cap = rule[0] * (1 + 0.04 * rank(P, 'damage')), dmg = Math.max(0, Math.min(cap, +q.d || 0)); if (!dmg) return;
   if (Math.hypot(V.p.x - P.p.x, V.p.z - P.p.z) > rule[1]) return;
+  if (w === 'car') { var ch = P.carHits || (P.carHits = {}); if (now - (ch[V.uid] || 0) < 1000) return; ch[V.uid] = now; } // one run-over hit a second
   P.dmgWin = P.dmgWin.filter(function (e) { return now - e[0] < 1000; });
   var recent = 0; for (var i = 0; i < P.dmgWin.length; i++) recent += P.dmgWin[i][1];
   if (recent + dmg > DPS_CAP) return; P.dmgWin.push([now, dmg]);
