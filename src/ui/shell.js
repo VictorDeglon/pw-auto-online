@@ -121,10 +121,11 @@ async function submitName(e) {
   const res = await join(sid, name, profile.skin || HUMANS.player || '', H.state());
   $('namego').disabled = false;
   if (!res.ok) { $('nameerr').textContent = res.err; return; }
-  profile.name = name; profile.names[sid] = name; profile.last = sid; saveProfile();
+  const actualName = NET.name || name;
+  profile.name = actualName; profile.names[sid] = actualName; profile.last = sid; saveProfile();
   $('namebox').hidden = true; hideMenu();
-  chatClear(); sysChat(`Joined ${serverName(sid)} as ${name}. Enter to chat, hold L for players.`);
-  H.startOnline(sid, name);
+  chatClear(); sysChat(`Joined ${serverName(sid)} as ${actualName}. Enter to chat, hold L for players.`);
+  H.startOnline(sid, actualName);
 }
 
 // ---------------------------------------------------------------- character (skin selector) with a turntable preview
@@ -234,15 +235,29 @@ function onFeed(f) {
   setTimeout(() => { d.style.opacity = 0; setTimeout(() => d.remove(), 700); }, 7000);
 }
 export function showPlayers(show) {
-  const el = $('plist'); if (!show || !NET.server) { el.hidden = true; return; }
-  const rows = [{ name: NET.name + ' (you)', color: 'var(--gold)', hp: H.state().hp, me: true }, ...remoteList()];
+  const el = $('plist'); if (!el) return;
+  if (!show || !NET.server) { el.hidden = true; return; }
+  const remotes = remoteList();
+  const remMap = new Map(remotes.map(r => [r.id, r]));
+  const rows = [{ name: (NET.name || 'You') + ' (you)', color: 'var(--gold)', hp: H.state().hp, me: true }];
+  for (const [id, p] of NET.players) {
+    const rem = remMap.get(id);
+    const hp = rem && rem.hp !== undefined ? rem.hp : (p.p ? p.p.h : 100);
+    const dead = rem && rem.dead !== undefined ? rem.dead : (p.p ? p.p.d : 0);
+    const car = rem ? rem.car : !!(p.p && p.p.c);
+    const color = rem ? rem.color : colorOf(id);
+    rows.push({ name: p.n || 'Player', color, hp, dead, car });
+  }
   el.innerHTML = `<h3>${esc(serverName(NET.server))} · ${rows.length}/${MAX_PLAYERS}</h3>` + rows.map(r => `<div><b style="color:${r.color}">${esc(r.name)}</b><span>${r.dead ? (r.dead === 2 ? 'busted' : 'wasted') : r.car ? 'driving' : 'on foot'} · ${Math.max(0, Math.round(r.hp))} hp</span></div>`).join('');
   el.hidden = false;
 }
 export function serverBadge() {
-  const b = $('srvbadge'); if (!NET.server) { b.hidden = true; return; }
-  const s = SERVERS.find(x => x.id === NET.server); b.style.setProperty('--acc', s.accent);
-  b.innerHTML = `${esc(s.name)}<i>${NET.players.size + 1}/${MAX_PLAYERS}${NET.connected ? '' : ' · reconnecting'}</i>`; b.hidden = false;
+  const b = $('srvbadge'); if (!b) return;
+  if (!NET.server) { b.hidden = true; return; }
+  const s = SERVERS.find(x => x.id === NET.server);
+  if (s) b.style.setProperty('--acc', s.accent);
+  b.innerHTML = `${esc(s ? s.name : NET.server)}<i>${NET.players.size + 1}/${MAX_PLAYERS}${NET.connected ? '' : ' · reconnecting'}</i>`;
+  b.hidden = false;
 }
 
 export async function leaveServer() { await leave(); serverBadge(); $('chat').hidden = true; closeChat(); $('killfeed').textContent = ''; }
@@ -278,6 +293,9 @@ export function initShell(hooks) {
   onNet('chat', onChat); onNet('feed', onFeed);
   onNet('chat:error', m => sysChat('Message not sent: ' + m));
   onNet('connection', c => { serverBadge(); if (NET.server) sysChat(c ? 'Reconnected.' : 'Connection lost, retrying…'); });
+  onNet('player:add', () => { serverBadge(); if ($('plist') && !$('plist').hidden) showPlayers(true); });
+  onNet('player:remove', () => { serverBadge(); if ($('plist') && !$('plist').hidden) showPlayers(true); });
+  onNet('player:update', () => { if ($('plist') && !$('plist').hidden) showPlayers(true); });
   onNet('kicked', why => { H.toMenu().then(() => { open('online'); $('netstate').textContent = why || 'You were disconnected from the server.'; }); });
   // the pause menu
   $('pchar').onclick = () => { H.toMenuScreen('character'); };

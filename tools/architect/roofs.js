@@ -1,6 +1,10 @@
 /**
- * Procedural Roof Generator
- * Builds high-fidelity roofs: Spanish Clay Tile, Shingle Gable/Hip, and Commercial Flat with HVAC.
+ * Procedural Roof Generator (AAA Photorealistic SoCal / Poway Architecture)
+ * Features:
+ * - Spanish Clay Tile: Barrel tiles, terracotta ridge caps, exposed dark wood rafter tails (corbels).
+ * - Commercial Flat: Stepped parapets, coping caps, RTU HVAC chillers + San Diego code louvered screens.
+ * - California Ranch Gable/Hip: Shingle ridge caps, fascia boards, drip edges, and overhangs.
+ * - Modern Luxury Shed: Deep 1.2m cantilevers, architectural cedar tongue-and-groove under-soffit.
  */
 import * as THREE from 'three';
 
@@ -9,9 +13,6 @@ export class RoofGenerator {
     this.tex = textureFactory;
   }
 
-  /**
-   * Generates a roof matching the building style and dimensions.
-   */
   generate(style, width, depth, height, pitch = 0.35) {
     const group = new THREE.Group();
     group.name = 'RoofSystem';
@@ -37,9 +38,9 @@ export class RoofGenerator {
     return group;
   }
 
-  // --- 1. Spanish Clay Tile Hip Roof ---
+  // --- 1. Spanish Clay Tile Roof with Exposed Wooden Rafter Tails (Corbels) ---
   buildSpanishHipRoof(group, w, d, baseH, pitch) {
-    const overhang = 0.55;
+    const overhang = 0.45; // Real SoCal Spanish revivals have tight/minimal eaves
     const rw = w + overhang * 2;
     const rd = d + overhang * 2;
     const halfW = rw / 2;
@@ -53,13 +54,11 @@ export class RoofGenerator {
     tileMat.map.repeat.set(rw * 0.8, rd * 0.8);
     tileMat.normalMap.repeat.set(rw * 0.8, rd * 0.8);
 
-    // Create 4 pitched roof planes
     const geom = new THREE.BufferGeometry();
     const pos = [];
     const uvs = [];
     const normals = [];
 
-    // Left trapezoid/triangle, Right trapezoid/triangle, Front & Back slopes
     const pBL = [-halfW, baseH, -halfD];
     const pBR = [halfW, baseH, -halfD];
     const pTR = [halfW, baseH, halfD];
@@ -68,7 +67,6 @@ export class RoofGenerator {
     const rL = [-halfRidge, apexH, 0];
     const rR = [halfRidge, apexH, 0];
 
-    // Helper to add triangle
     const addTri = (p1, p2, p3) => {
       pos.push(...p1, ...p2, ...p3);
       const v1 = new THREE.Vector3(...p1);
@@ -106,7 +104,7 @@ export class RoofGenerator {
     roofMesh.receiveShadow = true;
     group.add(roofMesh);
 
-    // Add 3D Terracotta Ridge Caps along the hips and apex ridge
+    // 3D Terracotta Ridge Caps along the hips and apex ridge
     const capMat = new THREE.MeshStandardMaterial({
       color: 0x9e3c1d,
       roughness: 0.65,
@@ -143,32 +141,49 @@ export class RoofGenerator {
     addRidgeLine(pBR, rR);
     addRidgeLine(pTR, rR);
 
-    // Fascia board and gutter trim
-    const fasciaMat = new THREE.MeshStandardMaterial({ color: 0x5a483a, roughness: 0.8 });
-    const fasciaThick = 0.08, fasciaHeight = 0.22;
-    const perimeterBox = new THREE.BoxGeometry(rw, fasciaHeight, fasciaThick);
-    
-    // Front and back fascia
-    const fFront = new THREE.Mesh(perimeterBox, fasciaMat);
-    fFront.position.set(0, baseH - fasciaHeight / 2, -halfD);
-    fFront.castShadow = true;
-    const fBack = fFront.clone();
-    fBack.position.z = halfD;
+    // AUTHENTIC SOCAL DETAIL: Exposed Dark Wood Rafter Tails (Corbels)
+    const rafterMat = new THREE.MeshStandardMaterial({
+      color: 0x3d271a, // Dark espresso stained wood
+      roughness: 0.8
+    });
+    const rafterGeom = new THREE.BoxGeometry(0.12, 0.18, overhang + 0.15);
 
-    // Left and right fascia
-    const sideBox = new THREE.BoxGeometry(fasciaThick, fasciaHeight, rd);
-    const fLeft = new THREE.Mesh(sideBox, fasciaMat);
-    fLeft.position.set(-halfW, baseH - fasciaHeight / 2, 0);
-    fLeft.castShadow = true;
-    const fRight = fLeft.clone();
-    fRight.position.x = halfW;
+    // Front & Back Rafter Tails
+    const rafterSpacing = 0.8;
+    const countX = Math.floor(w / rafterSpacing);
+    for (let i = 0; i <= countX; i++) {
+      const rx = (i / countX - 0.5) * (w - 0.4);
+      // Front
+      const rf = new THREE.Mesh(rafterGeom, rafterMat);
+      rf.position.set(rx, baseH - 0.09, -d / 2 - overhang * 0.4);
+      rf.castShadow = true;
+      // Back
+      const rb = new THREE.Mesh(rafterGeom, rafterMat);
+      rb.position.set(rx, baseH - 0.09, d / 2 + overhang * 0.4);
+      rb.castShadow = true;
+      group.add(rf, rb);
+    }
 
-    group.add(fFront, fBack, fLeft, fRight);
+    // Left & Right Rafter Tails
+    const sideRafterGeom = new THREE.BoxGeometry(overhang + 0.15, 0.18, 0.12);
+    const countZ = Math.floor(d / rafterSpacing);
+    for (let i = 0; i <= countZ; i++) {
+      const rz = (i / countZ - 0.5) * (d - 0.4);
+      // Left
+      const rl = new THREE.Mesh(sideRafterGeom, rafterMat);
+      rl.position.set(-w / 2 - overhang * 0.4, baseH - 0.09, rz);
+      rl.castShadow = true;
+      // Right
+      const rr = new THREE.Mesh(sideRafterGeom, rafterMat);
+      rr.position.set(w / 2 + overhang * 0.4, baseH - 0.09, rz);
+      rr.castShadow = true;
+      group.add(rl, rr);
+    }
   }
 
-  // --- 2. Gable Shingle Roof ---
+  // --- 2. California Ranch Shingle Gable Roof ---
   buildGableShingleRoof(group, w, d, baseH, pitch) {
-    const overhang = 0.45;
+    const overhang = 0.55;
     const rw = w + overhang * 2;
     const rd = d + overhang * 2;
     const halfW = rw / 2;
@@ -178,7 +193,6 @@ export class RoofGenerator {
     const shingleMat = this.tex.getShingleRoof();
     shingleMat.map.repeat.set(rw * 0.5, rd * 0.5);
 
-    // Sloped roof planes (Left slope & Right slope)
     const geom = new THREE.BufferGeometry();
     const pos = [];
     const normals = [];
@@ -223,13 +237,11 @@ export class RoofGenerator {
     roofMesh.receiveShadow = true;
     group.add(roofMesh);
 
-    // Gable triangular end walls (matching siding/stucco)
+    // Front & Back Gable Triangular Pediments
     const gableMat = this.tex.getStucco(0xdcd5c5);
     const gableGeom = new THREE.BufferGeometry();
     const gpos = [
-      // Front triangle
       -halfW, baseH, -d / 2,  halfW, baseH, -d / 2,  0, apexH, -d / 2,
-      // Back triangle
       halfW, baseH, d / 2,   -halfW, baseH, d / 2,   0, apexH, d / 2
     ];
     gableGeom.setAttribute('position', new THREE.Float32BufferAttribute(gpos, 3));
@@ -238,106 +250,124 @@ export class RoofGenerator {
     gableMesh.castShadow = true;
     group.add(gableMesh);
 
-    // Ridge cap along center
+    // Ridge cap shingle line along apex
     const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(0.24, 0.08, rd),
-      new THREE.MeshStandardMaterial({ color: 0x272a2e, roughness: 0.9 })
+      new THREE.BoxGeometry(0.28, 0.08, rd),
+      new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.9 })
     );
     cap.position.set(0, apexH + 0.04, 0);
     cap.castShadow = true;
     group.add(cap);
+
+    // White Eave Trim & Rake Fascia
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0xfdfdfd, roughness: 0.6 });
+    const fasciaL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, rd), trimMat);
+    fasciaL.position.set(-halfW, baseH - 0.1, 0);
+    const fasciaR = fasciaL.clone();
+    fasciaR.position.x = halfW;
+    group.add(fasciaL, fasciaR);
   }
 
-  // --- 3. Commercial Flat Roof with Parapets and HVAC ---
+  // --- 3. Commercial Strip Plaza Flat Roof with Stepped Parapets & Screened HVAC ---
   buildCommercialFlatRoof(group, w, d, baseH) {
-    const parapetH = 0.9;
-    const parapetThick = 0.25;
+    const parapetH = 1.1; // Front stepped parapet
+    const parapetThick = 0.28;
 
     // Recessed roof surface (gravel/tar)
     const roofSurface = new THREE.Mesh(
       new THREE.PlaneGeometry(w, d),
-      new THREE.MeshStandardMaterial({ color: 0x4a4d52, roughness: 0.95, metalness: 0.05 })
+      new THREE.MeshStandardMaterial({ color: 0x3e4247, roughness: 0.95, metalness: 0.05 })
     );
     roofSurface.rotation.x = -Math.PI / 2;
-    roofSurface.position.set(0, baseH - 0.15, 0);
+    roofSurface.position.set(0, baseH - 0.2, 0);
     roofSurface.receiveShadow = true;
     group.add(roofSurface);
 
-    // Parapet perimeter walls
+    // Parapet perimeter walls with stepped center marquee
     const parapetMat = this.tex.getStucco(0xc4beaf);
-    const copingMat = new THREE.MeshStandardMaterial({ color: 0xdedede, metalness: 0.6, roughness: 0.35 }); // Sheet metal cap
+    const copingMat = new THREE.MeshStandardMaterial({ color: 0xcfd4dc, metalness: 0.7, roughness: 0.3 }); // Aluminum coping
 
-    const addParapetWall = (pw, ph, pd, px, pz) => {
+    // Stepped Front Parapet (Taller center section for retail tenant sign)
+    const centerW = w * 0.45;
+    const sideW = (w - centerW) / 2;
+
+    const fCenter = new THREE.Mesh(new THREE.BoxGeometry(centerW, parapetH + 0.6, parapetThick), parapetMat);
+    fCenter.position.set(0, baseH + (parapetH + 0.6) / 2, -d / 2 - parapetThick / 2);
+    fCenter.castShadow = true;
+
+    const fLeft = new THREE.Mesh(new THREE.BoxGeometry(sideW, parapetH, parapetThick), parapetMat);
+    fLeft.position.set(-centerW / 2 - sideW / 2, baseH + parapetH / 2, -d / 2 - parapetThick / 2);
+    fLeft.castShadow = true;
+
+    const fRight = fLeft.clone();
+    fRight.position.x = centerW / 2 + sideW / 2;
+
+    // Coping caps
+    const cCenter = new THREE.Mesh(new THREE.BoxGeometry(centerW + 0.06, 0.06, parapetThick + 0.06), copingMat);
+    cCenter.position.set(0, baseH + parapetH + 0.6 + 0.03, -d / 2 - parapetThick / 2);
+    const cLeft = new THREE.Mesh(new THREE.BoxGeometry(sideW + 0.06, 0.06, parapetThick + 0.06), copingMat);
+    cLeft.position.set(-centerW / 2 - sideW / 2, baseH + parapetH + 0.03, -d / 2 - parapetThick / 2);
+    const cRight = cLeft.clone();
+    cRight.position.x = centerW / 2 + sideW / 2;
+
+    group.add(fCenter, fLeft, fRight, cCenter, cLeft, cRight);
+
+    // Side and Rear Parapets
+    const addSideWall = (pw, ph, pd, px, pz) => {
       const wall = new THREE.Mesh(new THREE.BoxGeometry(pw, ph, pd), parapetMat);
       wall.position.set(px, baseH + ph / 2, pz);
       wall.castShadow = true;
-      wall.receiveShadow = true;
-
-      // Metal Coping Stone on top
-      const coping = new THREE.Mesh(
-        new THREE.BoxGeometry(pw + (pd > pw ? 0.06 : 0), 0.06, pd + (pw > pd ? 0.06 : 0)),
-        copingMat
-      );
+      const coping = new THREE.Mesh(new THREE.BoxGeometry(pw + 0.06, 0.06, pd + 0.06), copingMat);
       coping.position.set(px, baseH + ph + 0.03, pz);
       coping.castShadow = true;
-
       group.add(wall, coping);
     };
 
-    addParapetWall(w + parapetThick * 2, parapetH, parapetThick, 0, -d / 2 - parapetThick / 2);
-    addParapetWall(w + parapetThick * 2, parapetH, parapetThick, 0, d / 2 + parapetThick / 2);
-    addParapetWall(parapetThick, parapetH, d, -w / 2 - parapetThick / 2, 0);
-    addParapetWall(parapetThick, parapetH, d, w / 2 + parapetThick / 2, 0);
+    addSideWall(w + parapetThick * 2, parapetH * 0.8, parapetThick, 0, d / 2 + parapetThick / 2);
+    addSideWall(parapetThick, parapetH * 0.8, d, -w / 2 - parapetThick / 2, 0);
+    addSideWall(parapetThick, parapetH * 0.8, d, w / 2 + parapetThick / 2, 0);
 
-    // Rooftop Commercial HVAC Chiller Units
-    const hvacMat = new THREE.MeshStandardMaterial({ color: 0x9098a0, metalness: 0.7, roughness: 0.35 });
-    const hvacCount = Math.max(1, Math.floor((w * d) / 100));
+    // SAN DIEGO MUNICIPAL CODE: Louvered Equipment Screen enclosing Rooftop HVAC
+    const screenMat = new THREE.MeshStandardMaterial({
+      color: 0x555d66,
+      roughness: 0.4,
+      metalness: 0.6
+    });
+    const screenBox = new THREE.BoxGeometry(w * 0.5, 1.4, d * 0.4);
+    const screenEdges = new THREE.Mesh(screenBox, screenMat);
+    screenEdges.position.set(0, baseH + 0.7, 0);
+    screenEdges.castShadow = true;
+    group.add(screenEdges);
 
-    for (let i = 0; i < hvacCount; i++) {
-      const hvac = new THREE.Group();
-      // Main cabinet
-      const cabinet = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.4, 1.6), hvacMat);
-      cabinet.position.y = 0.7;
-      cabinet.castShadow = true;
-      hvac.add(cabinet);
+    // Industrial Rooftop HVAC Package Unit inside screen
+    const hvacMat = new THREE.MeshStandardMaterial({ color: 0x8a929c, metalness: 0.7, roughness: 0.35 });
+    const hvac = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 1.8), hvacMat);
+    hvac.position.set(0, baseH + 0.65, 0);
+    hvac.castShadow = true;
 
-      // Fan cylinder on top
-      const fanGuard = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.5, 0.5, 0.2, 16),
-        new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 })
-      );
-      fanGuard.position.y = 1.4 + 0.1;
-      fanGuard.castShadow = true;
-      hvac.add(fanGuard);
-
-      // Base vibration rails
-      const railMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
-      const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.15), railMat);
-      r1.position.set(0, 0.06, -0.6);
-      const r2 = r1.clone();
-      r2.position.z = 0.6;
-      hvac.add(r1, r2);
-
-      const offsetX = (i - (hvacCount - 1) / 2) * 3.5;
-      hvac.position.set(offsetX, baseH, 0);
-      group.add(hvac);
-    }
+    // Roof Access Hatch & Plumbing Vent Pipes
+    const hatch = new THREE.Mesh(
+      new THREE.BoxGeometry(1.0, 0.4, 1.0),
+      new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8 })
+    );
+    hatch.position.set(-w * 0.35, baseH + 0.2, d * 0.25);
+    group.add(hvac, hatch);
   }
 
-  // --- 4. Modern Shed Roof ---
+  // --- 4. Modern Luxury Cantilevered Shed Roof ---
   buildModernShedRoof(group, w, d, baseH, pitch) {
-    const overhang = 0.6;
+    const overhang = 1.1; // Deep architectural cantilever
     const rw = w + overhang * 2;
     const rd = d + overhang * 2;
 
     const angle = Math.atan(pitch);
     const roofLen = rd / Math.cos(angle);
 
-    const roofGeom = new THREE.BoxGeometry(rw, 0.25, roofLen);
+    const roofGeom = new THREE.BoxGeometry(rw, 0.26, roofLen);
     const roofMat = new THREE.MeshStandardMaterial({
-      color: 0x22262c,
-      roughness: 0.4,
-      metalness: 0.2
+      color: 0x1f2328, // Dark bronze architectural metal
+      roughness: 0.35,
+      metalness: 0.4
     });
 
     const roofMesh = new THREE.Mesh(roofGeom, roofMat);
@@ -347,15 +377,23 @@ export class RoofGenerator {
     roofMesh.receiveShadow = true;
     group.add(roofMesh);
 
-    // Architectural Wood Under-Soffit
+    // Architectural Cedar Tongue-and-Groove Under-Soffit with Recessed LED Lights
     const woodMat = new THREE.MeshStandardMaterial({
-      color: 0xba7638,
+      color: 0xb57038,
       roughness: 0.45
     });
     const soffit = new THREE.Mesh(new THREE.PlaneGeometry(rw - 0.05, roofLen - 0.05), woodMat);
     soffit.rotation.x = Math.PI / 2 - angle;
     soffit.position.copy(roofMesh.position);
-    soffit.position.y -= 0.13;
+    soffit.position.y -= 0.14;
     group.add(soffit);
+
+    // Recessed LED Can Lights in Overhang
+    const ledMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffeedd, emissiveIntensity: 1.0 });
+    for (let i = -rw * 0.35; i <= rw * 0.35; i += rw * 0.35) {
+      const led = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 12), ledMat);
+      led.position.set(i, baseH - 0.1, -d / 2 - overhang * 0.6);
+      group.add(led);
+    }
   }
 }

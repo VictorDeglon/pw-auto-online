@@ -48,7 +48,9 @@ export function explain(e) {
 // going online would be the same player: the server swapped one for the other on every reconnect, and each saw nobody
 // else. So the first tab online holds a lock, and a tab that finds it taken plays as its own guest (kept in
 // sessionStorage, so it survives reloading that tab) and leaves the main account's save, career and name alone.
-let tabGuest = false, lockRelease = null;
+let tabGuest = false;
+try { tabGuest = !!(typeof sessionStorage !== 'undefined' && sessionStorage.getItem('pw-auto-online-tab-guest')); } catch (e) { }
+let lockRelease = null;
 const store = () => (tabGuest ? sessionStorage : localStorage);
 function claimOnline() { // true: this tab may go online as the browser's account
   if (lockRelease || tabGuest || !(navigator.locks && navigator.locks.request)) return Promise.resolve(true);
@@ -61,6 +63,7 @@ function claimOnline() { // true: this tab may go online as the browser's accoun
 }
 async function becomeTabGuest() {
   tabGuest = true; NET.tabGuest = true; session = null;
+  try { sessionStorage.setItem('pw-auto-online-tab-guest', '1'); } catch (e) { }
   if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; NET.connected = false; }
   await ensureSession(); await loadAccount().catch(() => { });
   emit('announce', { m: 'This browser is already online in another tab, so this tab plays as a separate guest.' });
@@ -81,7 +84,13 @@ async function ensureSession() {
   let name = ''; try { const p = JSON.parse(localStorage.getItem('pw-auto-online-profile') || '{}'); if (!tabGuest && NAME_RE.test(p.name || '')) name = p.name; } catch (e) { }
   const guest = 'Guest_' + Math.floor(1000 + Math.random() * 90000);
   try { keep(await client.authenticateDevice(deviceId(), true, name || guest)); }
-  catch (e) { keep(await client.authenticateDevice(deviceId(), true, guest)); } // that name is somebody else's
+  catch (e) {
+    try { keep(await client.authenticateDevice(deviceId(), true, guest)); }
+    catch (e2) {
+      try { store().removeItem(DEVICE_KEY); } catch (x) { }
+      keep(await client.authenticateDevice(deviceId(), true, guest));
+    }
+  }
   return session;
 }
 const acct = { username: '', guest: true, loaded: false };
@@ -186,9 +195,10 @@ async function enterRoom(sid, skin, state) {
   const r = await rpcSafe('room_join', { sid });
   NET.offset = r.t - Date.now();
   welcomed = null;
+  matchId = r.match;
   const got = new Promise(res => { welcomed = res; });
   const m = await socket.joinMatch(r.match, undefined, { s: skin || NET.skin || '', p: JSON.stringify(pack(state || lastState)) }); // others get your look and place with the join
-  matchId = m.match_id;
+  matchId = (m && m.match_id) || r.match;
   await withTimeout(got, 8000, 'the room did not answer');
 }
 // claim the name and go live; resolves { ok } or { ok: false, err }
@@ -197,7 +207,23 @@ export async function join(sid, name, skin, state) {
     if (!SERVERS.some(s => s.id === sid)) return { ok: false, err: 'Unknown server.' };
     if (NET.server) await leave();
     if (!(await claimOnline())) await becomeTabGuest(); // another tab of this browser is online as this account
-    await ACCOUNT.setName(name);
+    try {
+      await ACCOUNT.setName(name);
+    } catch (e) {
+      if (tabGuest) {
+        // Tab guest: if the primary account name is taken, auto-assign a unique variation so both tabs play together
+        const alt = `${name.slice(0, 11)}_${Math.floor(100 + Math.random() * 900)}`;
+        try {
+          await ACCOUNT.setName(alt);
+          name = alt;
+        } catch (e2) {
+          const info = await loadAccount().catch(() => null);
+          if (info && info.username) name = info.username;
+        }
+      } else {
+        throw e;
+      }
+    }
     if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; NET.connected = false; } // the socket carries the name: reconnect with it
     await openSocket();
     NET.players.clear(); NET.session = { sk: 0, sd: 0, streak: 0 };

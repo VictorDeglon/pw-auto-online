@@ -545,7 +545,7 @@ import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWe
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
-import { initRemotes, updateRemotes, remoteBlips, clearRemotes, REMOTES } from './src/online/remote.js';
+import { initRemotes, updateRemotes, remoteBlips, clearRemotes, syncRemotes, REMOTES } from './src/online/remote.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
@@ -6750,7 +6750,7 @@ function startOffline() {
   if (save.rep < -60) notify(`Locals remember you. Reputation: ${repLabel()}.`, 'red', 7000);
 }
 function startOnline(sid, name) {
-  clearRemotes(); resetWorld(); online = true; lastHit = null; homeHp = 100; connectHome(sid, name);
+  clearRemotes(); resetWorld(); syncRemotes(); online = true; lastHit = null; homeHp = 100; connectHome(sid, name);
   ACH.addTo('servers', sid);
   beginPlay(); SHELL.serverBadge(); $('pausesrv').textContent = NET.server ? name.toUpperCase() : 'ONLINE';
   if (job) { job = null; jobBeam.visible = false; $('job').hidden = true; }

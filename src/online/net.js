@@ -7,8 +7,9 @@
 //   Firebase otherwise (Realtime Database, net-firebase.js), as before.
 // Both export the same interface; ACCOUNT and PRO (accounts, progression, leaderboards) exist only with Nakama.
 async function nakamaConfig() {
-  const q = new URLSearchParams(location.search).get('nk'), here = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-  const file = q === 'local' ? 'nakama.local.json' : here && q !== 'prod' ? null : 'nakama.json'; if (!file) return null;
+  const q = new URLSearchParams(location.search).get('nk');
+  if (q === 'firebase') return null;
+  const file = q === 'local' ? 'nakama.local.json' : 'nakama.json';
   try {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 2500);
     const r = await fetch(file, { cache: 'no-store', signal: ctl.signal }); clearTimeout(t);

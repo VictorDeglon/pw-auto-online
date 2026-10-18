@@ -37,8 +37,8 @@ function colorFor(id) { let h = 0; for (const ch of id) h = (h * 31 + ch.charCod
 
 async function add(d) {
   if (R.has(d.id)) return update(d);
-  const st = unpack(d.p); if (!st) return;
-  const rem = { id: d.id, name: d.n, skin: d.s, color: colorFor(d.id), st, ped: null, car: null, carKey: '', shots: st.shots || 0, building: true, lastT: performance.now() };
+  const st = unpack(d.p) || { x: 0, y: 0, z: 0, r: 0, spd: 0, hp: 100 };
+  const rem = { id: d.id, name: d.n || 'Player', skin: d.s || '', color: colorFor(d.id), st, ped: null, car: null, carKey: '', shots: st.shots || 0, building: true, lastT: performance.now() };
   R.set(d.id, rem);
   await spawnPed(rem);
   rem.building = false;
@@ -168,6 +168,11 @@ export function remoteList() { return [...R.values()].map(r => ({ id: r.id, name
 export function colorOf(id) { return R.has(id) ? R.get(id).color : colorFor(id || ''); }
 
 export function clearRemotes() { for (const id of [...R.keys()]) removeRemote(id); }
+export function syncRemotes() {
+  for (const [id, v] of NET.players) {
+    if (!R.has(id)) add({ id, ...v });
+  }
+}
 export function initRemotes() {
   on('player:add', d => { add(d); });
   on('player:update', d => { update(d); });

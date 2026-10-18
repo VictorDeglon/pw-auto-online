@@ -200,7 +200,7 @@ function roomIds(nk) {
 function liveRoom(nk, id) { if (!id) return null; try { return nk.matchGet(id) || null; } catch (e) { return null; } }
 function roomFor(nk, logger, sid) {
   for (var i = 0; i < 4; i++) {
-    var cur = roomIds(nk), m = liveRoom(nk, cur.v[sid]); if (m) return m;
+    var cur = roomIds(nk), m = liveRoom(nk, cur.v[sid]); if (m) return { matchId: m.matchId || m.match_id || cur.v[sid], size: m.size || 0 };
     var id = nk.matchCreate('pw_room', { sid: sid }); cur.v[sid] = id;
     try {
       nk.storageWrite([{ collection: 'rooms', key: 'ids', userId: SYSTEM_USER, value: cur.v, version: cur.version, permissionRead: 0, permissionWrite: 0 }]);
@@ -219,7 +219,7 @@ function rpcRoomJoin(ctx, logger, nk, payload) {
   var sid = String(parse(payload).sid || ''); if (SERVERS.indexOf(sid) < 0) throw Error('unknown server');
   var m = roomFor(nk, logger, sid);
   if (m.size >= MAX_PLAYERS) throw Error('That server is full.');
-  return JSON.stringify({ match: m.matchId, t: Date.now() });
+  return JSON.stringify({ match: m.matchId || m.match_id, t: Date.now() });
 }
 function rpcTime(ctx, logger, nk, payload) { return JSON.stringify({ t: Date.now() }); }
 
@@ -304,6 +304,7 @@ function matchJoin(ctx, logger, nk, dispatcher, tick, state, presences) {
     var md = state.pending[pr.userId] || {}; delete state.pending[pr.userId];
     if (typeof md.s === 'string') P.skin = md.s.slice(0, 40);
     try { var p0 = md.p ? JSON.parse(md.p) : null; if (p0 && isFinite(p0.x) && isFinite(p0.z)) { p0.h = 100; p0.d = 0; P.p = p0; P.at = Date.now(); P.dirty = true; } } catch (e) { }
+    if (!P.p) { P.p = { x: 0, y: 0, z: 0, r: 0, h: 100, d: 0 }; P.at = Date.now(); P.dirty = true; }
     state.players[pr.userId] = P; markRoom(nk, P.uid, state.sid);
     var roster = []; for (var k in state.players) if (k !== P.uid) roster.push(rosterEntry(state.players[k]));
     var ruins = []; for (var ri in state.ruins) ruins.push(state.ruins[ri]);
