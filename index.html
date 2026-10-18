@@ -3552,25 +3552,28 @@ function initPilot() { // boats from the start; the helicopter and planes join o
 let BUILDER = null;
 function initBuilder() {
   if (BUILDER) return BUILDER;
-  BUILDER = createBuilder({
-    scene,
-    camera,
-    player,
-    keys,
-    heightAt,
-    explosionAt,
-    notify,
-    sfx,
-    FX,
-    bus,
-    net: { sendEvent: (k, d) => { if (online) sendEvent(k, d); } },
-    smoke,
-    fire,
-    clock
-  });
+  try {
+    BUILDER = createBuilder({
+      scene,
+      camera,
+      player,
+      keys,
+      heightAt,
+      explosionAt,
+      notify,
+      sfx,
+      FX,
+      bus,
+      net: { sendEvent: (k, d) => { if (online) sendEvent(k, d); } },
+      smoke,
+      fire,
+      clock
+    });
+  } catch (e) {
+    console.error('[builder] Failed to init builder:', e);
+  }
   return BUILDER;
 }
-initBuilder();
 let ARCH_WORLD = null;
 function initArchWorld() {
   if (ARCH_WORLD) return ARCH_WORLD;
@@ -6736,8 +6739,9 @@ let worldReady = false;
   const phsCtx = { THREE, scene, gltfLoader, heightAt, addPoly, onAsphalt: (x, z, m) => !!ROADS && ROADS.onAsphalt(x, z, m), notify, LAT0, LON0, KX, KZ, aniso: Math.min(8, MAXANISO) }; // PHS
   await PHS.initPHS(phsCtx); // PHS: campus polygon for the skips + GTP_NATURE_EXCLUDE, starts the GLB download
   await buildWorld();
-  progress('Raising commercial architecture & plazas…'); await tick();
+  progress('Raising commercial architecture & plazas…'); await new Promise(r => setTimeout(r, 0));
   initArchWorld();
+  initBuilder();
   if (OUTER.ready) { // the outer tiles carry on where the core photo ends: no procedural ring, no fade at the photo's edge
     if (OUTER_HILLS) scene.remove(OUTER_HILLS);
     for (const u of TX.ground.users || []) u.gEdgeOn.value = 0;
