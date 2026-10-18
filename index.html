@@ -656,7 +656,7 @@ const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.5, 26
 // Default by preset, overridable in Settings.
 const POST_KEY = 'pw-auto-online-post';
 const postLevel = () => { try { const v = localStorage.getItem(POST_KEY); if (v !== null) return +v; } catch (e) { } return GFX.look ?? 2; };
-const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa, ao: !!GFX.ao });
+const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa ? GFX.msaa ?? 4 : 0, ao: !!GFX.ao });
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 const MAXANISO = renderer.capabilities.getMaxAnisotropy();
 
@@ -3493,11 +3493,11 @@ const SODIUM = hex('#ff9a5c'), GROUND_ALB = hex('#3a342b');
 function updateAtmos(dt, day, night, hor, top, ld) {
   vegHemi.color.copy(hemi.color); vegHemi.groundColor.copy(hemi.groundColor); vegHemi.intensity = hemi.intensity;
   if (SKYENV) {
-    // sky light: a fraction of the map under a clear sky (the sun does the rest), most of it when it's grey; by night the
-    // map is near black and the hemisphere fill carries on
-    const clear = day * (1 - weather.cloud * 0.7);
-    SKYENV.diffuse = lerp(0.95, 0.4, clear);
-    hemi.intensity *= lerp(1, 0.3, clear);
+    // sky light: a fraction of the map under a clear sky (the sun does the rest), most of it when it's grey. The
+    // hemisphere fill steps back as soon as the sun is up (golden hour included: the low sun gives it its contrast); by
+    // night the map is near black and the fill carries on, as before
+    SKYENV.diffuse = 0.4 + 0.5 * weather.cloud;
+    hemi.intensity *= lerp(1, 0.3, Math.min(1, day * 2) * (1 - weather.cloud * 0.35));
     // the env map's lower half: dry Poway ground lit by the sun (a third of it in shade) and the sky, the town's glow at night
     _sky.copy(hor).lerp(top, 0.4).multiplyScalar(Math.PI * 0.85);
     _gN.copy(sun.color).multiplyScalar(sun.intensity * Math.max(ld.y, 0) * 0.66).add(_sky).multiply(GROUND_ALB).multiplyScalar(1 / Math.PI);

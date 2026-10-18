@@ -7,18 +7,20 @@
 //                the GPU so nothing is read back), Unreal's filmic curve, a light grade, vignette and grain.
 //                Optional half-resolution ambient occlusion from the depth buffer (High and Ultra).
 //   const post = createPost(THREE, renderer, camera, level, { msaa, ao })   post.render(scene, camera, night)
+//   msaa: samples for the realistic look's HDR target (4 on High+). 0 = no MSAA, edge-directed AA in the composite
+//   instead (Medium: 4x MSAA cost ~2.5 ms a frame on the dev Mac, the edge AA a fraction of that).
 //   post.setLevel(n)   post.U.* (uniforms index.html sets: uDusk)   post.debug() -> what the eye adaptation sees
 export function createPost(THREE, renderer, camera, level = 2, opts = {}) {
-  const O = { msaa: true, ao: false, ...opts };
+  const O = { msaa: 4, ao: false, ...opts };
   const size = new THREE.Vector2();
   const webgl2 = renderer.capabilities.isWebGL2;
   let rt = null, rtKind = '';
   // ink and ambient occlusion read the depth texture. Ink has always run without MSAA (the outlines hide most of the
   // jaggies); the realistic look keeps 4x MSAA and three resolves the depth into the depth texture with the colour.
-  function wantKind() { return level === 3 ? (O.msaa && webgl2 ? 'm' : 's') + (O.ao ? 'd' : '') : level === 2 ? 'sd' : 'm'; }
+  function wantKind() { return level === 3 ? (O.msaa && webgl2 ? 'm' + O.msaa : 's') + (O.ao ? 'd' : '') : level === 2 ? 'sd' : 'm4'; }
   function makeTarget(kind) {
     renderer.getDrawingBufferSize(size);
-    const t = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: kind[0] === 'm' && webgl2 ? 4 : 0 });
+    const t = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: kind[0] === 'm' && webgl2 ? parseInt(kind.slice(1)) : 0 });
     if (kind.includes('d') || level !== 3) { t.depthTexture = new THREE.DepthTexture(size.x, size.y); t.depthTexture.type = THREE.UnsignedIntType; }
     return t;
   }
@@ -203,7 +205,7 @@ function realistic(THREE, renderer, U, O, VS) {
 
   // ---- ambient occlusion (optional): half resolution, from the depth buffer only, then a depth-aware blur
   let aoT = null;
-  const aoU = { tDep: { value: null }, uFull: { value: new THREE.Vector2() }, uP: { value: new THREE.Vector4() }, uRadius: { value: 1.6 }, uFrame: { value: 0 } };
+  const aoU = { tDep: { value: null }, uFull: { value: new THREE.Vector2() }, uP: { value: new THREE.Vector4() }, uRadius: { value: 1.6 } };
   // every lookup snaps to the centre of a full-resolution depth texel, and the position is rebuilt at that same centre.
   // A half-resolution pixel's centre sits exactly on the corner of four depth texels: left to rounding, the texel picked
   // flips in bands across the screen and the rebuilt normals tilt, which shades flat walls. Each AO pixel takes the
@@ -217,7 +219,7 @@ function realistic(THREE, renderer, U, O, VS) {
     }`;
   const aoM = sm(/* glsl */`
     ${LINZ}
-    uniform float uRadius, uFrame;
+    uniform float uRadius;
     void main() {
       vec2 uv = (floor(gl_FragCoord.xy) * 2. + .5) / uFull; // this pixel's own depth texel (top-left of its 2x2)
       vec3 P = vpos(uv); float z = -P.z;
@@ -257,18 +259,32 @@ function realistic(THREE, renderer, U, O, VS) {
   // ---- composite
   const CU = {
     tCol: U.tCol, uRes: U.uRes, uTime: U.uTime, uNight: U.uNight, uDusk: U.uDusk, tBloom: { value: null }, tExp: { value: null }, tAO: { value: null },
-    uBloom: { value: 0.05 }, uBloomN: { value: 1 / MIPS }, uExpK: { value: 1 }, uAO: { value: 0 }, uDbg: { value: 0 },
+    uBloom: { value: 0.05 }, uBloomN: { value: 1 / MIPS }, uExpK: { value: 1 }, uAO: { value: 0 }, uDbg: { value: 0 }, uAA: { value: 0 },
   };
   const comp = sm(/* glsl */`
-    uniform sampler2D tCol, tBloom, tExp, tAO; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg;
+    uniform sampler2D tCol, tBloom, tExp, tAO; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA;
     vec3 srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
+    float lt(vec3 c) { return dot(c / (1. + c), vec3(.2126, .7152, .0722)); } // luma of a roughly tone-mapped colour
     float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime * 7.31) * 43758.5453); }
     ${FILM}
     void main() {
       vec2 px = 1. / uRes, c = vUv - .5; float r2 = dot(c, c);
       vec3 col = texture2D(tCol, vUv).rgb;
-      vec3 nb = texture2D(tCol, vUv + vec2(px.x, 0.)).rgb + texture2D(tCol, vUv - vec2(px.x, 0.)).rgb + texture2D(tCol, vUv + vec2(0., px.y)).rgb + texture2D(tCol, vUv - vec2(0., px.y)).rgb;
-      col = max(col + (col - nb * .25) * .18, 0.);                                      // light sharpening
+      vec3 cE = texture2D(tCol, vUv + vec2(px.x, 0.)).rgb, cW = texture2D(tCol, vUv - vec2(px.x, 0.)).rgb, cN = texture2D(tCol, vUv + vec2(0., px.y)).rgb, cS = texture2D(tCol, vUv - vec2(0., px.y)).rgb;
+      float sharp = .18;
+      if (uAA > 0.) { // without MSAA: where the contrast says there's an edge, blend along it (FXAA's idea, the cheap way)
+        float lM = lt(col), lN = lt(cN), lS = lt(cS), lE = lt(cE), lW = lt(cW);
+        float lMin = min(lM, min(min(lN, lS), min(lE, lW))), lMax = max(lM, max(max(lN, lS), max(lE, lW))), rng = lMax - lMin;
+        if (rng > max(.03, lMax * .12)) {
+          vec2 t = normalize(vec2(lS - lN, lE - lW) + 1e-5) * px;                       // along the edge
+          vec3 a = (texture2D(tCol, vUv + t * .5).rgb + texture2D(tCol, vUv - t * .5).rgb) * .5;
+          vec3 b = (a + (texture2D(tCol, vUv + t * 1.75).rgb + texture2D(tCol, vUv - t * 1.75).rgb) * .5) * .5;
+          float lb = lt(b);
+          col = mix(col, lb < lMin || lb > lMax ? a : b, .8);
+          sharp = 0.;
+        }
+      }
+      col = max(col + (col - (cE + cW + cN + cS) * .25) * sharp, 0.);                    // light sharpening
       if (uAO > 0.) col *= mix(1., texture2D(tAO, vUv).r, uAO);
       col = mix(col, texture2D(tBloom, vUv).rgb * uBloomN, uBloom);                     // energy-preserving bloom
       col *= exp2(texture2D(tExp, vec2(.5)).r) * uExpK;
@@ -305,7 +321,7 @@ function realistic(THREE, renderer, U, O, VS) {
       // bloom chain down
       down0U.tSrc.value = rt.texture; down0U.uTx.value.set(1 / size.x, 1 / size.y); pass(down0, mips[0]);
       for (let i = 1; i < MIPS; i++) { downU.tSrc.value = mips[i - 1].texture; downU.uTx.value.set(1 / mips[i - 1].width, 1 / mips[i - 1].height); pass(down, mips[i]); }
-      // exposure, from the second smallest mip (about 20 x 10)
+      // exposure, from the second smallest mip (about 40 x 20)
       adaptU.tLum.value = mips[MIPS - 2].texture; adaptU.tPrev.value = expT[expI].texture; adaptU.uDt.value = dt; adaptU.uReset.value = reset ? 1 : 0;
       adaptU.uBase.value = Math.log2(renderer.toneMappingExposure * 1.05); adaptU.uHi.value = 1.6 - 1.25 * night; // night stays night
       expI ^= 1; pass(adapt, expT[expI]); reset = false;
@@ -318,11 +334,11 @@ function realistic(THREE, renderer, U, O, VS) {
         blurU.tAO.value = aoT[0].texture; blurU.uTx.value.set(1 / aoT[0].width, 1 / aoT[0].height); pass(blurM, aoT[1]);
         CU.tAO.value = aoT[1].texture; CU.uAO.value = aoK;
       } else CU.uAO.value = 0;
-      CU.tBloom.value = mips[0].texture; CU.tExp.value = expT[expI].texture;
+      CU.tBloom.value = mips[0].texture; CU.tExp.value = expT[expI].texture; CU.uAA.value = rt.samples ? 0 : 1;
       CU.uBloom.value = 0.045 + night * 0.035;
       pass(comp, null);
     },
-    // what the eye adaptation sees (reads back two 1x1 pixels; for tests, not for every frame)
+    // what the eye adaptation sees (reads back its 1x1 target: for tests, never every frame)
     debug() {
       const half = FT !== THREE.FloatType, b = half ? new Uint16Array(4) : new Float32Array(4); renderer.readRenderTargetPixels(expT[expI], 0, 0, 1, 1, b);
       const f = half ? THREE.DataUtils.fromHalfFloat : x => x;
