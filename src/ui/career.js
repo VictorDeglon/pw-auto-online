@@ -9,6 +9,8 @@
 import { ACCOUNT, PRO, NET, on as onNet } from '../online/net.js';
 import { PROG, refresh, buySkill, resetSkills, onProgress, retryClaims } from '../progress.js';
 import * as CLOUD from '../online/cloud.js';
+import { renderGang } from './gangpanel.js';
+
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -74,6 +76,7 @@ export async function openCareer() {
 }
 export function closeCareer() { screenOpen = false; }
 function renderCareer() {
+  renderGang(); // the gang card works online and off
   const box = $('careerbody'); if (!box) return;
   if (!ACCOUNT) { box.innerHTML = '<p class="fine">Levels, skills, challenges and leaderboards live on the game server, and this build is playing on Firebase only.</p>'; return; }
   const m = PROG.me, a = ACCOUNT.info();

@@ -92,6 +92,7 @@ export const AIRPORTS = [
 
 export const PLANES = [];
 let activePlane = null;
+export function currentPlane() { return activePlane; } // the one you're flying (for the game's F key and what others see)
 
 // Plane Models
 export function buildPlaneModel(type, THREE) {
@@ -249,7 +250,7 @@ export function initAirports(scene, THREE) {
           x: wx, z: wz, r: 5.5,
           label: () => `<b>[F] Fly ${p.type.toUpperCase()}</b>`,
           when: () => !activePlane && (!ctx.player || !ctx.player.inCar),
-          onUse: () => enterPlane(planeObj)
+          onUse: () => enterPlane(planeObj) // E works too; F is wired in index.html
         });
       }
     }
@@ -378,11 +379,7 @@ export function updatePlanes(dt, keys, cam, mouseDown) {
   P.pos.copy(p.pos);
   P.rotY = p.rotY;
 
-  // Bailout / exit key
-  if (keys.has('KeyF')) {
-    keys.delete('KeyF');
-    exitPlane();
-  }
+  // getting out is the game's F key (index.html toggleCar): checking F here as well undid boarding on the very next frame
 }
 
 export function buyAirstrip(ap) {

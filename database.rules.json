@@ -8,7 +8,7 @@
         "names": {
           ".read": "auth != null",
           "$name": {
-            ".write": "auth != null && (!data.exists() || data.val() === auth.uid || !newData.exists() || !root.child('servers').child($sid).child('players').child(data.val()).exists() || root.child('servers').child($sid).child('players').child(data.val()).child('t').val() < now - 20000)",
+            ".write": "auth != null && (!data.exists() || data.val() === auth.uid || !root.child('servers').child($sid).child('players').child(data.val()).exists() || root.child('servers').child($sid).child('players').child(data.val()).child('t').val() < now - 20000)",
             ".validate": "!newData.exists() || ($name.matches(/^[a-z0-9_]{3,16}$/) && newData.val() === auth.uid)"
           }
         },

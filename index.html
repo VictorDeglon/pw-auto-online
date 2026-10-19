@@ -403,6 +403,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
   <section class="screen" id="scr-career" hidden>
     <header><h2>Career</h2><p>Level up online and off, spend skill points, beat today's challenges, climb the leaderboards.</p></header>
     <div id="careerbody"></div>
+    <div id="careergang" style="margin-top:16px"></div>
   </section>
 
   <section class="screen" id="scr-character" hidden>
@@ -448,7 +449,8 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <kbd>K</kbd><span>Fast travel</span><kbd>N</kbd><span>Call your car</span>
       <kbd>C</kbd><span>Crouch (sprint + C slides)</span><kbd>X</kbd><span>Dodge roll</span>
       <kbd>Q</kbd><span>Aim lock (no right click needed)</span><kbd>Z</kbd><span>Scope zoom while aiming</span>
-      <kbd>B</kbd><span>Emote: wave, cheer, dance, laugh</span><kbd>Shift</kbd><span>Sprint</span>
+      <kbd>U</kbd><span>Emote: wave, cheer, dance, laugh</span><kbd>Shift</kbd><span>Sprint</span>
+      <kbd>B</kbd><span>Build mode (construction)</span><kbd>F</kbd><span>Planes, boats and the helicopter too</span>
       <kbd>M</kbd><span>Map + waypoint</span><kbd>R</kbd><span>Next radio station</span>
       <kbd>Tab</kbd><span>Weapon wheel: hold and point, or tap it to keep it open (touchpad), or scroll</span><kbd>Q</kbd><span>Radio wheel in a car: hold, or tap to keep it open</span>
       <kbd>Enter</kbd><span>Chat</span><kbd>L</kbd><span>Hold: players (online)</span>
@@ -579,7 +581,7 @@ import { CINE } from './src/story/cutscene.js';
 import { createBuilder } from './src/world/builder.js';
 import { createPowayArchitecture } from './src/world/poway_architecture.js';
 import { MILITARY } from './src/military.js';
-import { initAirports, updatePlanes, AIRPORTS } from './src/world/airports.js';
+import { initAirports, updatePlanes, AIRPORTS, PLANES as AIRPORT_PLANES, enterPlane, exitPlane, currentPlane } from './src/world/airports.js';
 import { GANG } from './src/gangs.js';
 import { SOCIAL, COMPANIONS } from './src/social.js';
 window.__AIRPORTS = AIRPORTS;
@@ -4275,7 +4277,7 @@ addEventListener('mousemove', e => {
 document.addEventListener('pointerlockchange', () => {
   const was = locked; locked = document.pointerLockElement === cv;
   // not for the cheat sheet (it frees the mouse to be clicked) or a chat that just closed (Esc in chat also drops the lock)
-  if (was && !locked && running && !mapOpen && !travelOpen && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 600) setPaused(true);
+  if (was && !locked && running && !mapOpen && !travelOpen && !openMenu() && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 600) setPaused(true); // a menu (the weapon wheel too) frees the mouse on purpose
 });
 // ---- one menu at a time. openMenu() names the one that's up; closeMenus(keep) shuts every other one.
 function openMenu() { return shopOpen ? 'shop' : garageOpen ? 'garage' : mapOpen ? 'map' : travelOpen ? 'travel' : (typeof CHEAT !== 'undefined' && CHEAT.open) ? 'cheats' : (typeof WHEEL !== 'undefined' && WHEEL.open) ? 'wheel' : null; }
@@ -4346,7 +4348,12 @@ function stepSeatAnim(dt) {
 }
 function toggleCar() {
   if (player.dead) return;
+  if (player.inPlane) { exitPlane(); return; } // an airport plane (src/world/airports.js)
   if (FLY.craft) { PILOT.leave(); return; }
+  if (!player.inCar) { // an airport plane within reach, nearer than any car: take it
+    let ap = null, ad = 7; for (const p of AIRPORT_PLANES) { const d = hyp(p.pos.x - player.pos.x, p.pos.z - player.pos.z); if (d < ad) { ad = d; ap = p; } }
+    const v = nearestCar(4.5); if (ap && (!v || hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z) > ad)) { enterPlane(ap); return; }
+  }
   if (player.ride) { endRide(); return; }
   if (!player.inCar && PILOT) { // a boat, plane or helicopter within reach, nearer than any car
     const pc = PILOT.near(player.pos.x, player.pos.z, 3.5), v = nearestCar(4.5);
@@ -4995,7 +5002,7 @@ function applyMods(v, e) {
   v.tireMul = 1 + 0.25 * (m.tires || 0); v.turbo = 1 + 0.5 * (m.turbo || 0);
   const paint = e.paint != null ? e.paint : null;
   for (const mt of v.m.mats) { if (!mt.userData.base) continue; mt.color.copy(mt.userData.base).multiply(hex(paint != null ? paint : v.tint)); }
-  if (v.neon) { v.m.g.remove(v.neon); v.neon = null; }
+  if (v.neon) { v.m.g.remove(v.neon); v.neon.geometry.dispose(); v.neon.material.dispose(); v.neon = null; }
   if (e.neon != null) {
     const n = new THREE.Mesh(new THREE.PlaneGeometry(v.spec.W * 1.1, v.spec.L * 0.95).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: e.neon, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
     n.position.y = 0.08; v.m.g.add(n); v.neon = n;
@@ -5072,7 +5079,7 @@ function buildParts(v, P) {
 }
 function applyParts(v, e) {
   const P = e.parts || {};
-  if (v.partsG) { v.m.g.remove(v.partsG); v.partsG = null; }
+  if (v.partsG) { v.m.g.remove(v.partsG); v.partsG.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); }); v.partsG = null; }
   v.m.body.position.y = P.stance === 2 ? 0.25 : P.stance === 1 ? -0.1 : 0;
   for (const w of v.m.wheels) {
     if (w.baseS === undefined) { w.baseS = w.w.scale.clone(); w.baseY = w.piv.position.y; }
@@ -5178,15 +5185,47 @@ function outerSpots(t) {
 function openGarage(G) {
   if (garageOpen) return; GARAGE_AT = G || GARAGE; garageOpen = true; travelOpen = true; keys.clear(); mouseDown = rightDown = false;
   if (document.pointerLockElement) document.exitPointerLock();
-  let el = $('garage'); if (!el) { el = document.createElement('div'); el.id = 'garage'; document.body.appendChild(el); el.addEventListener('click', garageClick); }
-  el.style.cssText = 'position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(10,12,16,.75);font:600 15px/1.35 var(--ui,system-ui);color:#f3efe6';
-  el.hidden = false; renderGarage();
+  let el = $('garage'); if (!el) { el = document.createElement('div'); el.id = 'garage'; document.body.appendChild(el); el.addEventListener('click', garageClick); showroomInput(el); }
+  // a side panel; the rest of the screen is a showroom of your car (drag to turn it, scroll to zoom)
+  el.style.cssText = 'position:fixed;inset:0;z-index:40;display:flex;align-items:stretch;justify-content:flex-end;background:linear-gradient(90deg,rgba(10,12,16,0) 0%,rgba(10,12,16,0) 50%,rgba(10,12,16,.55) 100%);font:600 15px/1.35 var(--ui,system-ui);color:#f3efe6;cursor:grab';
+  SHOW.yaw = null; SHOW.dist = 1; el.hidden = false; renderGarage();
 }
-function closeGarage() { garageOpen = false; travelOpen = false; const el = $('garage'); if (el) el.hidden = true; lockPointer(); }
+function closeGarage() { garageOpen = false; travelOpen = false; const el = $('garage'); if (el) el.hidden = true; camera.clearViewOffset(); camera.updateProjectionMatrix(); const v = player.inCar, e = v && v.ownedId && ownedEntry(v.ownedId); if (e) applyMods(v, e); lockPointer(); }
+// ---- the showroom: while the garage is open the camera circles your car, which sits in the free part of the screen
+const SHOW = { yaw: null, dist: 1, drag: null, last: 0 };
+function showroom(dt) {
+  const v = player.inCar; if (!v) return;
+  if (SHOW.yaw === null) SHOW.yaw = v.rotY + 2.3; // a three-quarter front view to start
+  if (!SHOW.drag && performance.now() - SHOW.last > 2500) SHOW.yaw += dt * 0.22; // a slow turntable when you're not turning it
+  const d = Math.max(5.5, v.spec.L * 1.45) * SHOW.dist, cx = v.pos.x, cy = v.pos.y + v.spec.H * 0.45, cz = v.pos.z;
+  camera.position.set(cx + Math.sin(SHOW.yaw) * d, cy + 0.9 + d * 0.16, cz + Math.cos(SHOW.yaw) * d); camera.lookAt(cx, cy, cz);
+  const panel = $('garage') && $('garage').firstElementChild, pw = panel ? panel.offsetWidth : 0, W = innerWidth, H = innerHeight;
+  if (pw && pw < W * 0.8) camera.setViewOffset(W, H, pw / 2, 0, W, H); else camera.clearViewOffset(); // car centred in the space left of the panel
+  camera.updateProjectionMatrix(); if (typeof sky !== 'undefined') sky.position.copy(camera.position);
+}
+function showroomInput(el) {
+  el.addEventListener('pointerdown', e => { if (e.target !== el) return; SHOW.drag = { x: e.clientX, yaw: SHOW.yaw }; el.style.cursor = 'grabbing'; try { el.setPointerCapture(e.pointerId); } catch (x) { } });
+  el.addEventListener('pointermove', e => { if (!SHOW.drag) return; SHOW.yaw = SHOW.drag.yaw - (e.clientX - SHOW.drag.x) * 0.008; SHOW.last = performance.now(); });
+  const up = () => { if (SHOW.drag) { SHOW.drag = null; SHOW.last = performance.now(); el.style.cursor = 'grab'; } };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  el.addEventListener('wheel', e => { if (e.target !== el) return; e.preventDefault(); SHOW.dist = clamp(SHOW.dist * (e.deltaY > 0 ? 1.08 : 1 / 1.08), 0.6, 2.2); SHOW.last = performance.now(); }, { passive: false });
+  // hover a paint, underglow or part to see it on the car before you pay; move away and it goes back
+  el.addEventListener('mouseover', e => {
+    const b = e.target.closest && e.target.closest('button[data-act]'); const v = player.inCar, en = v && v.ownedId && ownedEntry(v.ownedId); if (!b || !en) return;
+    const [act, arg, x] = b.dataset.act.split(':'); if (!['paint', 'neon', 'part'].includes(act)) return;
+    const t = JSON.parse(JSON.stringify(en));
+    if (act === 'paint') t.paint = PAINTS[+arg][1]; else if (act === 'neon') t.neon = NEONS[+arg][1]; else (t.parts || (t.parts = {}))[arg] = +x;
+    applyMods(v, t); SHOW.preview = true;
+  });
+  el.addEventListener('mouseout', e => {
+    const b = e.target.closest && e.target.closest('button[data-act]'); if (!b || !SHOW.preview || (e.relatedTarget && b.contains(e.relatedTarget))) return;
+    const v = player.inCar, en = v && v.ownedId && ownedEntry(v.ownedId); if (en) applyMods(v, en); SHOW.preview = false;
+  });
+}
 const btn = (act, label, dis) => `<button data-act="${act}" ${dis ? 'disabled' : ''} style="margin:3px 4px 3px 0;padding:6px 10px;background:${dis ? '#1b1f25' : '#2a313b'};color:${dis ? '#666' : 'inherit'};border:1px solid #3a424e;border-radius:6px;font:inherit;cursor:${dis ? 'default' : 'pointer'}">${label}</button>`;
 function renderGarage() {
   const el = $('garage'), v = player.inCar, e = v && v.ownedId && ownedEntry(v.ownedId), list = garageList();
-  let h = `<div style="background:#16191f;border:1px solid #3a3f48;border-radius:10px;padding:18px 22px;width:min(560px,92vw);max-height:86vh;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px;letter-spacing:.08em">GARAGE</div><div style="color:#7cc95b">$${save.money}</div></div>`;
+  let h = `<div style="background:rgba(22,25,31,.94);border-left:1px solid #3a3f48;padding:18px 22px;width:min(440px,94vw);height:100%;box-sizing:border-box;overflow:auto;cursor:default"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px;letter-spacing:.08em">GARAGE</div><div style="color:#7cc95b">$${save.money}</div></div>`;
   if (v && !v.isCop && !v.dead) h += `<div style="margin:10px 0">${btn('store', e ? 'Repair this car (free)' : 'Save this car to the garage')}</div>`;
   else if (v && v.isCop) h += `<div style="opacity:.7;margin:10px 0">The mechanic won't touch a Sheriff's cruiser.</div>`;
   if (e) {
@@ -5201,7 +5240,7 @@ function renderGarage() {
   h += `<div style="margin-top:14px;font-size:17px">YOUR CARS (${list.length}/8)</div>`;
   if (!list.length) h += `<div style="opacity:.6">None yet. Drive a car in here and save it.</div>`;
   for (const c of list) { const live = liveOwned(c.id); h += `<div style="margin:6px 0">${carName(c)} <span style="opacity:.55">${live && !live.dead ? (live === player.inCar ? '· driving' : '· out') : '· in the garage'}</span> ${Object.entries(c.mods).filter(([, l]) => l).map(([k, l]) => `<span style="opacity:.6">${MODS[k].name} ${l}</span>`).join(' ')}<br>${btn('take:' + c.id, 'Take it out', player.inCar)}${btn('sell:' + c.id, 'Scrap', false)}</div>`; }
-  h += `<div style="opacity:.6;font-size:13px;margin-top:10px">C anywhere brings your last car to you · Esc or E to close</div>${btn('close', 'Close')}</div>`;
+  h += `<div style="opacity:.6;font-size:13px;margin-top:10px">Hover an option to see it on the car · drag the car to turn it, scroll to zoom · C anywhere brings your last car to you · Esc or E to close</div>${btn('close', 'Close')}</div>`;
   el.innerHTML = h;
 }
 function garageClick(ev) {
@@ -5249,13 +5288,14 @@ function boundsClamp(p) { // the edge of the world: the core, or the outer world
 let greetCd = 0;
 function updatePlayer(dt) {
   player.punchCd -= dt; player.shootCd -= dt;
-  if (player.dead) { if (player.ride) endRide(); if (FLY.craft) PILOT.leave(); player.seatAnim = null; player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
+  if (player.dead) { if (player.ride) endRide(); if (FLY.craft) PILOT.leave(); if (player.inPlane) exitPlane(); player.seatAnim = null; player.deadT -= dt / timeScale; if (player.deadT <= 0) respawn(); return; }
   if (JET.on) { if (keys.has('KeyF')) { keys.delete('KeyF'); leaveJet(); } else { updateJet(dt); return; } }
   { const rg = skill('regen'), cap = 50 + 15 * rg; if (simTime - player.lastHurt > 6 && player.health < cap) player.health = Math.min(cap, player.health + dt * 2 * (1 + 0.5 * rg)); } // Second Wind
   player.aiming = (rightDown || aimLock) && player.weapon > 0 && !player.inCar;
   if (!player.aiming) scope = 0;
   if (player.ride) { updateRide(); return; }
   if (FLY.craft) return; // piloting a boat or aircraft: src/pilot.js moves you (PILOT.update, below)
+  if (player.inPlane) return; // flying an airport plane: src/world/airports.js moves you (updatePlanes)
   if (player.seatAnim && player.seatAnim.kind === 'out') { if (player.inCar) player.seatAnim = null; else { stepSeatAnim(dt); return; } } // climbing out
   if (player.inCar) {
     const v = player.inCar, getIn = player.seatAnim && player.seatAnim.kind === 'in' && player.seatAnim.v === v;
@@ -6762,7 +6802,7 @@ function tick(rdt) {
   // click takes control again: no pause menu bouncing up
   playCursor(canLock && !paused && !openMenu() && !locked && !SHELL.isChatOpen() && SHELL.chatClosedAgo() > 600 && performance.now() - lockAskT > 400);
   // the cheat sheet freezes everything this game runs (online, the other players carry on) without the pause menu over it
-  if (paused || mapOpen || travelOpen || CHEAT.open) { drawFrame(); return; }
+  if (paused || mapOpen || travelOpen || CHEAT.open) { if (garageOpen && player.inCar) showroom(rdt); drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
   OUTER.update(rdt); updateLazy(worldHold ? 30 : 4); cullCore(rdt); // the world streams first: nothing else in the frame can hold it up
@@ -6985,7 +7025,8 @@ function netState() {
   return { x: p.x, y: p.y, z: p.z, r: v ? v.rotY : player.rotY, spd: _spd, hp: player.health, w: player.weapon > 0 ? WEAPONS[player.weapon].id : '',
     aim: !!(player.weapon > 0 && (player.aiming || mouseDown)), dead: player.dead ? (player.deadKind === 'busted' ? 2 : 1) : 0, shots: player.shots || 0,
     car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead, pt: v.partsKey || '' } : null, ride: player.ride ? player.ride.id : null,
-    air: JET.on && JET.m ? { k: 'fighter', q: JET.m.quaternion.toArray() } : FLY.craft ? { k: FLY.craft.type === 'boat' ? 'boat:' + FLY.craft.kind : FLY.craft.kind, q: FLY.craft.g.quaternion.toArray() } : null };
+    air: JET.on && JET.m ? { k: 'fighter', q: JET.m.quaternion.toArray() } : FLY.craft ? { k: FLY.craft.type === 'boat' ? 'boat:' + FLY.craft.kind : FLY.craft.kind, q: FLY.craft.g.quaternion.toArray() }
+      : player.inPlane && currentPlane() ? { k: { prop: 'trainer', jet: 'bizjet', fighter: 'fighter' }[currentPlane().type] || 'cessna', q: currentPlane().model.quaternion.toArray() } : null };
 }
 function netTick(rdt) {
   const f = focusPos(); _npT += rdt;

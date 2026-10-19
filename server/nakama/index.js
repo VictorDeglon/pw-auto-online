@@ -336,7 +336,9 @@ function onState(dispatcher, state, P, q) {
   var now = Date.now();
   if (P.p) {
     var d = Math.hypot(p.x - P.p.x, p.z - P.p.z), dt = Math.max(0.05, (now - P.at) / 1000);
-    var maxSpd = (p.ak || (P.p && P.p.ak)) ? 1500 : (p.c ? 450 : MAX_SPEED);
+    // aircraft are fast (the jet's afterburner): allowed once they've been flying a moment, so claiming to fly isn't a teleport
+    if (p.ak) { if (!P.airSince) P.airSince = now; } else P.airSince = 0;
+    var maxSpd = p.ak && now - P.airSince > 1500 ? 1000 : (p.c ? 450 : MAX_SPEED);
     if (d / dt > maxSpd && d > 30) { // a teleport: one every 15 s (fast travel, respawn), otherwise you go back
       if (now - P.lastTp < TP_EVERY && !P.dead) { send(dispatcher, OP.SNAPTO, { x: P.p.x, y: P.p.y, z: P.p.z }, [P.presence]); return; }
       P.lastTp = now;

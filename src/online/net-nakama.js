@@ -83,14 +83,13 @@ async function ensureSession() {
   // a guest account for this browser, named after the name you last played under here (or Guest_1234)
   let name = ''; try { const p = JSON.parse(localStorage.getItem('pw-auto-online-profile') || '{}'); if (!tabGuest && NAME_RE.test(p.name || '')) name = p.name; } catch (e) { }
   const guest = 'Guest_' + Math.floor(1000 + Math.random() * 90000);
-  try { keep(await client.authenticateDevice(deviceId(), true, name || guest)); }
-  catch (e) {
-    try { keep(await client.authenticateDevice(deviceId(), true, guest)); }
-    catch (e2) {
-      try { store().removeItem(DEVICE_KEY); } catch (x) { }
-      keep(await client.authenticateDevice(deviceId(), true, guest));
-    }
+  // a new account needs a free name: yours, else a couple of random guest names. A failure here (offline, the sign-in
+  // limit) is thrown to the caller; the device id is never replaced over it, which would orphan this browser's account
+  let err = null;
+  for (const n of [name || guest, guest, 'Guest_' + Math.floor(1000 + Math.random() * 90000)]) {
+    try { keep(await client.authenticateDevice(deviceId(), true, n)); return session; } catch (e) { err = e; if (!(e && e.status === 409)) break; } // 409: that name is taken
   }
+  throw err;
   return session;
 }
 const acct = { username: '', guest: true, loaded: false };
