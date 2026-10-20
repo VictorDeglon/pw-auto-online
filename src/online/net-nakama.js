@@ -15,6 +15,7 @@ export const NET = {
   players: new Map(), // uid -> { n, s, p, t, lvl, title, sk, sd, streak, bounty } for everyone else in the room
   session: { sk: 0, sd: 0, streak: 0 }, // your kills, deaths and streak since you joined
   backend: 'nakama',
+  world: '', // '' = Poway, else the crew-garage world you're in (src/games): you only see the players in the same one
 };
 const L = new Map();
 export function on(ev, cb) { if (!L.has(ev)) L.set(ev, new Set()); L.get(ev).add(cb); return () => L.get(ev).delete(cb); }
@@ -24,6 +25,7 @@ const OP = {
   STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, NPC_KILL: 12, TCAR_HIT: 13, TCAR_TAKE: 14,
   SNAP: 20, ROSTER: 21, JOIN: 22, LEAVE: 23, HPSET: 24, CHAT_OUT: 25, FEED_OUT: 26, EVENT_OUT: 27, RUIN_OUT: 28, CROWD_OUT: 29,
   CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35, TRAFFIC: 36,
+  GAME_JOIN: 41, GAME_LEAVE: 42, GAME_ACT: 43, GAME_IN: 50, GAME_OUT: 51, GAME_STATE: 52, GAME_EVENT: 53, GAME_BOARD: 54, // crew garages (13, 14 and 36 are the street traffic)
 };
 const DEVICE_KEY = 'pw-auto-online-device', SESSION_KEY = 'pw-auto-online-session';
 const MAIL = n => `${String(n).toLowerCase()}@players.pw-auto-online.invalid`; // Nakama logs in by email; the username is the login
@@ -248,8 +250,9 @@ export async function leave() {
   if (mid && socket) { try { await socket.leaveMatch(mid); } catch (e) { } }
   HOME.open = false;
   for (const id of NET.players.keys()) emit('player:remove', id);
-  NET.players.clear(); NET.server = null; NET.name = null; emit('traffic:on', false);
+  NET.players.clear(); NET.server = null; NET.name = null; shown.clear(); emit('traffic:on', false);
   if (lockRelease) { lockRelease(); lockRelease = null; } // other tabs may go online as this account now
+  if (NET.world) { NET.world = ''; emit('game:out', { g: '', lost: true }); }
 }
 let rejoining = false;
 async function rejoin(sid) { // the connection dropped: reconnect and go back into the same server
@@ -262,11 +265,23 @@ async function rejoin(sid) { // the connection dropped: reconnect and go back in
   if (joinedSid === sid) { await leave(); emit('kicked', 'Lost the connection to the game server.'); }
 }
 
+// players in another world (Poway or a crew garage) stay in NET.players (the player list) but out of sight:
+// remote.js only ever hears about the ones in yours
+const shown = new Set();
+function show(id, v) {
+  if ((v.g || '') !== NET.world) { if (shown.delete(id)) emit('player:remove', id); return; }
+  if (!v.p) return;
+  emit(shown.has(id) ? 'player:update' : 'player:add', { id, ...v }); shown.add(id);
+}
+function setWorld(g) { // you moved between worlds: whoever is there now comes into view, everyone else goes
+  NET.world = g || '';
+  for (const [id, v] of NET.players) show(id, v);
+}
 function upsert(d) {
   if (!d || d.id === NET.uid) return;
-  const had = NET.players.has(d.id), v = Object.assign(NET.players.get(d.id) || {}, { n: d.n, s: d.s || '', lvl: d.lvl, title: d.title, sk: d.sk, sd: d.sd, streak: d.streak, bounty: d.bounty });
+  const v = Object.assign(NET.players.get(d.id) || {}, { n: d.n, s: d.s || '', lvl: d.lvl, title: d.title, sk: d.sk, sd: d.sd, streak: d.streak, bounty: d.bounty, g: d.g || '' });
   if (d.p) { v.p = d.p; v.t = serverNow(); }
-  NET.players.set(d.id, v); emit(had ? 'player:update' : 'player:add', { id: d.id, ...v });
+  NET.players.set(d.id, v); show(d.id, v);
 }
 function onData(m) {
   if (m.match_id && matchId && m.match_id !== matchId) return;
@@ -283,11 +298,11 @@ function onData(m) {
     }
     case OP.SNAP: {
       NET.offset = NET.offset * 0.9 + (d.t - Date.now()) * 0.1;
-      for (const [id, p] of d.a || []) { if (id === NET.uid) continue; const v = NET.players.get(id); if (!v) continue; v.p = p; v.t = d.t; emit('player:update', { id, ...v }); }
+      for (const [id, p] of d.a || []) { if (id === NET.uid) continue; const v = NET.players.get(id); if (!v) continue; v.p = p; v.t = d.t; show(id, v); }
       break;
     }
     case OP.JOIN: case OP.PLAYER: upsert(d); break;
-    case OP.LEAVE: if (NET.players.delete(d.id)) emit('player:remove', d.id); break;
+    case OP.LEAVE: if (NET.players.delete(d.id) && shown.delete(d.id)) emit('player:remove', d.id); break;
     case OP.HPSET: emit('hp', d); break;
     case OP.SNAPTO: emit('snap', d); break;
     case OP.TRAFFIC: emit('traffic', d); break;
@@ -299,6 +314,11 @@ function onData(m) {
     case OP.CROWD_GONE: emit('crowd:remove', d.id); break;
     case OP.STATS: NET.session = { sk: d.sk, sd: d.sd, streak: d.streak }; emit('stats', d); break;
     case OP.ANNOUNCE: emit('announce', d); break;
+    case OP.GAME_IN: setWorld(d.g); emit('game:in', d); break;
+    case OP.GAME_OUT: if (d.door) setWorld(''); emit('game:out', d); break;
+    case OP.GAME_STATE: if (d.g === NET.world) emit('game:state', d); break;
+    case OP.GAME_EVENT: emit('game:event', d); break;
+    case OP.GAME_BOARD: emit('game:board', d); break;
   }
 }
 function sendOp(op, o) { if (!socket || !matchId || !NET.connected) return; socket.sendMatchState(matchId, op, JSON.stringify(o)).catch(() => { }); }
@@ -356,6 +376,14 @@ export function trafficTake(id) { sendOp(OP.TCAR_TAKE, { id }); }
 export function sendCrowd(e) { sendOp(OP.CROWD, { e: String(e).slice(0, 12000) }); }
 export function clearCrowd() { sendOp(OP.CROWD_CLEAR, {}); }
 
+// crew garages (src/games): go into a garage's world, come out, and the games' own moves (time trial, join a race,
+// reset). The room answers with game:in / game:out / game:state / game:event / game:board.
+export const GAMENET = {
+  join: g => sendOp(OP.GAME_JOIN, { g: String(g) }),
+  leave: () => sendOp(OP.GAME_LEAVE, {}),
+  act: (a, o = {}) => sendOp(OP.GAME_ACT, { ...o, a: String(a) }),
+  ready: () => !!(NET.server && matchId && NET.connected),
+};
 // the room owns health: index.html reports its own health changes and respawns here
 export const HOME = {
   open: false, ws: null, url: '', sid: null, retry: 0,

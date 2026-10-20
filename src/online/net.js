@@ -38,3 +38,4 @@ export const sendChat = impl.sendChat, feed = impl.feed, sendHit = impl.sendHit,
 export const sendCrowd = impl.sendCrowd, clearCrowd = impl.clearCrowd, connectHome = impl.connectHome, disconnectHome = impl.disconnectHome;
 export const serverName = impl.serverName;
 export const trafficHit = impl.trafficHit || (() => { }), trafficTake = impl.trafficTake || (() => { }); // the room's traffic (Nakama only)
+export const GAMENET = impl.GAMENET || null; // crew garages: only the Nakama server runs them

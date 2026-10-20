@@ -586,6 +586,7 @@ import { initAirports, updatePlanes, AIRPORTS, PLANES as AIRPORT_PLANES, enterPl
 import { GANG } from './src/gangs.js';
 import { SOCIAL, COMPANIONS } from './src/social.js';
 window.__AIRPORTS = AIRPORTS;
+import { GAMES, ARENA_X0, arenaGround, arenaOnRoad } from './src/games/games.js'; // crew garages: the community games online
 
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
@@ -792,6 +793,7 @@ let ROADS = null; // src/world/roadsurface.js: the built surface (crowned asphal
 let MESH_READY = false;
 const ROAD_TOP = 0.06; // asphalt sits cleanly above the road bed mesh to prevent ground poke-through
 function heightAt(x, z) {
+  if (x > ARENA_X0) return arenaGround(x, z); // the crew-garage worlds, far east of town (src/games)
   if (ROADS && ROADS.onRoad(x, z, 0.2)) return builtAt(x, z) + ROAD_TOP;
   if (MESH_READY) { const g = meshAt(x, z); if (g !== null) return g; }
   return builtAt(x, z);
@@ -3244,7 +3246,7 @@ function settleCar(v, dt) { // without dt: snap to the ground (spawns, rail traf
   // ---- on the ground. Look a moment ahead: if the ground there is well below where a thrown car would be, the car
   // leaves it (a crest, a cliff). Small bumps and terrain facets never clear the threshold, and on paved roads only a
   // real drop-off does, so streets drive normally.
-  v.onRoad = !!ROADS && ROADS.onRoad(v.pos.x, v.pos.z, 0.5);
+  v.onRoad = v.pos.x > ARENA_X0 ? arenaOnRoad(v.pos.x, v.pos.z) : !!ROADS && ROADS.onRoad(v.pos.x, v.pos.z, 0.5);
   // The car's vertical speed is the slope it is driving on now (ground just behind vs. here), so a steady slope,
   // up or down, never launches it: only a change of slope sharp enough for the speed (a crest, a lip, a cliff) does.
   const hs = Math.hypot(v.vel.x, v.vel.y), LOOK = 0.12;
@@ -3516,10 +3518,11 @@ class Ped {
   }
 }
 // another player hurt by you: show it here, let their game apply it (src/online/net.js hits)
+let blastW = null; // while an explosion of yours is hitting people: the weapon it came from (the trigger was let go long ago)
 function remoteHurt(p, amt, by) {
   if (p.state === 'dead' || by !== 'player' || !p.remote) return;
   blood(p.pos.x, p.pos.y + 1.2, p.pos.z, Math.min(20, amt / 3));
-  const w = player.inCar && !(player.weapon > 0 && (mouseDown || player.aiming)) ? 'car' : (WEAPONS[player.weapon] || {}).name || 'fists';
+  const w = blastW || (player.inCar && !(player.weapon > 0 && (mouseDown || player.aiming)) ? 'car' : (WEAPONS[player.weapon] || {}).name || 'fists');
   if (w === 'car' && p.remote.st && p.remote.st.ride) return; // they're sitting in a car (maybe yours): bumping it isn't running them over
   sendHit(p.remote.id, amt, w);
 }
@@ -3713,6 +3716,7 @@ function aimPoint(maxD = 900) { // where the crosshair lands (ground, wall or a 
   return o.addScaledVector(_sd, Math.min(hit.t, maxD));
 }
 function runCheat(id, arg) {
+  if (GAMES.inside) { notify('No cheats in the crew garages.', 'red', 2000); return; }
   const tog = k => { CH[k] = !CH[k]; return CH[k]; };
   switch (id) {
     case 'nuke': {
@@ -4640,6 +4644,7 @@ const holeMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true
 let hitT = 0;
 function hitMarker(head) { const c = $('cross'); c.classList.remove('hit', 'head'); void c.offsetWidth; c.classList.add('hit'); if (head) c.classList.add('head'); clearTimeout(hitT); hitT = setTimeout(() => c.classList.remove('hit', 'head'), 180); tone(head ? 1800 : 1250, 0.035, 'square', 0.12); }
 function playerShoot() {
+  if (GAMES.noShoot()) return; // crew garages: only the seeker has a weapon
   const w = WEAPONS[player.weapon]; if (!w || !w.id || w.id === 'fists') return;
   if ((player.arsenal[w.id] | 0) <= 0) { tone(200, 0.05, 'square', 0.2); notify(`Out of ${w.name.toLowerCase()} ammo.`, '', 1600); player.shootCd = 0.4; cycleWeapon(-1); return; }
   player.arsenal[w.id]--; player.shootCd = cdOf(w); player.shots = (player.shots || 0) + 1; player.rig.punch = 0; player.rig.recoil = Math.min(2, (player.rig.recoil || 0) + ((HOLD[w.id] || {}).kick ?? 0.5));
@@ -4762,12 +4767,14 @@ function explosionAt(x, y, z, R, by) {
     launchCar(v, 4 + k * 16, rand(-1, 1) * k * 6, rand(-1, 1) * k * 8);
     if (v.driver === 'ai' && !v.dead && Math.random() < k) { const p = ejectDriver(v, false); if (p) p.scare(x, z, 'gun'); }
   }
+  blastW = by === 'player' ? ((WEAPONS[player.weapon] || {}).proj ? WEAPONS[player.weapon].name : 'ROCKET LAUNCHER') : null; // reported as the explosive, not as your car
   for (const p of peds) {
     const dx = p.pos.x - x, dz = p.pos.z - z, d = Math.hypot(dx, dz);
     if (d < R) { const k = 1 - d / R; p.knock(dx / (d || 1) * 14 * k, 6 + 10 * k, dz / (d || 1) * 14 * k, k * 220, by); if (Math.random() < 0.25 + 0.4 * k) ignitePed(p, by); else if (p.state === 'dead' && Math.random() < 0.5) charPed(p); }
     else if (d < R * 1.5 && Math.random() < 0.3) ignitePed(p, by);
     else if (d < 70 && p.state !== 'dead') p.scare(x, z, 'gun');
   }
+  blastW = null;
   if (!player.inCar && !player.dead) { const d = Math.hypot(player.pos.x - x, player.pos.z - z); if (d < R) { hurtPlayer((1 - d / R) * 95, 'explosion'); player.knock = 1; } }
   if (police.heli) { const h = police.heli; if (Math.hypot(h.pos.x - x, h.pos.z - z) < R * 1.5 && Math.abs(h.pos.y - y) < R * 1.5) h.health -= 60; }
   if (by === 'player') crime('explosion', x, z, 2);
@@ -5345,6 +5352,7 @@ function die(kind, src) {
   bus.emit('player:died', { kind, src });
 }
 function respawn() {
+  if (GAMES.respawn()) return; // in a crew-garage world: back at its start, no bill
   const kind = player.deadKind; const P = kind === 'wasted' ? HOSPITAL : SHERIFF;
   if (player.inCar) { player.inCar.driver = null; player.inCar = null; }
   player.dead = false; player.health = 100; player.knock = 0; player.shieldUntil = simTime + 1.5 * skill('comeback'); player.rig.g.visible = true; player.rig.body.rotation.set(0, 0, 0); player.rig.body.position.y = 0;
@@ -5361,6 +5369,7 @@ function respawn() {
 // ============================================================ updates: player
 const _tmp = { x: 0, z: 0, tx: 0, tz: 0 }, _tmp2 = { x: 0, z: 0, tx: 0, tz: 0 };
 function boundsClamp(p) { // the edge of the world: the core, or the outer world's when it's there
+  if (p.x > ARENA_X0) return; // the crew-garage worlds (src/games) are past the edge
   if (OUTER.ready) { const b = OUTER.bounds(); p.x = clamp(p.x, b[0] + 100, b[2] - 100); p.z = clamp(p.z, b[1] + 100, b[3] - 100); return; }
   p.x = clamp(p.x, B.minx - 150, B.maxx + 150); p.z = clamp(p.z, B.minz - 150, B.maxz + 150);
 }
@@ -5383,7 +5392,7 @@ function updatePlayer(dt) {
     const st = getIn ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0);
     if (v.dead || v.burn) drivePhysics(v, 0, st, false, true, dt); else drivePhysics(v, thr, st, getIn, !getIn && keys.has('Space'), dt);
     if (v.air && !v.dead) { v.pitchV += thr * 2.4 * dt; v.rollV -= st * 2.8 * dt; } // a little air control
-    if (v.air && !v.dead && keys.has('Space')) { // SPACE in the air: glide. Most of gravity cancelled, thrust up to ~140 m/s
+    if (v.air && !v.dead && keys.has('Space') && !GAMES.inside) { // SPACE in the air: glide (not in the crew games). Most of gravity cancelled, thrust up to ~140 m/s
       if (v.airT < 0.15 && !v.boosted) { v.vy = Math.max(v.vy, 0) + 14; v.boosted = true; sfx.whoosh(1); shake = Math.max(shake, 0.4); } // the kick off the lip
       v.vy += GRAV * 0.62 * dt; const hs = Math.hypot(v.vel.x, v.vel.y); // cancels most of gravity, not all: you always come back down
       if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 0.8 + Math.random() * 0.5; });
@@ -5395,7 +5404,7 @@ function updatePlayer(dt) {
     }
     if (!v.air) v.boosted = false;
     { const tank = nitroSeconds(); player.nitro = Math.min(tank, (player.nitro ?? tank) + dt * 0.08); if (carRepairPerS() && !v.dead && v.health < 100) v.health = Math.min(100, v.health + carRepairPerS() * dt); } // Nitrous refills, Road Mechanic
-    if ((CH.nitro || player.nitro > 0.05) && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !v.dead) { if (!CH.nitro) player.nitro -= dt; const hs = Math.hypot(v.vel.x, v.vel.y); if (hs < 95) { v.vel.x += Math.sin(v.rotY) * 24 * dt; v.vel.y += Math.cos(v.rotY) * 24 * dt; } if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 1 + Math.random() * 0.6; }); }
+    if ((CH.nitro || player.nitro > 0.05) && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !v.dead && !(GAMES.inside && v.air)) { if (!CH.nitro) player.nitro -= dt; const hs = Math.hypot(v.vel.x, v.vel.y); if (hs < 95) { v.vel.x += Math.sin(v.rotY) * 24 * dt; v.vel.y += Math.cos(v.rotY) * 24 * dt; } if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 1 + Math.random() * 0.6; }); }
     if (v.partsG && v.partsG.userData.flames && !(v.air && keys.has('Space'))) v.partsG.userData.flames.forEach(f => f.visible = false);
     if (v.flipped && !v.dead && st && v.vel.length() < 2 && !v.air) { v.flipped = false; launchCar(v, 4.6, 0, -Math.sign(st) * 4.4); } // rock it back over
     carHitWorld(v); boundsClamp(v.pos); settleCar(v, dt);
@@ -6428,6 +6437,7 @@ function updateCrowd(dt) {
 // ============================================================ police manager
 function updatePopulation(dt) {
   trafficT -= dt; if (trafficT > 0) return; trafficT = 0.25;
+  if (GAMES.inside) return; // the crew-garage worlds have their own crowds and traffic (src/games)
   if (WORLD.following) return; // the leader's people and cars are shown instead (src/online/world.js)
   const f = focusPos(); if (!HUMANS.swimLoading && HUMANS.ready && swimZone(f.x + 40, f.z) + swimZone(f.x - 40, f.z) + swimZone(f.x, f.z + 40) + swimZone(f.x, f.z - 40)) loadSwim();
   const hf = hour < 5 || hour >= 23 ? 0.45 : (hour >= 7 && hour < 9) || (hour >= 16 && hour < 18.5) ? 1.15 : 1;
@@ -6567,7 +6577,7 @@ function mapMarks(big) {
   // gun shops (only the nearest one waits at the minimap's edge), your garage
   let near = null, nd = Infinity; for (const S of DEALERS) { const d = hyp(S.x - f.x, S.z - f.z); if (d < nd) { nd = d; near = S; } }
   for (const S of DEALERS) out.push({ kind: 'icon', pri: 3, x: S.x, z: S.z, glyph: 'shop', color: '#ff3cac', label: S.name, group: 'shop', plural: 'gun shops', edge: !big && S === near });
-  out.push(...garageMarks(GARAGES[0] || GARAGE)); // yours, and the ones the story opens (src/world/garages.js)
+  out.push(...garageMarks(GARAGES[0] || GARAGE), ...GAMES.mapMarks()); // yours, the ones the story opens (src/world/garages.js), the crew garages (src/games)
   for (const G of GARAGES.slice(1)) out.push({ kind: 'icon', pri: 3, x: G.x, z: G.z, glyph: 'garage', color: '#d9dde3', label: G.name, group: 'garage', plural: 'garages' }); // out in the county
   // missions, the courier job, your waypoint
   for (const b of storyMapMarks()) {
@@ -6606,6 +6616,7 @@ function minimapBase(f, mpp, span) {
   return (mmBase = { canvas: mmBaseCv, cx: f.x, cz: f.z, mpp, ver, t: now, x0, z0, x1, z1 });
 }
 function drawMinimap() {
+  if (GAMES.inside) { GAMES.drawMinimap(mctx, mm.width); return; } // a crew-garage world draws its own
   const W = mm.width, R = W / 2, f = focusPos();
   const sp = player.inCar ? player.inCar.vel.length() : 0, mpp = (1.5 + sp * 0.04) / MMD;
   mctx.save(); mctx.clearRect(0, 0, W, W);
@@ -6920,6 +6931,7 @@ function tick(rdt) {
   repT += dt; if (repT > 30) { repT = 0; if (police.wanted === 0 && save.rep < 0) save.rep += 1; }
   saveT -= rdt; if (saveT <= 0) { saveT = 10; persist(); }
   if (online) netTick(rdt);
+  GAMES.update(rdt); // crew garages (src/games): last, so a world can override what the frame set up
   drawFrame();
 }
 
@@ -6994,8 +7006,10 @@ let worldReady = false;
     spawnPt: { get: () => spawnPt }, HOSPITAL: { get: () => HOSPITAL }, SHERIFF: { get: () => SHERIFF },
     online: { get: () => online }, garage: { get: () => GARAGE, set: g => { GARAGE = g; } }, garageOpen: { get: () => garageOpen }, openGarage: { value: () => openGarage() },
   });
+  Object.assign(ctx, { projs, selectWeapon, playerShoot, polys, SKY, NATURE, sky }); Object.defineProperties(ctx, { AC: { get: () => AC }, master: { get: () => master } }); // for src/games
   initPolice(); initStory(); initExtras(); SHELL.achSub();
   initAirports(scene, THREE); GANG.init();
+  GAMES.init(); // crew garages in Poway, and their worlds when you go in (src/games)
   restoreSave();
   const sp0 = focusPos(); progress('Building the streets around you…'); buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);

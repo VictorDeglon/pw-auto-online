@@ -169,6 +169,9 @@ function glyph(g, k, x, y, r, col) {
     case 'bank': g.beginPath(); g.moveTo(0, -5.5 * u); g.lineTo(-5.5 * u, -2.2 * u); g.lineTo(5.5 * u, -2.2 * u); g.closePath(); g.fill(); g.fillRect(-4.2 * u, -1.6 * u, 1.6 * u, 5.2 * u); g.fillRect(-0.8 * u, -1.6 * u, 1.6 * u, 5.2 * u); g.fillRect(2.6 * u, -1.6 * u, 1.6 * u, 5.2 * u); g.fillRect(-5.5 * u, 4.2 * u, 11 * u, 1.6 * u); break;
     case 'shop': g.fillRect(-4.5 * u, -2 * u, 9 * u, 7.5 * u); g.lineWidth = 1.5 * u; g.beginPath(); g.arc(0, -2 * u, 2.4 * u, Math.PI, 0); g.stroke(); break;
     case 'dead': g.lineWidth = 2.4 * u; g.beginPath(); g.moveTo(-4 * u, -4 * u); g.lineTo(4 * u, 4 * u); g.moveTo(4 * u, -4 * u); g.lineTo(-4 * u, 4 * u); g.stroke(); break;
+    case 'crew': // a crew garage: a shed with an arrow going down into it (src/games/entrances.js)
+      g.beginPath(); g.moveTo(-6.4 * u, -1 * u); g.lineTo(0, -6 * u); g.lineTo(6.4 * u, -1 * u); g.lineTo(6.4 * u, 5.6 * u); g.lineTo(-6.4 * u, 5.6 * u); g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(10,12,16,.9)'; g.lineWidth = 1.7 * u; g.beginPath(); g.moveTo(0, -2.2 * u); g.lineTo(0, 3.6 * u); g.moveTo(-2.4 * u, 1.3 * u); g.lineTo(0, 3.8 * u); g.lineTo(2.4 * u, 1.3 * u); g.stroke(); break;
     default: g.font = `700 ${(k.length > 1 ? 9.5 : 12.5) * u}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(k, 0, 0.8 * u);
   }
   g.restore();

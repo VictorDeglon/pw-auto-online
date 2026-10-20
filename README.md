@@ -26,6 +26,25 @@ the edge of Tijuana) streams in as you travel, 2 km at a time, so only what's ne
 Online you can see other players on the minimap and the big map (M), chat (Enter), check who's on (hold L), and
 fight. Kills, deaths and busts show in the feed at the top of the screen.
 
+**Crew garages (online):** three garages in town (the orange shed icon on the map) lead down a tunnel to worlds of
+their own, played with whoever else is on your server:
+
+- **Long Jump** (Lakeside Jump Club, Lake Poway Road): an 880 m dirt lane, a big wooden kicker, a landing strip between
+  grandstands. The board ranks the distance from the lip to where your car first touches down (air time is the second
+  number): it's what the crowd sees and the tyre tracks show, and it can't be stretched by tumbling. In the air, W/S
+  and A/D straighten the car out for the landing; there's no glide or nitro up there.
+- **Hide & Seek** (Midtown Crew, Poway Road): a walled downtown grid with heavy traffic and no cops. Each round one
+  player, picked at random, seeks with a rocket launcher whose aim assist boxes the cars in view and locks onto the
+  nearest one; everyone else starts in an ordinary car and has 30 s to disappear into the traffic, the parking lots or
+  an alley. One hit and a hider is out; if anyone's still hidden after 3 minutes, the hiders win.
+- **Races** (Kirkham Raceway, Kirkham Way): Kirkham Circuit (3 laps), Canyon Sprint (point to point over hills) and
+  Poway Speedway (4 laps). T starts a time trial whenever you like; C puts you in the queue for a race against the
+  others (it starts 15 s after a second driver joins, up to eight cars). Each course has a board of best times.
+
+Inside, the exit tunnel (or K twice) takes you back to the garage door. Nobody can hurt anyone in there except the
+seeker, and nothing counts toward kills and deaths. The server judges all of it: who's in which world, the jumps,
+the checkpoints and times, the rounds and knock-outs, the boards.
+
 Everything you own (money, cars in your garage, weapons, your look, your last usernames) is saved in your browser on
 this computer. Nothing is stored on a server except what other players need to see while you're online: your name,
 your look, where you are, and chat from the last hour.

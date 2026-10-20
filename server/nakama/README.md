@@ -17,6 +17,15 @@ What the server decides, so a modified browser can't fake it (in `index.js`, plu
   most one every 1.5 s and 20 a minute. They don't build streaks or bounties, which stay player-versus-player.
 - **Leaderboards:** `kd_alltime` (needs 10 kills plus deaths), `kills_weekly` (resets Mondays, UTC) and
   `level_alltime`. Only the server writes them.
+- **Crew garages** (the mini-game worlds, `src/games/`): who is in which world (you go in only at that garage's door;
+  positions, shots and explosions go only to players in the same world), the Long Jump measurement (lip to first
+  touchdown, from the car's own positions; the flight has to fit a throw under the game's gravity at a believable
+  angle and speed or it doesn't count), Hide & Seek rounds (the seeker picked at random, the 30 s hide and 3 minute
+  seek clocks, one rocket hit from the seeker = out), and races (a standing start on the grid, every checkpoint in order,
+  lap and finish times interpolated to where the car crossed, places). Boards: `flight_dist` (longest, cm) and
+  `race_race0..2` (fastest, ms). The worlds' layout is shared with the game: `node tools/sync-game-defs.mjs` copies
+  `src/games/defs.js` into `index.js` (`--check` tells you if they differ). Inside a world nobody takes damage from
+  other players and no kills or deaths count; finishing a race against others and Hide & Seek rounds pay XP.
 - **Streaks and bounties:** announced at 3, 5 and every 5 after; at 5 the player has a bounty worth 1.5x XP.
 - **Traffic:** the room runs the street traffic (`traffic.js`, on the road graph in `roads.js`), so every player sees
   the same cars in the same places. It keeps about 14 cars around each player (140–520 m out, dropped past 700 m, at
@@ -39,6 +48,13 @@ Nakama's API can do far more than the game uses, so `index.js` closes the rest o
 - custom auth, groups, friends, chat channels, relayed matches, parties and the matchmaker are refused
 - only the game's 30 real achievements pay XP, once each; missions pay at most 25 times a day
 - every RPC that touches a player needs a signed-in player
+
+## Testing it on your own computer
+
+`node server/nakama/devserver.mjs [port]` runs this `index.js` behind a small stand-in for Nakama (accounts, RPCs,
+storage and matches in memory; no security, nothing saved), for a computer that can't spare the memory for the real
+thing. Point `nakama.local.json` at it (`{ "host": "127.0.0.1", "port": 7357, "ssl": false, "key": "dev" }`) and open
+the game with `?nk=local`.
 
 ## Running it
 

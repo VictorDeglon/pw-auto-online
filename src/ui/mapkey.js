@@ -29,6 +29,7 @@ const KEY = [
   ]],
   ['Places', [
     ['Your garages', icon('garage', '#d9dde3')],
+    ['Crew garage: races, jumps, hide & seek (online)', icon('crew', '#ffb020')],
     ['Gun shop', icon('shop', '#ff3cac')],
     ['Hospital', icon('hospital', LM.hospital)],
     ['Sheriff station', icon('police', LM.police)],
