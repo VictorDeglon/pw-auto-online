@@ -18,7 +18,7 @@ function trGraph() {
     edges.push(e); (adj[e.a] || (adj[e.a] = [])).push(i); (adj[e.b] || (adj[e.b] = [])).push(i);
     for (var k2 = 0; k2 < n; k2++) { var key = Math.floor(p[k2 * 2] / 10 / C) + ',' + Math.floor(p[k2 * 2 + 1] / 10 / C), c = grid[key] || (grid[key] = []); if (c[c.length - 1] !== i) c.push(i); }
   }
-  TRG = { edges: edges, adj: adj, grid: grid, C: C }; return TRG;
+  TRG = { edges: edges, adj: adj, grid: grid, C: C, o: { x: 0, z: 0, tx: 0, tz: 0 } }; return TRG; // o: trPose's scratch (made here at run time: Nakama freezes objects the module makes at load)
 }
 function trAt(e, d, o) {
   d = Math.max(0, Math.min(e.len, d)); var c = e.cum, lo = 0, hi = c.length - 1;
@@ -27,9 +27,8 @@ function trAt(e, d, o) {
   o.x = ax + (bx - ax) * t; o.z = az + (bz - az) * t; o.tx = (bx - ax) / l; o.tz = (bz - az) / l; return o;
 }
 function trLane(e) { return e.ow ? (e.w > 10 ? 2 : 0) : Math.max(1.6, Math.min(3.6, e.w * 0.22)); } // index.html laneOff
-var _tro = { x: 0, z: 0, tx: 0, tz: 0 };
 function trPose(car) {
-  var e = TRG.edges[car.e], o = trAt(e, car.d > 0 ? car.s : e.len - car.s, _tro), tx = car.d > 0 ? o.tx : -o.tx, tz = car.d > 0 ? o.tz : -o.tz, off = trLane(e);
+  var e = TRG.edges[car.e], o = trAt(e, car.d > 0 ? car.s : e.len - car.s, TRG.o), tx = car.d > 0 ? o.tx : -o.tx, tz = car.d > 0 ? o.tz : -o.tz, off = trLane(e);
   car.x = o.x - tz * off; car.z = o.z + tx * off; car.r = Math.atan2(tx, tz);
 }
 function trNext(car) { // a turn at the junction ahead, main roads more likely; a dead end turns round (unless one-way)
