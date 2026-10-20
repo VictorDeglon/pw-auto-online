@@ -6,6 +6,7 @@
 // - Buyable Airstrips (individual or Gang ownership) and Buyable Aircraft Dealerships
 
 import { ctx } from '../ctx.js';
+import { removeInteract } from '../interact.js';
 
 export const AIRPORTS = [
   {
@@ -94,26 +95,31 @@ export const PLANES = [];
 let activePlane = null;
 export function currentPlane() { return activePlane; } // the one you're flying (for the game's F key and what others see)
 
-// Plane Models
+// Plane Models (one set of paints shared by every plane)
+let MATS = null;
+const planeMats = THREE => MATS || (MATS = {
+  dark: new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.6, metalness: 0.4 }),
+  white: new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.35 }),
+  red: new THREE.MeshStandardMaterial({ color: 0xd9383a, roughness: 0.4 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x1d283a, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.85 }),
+  gold: new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.85, roughness: 0.2 }),
+  flame: new THREE.MeshBasicMaterial({ color: 0xff6622 }),
+});
 export function buildPlaneModel(type, THREE) {
-  const g = new THREE.Group();
-  const dark = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.6, metalness: 0.4 });
-  const white = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.35 });
-  const red = new THREE.MeshStandardMaterial({ color: 0xd9383a, roughness: 0.4 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x1d283a, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.85 });
-  const gold = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.85, roughness: 0.2 });
+  const g = new THREE.Group(), body = []; // body: fuselage and wings, the only parts that cast shadows
+  const { dark, white, red, glass, gold, flame: flameMat } = planeMats(THREE);
 
   if (type === 'prop') {
     // Single-Engine Stunt / Sport Plane
     // Fuselage
     const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.4, 6.2, 10).rotateX(Math.PI / 2), white);
-    fuse.position.set(0, 1.1, 0); g.add(fuse);
+    fuse.position.set(0, 1.1, 0); g.add(fuse); body.push(fuse);
     // Canopy
     const can = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 1.8), glass);
     can.position.set(0, 1.6, -0.2); g.add(can);
     // Wings
     const wing = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.14, 1.6), red);
-    wing.position.set(0, 1.4, -0.2); g.add(wing);
+    wing.position.set(0, 1.4, -0.2); g.add(wing); body.push(wing);
     // Tail
     const tailH = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.1, 0.9), red);
     tailH.position.set(0, 1.3, -2.7); g.add(tailH);
@@ -132,13 +138,13 @@ export function buildPlaneModel(type, THREE) {
   } else if (type === 'jet') {
     // Executive Twin-Turbine Private Jet
     const fuse = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.6, 12.0, 12).rotateX(Math.PI / 2), white);
-    fuse.position.set(0, 1.6, 0); g.add(fuse);
+    fuse.position.set(0, 1.6, 0); g.add(fuse); body.push(fuse);
     // Gold cheatline stripe
     const stripe = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 0.62, 0.6, 12).rotateX(Math.PI / 2), gold);
     stripe.position.set(0, 1.6, 1.2); g.add(stripe);
     // Swept Wings
     const wing = new THREE.Mesh(new THREE.BoxGeometry(14.8, 0.22, 2.8), white);
-    wing.position.set(0, 1.2, -0.6); wing.rotation.y = 0.15; g.add(wing);
+    wing.position.set(0, 1.2, -0.6); wing.rotation.y = 0.15; g.add(wing); body.push(wing);
     // Engines on rear fuselage
     const engL = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.45, 2.6, 10).rotateX(Math.PI / 2), dark);
     engL.position.set(-1.6, 2.0, -3.2); g.add(engL);
@@ -152,19 +158,41 @@ export function buildPlaneModel(type, THREE) {
   } else {
     // Supersonic Fighter Jet
     const fuse = new THREE.Mesh(new THREE.ConeGeometry(1.2, 13.0, 10).rotateX(Math.PI / 2), dark);
-    fuse.position.set(0, 1.4, 0); g.add(fuse);
+    fuse.position.set(0, 1.4, 0); g.add(fuse); body.push(fuse);
     const delta = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.16, 4.8), dark);
-    delta.position.set(0, 1.4, -1.8); g.add(delta);
+    delta.position.set(0, 1.4, -1.8); g.add(delta); body.push(delta);
     const fins = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.2, 0.18), dark);
     fins.position.set(0, 2.3, -4.8); g.add(fins);
     // Flame nozzle
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.2, 8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff6622 }));
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.2, 8).rotateX(-Math.PI / 2), flameMat);
     flame.position.set(0, 1.4, -6.8); g.add(flame);
     g.userData.flame = flame;
   }
 
-  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+  for (const m of body) m.castShadow = true;
   return g;
+}
+
+// flat quads facing up at height y, from [x, z, half width, half length, ...]: a whole runway's paint in one draw
+function flatQuads(THREE, q, y) {
+  const n = q.length / 4, pos = new Float32Array(n * 12), nrm = new Float32Array(n * 12), idx = [];
+  for (let k = 0; k < n; k++) {
+    const x = q[k * 4], z = q[k * 4 + 1], w = q[k * 4 + 2], l = q[k * 4 + 3], v = k * 4;
+    pos.set([x - w, y, z + l, x + w, y, z + l, x + w, y, z - l, x - w, y, z - l], k * 12);
+    for (let j = 1; j < 12; j += 3) nrm[k * 12 + j] = 1;
+    idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3)); geo.setIndex(idx);
+  return geo;
+}
+
+// a crashed plane is gone: out of PLANES (the game's F key looks there), its prompt and its model
+function wreck(p) {
+  const i = PLANES.indexOf(p); if (i >= 0) PLANES.splice(i, 1);
+  if (p.prompt) removeInteract(p.prompt);
+  p.model.removeFromParent(); p.model.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); // the paints are shared
 }
 
 // Build 3D Runways, Markings, and Hangars
@@ -187,23 +215,11 @@ export function initAirports(scene, THREE) {
     rw.receiveShadow = true;
     g.add(rw);
 
-    // Centerline dashes
-    const dashCount = Math.floor(ap.len / 24);
-    for (let i = -dashCount / 2; i <= dashCount / 2; i++) {
-      const dash = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 12).rotateX(-Math.PI / 2), whitePaint);
-      dash.position.set(0, 0.02, i * 24);
-      g.add(dash);
-    }
-
-    // Threshold piano key stripes
-    for (let side = -1; side <= 1; side += 2) {
-      const zPos = side * (ap.len / 2 - 18);
-      for (let k = -4; k <= 4; k++) {
-        const stripe = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 22).rotateX(-Math.PI / 2), whitePaint);
-        stripe.position.set(k * 2.8, 0.02, zPos);
-        g.add(stripe);
-      }
-    }
+    // Centerline dashes (1.2 x 12 m) and threshold piano key stripes (1.6 x 22 m): one mesh, as [x, z, half w, half l]
+    const marks = [], dashCount = Math.floor(ap.len / 24);
+    for (let i = -dashCount / 2; i <= dashCount / 2; i++) marks.push(0, i * 24, 0.6, 6);
+    for (let side = -1; side <= 1; side += 2) for (let k = -4; k <= 4; k++) marks.push(k * 2.8, side * (ap.len / 2 - 18), 0.8, 11);
+    g.add(new THREE.Mesh(flatQuads(THREE, marks, 0.02), whitePaint));
 
     // Warehouse Hangar Garage
     const hg = new THREE.Mesh(new THREE.BoxGeometry(42, 14, 38), hangarMat);
@@ -221,8 +237,8 @@ export function initAirports(scene, THREE) {
     // Spawn parked stealable planes
     for (const p of ap.planes) {
       const cos = Math.cos(ap.rot), sin = Math.sin(ap.rot);
-      const wx = ap.x + cos * p.ox - sin * p.oz;
-      const wz = ap.z + sin * p.ox + cos * p.oz;
+      const wx = ap.x + cos * p.ox + sin * p.oz; // airport space to world, turned the way the runway group is (rotation.y = rot)
+      const wz = ap.z - sin * p.ox + cos * p.oz;
       const wy = ctx.heightAt ? ctx.heightAt(wx, wz) : y;
       const model = buildPlaneModel(p.type, THREE);
       model.position.set(wx, wy + 0.1, wz);
@@ -244,10 +260,10 @@ export function initAirports(scene, THREE) {
       };
       PLANES.push(planeObj);
 
-      // Add interactive steal prompt
+      // Add interactive steal prompt: it goes where the plane goes (flown off and left somewhere, it's there)
       if (ctx.addInteract) {
-        ctx.addInteract({
-          x: wx, z: wz, r: 5.5,
+        planeObj.prompt = ctx.addInteract({
+          get x() { return planeObj.pos.x; }, get z() { return planeObj.pos.z; }, r: 5.5,
           label: () => `<b>[F] Fly ${p.type.toUpperCase()}</b>`,
           when: () => !activePlane && (!ctx.player || !ctx.player.inCar),
           onUse: () => enterPlane(planeObj) // E works too; F is wired in index.html
@@ -366,7 +382,7 @@ export function updatePlanes(dt, keys, cam, mouseDown) {
     if (p.pitch < -0.35 && curSpeed > 45) {
       // Crash!
       if (ctx.explosionAt) ctx.explosionAt(p.pos.x, p.pos.y, p.pos.z, 15, 'player');
-      exitPlane();
+      exitPlane(); wreck(p);
       return;
     }
     p.inAir = false;

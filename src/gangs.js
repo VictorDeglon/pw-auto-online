@@ -11,6 +11,10 @@
 import { ctx } from './ctx.js';
 
 const GANG_STORAGE_KEY = 'pw-auto-online-gang';
+const SNIPER_COVER = 400; // m: how close you must be to a watchtower for its sniper to cover you
+// a point lx m past the runway's edge on the line out through the warehouse hangar, in world space (src/world/airports.js
+// puts the hangar's middle at x = wid / 2 + 28 in a group turned by rot about +Y)
+const hangarAt = (ap, lx) => { const L = ap.wid / 2 + lx; return { x: ap.x + Math.cos(ap.rot || 0) * L, z: ap.z - Math.sin(ap.rot || 0) * L }; };
 
 export const GANG = {
   data: null,
@@ -50,6 +54,28 @@ export const GANG = {
     }
     this.activeDefense = this.data.defense || 'max';
     this.initDefenses();
+    this.initHangars();
+  },
+
+  // E at the hangar of an airstrip the gang holds (on foot) takes the last stored car back out
+  initHangars() {
+    if (this.hangars || !ctx.addInteract) return; this.hangars = true;
+    const next = () => { const w = this.data && this.data.warehouse, c = (w && w.cars) || []; for (let i = c.length - 1; i >= 0; i--) if (ctx.CAR && ctx.CAR[c[i]]) return i; return -1; };
+    for (const ap of window.__AIRPORTS || []) {
+      const at = hangarAt(ap, 8);
+      ctx.addInteract({
+        x: at.x, z: at.z, r: 8,
+        label: () => `Take the <b>${this.data.warehouse.cars[next()].toUpperCase()}</b> out of the gang warehouse`,
+        when: () => !!this.data && (this.data.airstrips || []).includes(ap.id) && !ctx.player.inCar && !ctx.player.inPlane && next() >= 0,
+        onUse: () => {
+          const i = next(); if (i < 0 || !ctx.Vehicle) return;
+          const type = this.data.warehouse.cars.splice(i, 1)[0], out = hangarAt(ap, 1);
+          const v = new ctx.Vehicle(type, out.x, out.z, ap.rot || 0); v.mine = true; if (ctx.settleCar) ctx.settleCar(v);
+          this.save();
+          ctx.notify(`🚗 <b>${type.toUpperCase()}</b> rolled out of the gang warehouse.`, 'green', 3000);
+        }
+      });
+    }
   },
 
   save() {
@@ -145,8 +171,8 @@ export const GANG = {
 
       // Snipers fire on non-gang trespassers if defense mode != 'off'
       if (this.activeDefense !== 'off') {
-        const P = ctx.player;
-        if (P && !P.dead) {
+        const P = ctx.player, f = ctx.focusPos ? ctx.focusPos() : P && P.pos;
+        if (P && !P.dead && f && Math.hypot(f.x - s.x, f.z - s.z) < SNIPER_COVER) { // only while you're at the base: the hits count as yours
           // If player is leader, snipers don't shoot them
           // In multiplayer or hostile NPCs / cops
           if (ctx.police && ctx.police.wanted > 0) {
@@ -197,8 +223,8 @@ export const GANG = {
       const ap = (window.__AIRPORTS || []).find(a => a.id === apId);
       if (!ap) continue;
 
-      const hgX = ap.x + ap.wid / 2 + 28, hgZ = ap.z;
-      const d = Math.hypot(P.pos.x - hgX, P.pos.z - hgZ);
+      const hg = hangarAt(ap, 28);
+      const d = Math.hypot(P.pos.x - hg.x, P.pos.z - hg.z);
 
       if (d < 24) {
         // Inside warehouse garage!

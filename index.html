@@ -4357,7 +4357,7 @@ document.addEventListener('pointerlockchange', () => {
   if (was && !locked && running && !mapOpen && !travelOpen && !openMenu() && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 600) setPaused(true); // a menu (the weapon wheel too) frees the mouse on purpose
 });
 // ---- one menu at a time. openMenu() names the one that's up; closeMenus(keep) shuts every other one.
-function openMenu() { return shopOpen ? 'shop' : garageOpen ? 'garage' : mapOpen ? 'map' : travelOpen ? 'travel' : (typeof CHEAT !== 'undefined' && CHEAT.open) ? 'cheats' : (typeof WHEEL !== 'undefined' && WHEEL.open) ? 'wheel' : null; }
+function openMenu() { return shopOpen ? 'shop' : garageOpen ? 'garage' : mapOpen ? 'map' : travelOpen ? 'travel' : (typeof CHEAT !== 'undefined' && CHEAT.open) ? 'cheats' : (typeof WHEEL !== 'undefined' && WHEEL.open) ? 'wheel' : SOCIAL.isOpen ? 'social' : null; }
 function closeMenus(keep) {
   if (keep !== 'shop' && shopOpen) closeShop();
   if (keep !== 'garage' && garageOpen) closeGarage();
@@ -4365,6 +4365,7 @@ function closeMenus(keep) {
   if (keep !== 'travel' && travelOpen && !shopOpen && !garageOpen) toggleTravel();
   if (keep !== 'cheats' && typeof CHEAT !== 'undefined' && CHEAT.open) CHEAT.close();
   if (keep !== 'wheel' && typeof WHEEL !== 'undefined' && WHEEL.open) WHEEL.cancel();
+  if (keep !== 'social' && SOCIAL.isOpen) $('social-modal').hidden = true; // a chat with a local (src/social.js)
 }
 function setPaused(p) {
   if (p) closeMenus();
@@ -6613,7 +6614,7 @@ function drawMinimap() {
   mctx.translate(R, R); mctx.rotate(cam.yaw); mctx.scale(1 / mpp, 1 / mpp); mctx.translate(-f.x, -f.z);
   const span = R * mpp * 1.45, base = minimapBase(f, mpp, span);
   mctx.drawImage(base.canvas, base.x0, base.z0, base.x1 - base.x0, base.z1 - base.z0); // photo and streets, faded out past the edge of town
-  drawFog(mctx); // unexplored ground under a cloud (src/ui/fog.js)
+  drawFog(mctx, 'low'); // unexplored ground under a cloud (src/ui/fog.js); every frame, so the cheaper smoothing
   mctx.lineCap = mctx.lineJoin = 'round';
   if (gps && gps.length > 2) { mctx.strokeStyle = job || storyTarget() ? '#f0b23a' : '#b06cff'; mctx.lineWidth = 5 * mpp; mctx.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? mctx.lineTo(gps[k], gps[k + 1]) : mctx.moveTo(gps[k], gps[k + 1]); mctx.stroke(); }
   drawPoliceMap(mctx, mpp);

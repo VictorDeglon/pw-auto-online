@@ -390,15 +390,15 @@ export function createBuilder(ctx) {
     }
 
     if (isGhost) {
-      g.traverse(o => {
-        if (o.isMesh) {
-          o.material = ghostMat;
-          // Add wireframe overlay for high-tech holographic preview
-          const wire = new THREE.Mesh(o.geometry, ghostWireMat);
-          wire.scale.setScalar(1.002);
-          g.add(wire);
-        }
-      });
+      const parts = [];
+      g.traverse(o => { if (o.isMesh) parts.push(o); });
+      for (const o of parts) {
+        o.material = ghostMat;
+        // Add wireframe overlay for high-tech holographic preview (a child of the part, so it sits where the part does)
+        const wire = new THREE.Mesh(o.geometry, ghostWireMat);
+        wire.scale.setScalar(1.002);
+        o.add(wire);
+      }
     }
 
     return g;
@@ -453,7 +453,7 @@ export function createBuilder(ctx) {
     while (ghostGroup.children.length > 0) {
       const child = ghostGroup.children[0];
       ghostGroup.remove(child);
-      if (child.geometry) child.geometry.dispose();
+      child.traverse(o => { if (o.geometry) o.geometry.dispose(); }); // the ghost's materials are shared (ghostMat, ghostWireMat)
     }
     const newGhost = createPieceMesh(ARCHETYPES[selectedSlot], true);
     ghostGroup.add(newGhost);
@@ -521,7 +521,7 @@ export function createBuilder(ctx) {
       if (d < 5.5 && Math.abs(player.pos.y - b.pos.y) < 2.5) {
         const snapStep = (b.wid + arch.wid) / 2;
         // Snap along cardinal directions of existing piece
-        const cos = Math.cos(b.rotY), sin = Math.sin(b.rotY);
+        const cos = b.cos, sin = b.sin;
         const relX = cos * dx + sin * dz;
         const relZ = -sin * dx + cos * dz;
 
@@ -580,6 +580,8 @@ export function createBuilder(ctx) {
       len: arch.len,
       h: arch.h,
       rise: arch.rise || 0,
+      cos: Math.cos(rY), sin: Math.sin(rY), // its turn, once: surfaceAt / collide run for every ground sample
+      rad: Math.hypot(arch.wid / 2, arch.len) + 0.3, // bounding circle around pos (a ramp starts at pos and runs len)
       hp: remoteData ? remoteData.hp : arch.maxHp,
       maxHp: arch.maxHp,
       builtAt: simTime,
@@ -621,7 +623,8 @@ export function createBuilder(ctx) {
   // DESTRUCTION & EXPLOSIONS ("until it gets blown up or something")
   // =========================================================================
   function destroyStructure(b, by = 'explosion') {
-    if (b.dead) return;
+    if (typeof b === 'string') b = structures.find(s => s.id === b);
+    if (!b || b.dead) return;
     b.dead = true;
 
     const idx = structures.indexOf(b);
@@ -694,8 +697,9 @@ export function createBuilder(ctx) {
     for (const b of structures) {
       if (b.dead) continue;
 
-      const cos = Math.cos(b.rotY), sin = Math.sin(b.rotY);
       const dx = x - b.pos.x, dz = z - b.pos.z;
+      if (dx * dx + dz * dz > b.rad * b.rad) continue;
+      const cos = b.cos, sin = b.sin;
       // Transform into local piece coordinates
       const u = -sin * dx + cos * dz; // Along length
       const w = cos * dx + sin * dz;  // Along width
@@ -739,8 +743,9 @@ export function createBuilder(ctx) {
 
       // Check wall and room perimeter boxes
       if (b.type === 'wall' || b.type === 'room' || b.type === 'bunker') {
-        const cos = Math.cos(b.rotY), sin = Math.sin(b.rotY);
-        const dx = pos.x - b.pos.x, dz = pos.z - b.pos.z;
+        const dx = pos.x - b.pos.x, dz = pos.z - b.pos.z, R = b.rad + r * 1.5;
+        if (dx * dx + dz * dz > R * R) continue;
+        const cos = b.cos, sin = b.sin;
         const u = -sin * dx + cos * dz;
         const w = cos * dx + sin * dz;
 
@@ -900,6 +905,7 @@ export function createBuilder(ctx) {
     raycast,
     onExplosion,
     damageStructure,
+    destroyStructure,
     update,
     get structures() { return structures; }
   };

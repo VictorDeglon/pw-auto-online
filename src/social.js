@@ -16,6 +16,7 @@ export const COMPANIONS = [];
 export const SOCIAL = {
   activeDialog: null,
   activeTarget: null,
+  get isOpen() { const m = document.getElementById('social-modal'); return !!m && !m.hidden; },
 
   interact(ped) {
     if (!ped || ped.state === 'dead' || ped.state === 'down' || ped.isCop) return;
@@ -40,6 +41,7 @@ export const SOCIAL = {
     }
 
     modal.hidden = false;
+    if (document.pointerLockElement) document.exitPointerLock(); // free the mouse so the buttons can be clicked
     modal.innerHTML = `
       <div style="font-size:18px;font-weight:700;color:#f0b23a;margin-bottom:8px">💬 Conversation with Local</div>
       <div style="font-size:14px;color:#cfd6e2;margin-bottom:14px">
@@ -115,6 +117,7 @@ export const SOCIAL = {
 
     for (let i = COMPANIONS.length - 1; i >= 0; i--) {
       const c = COMPANIONS[i];
+      if (c.removed) { COMPANIONS.splice(i, 1); continue; } // despawned (left far behind): frees the squad slot
       if (c.state === 'dead' || c.health <= 0) {
         COMPANIONS.splice(i, 1);
         if (ctx.notify) ctx.notify(`⚠️ Your ${c.companionRole || 'companion'} went down!`, '#ef4444', 3000);

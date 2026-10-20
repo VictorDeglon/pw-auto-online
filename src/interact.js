@@ -3,7 +3,7 @@
 import { ctx } from './ctx.js';
 
 const items = new Set();
-let current = null;
+let current = null, shown = null; // shown: the prompt's markup as last written (only rewritten when it changes)
 
 export function addInteract(it) { items.add(it); return it; }
 export function removeInteract(it) { items.delete(it); if (current === it) current = null; }
@@ -22,8 +22,11 @@ export function updateInteract() {
   }
   current = best;
   if (!el) return;
-  if (best) { const label = typeof best.label === 'function' ? best.label() : best.label; el.innerHTML = `<kbd>E</kbd> ${label}`; el.hidden = false; }
-  else el.hidden = true;
+  if (best) {
+    const label = typeof best.label === 'function' ? best.label() : best.label, html = `<kbd>E</kbd> ${label}`;
+    if (html !== shown) { el.innerHTML = html; shown = html; }
+    if (el.hidden) el.hidden = false;
+  } else if (!el.hidden) el.hidden = true;
 }
 
 export function useInteract() {

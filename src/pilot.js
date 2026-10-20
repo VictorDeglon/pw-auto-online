@@ -161,15 +161,15 @@ export function createPilot(D) {
   function crash(cr) {
     const g = cr.g.position; D.explosionAt(g.x, g.y, g.z, 12, 'player');
     const was = D.FLY.craft === cr; if (was) { D.FLY.craft = null; D.player.rig.g.visible = true; D.cam.dist = 6.5; D.hurtPlayer(999, 'explosion'); }
-    cr.g.visible = false; crafts.splice(crafts.indexOf(cr), 1); D.scene.remove(cr.g);
+    cr.g.visible = false; const i = crafts.indexOf(cr); if (i >= 0) crafts.splice(i, 1); D.scene.remove(cr.g);
     const s = D.sfx2(); if (s && was) s.engine(0, 0, false);
   }
 
   function update(dt) {
     const cr = D.FLY.craft;
     if (cr) { if (cr.type === 'boat') sail(cr, dt); else if (cr.type === 'plane') fly(cr, dt); else hover(cr, dt); }
-    for (const a of crafts) { // aircraft left in the air: nose down and in
-      if (!(a.falling > 0) || a === cr) continue;
+    for (let i = crafts.length - 1; i >= 0; i--) { // aircraft left in the air: nose down and in (backwards: crash() takes them out of crafts)
+      const a = crafts[i]; if (!(a.falling > 0) || a === cr) continue;
       a.falling -= dt; a.vel.y -= 12 * dt; a.g.position.addScaledVector(a.vel, dt); a.c.spin(dt, 10);
       _w.copy(a.vel).normalize(); a.g.quaternion.slerp(_q.setFromUnitVectors(_v.set(0, 0, 1), _w), Math.min(1, dt));
       if (a.g.position.y < D.heightAt(a.g.position.x, a.g.position.z) + 1 || a.falling <= 0) crash(a);

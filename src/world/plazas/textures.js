@@ -7,12 +7,14 @@ import * as THREE from 'three';
 
 const textureCache = new Map();
 
-function createTexture(key, drawFn, width = 512, height = 512) {
+// scale: draw at (width, height) on a canvas that much smaller (shapes and text only: putImageData isn't scaled)
+function createTexture(key, drawFn, width = 512, height = 512, scale = 1) {
   if (textureCache.has(key)) return textureCache.get(key);
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = Math.round(width * scale);
+  canvas.height = Math.round(height * scale);
   const ctx = canvas.getContext('2d');
+  if (scale !== 1) ctx.scale(scale, scale);
   drawFn(ctx, width, height);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -272,6 +274,7 @@ export function getHVACGrilleTex() {
 // 3. AUTHENTIC STOREFRONT BRAND LOGOS
 // ---------------------------------------------------------------------------
 
+const LOGO_SCALE = 0.5; // store signs: 512 x 192 is plenty at 12 m wide, and a quarter of the upload
 export function getBrandLogoTex(storeKey) {
   switch (storeKey) {
     // --- PLAZA 1: POWAY TOWN CENTER / CREEKSIDE ---
@@ -292,7 +295,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 42px "Arial", sans-serif';
         g.letterSpacing = '6px';
         g.fillText('BURGER GRILL', w / 2, h * 0.76);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'board_and_brew':
       return createTexture('logo_board_and_brew', (g, w, h) => {
@@ -306,7 +309,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 36px "Brush Script MT", cursive, sans-serif';
         g.fillStyle = '#fef08a';
         g.fillText('Craft Sandwiches & Cold Brews', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'round_table_pizza':
       return createTexture('logo_round_table_pizza', (g, w, h) => {
@@ -324,7 +327,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 44px sans-serif';
         g.fillStyle = '#ffffff';
         g.fillText('PIZZA', w / 2, h * 0.75);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'jamba':
       return createTexture('logo_jamba', (g, w, h) => {
@@ -336,7 +339,7 @@ export function getBrandLogoTex(storeKey) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText('jamba', w / 2, h / 2);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'sport_clips':
       return createTexture('logo_sport_clips', (g, w, h) => {
@@ -353,7 +356,7 @@ export function getBrandLogoTex(storeKey) {
         g.fillText('Sport Clips', w / 2, h * 0.46);
         g.font = 'bold 36px Arial, sans-serif';
         g.fillText('HAIRCUTS', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     // --- PLAZA 2: POWAY VALLEY CENTER / CARRIAGE SQUARE ---
     case 'five_guys':
@@ -376,7 +379,7 @@ export function getBrandLogoTex(storeKey) {
         g.fillText('FIVE GUYS', w / 2, h * 0.44);
         g.font = 'bold 38px Arial, sans-serif';
         g.fillText('BURGERS and FRIES', w / 2, h * 0.76);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'jersey_mikes':
       return createTexture('logo_jersey_mikes', (g, w, h) => {
@@ -390,7 +393,7 @@ export function getBrandLogoTex(storeKey) {
         g.fillStyle = '#fde047';
         g.font = 'bold 50px Arial, sans-serif';
         g.fillText('SUBS', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'wingstop':
       return createTexture('logo_wingstop', (g, w, h) => {
@@ -407,7 +410,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 32px Arial, sans-serif';
         g.fillStyle = '#86efac';
         g.fillText('THE WING EXPERTS', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'little_caesars':
       return createTexture('logo_little_caesars', (g, w, h) => {
@@ -421,7 +424,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 44px Arial, sans-serif';
         g.fillStyle = '#fef08a';
         g.fillText('PIZZA! PIZZA!', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'oreilly_auto':
       return createTexture('logo_oreilly_auto', (g, w, h) => {
@@ -437,7 +440,7 @@ export function getBrandLogoTex(storeKey) {
         g.fillStyle = '#fde047';
         g.font = 'bold 40px Arial, sans-serif';
         g.fillText('AUTO PARTS', w / 2, h * 0.82);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     // --- PLAZA 3: TWIN PEAKS PLAZA ---
     case 'outback':
@@ -452,7 +455,7 @@ export function getBrandLogoTex(storeKey) {
         g.fillStyle = '#fde047';
         g.font = 'bold 40px Arial, sans-serif';
         g.fillText('STEAKHOUSE', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'ikes_sandwiches':
       return createTexture('logo_ikes', (g, w, h) => {
@@ -466,7 +469,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 40px Arial, sans-serif';
         g.fillStyle = '#dc2626';
         g.fillText('LOVE & SANDWICHES', w / 2, h * 0.76);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'wells_fargo':
       return createTexture('logo_wells_fargo', (g, w, h) => {
@@ -477,7 +480,7 @@ export function getBrandLogoTex(storeKey) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText('WELLS FARGO', w / 2, h / 2);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     // --- PLAZA 4: CARMEL MOUNTAIN LIFESTYLE PROMENADE ---
     case 'barnes_and_noble':
@@ -491,7 +494,7 @@ export function getBrandLogoTex(storeKey) {
         g.fillText('BARNES & NOBLE', w / 2, h * 0.44);
         g.font = '500 36px "Times New Roman", serif';
         g.fillText('BOOKSELLERS', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'trader_joes':
       return createTexture('logo_trader_joes', (g, w, h) => {
@@ -502,7 +505,7 @@ export function getBrandLogoTex(storeKey) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText('TRADER JOE\'S', w / 2, h / 2);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'chipotle':
       return createTexture('logo_chipotle', (g, w, h) => {
@@ -519,7 +522,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 34px Arial, sans-serif';
         g.fillStyle = '#fde047';
         g.fillText('MEXICAN GRILL', w * 0.62, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'cava':
       return createTexture('logo_cava', (g, w, h) => {
@@ -530,7 +533,7 @@ export function getBrandLogoTex(storeKey) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText('CAVA', w / 2, h / 2);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'ulta_beauty':
       return createTexture('logo_ulta', (g, w, h) => {
@@ -544,7 +547,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 44px Arial, sans-serif';
         g.fillStyle = '#0f172a';
         g.fillText('BEAUTY', w / 2, h * 0.76);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     // --- PLAZA 5: COSTCO TECH & INDUSTRIAL PLAZA ---
     case 'panera_bread':
@@ -559,7 +562,7 @@ export function getBrandLogoTex(storeKey) {
         g.font = 'bold 44px Arial, sans-serif';
         g.fillStyle = '#ffffff';
         g.fillText('BREAD', w / 2, h * 0.78);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     case 'panda_express':
       return createTexture('logo_panda_express', (g, w, h) => {
@@ -575,7 +578,7 @@ export function getBrandLogoTex(storeKey) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText('PANDA EXPRESS', w * 0.64, h / 2);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
 
     default:
       return createTexture('logo_default_' + storeKey, (g, w, h) => {
@@ -586,6 +589,6 @@ export function getBrandLogoTex(storeKey) {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillText(storeKey.toUpperCase().replace(/_/g, ' '), w / 2, h / 2);
-      }, 1024, 384);
+      }, 1024, 384, LOGO_SCALE);
   }
 }

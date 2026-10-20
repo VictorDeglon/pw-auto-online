@@ -118,8 +118,10 @@ export const MILITARY = {
     const f = ctx.focusPos();
     if (!f) return;
 
-    // Filter dead units
-    this.units = this.units.filter(u => u && !u.dead && u.health > 0);
+    // Drop dead or despawned units and soldiers (in place: this runs every frame at 5 stars)
+    const U = this.units, S = this.soldiers;
+    for (let i = U.length - 1; i >= 0; i--) { const u = U[i]; if (!u || u.dead || u.removed || !(u.health > 0)) U.splice(i, 1); }
+    for (let i = S.length - 1; i >= 0; i--) { const p = S[i]; if (!p || p.removed || p.state === 'dead') S.splice(i, 1); }
 
     // Ensure up to 2 military armored vehicles
     if (this.units.length < 2 && Math.random() < dt * 0.4) {
