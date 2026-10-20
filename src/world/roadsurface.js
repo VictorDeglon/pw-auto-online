@@ -79,6 +79,12 @@ export class RoadSurface {
   }
   // nearest road at (x, z) within its corridor: fills and returns this._q, or null
   query(x, z, out) {
+    if (!out && x === this._lx && z === this._lz) return this._lr; // heightAt asks onRoad, then surfaceAt, at the same spot
+    const r = this._query(x, z, out);
+    if (!out) { this._lx = x; this._lz = z; this._lr = r; }
+    return r;
+  }
+  _query(x, z, out) {
     const gx = Math.floor((x - this.x0) / CELL), gz = Math.floor((z - this.z0) / CELL);
     if (gx < 0 || gz < 0 || gx >= this.nx || gz >= this.nz) return null;
     const ri = this.cells[gz * this.nx + gx] - 1; if (ri < 0) return null;

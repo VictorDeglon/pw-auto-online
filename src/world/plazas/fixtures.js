@@ -19,17 +19,15 @@ import {
   getHVACGrilleTex
 } from './textures.js';
 
-// Physical Glass for Storefronts & Moving Doors
-export const seeThroughGlassMat = new THREE.MeshPhysicalMaterial({
+// Glass for storefronts and moving doors: see-through and glossy. Not transmission: any transmissive mesh on screen
+// makes three.js draw the whole scene a second time, every frame
+export const seeThroughGlassMat = new THREE.MeshStandardMaterial({
   color: 0x3b5266,
   transparent: true,
-  opacity: 0.28,
+  opacity: 0.3,
   roughness: 0.05,
-  metalness: 0.1,
-  transmission: 0.85,
-  ior: 1.5,
-  reflectivity: 0.85,
-  side: THREE.DoubleSide
+  metalness: 0.6,
+  depthWrite: false
 });
 
 // Shared Structural Materials
@@ -143,18 +141,15 @@ export class MovingDoorSystem {
     if (!playerPos) return;
 
     for (const d of this.doors) {
-      d.group.getWorldPosition(d.worldPos);
-      const dist = Math.hypot(playerPos.x - d.worldPos.x, playerPos.z - d.worldPos.z);
+      if (!d.placed) { d.group.getWorldPosition(d.worldPos); d.placed = true; } // doors don't move: where it is, once
+      const dx = playerPos.x - d.worldPos.x, dz = playerPos.z - d.worldPos.z;
+      if (d.openAmount < 0.002 && d.targetOpen === 0 && dx * dx + dz * dz > 400) continue; // shut and nobody near: nothing to do
+      const dist = Math.hypot(dx, dz);
       const vertDist = Math.abs(playerPos.y - d.worldPos.y);
 
-      // Trigger sensor within 3.8m distance
-      if (dist < 3.8 && vertDist < 3.2) {
-        d.targetOpen = 1.0;
-        d.led.material.color.setHex(0x38bdf8); // Blue when active
-      } else {
-        d.targetOpen = 0.0;
-        d.led.material.color.setHex(0x22c55e); // Green when idle
-      }
+      // Trigger sensor within 3.8m distance; the LED only changes when the sensor does
+      const want = dist < 3.8 && vertDist < 3.2 ? 1.0 : 0.0;
+      if (want !== d.targetOpen) { d.targetOpen = want; d.led.material.color.setHex(want ? 0x38bdf8 : 0x22c55e); } // blue when active, green when idle
 
       // Smooth slide animation (fast responsive pneumatic open, gentle close)
       const speed = d.targetOpen > d.openAmount ? 4.5 : 2.5;
@@ -330,7 +325,7 @@ export function createPlazaLandChunk(parent, opts = {}) {
   parent.add(landGroup);
 
   // 1. High-Detail Dark Asphalt Ground Pad
-  const asphaltTex = getAsphaltTex();
+  const asphaltTex = getAsphaltTex().clone(); // own tiling per plaza (the image is shared)
   asphaltTex.repeat.set(width / 16, depth / 16);
   const asphaltMat = new THREE.MeshStandardMaterial({
     map: asphaltTex,
@@ -345,7 +340,7 @@ export function createPlazaLandChunk(parent, opts = {}) {
   // 2. Continuous Scored Concrete Pedestrian Promenade & Sidewalk Arcade
   const sidewalkW = width - 4.0;
   const sidewalkD = 14.0;
-  const scoredTex = getScoredSidewalkTex();
+  const scoredTex = getScoredSidewalkTex().clone();
   scoredTex.repeat.set(sidewalkW / 3, sidewalkD / 3);
   const sidewalkMat = new THREE.MeshStandardMaterial({
     map: scoredTex,

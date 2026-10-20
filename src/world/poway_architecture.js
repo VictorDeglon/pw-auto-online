@@ -155,16 +155,13 @@ export function createPowayArchitecture(ctx) {
   const curbMat = new THREE.MeshStandardMaterial({ color: 0x9c9991, roughness: 0.9 });
 
   // SEE-THROUGH PHYSICAL WINDOW GLASS MATERIAL
-  const seeThroughGlassMat = new THREE.MeshPhysicalMaterial({
+  const seeThroughGlassMat = new THREE.MeshStandardMaterial({ // not transmission: that redraws the whole scene
     color: 0x334e68,
     transparent: true,
-    opacity: 0.28,
+    opacity: 0.3,
     roughness: 0.04,
-    metalness: 0.1,
-    transmission: 0.82,
-    ior: 1.5,
-    reflectivity: 0.85,
-    side: THREE.DoubleSide
+    metalness: 0.6,
+    depthWrite: false
   });
 
   // Registry of all custom landmark buildings with furnished interiors
@@ -314,14 +311,6 @@ export function createPowayArchitecture(ctx) {
       }
     }
 
-    // Overhead Hanging LED Shoplights (Bright Illumination)
-    for (let lx = -bW * 0.35; lx <= bW * 0.35; lx += 15.0) {
-      for (let lz = -bD * 0.3; lz <= bD * 0.3; lz += 15.0) {
-        const shopLight = new THREE.PointLight(0xfffaed, 1.8, 22, 1.5);
-        shopLight.position.set(lx, bH - 1.2, lz);
-        bGroup.add(shopLight);
-      }
-    }
 
     group.add(bGroup);
 
@@ -663,9 +652,6 @@ export function createPowayArchitecture(ctx) {
     bGroup.add(sodaDispenser);
 
     // Interior Warm Lighting
-    const interiorLight = new THREE.PointLight(0xfff3db, 1.6, 12, 1.8);
-    interiorLight.position.set(0, bH - 0.8, 0);
-    bGroup.add(interiorLight);
 
     group.add(bGroup);
 
@@ -761,9 +747,6 @@ export function createPowayArchitecture(ctx) {
     bench.position.set(-bW * 0.22, 0.22, -bD * 0.28);
     bGroup.add(bench);
 
-    const intLight = new THREE.PointLight(0xfff5ea, 1.5, 12, 1.8);
-    intLight.position.set(0, bH - 0.8, 0);
-    bGroup.add(intLight);
 
     group.add(bGroup);
 
@@ -892,11 +875,6 @@ export function createPowayArchitecture(ctx) {
     bGroup.add(bed, headboard);
 
     // Warm Ambient Interior Downlights
-    const warmLight1 = new THREE.PointLight(0xffeedd, 1.5, 14, 1.8);
-    warmLight1.position.set(3.8, bH - 0.6, -2.5);
-    const warmLight2 = new THREE.PointLight(0xffeedd, 1.5, 14, 1.8);
-    warmLight2.position.set(-3.5, bH - 0.6, -1.5);
-    bGroup.add(warmLight1, warmLight2);
 
     group.add(bGroup);
 
@@ -944,9 +922,9 @@ export function createPowayArchitecture(ctx) {
     buildResidentialHome(-1420, 1100, 'modern');
     buildResidentialHome(-1100, 820, 'modern');
 
-    // Door Interactivity on furnished buildings
+    // Door Interactivity on furnished buildings (the plazas register their own)
     if (addInteract) {
-      interiorBounds.forEach(b => {
+      interiorBounds.slice(majorPlazas && majorPlazas.interiorBounds ? majorPlazas.interiorBounds.length : 0).forEach(b => {
         addInteract({
           x: (b.minX + b.maxX) / 2,
           z: b.minZ - 1.5,
@@ -1001,7 +979,7 @@ export function createPowayArchitecture(ctx) {
     }
 
     // When inside, adjust camera to open interior shoulder perspective
-    if (inInterior && currentInterior) {
+    if (inInterior && currentInterior && !player.inCar) {
       // Pull camera closer so it never clips external walls or ceilings
       ctx.cam.dist = THREE.MathUtils.lerp(ctx.cam.dist, 2.2, dt * 6.0);
       // Softly clamp pitch so camera stays level inside rooms
@@ -1011,6 +989,7 @@ export function createPowayArchitecture(ctx) {
 
   return {
     group,
+    plazas: majorPlazas,
     interiorBounds,
     isInside: () => inInterior,
     currentInterior: () => currentInterior,

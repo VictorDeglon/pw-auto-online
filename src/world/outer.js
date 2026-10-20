@@ -119,7 +119,8 @@ export function createOuter(E) {
       cullT = 0.5; const lodNear = E.lodNear(), shNear = E.shadowNear(); let shown = 0;
       for (const t of O.tiles.values()) if (t.subs) for (const sb of t.subs) {
         const d = Math.max(0, Math.hypot(sb.cx - f.x, sb.cz - f.z) - T / SUB * 0.71), vis = d < view + 150;
-        sb.group.visible = vis; if (!vis) continue; shown++;
+        if (sb.group.visible !== vis || sb.group.matrixWorldAutoUpdate !== vis) { sb.group.visible = sb.group.matrixWorldAutoUpdate = vis; if (!vis) sb.group.updateMatrixWorld(true); } // hidden: out of the matrix pass
+        if (!vis) continue; shown++;
         const near = d < lodNear, sh = d < shNear; if (sb.near === near && sb.sh === sh) continue; sb.near = near; sb.sh = sh;
         for (const m of sb.group.children) { if (m.userData.lod) m.visible = near; if (m.userData.cast === undefined) m.userData.cast = m.castShadow; m.castShadow = m.userData.cast && sh; }
       }

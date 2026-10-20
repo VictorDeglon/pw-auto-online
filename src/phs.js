@@ -224,7 +224,8 @@ export async function loadPHS(ctx) {
     }
 
     // static nodes: freeze local matrices (animated leaves keep auto-update)
-    sc.traverse(o => { if (o === sc || animated.has(o.name) || animated.has(o.uuid)) return; o.updateMatrix(); o.matrixAutoUpdate = false; });
+    sc.traverse(o => { if (animated.has(o.name) || animated.has(o.uuid)) return; o.updateMatrix(); o.matrixAutoUpdate = false; });
+    root.updateMatrix(); root.matrixAutoUpdate = false; // the campus never moves: an auto-updating root redid all ~600 nodes every frame
     root.updateMatrixWorld(true);
     // small campus furniture (bike racks, benches, bollards) the model put out on a public street's asphalt: hide it
     if (ctx.onAsphalt) {
@@ -259,7 +260,7 @@ export function updatePHS(dt, pos) {
   if (!S.ready) return;
   if (S.mixer) S.mixer.update(dt);
   if (!pos) return;
-  S.root.visible = Math.hypot(pos.x - S.cx, pos.z - S.cz) < CULL_DIST;
+  S.root.visible = S.root.matrixWorldAutoUpdate = Math.hypot(pos.x - S.cx, pos.z - S.cz) < CULL_DIST;
   if ((S.scan -= dt) > 0) return; S.scan = 0.2; // the rest runs at 5 Hz
 
   const on = phsSkip(pos.x, pos.z);

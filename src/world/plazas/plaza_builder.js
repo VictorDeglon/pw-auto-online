@@ -619,12 +619,12 @@ export function buildMajorPlazas(ctx) {
     }
 
     // Translucent Domed Industrial Skylights across Warehouse Roof
-    const skylightMat = new THREE.MeshPhysicalMaterial({
+    const skylightMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      transmission: 0.75,
       roughness: 0.2,
       opacity: 0.6,
-      transparent: true
+      transparent: true,
+      depthWrite: false
     });
     for (let sx = -bW * 0.38; sx <= bW * 0.38; sx += 18.0) {
       for (let sz = -bD * 0.35; sz <= bD * 0.35; sz += 18.0) {

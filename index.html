@@ -1709,7 +1709,7 @@ function buildingGeom(B, ch) {
     for (const t of tris) tri(roofG, [contour[t[0]].x, top, contour[t[0]].y], [contour[t[1]].x, top, contour[t[1]].y], [contour[t[2]].x, top, contour[t[2]].y], roofC, roofC, roofC, uvOf(contour[t[0]].x, contour[t[0]].y), uvOf(contour[t[1]].x, contour[t[1]].y), uvOf(contour[t[2]].x, contour[t[2]].y), 0, 1, 0);
     if (big) { const dark = wallC.clone().multiplyScalar(0.85); const gb = ch.wall[matIdx]; for (let i = 0; i < n; i++) { const j = (i + 1) % n; const ax = flat[i * 2], az = flat[i * 2 + 1], bx = flat[j * 2], bz = flat[j * 2 + 1]; const ox = S > 0 ? bz - az : az - bz, oz = S > 0 ? ax - bx : bx - ax; tri(gb, [ax, top, az], [bx, top, bz], [bx, lip, bz], dark, dark, dark, [0, 0], [0.1, 0], [0.1, 0.1], ox, 0, oz); tri(gb, [ax, top, az], [bx, lip, bz], [ax, lip, az], dark, dark, dark, [0, 0], [0.1, 0.1], [0, 0.1], ox, 0, oz); } }
   }
-  if (kind === 0) facadeDetails(ch, flat, S, base, top, cx, cz);
+  if (kind === 0 && ZONE && inCore(cx, cz)) facadeDetails(ch, flat, S, base, top, cx, cz);
   B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); }
   B.drawn = true;
 }
@@ -1863,8 +1863,7 @@ function addHouse(cx, cz, w, d, ang, h, style) {
     const g0 = P(-hw, -hd, top), g3 = P(-hw, hd, top), g1 = P(hw, -hd, top), g2 = P(hw, hd, top), t0 = P(-hw, 0, top + rh * (hd / rd)), t1 = P(hw, 0, top + rh * (hd / rd));
     const gb = ch.wall[0]; tri(gb, g0, g3, t0, wall, wall, wall, [0, 0], [d / 4, 0], [d / 8, rh / 3.3], -ux, 0, -uz); tri(gb, g1, g2, t1, wall, wall, wall, [0, 0], [d / 4, 0], [d / 8, rh / 3.3], ux, 0, uz);
   }
-  const S = Math.sqrt(w * d);
-  facadeDetails(ch, flat, S, base, top, cx, cz);
+  if (ZONE && inCore(cx, cz)) facadeDetails(ch, flat, Math.sqrt(w * d), base, top, cx, cz); // doors and a mailbox, in the detail zone
   addPoly(flat, base, top + rh);
 }
 // per-chunk roof builders keyed by ground atlas
@@ -2635,7 +2634,11 @@ function buildMailboxes() {
 let SIGNALS = null;
 // the skin picker's turntable has its own WebGL context: while it's up the world keeps simulating but isn't drawn (the
 // menu covers it), so the two never fight over the GPU
-function drawFrame() { if (SHELL.previewOpen && SHELL.previewOpen()) return; POST.render(scene, camera, nightAmount); }
+function drawFrame() {
+  if (SHELL.previewOpen && SHELL.previewOpen()) return;
+  for (const p of peds) p.rig.g.matrixWorldAutoUpdate = p.rig.g.visible; // a hidden body's ~90 bones wait until it shows again
+  POST.render(scene, camera, nightAmount);
+}
 function updateSignals() { if (SIGNALS) SIGNALS.update(signalAspect, nightAmount, simTime, camera.position); }
 // chunk visibility by distance (saves draw calls far away)
 // chunk LOD: whole chunks past the view distance are hidden; past LOD_NEAR the small stuff (sidewalks, lane lines,
@@ -2644,7 +2647,8 @@ const LOD_KEYS = new Set(['side', 'line', 'pool', 'poolWall', 'coping']), LOD_NE
 function updateChunkVisibility(fx, fz) {
   let shown = 0, detail = 0; planLazy(fx, fz);
   for (const ch of chunks.values()) {
-    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120; ch.group.visible = vis;
+    const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7), vis = d < GFX.view + 120;
+    if (ch.group.visible !== vis || ch.group.matrixWorldAutoUpdate !== vis) { ch.group.visible = ch.group.matrixWorldAutoUpdate = vis; if (!vis) ch.group.updateMatrixWorld(true); } // hidden: out of the per-frame matrix pass too
     if (!vis) { if (ch.gpu && d > GFX.view + 1500) { ch.gpu = false; ch.group.traverse(o => { if (o.geometry) o.geometry.dispose(); }); } continue; } // far: off the GPU
     ch.gpu = true; shown++;
     const near = d < LOD_NEAR, sh = d < SHADOW_NEAR; if (near) detail++;
@@ -3159,7 +3163,7 @@ function groundPose(v) {
   const hf = gh(v.pos.x + v.fx * v.spec.L * 0.42, v.pos.z + v.fz * v.spec.L * 0.42), hb = gh(v.pos.x - v.fx * v.spec.L * 0.42, v.pos.z - v.fz * v.spec.L * 0.42);
   const sx = v.fz, sz = -v.fx; const hl = gh(v.pos.x + sx * v.spec.W * 0.5, v.pos.z + sz * v.spec.W * 0.5), hr = gh(v.pos.x - sx * v.spec.W * 0.5, v.pos.z - sz * v.spec.W * 0.5);
   const hc = gh(v.pos.x, v.pos.z);
-  _gp.y = Math.max(hc, (hf + hb + hl + hr) / 4); _gp.p = Math.atan2(hb - hf, v.spec.L * 0.8); _gp.r = Math.atan2(hl - hr, v.spec.W * 0.9); return _gp;
+  _gp.c = hc; _gp.y = Math.max(hc, (hf + hb + hl + hr) / 4); _gp.p = Math.atan2(hb - hf, v.spec.L * 0.8); _gp.r = Math.atan2(hl - hr, v.spec.W * 0.9); return _gp;
 }
 function bodyDrop(v) { // distance from the box centre down to its lowest corner at the current tilt
   const cp = Math.cos(v.pitch), sp = Math.sin(v.pitch), cr = Math.cos(v.roll), sr = Math.sin(v.roll);
@@ -3182,7 +3186,10 @@ function landClean(v, hs) {
   v.rotY = back ? wrapA(dir + Math.PI) : dir; v.vel.set(Math.sin(dir) * hs, Math.cos(dir) * hs); v.steer = 0;
 }
 function settleRail(v, dt) { // traffic on rails: height and tilt follow the ground through the same soft suspension
-  const g = groundPose(v); if (!(dt > 0) || v.air) { settleCar(v); return; }
+  if (!(dt > 0) || v.air) { settleCar(v); return; }
+  const cx = v.pos.x - camera.position.x, cz = v.pos.z - camera.position.z;
+  if (cx * cx + cz * cz > 220 * 220 && ((v.poseN = (v.poseN || 0) + 1) & 3)) { v.pos.y = gh(v.pos.x, v.pos.z) + (v.poseDy || 0); return; } // far off: the full five-point pose every 4th frame, the height between
+  const g = groundPose(v); v.poseDy = g.y - g.c;
   const ky = 1 - Math.exp(-dt * 14), kr = 1 - Math.exp(-dt * 8);
   v.pos.y += (g.y - v.pos.y) * ky; if (v.pos.y < g.y - 0.03 || Math.abs(g.y - v.pos.y) > 1.5) v.pos.y = g.y;
   v.pitch += wrapA(g.p - v.pitch) * kr; v.roll += wrapA(g.r - v.roll) * kr;
@@ -3608,7 +3615,74 @@ function initArchWorld() {
   } catch (e) {
     console.error('[architecture] Failed to build Poway architecture:', e);
   }
+  if (ARCH_WORLD) { // built once and never moved (only the plaza doors slide): merged, and matrices worked out now, not every frame
+    const P = ARCH_WORLD.plazas, doors = new Set();
+    if (P && P.doorSystem) for (const d of P.doorSystem.doors) d.group.traverse(o => doors.add(o));
+    for (const r of [ARCH_WORLD.group, P && P.group]) if (r) for (const b of r.children) mergeStatic(b, doors);
+    for (const r of [ARCH_WORLD.group, P && P.group]) if (r) { r.traverse(o => { o.updateMatrix(); o.matrixAutoUpdate = false; }); r.updateMatrixWorld(true); }
+    if (P && P.doorSystem) for (const d of P.doorSystem.doors) d.leftLeaf.matrixAutoUpdate = d.rightLeaf.matrixAutoUpdate = true;
+  }
   return ARCH_WORLD;
+}
+// One mesh per look instead of one per part: the meshes under root that never move and look alike apart from their
+// colour (same material settings, maps and shadow flags) become one geometry, the colour going into the vertices.
+// The plazas and furnished buildings were ~1,400 meshes of a few dozen looks. Leaves out what's in skip (doors).
+const MAT_SKIP = new Set(['uuid', 'id', 'name', 'version', 'color', 'userData', 'uniforms', 'defines', 'needsUpdate']);
+function matSig(m) {
+  let s = m.type;
+  for (const k of Object.keys(m)) { if (MAT_SKIP.has(k) || k[0] === '_') continue; const v = m[k]; s += ',' + k + '=' + (v == null ? '' : v.isTexture ? v.uuid : v.isColor ? v.getHexString() : v.isVector2 ? v.x + ':' + v.y : typeof v === 'object' || typeof v === 'function' ? '' : v); }
+  return s;
+}
+const _mgM = new THREE.Matrix4(), _mgN = new THREE.Matrix3(), _mgV = new THREE.Vector3();
+function mergeStatic(root, skip) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), looks = new Map();
+  root.traverse(o => {
+    if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || skip.has(o) || Array.isArray(o.material) || o.morphTargetInfluences) return;
+    for (let q = o; q && q !== root; q = q.parent) if (!q.visible) return;
+    const m = o.material, g = o.geometry;
+    if (m.vertexColors || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile || !g.attributes.position || !g.attributes.normal) return; // (a box's face groups don't matter with one material)
+    const k = matSig(m) + '|' + o.castShadow + o.receiveShadow + o.renderOrder + o.frustumCulled + o.layers.mask;
+    let L = looks.get(k); if (!L) looks.set(k, L = []); L.push(o);
+  });
+  for (const L of looks.values()) {
+    if (L.length < 2) continue;
+    let n = 0; for (const o of L) n += o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count;
+    const P = new Float32Array(n * 3), N = new Float32Array(n * 3), U = new Float32Array(n * 2), C = new Float32Array(n * 3); let at = 0;
+    for (const o of L) {
+      const g = o.geometry, ix = g.index, pa = g.attributes.position, na = g.attributes.normal, ua = g.attributes.uv, cnt = ix ? ix.count : pa.count, c = o.material.color || { r: 1, g: 1, b: 1 };
+      _mgM.multiplyMatrices(inv, o.matrixWorld); _mgN.getNormalMatrix(_mgM); const flip = _mgM.determinant() < 0; // mirrored: turn the triangles round
+      for (let i = 0; i < cnt; i++) {
+        const t = flip && i % 3 ? (i % 3 === 1 ? i + 1 : i - 1) : i, j = ix ? ix.getX(t) : t, w = at + i;
+        _mgV.fromBufferAttribute(pa, j).applyMatrix4(_mgM); P[w * 3] = _mgV.x; P[w * 3 + 1] = _mgV.y; P[w * 3 + 2] = _mgV.z;
+        _mgV.fromBufferAttribute(na, j).applyMatrix3(_mgN).normalize(); N[w * 3] = _mgV.x; N[w * 3 + 1] = _mgV.y; N[w * 3 + 2] = _mgV.z;
+        if (ua) { U[w * 2] = ua.getX(j); U[w * 2 + 1] = ua.getY(j); }
+        C[w * 3] = c.r; C[w * 3 + 1] = c.g; C[w * 3 + 2] = c.b;
+      }
+      at += cnt;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(U, 2)); geo.setAttribute('color', new THREE.BufferAttribute(C, 3));
+    geo.computeBoundingBox(); geo.computeBoundingSphere();
+    const mat = L[0].material.clone(); if (mat.color) mat.color.setRGB(1, 1, 1); mat.vertexColors = true;
+    const mesh = new THREE.Mesh(geo, mat), o0 = L[0]; mesh.castShadow = o0.castShadow; mesh.receiveShadow = o0.receiveShadow; mesh.renderOrder = o0.renderOrder; mesh.frustumCulled = o0.frustumCulled; mesh.layers.mask = o0.layers.mask;
+    root.add(mesh);
+    for (const o of L) o.parent.remove(o);
+  }
+  const used = new Set(); root.traverse(o => { if (o.geometry) used.add(o.geometry); }); // parts merged away: their buffers go
+  for (const L of looks.values()) if (L.length >= 2) for (const o of L) if (!used.has(o.geometry)) { used.add(o.geometry); o.geometry.dispose(); }
+}
+// whole buildings and plazas past the view distance leave the frame (and its matrix pass) until you come back
+const _cullB = new THREE.Box3(), _cullS = new THREE.Sphere(); let archCullT = 0;
+function cullFar(root, fx, fz, R) {
+  if (!root) return;
+  for (const c of root.children) {
+    let s = c.userData.cull;
+    if (!s) { _cullB.setFromObject(c); if (_cullB.isEmpty()) s = { x: c.position.x, z: c.position.z, r: 0 }; else { _cullB.getBoundingSphere(_cullS); s = { x: _cullS.center.x, z: _cullS.center.z, r: _cullS.radius }; } c.userData.cull = s; }
+    const vis = hyp(s.x - fx, s.z - fz) - s.r < R;
+    if (c.visible !== vis) { c.visible = vis; c.matrixWorldAutoUpdate = vis; }
+  }
 }
 // two light planes parked on open grass in parks near the start: flat, clear of buildings and well off the road
 function parkPlanes() {
@@ -3778,7 +3852,7 @@ function leaveJet() { // bail out: you keep its height and speed and fall (or fl
   const gy = heightAt(JET.pos.x, JET.pos.z); player.pos.set(JET.pos.x, JET.pos.y, JET.pos.z); player.air = Math.max(0, JET.pos.y - gy); player.vy = JET.vel.y * 0.5; player.fling = [JET.vel.x * 0.4, JET.vel.z * 0.4];
   player.rig.g.visible = true; cam.dist = 6.5;
 }
-const _jf = new THREE.Vector3(), _jw = new THREE.Vector3(), _jq = new THREE.Quaternion(), _je = new THREE.Euler();
+const _jf = new THREE.Vector3(), _jw = new THREE.Vector3(), _jq = new THREE.Quaternion(), _jq2 = new THREE.Quaternion(), _je = new THREE.Euler();
 function updateJet(dt) {
   if (!JET.m) return;
   if (!JET.on) { // pilotless: noses over and goes in
@@ -3792,15 +3866,16 @@ function updateJet(dt) {
   const want = _jf.set(-Math.sin(cam.yaw) * Math.cos(cam.pitch - 0.25), -Math.sin(cam.pitch - 0.25), -Math.cos(cam.yaw) * Math.cos(cam.pitch - 0.25)).normalize(); // fly where you look
   const fwd = _jw.set(0, 0, 1).applyQuaternion(JET.q), turn = _jq.setFromUnitVectors(fwd, want);
   const turnRate = afterburn ? 2.4 : 3.0;
-  JET.q.premultiply(new THREE.Quaternion().slerp(turn, Math.min(1, dt * turnRate)));
+  JET.q.premultiply(_jq2.identity().slerp(turn, Math.min(1, dt * turnRate)));
   _je.setFromQuaternion(JET.q, 'YXZ');
   const bank = clamp(-wrapA(Math.atan2(want.x, want.z) - _je.y) * 2.4, -1.25, 1.25) + rl * 1.2;
   _je.z += (bank - _je.z) * Math.min(1, dt * 4.5);
   JET.q.setFromEuler(_je);
 
-  // Supersonic speeds: base cruise 160-520 m/s (~360 - 1160 mph), afterburner boost up to 880 m/s (~Mach 2.6)!
-  const baseSp = 160 + JET.thr * 360;
-  const boostMult = afterburn ? 1.7 : 1.0;
+  // cruise 150-330 m/s (up to Mach 1); the afterburner takes it to about 480 m/s (Mach 1.4). Faster than that outruns
+  // the county's streaming tiles (2 km each) and you fly over empty ground
+  const baseSp = 90 + JET.thr * 240;
+  const boostMult = afterburn ? 1.45 : 1.0;
   const sp = baseSp * boostMult;
   fwd.set(0, 0, 1).applyQuaternion(JET.q);
   JET.vel.lerp(_jf.copy(fwd).multiplyScalar(sp), 1 - Math.exp(-dt * 3.0));
@@ -3815,7 +3890,7 @@ function updateJet(dt) {
     fl.scale.set(flameW, flameW, flameL);
   }
   player.pos.copy(JET.pos); player.rotY = _je.y; player.air = 0;
-  cam.dist = clamp(20 + (sp / 880) * 16, 20, 38);
+  cam.dist = clamp(20 + (sp / 480) * 16, 20, 38);
 
   if (mouseDown && JET.cd <= 0) {
     JET.cd = 0.12; // Rapid-fire missile salvo
@@ -4605,7 +4680,7 @@ function launchProjectile(kind, from, dir) {
   const thrown = kind === 'grenade' || kind === 'sticky' || kind === 'flare';
   const carV = player.inCar ? new THREE.Vector3(player.inCar.vel.x, 0, player.inCar.vel.y) : new THREE.Vector3();
   let vel;
-  if (kind === 'rocket') vel = dir.clone().multiplyScalar(75);
+  if (kind === 'rocket') { vel = dir.clone().multiplyScalar(75); if (JET.on) vel.addScaledVector(JET.vel, 1); } // from the jet: on top of its own speed, or it overtakes them
   else if (kind === 'gl') vel = dir.clone().multiplyScalar(42).add(new THREE.Vector3(0, 4, 0));
   else vel = dir.clone().multiplyScalar(19).add(new THREE.Vector3(0, 6.5, 0)).add(carV);
   const m = new THREE.Mesh(kind === 'rocket' ? projGeo.rocket : projGeo.ball, projMat[kind] || projMat.grenade);
@@ -6357,7 +6432,7 @@ function updatePopulation(dt) {
   const hf = hour < 5 || hour >= 23 ? 0.45 : (hour >= 7 && hour < 9) || (hour >= 16 && hour < 18.5) ? 1.15 : 1;
   const wantCars = Math.round(TRAFFIC_N * hf * (1 - nightAmount * 0.25) * (0.75 + busyAt(f.x, f.z) * 1.1)), wantPeds = Math.round(GFX.peds * (1 - nightAmount * 0.5) * (1 - weather.rain * 0.45));
   const carsNow = vehicles.filter(v => !v.mine && !v.dispatched && !v.parked).length;
-  if (!(online && NETTRAFFIC.on)) for (let i = carsNow < wantCars * 0.7 ? 4 : 2; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 40 : 120, 360);
+  if (!(online && NETTRAFFIC.on)) for (let i = carsNow < wantCars * 0.7 ? 2 : 1; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 60 : 150, 340);
   const pedsNow = peds.filter(p => !p.remote && (!p.isCop || !p.homeCar)).length;
   if (pedsNow < wantPeds) spawnPed(f.x, f.z, pedsNow < wantPeds * 0.5 ? 20 : 80, 240);
 }
@@ -6505,6 +6580,30 @@ function mapMarks(big) {
   // missions, your job and your waypoint always show, and so do other players and the deputies (radar)
   return out.filter(m => m.pri === 2 || m.always || m.kind === 'dot' || m.kind === 'player' || fogSeen(m.x, m.z));
 }
+// The minimap's photo and streets, drawn north-up around where you are and reused while you stay near it: each frame
+// only turns and moves that picture. Redrawn when you've gone about half a map, the zoom changes, or new streets or
+// photos have come in (and every few seconds anyway).
+let mmBase = null; const mmBaseCv = document.createElement('canvas');
+function minimapBase(f, mpp, span) {
+  const C = mmBase, ver = mapRoads.length + ':' + groundImgs.length + ':' + (photoMask ? 1 : 0), now = performance.now();
+  if (C && C.ver === ver && now - C.t < 4000 && Math.abs(C.mpp / mpp - 1) < 0.12 && Math.abs(f.x - C.cx) < span * 0.5 && Math.abs(f.z - C.cz) < span * 0.5) return C;
+  const CR = span * 1.6, px = Math.min(2048, Math.ceil(2 * CR / mpp)), k = px / (2 * CR), x0 = f.x - CR, z0 = f.z - CR, x1 = f.x + CR, z1 = f.z + CR;
+  if (mmBaseCv.width !== px) mmBaseCv.width = mmBaseCv.height = px;
+  const g = mmBaseCv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, px, px); g.setTransform(k, 0, 0, k, -x0 * k, -z0 * k);
+  const seenR = new Set();
+  for (let gx = Math.floor(x0 / MB); gx <= Math.floor(x1 / MB); gx++) for (let gz = Math.floor(z0 / MB); gz <= Math.floor(z1 / MB); gz++) { const c = mapBins.get(ckey(gx, gz)); if (c) c.r.forEach(i => seenR.add(i)); }
+  MAPKIT.drawMasked(g, mmLayer, mapMask(), L => {
+    drawAerial(L, 0.9, [x0, z0, x1, z1]);
+    L.lineCap = L.lineJoin = 'round'; L.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
+    for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; L.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; L.beginPath(); for (let q = 0; q < r.p.length; q += 2) q ? L.lineTo(r.p[q], r.p[q + 1]) : L.moveTo(r.p[q], r.p[q + 1]); L.stroke(); }
+    for (const pass of [1, 0]) for (const i of seenR) {
+      const r = mapRoads[i]; if ((r.t <= 3) !== !!pass) continue;
+      L.strokeStyle = roadStyle(r.t); L.lineWidth = Math.max(r.w * 0.6, 2 * mpp);
+      L.beginPath(); for (let q = 0; q < r.p.length; q += 2) q ? L.lineTo(r.p[q], r.p[q + 1]) : L.moveTo(r.p[q], r.p[q + 1]); L.stroke();
+    }
+  });
+  return (mmBase = { canvas: mmBaseCv, cx: f.x, cz: f.z, mpp, ver, t: now, x0, z0, x1, z1 });
+}
 function drawMinimap() {
   const W = mm.width, R = W / 2, f = focusPos();
   const sp = player.inCar ? player.inCar.vel.length() : 0, mpp = (1.5 + sp * 0.04) / MMD;
@@ -6512,20 +6611,8 @@ function drawMinimap() {
   mctx.beginPath(); mctx.arc(R, R, R, 0, TAU); mctx.clip();
   mctx.fillStyle = '#2c3529'; mctx.fillRect(0, 0, W, W);
   mctx.translate(R, R); mctx.rotate(cam.yaw); mctx.scale(1 / mpp, 1 / mpp); mctx.translate(-f.x, -f.z);
-  const span = R * mpp * 1.45;
-  const gx0 = Math.floor((f.x - span) / MB), gx1 = Math.floor((f.x + span) / MB), gz0 = Math.floor((f.z - span) / MB), gz1 = Math.floor((f.z + span) / MB);
-  const seenR = new Set();
-  for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const c = mapBins.get(ckey(gx, gz)); if (!c) continue; c.r.forEach(i => seenR.add(i)); }
-  MAPKIT.drawMasked(mctx, mmLayer, mapMask(), g => { // photo and streets, faded out past the edge of town
-    g.save(); g.beginPath(); g.rect(f.x - span, f.z - span, span * 2, span * 2); g.clip(); drawAerial(g, 0.9, [f.x - span, f.z - span, f.x + span, f.z + span]); g.restore();
-    g.lineCap = g.lineJoin = 'round'; g.strokeStyle = 'rgba(18,22,28,.85)'; // ink outline, as on the big map
-    for (const i of seenR) { const r = mapRoads[i]; if (r.t === 6) continue; g.lineWidth = Math.max(r.w * 0.6, 2 * mpp) + 2.4 * mpp; g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke(); }
-    for (const pass of [1, 0]) for (const i of seenR) {
-      const r = mapRoads[i]; if ((r.t <= 3) !== !!pass) continue;
-      g.strokeStyle = roadStyle(r.t); g.lineWidth = Math.max(r.w * 0.6, 2 * mpp);
-      g.beginPath(); for (let k = 0; k < r.p.length; k += 2) k ? g.lineTo(r.p[k], r.p[k + 1]) : g.moveTo(r.p[k], r.p[k + 1]); g.stroke();
-    }
-  });
+  const span = R * mpp * 1.45, base = minimapBase(f, mpp, span);
+  mctx.drawImage(base.canvas, base.x0, base.z0, base.x1 - base.x0, base.z1 - base.z0); // photo and streets, faded out past the edge of town
   drawFog(mctx); // unexplored ground under a cloud (src/ui/fog.js)
   mctx.lineCap = mctx.lineJoin = 'round';
   if (gps && gps.length > 2) { mctx.strokeStyle = job || storyTarget() ? '#f0b23a' : '#b06cff'; mctx.lineWidth = 5 * mpp; mctx.beginPath(); for (let k = 0; k < gps.length; k += 2) k ? mctx.lineTo(gps[k], gps[k + 1]) : mctx.moveTo(gps[k], gps[k + 1]); mctx.stroke(); }
@@ -6818,7 +6905,7 @@ function tick(rdt) {
   SOCIAL.update(dt);
   updateInteract();
   if (BUILDER) BUILDER.update(dt);
-  if (ARCH_WORLD) ARCH_WORLD.update(dt);
+  if (ARCH_WORLD) { ARCH_WORLD.update(dt); if ((archCullT -= rdt) <= 0) { archCullT = 0.25; const f = focusPos(); cullFar(ARCH_WORLD.group, f.x, f.z, GFX.view + 150); cullFar(ARCH_WORLD.plazas && ARCH_WORLD.plazas.group, f.x, f.z, GFX.view + 150); } }
   PHS.updatePHS(dt, focusPos()); // PHS
   if (PLAZA) PLAZA.update(focusPos(), nightAmount);
   if (PARK && !WORLD.following) PARK.update(dt, focusPos());
