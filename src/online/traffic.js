@@ -10,6 +10,7 @@ import { ctx } from '../ctx.js';
 const TYPES = ['sedan', 'sedan', 'sedan', 'suv', 'suv', 'pickup', 'van', 'sports', 'bus']; // server/nakama/traffic.js TR_TYPES
 const DELAY = 220; // ms behind the newest snapshot: a snapshot every 200 ms, plus a little for the network
 export const NETTRAFFIC = { on: false, cars: new Map() };
+const TAKEN = new Set(); // cars you got into: yours from then on, even if the room (lagging, or refusing) still lists them
 
 export function initNetTraffic() {
   on('traffic:on', v => { NETTRAFFIC.on = !!v; if (!v) clearNetTraffic(); });
@@ -27,18 +28,19 @@ function make(id, ty, ti, md, x, z, r) {
 export function onSnap(d) { // exported for tests; normally fed by the room (on traffic)
   if (!NETTRAFFIC.on) return;
   const now = performance.now(), desc = new Map();
+  for (const b of d.x || []) { // the room wrecked it: from here on it's an ordinary wreck in this game (before the gone list, which has it too)
+    const v = NETTRAFFIC.cars.get(b[0]); NETTRAFFIC.cars.delete(b[0]);
+    if (v && !v.removed) { v.net = null; v.mode = 'free'; v.driver = null; v.snaps = null; ctx.damageCar(v, 999, null, true); }
+  }
   for (const n of d.n || []) desc.set(n[0], n);
   for (const [id, x10, z10, r100, v10] of d.c || []) {
+    if (TAKEN.has(id)) continue;
     let v = NETTRAFFIC.cars.get(id);
     if (v && (v.removed || !v.net)) { NETTRAFFIC.cars.delete(id); continue; } // gone, or someone's driving it now
     if (!v) { const n = desc.get(id) || [id, 0, 0, 0]; v = make(id, n[1], n[2], n[3], x10 / 10, z10 / 10, r100 / 100); if (!v) continue; NETTRAFFIC.cars.set(id, v); }
     v.snaps.push({ t: now, x: x10 / 10, z: z10 / 10, r: r100 / 100, v: v10 / 10 }); if (v.snaps.length > 6) v.snaps.shift();
   }
   for (const id of d.g || []) { const v = NETTRAFFIC.cars.get(id); NETTRAFFIC.cars.delete(id); if (v && v.net && !v.removed && v !== ctx.player.inCar) v.remove(); }
-  for (const b of d.x || []) { // the room wrecked it: from here on it's an ordinary wreck in this game
-    const v = NETTRAFFIC.cars.get(b[0]); NETTRAFFIC.cars.delete(b[0]);
-    if (v && !v.removed) { v.net = null; v.mode = 'free'; v.driver = null; v.snaps = null; ctx.damageCar(v, 999, null, true); }
-  }
 }
 
 // every frame, before the vehicles are drawn
@@ -60,5 +62,5 @@ export function updateNetTraffic() {
 
 export function netCarHit(v, d) { if (v && v.net && NETTRAFFIC.on && d > 0) trafficHit(v.net, d); }
 // you got in: it's yours now (a normal car in your game), and it leaves the room's traffic for everyone
-export function netCarTake(v) { if (!v || !v.net) return; trafficTake(v.net); NETTRAFFIC.cars.delete(v.net); v.net = null; v.mode = 'free'; v.snaps = null; v.keep = false; }
-export function clearNetTraffic() { for (const v of NETTRAFFIC.cars.values()) if (!v.removed && v !== ctx.player.inCar) v.remove(); NETTRAFFIC.cars.clear(); }
+export function netCarTake(v) { if (!v || !v.net) return; TAKEN.add(v.net); trafficTake(v.net); NETTRAFFIC.cars.delete(v.net); v.net = null; v.mode = 'free'; v.snaps = null; v.keep = false; }
+export function clearNetTraffic() { for (const v of NETTRAFFIC.cars.values()) if (!v.removed && v !== ctx.player.inCar) v.remove(); NETTRAFFIC.cars.clear(); TAKEN.clear(); } // car ids start over in each room
