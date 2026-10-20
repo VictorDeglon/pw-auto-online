@@ -4,7 +4,8 @@
 FROM heroiclabs/nakama:3.41.0
 
 RUN useradd --system --uid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin nakama
-COPY --chown=root:root --chmod=644 index.js /nakama/data/modules/index.js
+COPY roads.js traffic.js index.js /tmp/module/
+RUN cat /tmp/module/roads.js /tmp/module/traffic.js /tmp/module/index.js > /nakama/data/modules/index.js && chmod 644 /nakama/data/modules/index.js && rm -rf /tmp/module # Nakama loads one file
 COPY --chown=root:root --chmod=755 docker-entrypoint.sh /usr/local/bin/pw-nakama
 
 USER nakama

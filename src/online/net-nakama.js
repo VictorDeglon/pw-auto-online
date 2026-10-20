@@ -21,9 +21,9 @@ export function on(ev, cb) { if (!L.has(ev)) L.set(ev, new Set()); L.get(ev).add
 function emit(ev, data) { for (const cb of L.get(ev) || []) { try { cb(data); } catch (e) { console.error('[net]', ev, e); } } }
 
 const OP = {
-  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, NPC_KILL: 12,
+  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, NPC_KILL: 12, TCAR_HIT: 13, TCAR_TAKE: 14,
   SNAP: 20, ROSTER: 21, JOIN: 22, LEAVE: 23, HPSET: 24, CHAT_OUT: 25, FEED_OUT: 26, EVENT_OUT: 27, RUIN_OUT: 28, CROWD_OUT: 29,
-  CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35,
+  CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35, TRAFFIC: 36,
 };
 const DEVICE_KEY = 'pw-auto-online-device', SESSION_KEY = 'pw-auto-online-session';
 const MAIL = n => `${String(n).toLowerCase()}@players.pw-auto-online.invalid`; // Nakama logs in by email; the username is the login
@@ -239,7 +239,7 @@ export async function leave() {
   if (mid && socket) { try { await socket.leaveMatch(mid); } catch (e) { } }
   HOME.open = false;
   for (const id of NET.players.keys()) emit('player:remove', id);
-  NET.players.clear(); NET.server = null; NET.name = null;
+  NET.players.clear(); NET.server = null; NET.name = null; emit('traffic:on', false);
   if (lockRelease) { lockRelease(); lockRelease = null; } // other tabs may go online as this account now
 }
 let rejoining = false;
@@ -268,6 +268,7 @@ function onData(m) {
       for (const r of d.roster || []) upsert(r);
       for (const r of d.ruins || []) emit('ruin', { ...r, old: true, age: Math.max(0, (d.t - r.t) / 1000) });
       for (const c of d.crowds || []) emit('crowd', c);
+      emit('traffic:on', !!d.traffic); // the room runs the cars (src/online/traffic.js draws them)
       if (welcomed) { welcomed(); welcomed = null; }
       break;
     }
@@ -280,6 +281,7 @@ function onData(m) {
     case OP.LEAVE: if (NET.players.delete(d.id)) emit('player:remove', d.id); break;
     case OP.HPSET: emit('hp', d); break;
     case OP.SNAPTO: emit('snap', d); break;
+    case OP.TRAFFIC: emit('traffic', d); break;
     case OP.CHAT_OUT: emit('chat', { id: d.t + d.u, ...d, mine: d.u === NET.uid }); break;
     case OP.FEED_OUT: emit('feed', { id: d.t + d.u + d.k, ...d, mine: d.u === NET.uid }); break;
     case OP.EVENT_OUT: emit('event', d); break;
@@ -339,6 +341,9 @@ export function sendEvent(k, data = {}) {
   sendOp(OP.EVENT, o);
 }
 export function setRuin(i, x, z) { sendOp(OP.RUIN, { i: i | 0, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100 }); }
+// the room's traffic: a hit on one of its cars, or taking one for yourself
+export function trafficHit(id, d) { sendOp(OP.TCAR_HIT, { id, d: Math.max(0, Math.min(150, Math.round(d))) }); }
+export function trafficTake(id) { sendOp(OP.TCAR_TAKE, { id }); }
 export function sendCrowd(e) { sendOp(OP.CROWD, { e: String(e).slice(0, 12000) }); }
 export function clearCrowd() { sendOp(OP.CROWD_CLEAR, {}); }
 

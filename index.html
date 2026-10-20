@@ -549,6 +549,7 @@ import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes, syncRemotes, REMOTES } from './src/online/remote.js';
+import { initNetTraffic, updateNetTraffic, NETTRAFFIC, netCarHit, netCarTake } from './src/online/traffic.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
@@ -3332,6 +3333,7 @@ function carCrashed(v, imp) { // a hard hit: wear, and a crunch you can hear get
   if (v.driver === 'player' && (v.crashes === 3 || v.crashes === 6 || v.crashes === 10)) notify(v.crashes === 10 ? 'This car has had it. Top speed down 20%.' : `Something's rattling. Top speed down ${v.crashes * 2}%.`, '', 2200);
 }
 function damageCar(v, amt, by, blast) {
+  if (v.net) netCarHit(v, amt); // the room's traffic: it decides (it stops the car, and wrecks it when it's had enough)
   if (v.puppet) { if (by !== 'net') puppetCarDamage(v, blast ? amt : amt * 0.2, blast); return; }
   if (v.dead) { if (blast && !v.exploded && amt > 40) primeCar(v, by); return; }
   if (v.cheatTank) return;
@@ -4376,6 +4378,7 @@ function toggleCar() {
     return;
   }
   const v = nearestCar(4.5); if (!v) return;
+  if (v.net) netCarTake(v); // the room's traffic: it leaves the traffic and is yours
   if (v.puppet) { const drv = v.puppet.fl & 4; claimPuppetCar(v); if (drv && !v.dead) v.driver = 'ai'; }
   const stolen = v.driver === 'ai' || v.driver === 'cop' || (v.parked && !v.mine);
   if (v.driver === 'ai' || v.driver === 'cop') {
@@ -5877,7 +5880,7 @@ function updateVehicles(dt) {
     if (v.mine && !v.keep && v !== player.inCar && dP > 900) { v.remove(); continue; }
     // damaged cars are cleared five minutes after they were first hurt (wrecks included; yours go back to the garage,
     // repaired). Out of sight it just goes; in plain view it gets 30 more seconds, then leaves in a puff of smoke.
-    if (!v.puppet) {
+    if (!v.puppet && !v.net) {
       if (v.dead || v.health < 99) { if (v.hurtAt == null) v.hurtAt = simTime; } else v.hurtAt = null;
       if (v.hurtAt != null && v !== player.inCar && !v.keep && !v.mission && simTime - v.hurtAt > DAMAGED_CAR_S) {
         const seen = dP < 250 && inView(v.pos.x, v.pos.z);
@@ -5894,6 +5897,7 @@ function updateVehicles(dt) {
       v.ind = 0; v.hazard = !!(live && v.crashed && v !== player.inCar); v.pfs = fs;
     }
     if (v === player.inCar) { if (v.kerb) { v.kerb = null; v.mode = 'free'; } }
+    else if (v.net) { } // a car of the room's traffic: src/online/traffic.js moves it
     else if (v.puppet) { } // a shared car: src/online/world.js moves it
     else if (v.lot && !v.dead) PARK.step(v, dt);
     else if (v.kerb && !v.dead) stepPullOver(v, dt);
@@ -6353,7 +6357,7 @@ function updatePopulation(dt) {
   const hf = hour < 5 || hour >= 23 ? 0.45 : (hour >= 7 && hour < 9) || (hour >= 16 && hour < 18.5) ? 1.15 : 1;
   const wantCars = Math.round(TRAFFIC_N * hf * (1 - nightAmount * 0.25) * (0.75 + busyAt(f.x, f.z) * 1.1)), wantPeds = Math.round(GFX.peds * (1 - nightAmount * 0.5) * (1 - weather.rain * 0.45));
   const carsNow = vehicles.filter(v => !v.mine && !v.dispatched && !v.parked).length;
-  for (let i = carsNow < wantCars * 0.7 ? 4 : 2; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 40 : 120, 360);
+  if (!(online && NETTRAFFIC.on)) for (let i = carsNow < wantCars * 0.7 ? 4 : 2; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 40 : 120, 360);
   const pedsNow = peds.filter(p => !p.remote && (!p.isCop || !p.homeCar)).length;
   if (pedsNow < wantPeds) spawnPed(f.x, f.z, pedsNow < wantPeds * 0.5 ? 20 : 80, 240);
 }
@@ -6806,7 +6810,7 @@ function tick(rdt) {
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
   OUTER.update(rdt); updateLazy(worldHold ? 30 : 4); cullCore(rdt); // the world streams first: nothing else in the frame can hold it up
-  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
+  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); const t0 = performance.now(); updateNetTraffic(); trafficPre(dt); updateVehicles(dt); trafficTime(performance.now() - t0);
   updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); updateWeather(dt);
   updatePlanes(dt, keys, cam, mouseDown);
   MILITARY.update(dt);
@@ -6886,7 +6890,7 @@ let worldReady = false;
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
-  Object.assign(ctx, { applyParts, boatModel,
+  Object.assign(ctx, { applyParts, boatModel, CAR_TINTS,
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
     heightAt, los, rayBuildings, collideCircle, addPoly, nearestEdge, edgePos, laneSample, laneOff, walkOff, agentFromNearest, advance, endNode,
     findPath, nearestNode, randomEdgeNear, sidewalkNear, streetAt, areaAt, POIS, LANDMARKS,
@@ -7113,6 +7117,10 @@ bus.on('player:died', ({ kind, src }) => {
   lastHit = null; sendState(netState());
 });
 initRemotes();
+initNetTraffic(); // online, the room runs the traffic (src/online/traffic.js)
+onNet('traffic:on', on => { // our own traffic makes way for the room's (parked cars and yours stay)
+  if (on) for (const c of vehicles.slice()) if (!c.net && c.driver === 'ai' && !c.keep && !c.mine && !c.isCop && !c.dispatched && !c.story && c !== player.inCar) c.remove();
+});
 initWorld({
   focus: () => focusPos(), peds: () => peds, vehicles: () => vehicles, playerCar: () => player.inCar, notify,
   avatarIndex: a => a || '', avatarName: a => a || null, carTypeIndex: t => Object.keys(CAR).indexOf(t), carTypeName: i => Object.keys(CAR)[i] || null,

@@ -66,7 +66,7 @@ function publish(me) {
     out.push(`P${nidOf(p)}:${H.avatarIndex(p.rig.avatar)}:${q10(p.pos.x)}:${q10(p.pos.z)}:${q100(p.rotY)}:${s}:${po}`);
   }
   for (const v of H.vehicles()) {
-    if (v.removed || v.puppet || v.isCop || v.mine || v.ownedId || v === H.playerCar() || v.driver === 'player' || v.story) continue;
+    if (v.removed || v.puppet || v.net || v.isCop || v.mine || v.ownedId || v === H.playerCar() || v.driver === 'player' || v.story) continue; // v.net: the room's traffic, everyone has it already
     const dx = v.pos.x - me.x, dz = v.pos.z - me.z; if (dx * dx + dz * dz > r2) continue;
     const fl = (v.dead ? 1 : 0) | (v.parked ? 2 : 0) | (v.driver ? 4 : 0) | (v.braking ? 8 : 0) | (v.ind ? 16 : 0);
     out.push(`C${nidOf(v)}:${H.carTypeIndex(v.type)}:${hexOf(v.tint)}:${H.modelIndex(v.type, v.m.model)}:${q10(v.pos.x)}:${q10(v.pos.z)}:${q100(v.rotY)}:${q10(v.mode === 'rail' ? v.speed : Math.hypot(v.vel.x, v.vel.y))}:${fl}`);

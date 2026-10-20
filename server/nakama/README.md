@@ -4,7 +4,7 @@ The online game runs on a [Nakama](https://heroiclabs.com/nakama/) server (Apach
 site, and it's the fallback: if the game can't reach Nakama, online play runs on the Firebase Realtime Database as
 before (`src/online/net.js` picks at load).
 
-What the server decides, so a modified browser can't fake it (all in `index.js`):
+What the server decides, so a modified browser can't fake it (in `index.js`, plus `traffic.js` for the cars):
 
 - **Rooms:** one authoritative match per server (Silverwood, Elysium, Asgard, Avalon, Vaeloria), 20 players each.
   Positions are relayed 10 times a second. Every hit is checked: the shooter must be in range, the damage within the
@@ -18,6 +18,11 @@ What the server decides, so a modified browser can't fake it (all in `index.js`)
 - **Leaderboards:** `kd_alltime` (needs 10 kills plus deaths), `kills_weekly` (resets Mondays, UTC) and
   `level_alltime`. Only the server writes them.
 - **Streaks and bounties:** announced at 3, 5 and every 5 after; at 5 the player has a bounty worth 1.5x XP.
+- **Traffic:** the room runs the street traffic (`traffic.js`, on the road graph in `roads.js`), so every player sees
+  the same cars in the same places. It keeps about 14 cars around each player (140–520 m out, dropped past 700 m, at
+  most 110 per room) and sends each player the cars within 560 m five times a second. Browsers only draw them
+  (`src/online/traffic.js`). A hit slows or wrecks a car for everyone; getting in takes it out of the room's traffic.
+  `roads.js` is generated: `node tools/traffic/build-roads.mjs` after `poway-data.js` changes.
 - **Saves:** the player's own cloud save (`save/game`) is written by the game (`src/online/cloud.js`). Only its owner
   can read or write it.
 
@@ -48,7 +53,8 @@ Any Linux or macOS box with about 1 GB of RAM will do. It runs as an ordinary us
 (mode 600) and never leave the box. The admin console is only reachable through an SSH tunnel:
 `ssh -L 7351:127.0.0.1:7351 <host>`, then open http://127.0.0.1:7351.
 
-Deploy a new version of the module (copies `index.js`, restarts Nakama, checks the log):
+Deploy a new version of the module (joins `roads.js`, `traffic.js` and `index.js` into
+the one module file Nakama loads, copies it, restarts Nakama, checks the log):
 
 ```bash
 server/nakama/deploy.sh <ssh-host>
@@ -56,7 +62,7 @@ server/nakama/deploy.sh <ssh-host>
 
 ### Or in Docker
 
-`Dockerfile` builds the server image (the official `heroiclabs/nakama:3.41.0` plus `index.js`), and
+`Dockerfile` builds the server image (the official `heroiclabs/nakama:3.41.0` plus the module), and
 `docker-compose.yml` runs it with Postgres 16:
 
 ```bash

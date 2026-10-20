@@ -1,4 +1,6 @@
 # only what the image needs (keeps .env and everything else out of the build context)
 *
 !index.js
+!roads.js
+!traffic.js
 !docker-entrypoint.sh
