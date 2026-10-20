@@ -42,7 +42,7 @@ async function add(d) {
   R.set(d.id, rem);
   await spawnPed(rem);
   rem.building = false;
-  if (!R.has(d.id)) { despawn(rem); return; } // left while loading
+  if (R.get(d.id) !== rem) { despawn(rem); return; } // left (or was re-added) while loading
   ctx.notify(`<b style="color:${rem.color}">${esc(rem.name)}</b> is in town.`, '', 3500);
 }
 async function spawnPed(rem) { // keeps the old body (if any) on screen until the new one is ready
@@ -69,7 +69,7 @@ function update(d) {
   rem.st = st; rem.lastT = performance.now(); rem.name = d.n;
   if (d.s && d.s !== rem.skin && !rem.building) { // they changed skin: rebuild the body
     rem.skin = d.s; rem.building = true; const old = rem.ped;
-    spawnPed(rem).then(() => { rem.building = false; if (old) { old.remote = null; old.remove(); } if (!R.has(rem.id)) despawn(rem); });
+    spawnPed(rem).then(() => { rem.building = false; if (old) { old.remote = null; old.remove(); } if (R.get(rem.id) !== rem) despawn(rem); });
   }
 }
 function despawn(rem) {

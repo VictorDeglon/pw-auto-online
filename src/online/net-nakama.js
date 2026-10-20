@@ -64,7 +64,7 @@ function claimOnline() { // true: this tab may go online as the browser's accoun
 async function becomeTabGuest() {
   tabGuest = true; NET.tabGuest = true; session = null;
   try { sessionStorage.setItem('pw-auto-online-tab-guest', '1'); } catch (e) { }
-  if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; NET.connected = false; }
+  dropSocket();
   await ensureSession(); await loadAccount().catch(() => { });
   emit('announce', { m: 'This browser is already online in another tab, so this tab plays as a separate guest.' });
 }
@@ -123,11 +123,11 @@ export const ACCOUNT = {
   async signIn(name, password) {
     let s; try { s = await client.authenticateEmail(MAIL(name), password, false); }
     catch (e) { const t = await errText(e); throw new Error(/not found|invalid|credentials|password/i.test(t) ? 'Wrong name or password.' : t); }
-    await leave(); if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; }
+    await leave(); dropSocket();
     keep(s); await loadAccount(); return this.info();
   },
   async signOut() {
-    await leave(); if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; }
+    await leave(); dropSocket();
     try { if (session) await client.sessionLogout(session, session.token, session.refresh_token); } catch (e) { }
     session = null; acct.loaded = false; acct.username = ''; acct.guest = true;
     try { store().removeItem(SESSION_KEY); store().removeItem(DEVICE_KEY); } catch (e) { } // next time: a fresh guest
@@ -180,15 +180,24 @@ export function serverName(id) { const s = SERVERS.find(s => s.id === id); retur
 
 // ---------------------------------------------------------------- joining a room
 let welcomed = null;
+function dropSocket() { // close ours on purpose: no "connection lost", no rejoin
+  if (!socket) return;
+  const old = socket; socket = null; NET.connected = false; old.ondisconnect = () => { };
+  try { old.disconnect(false); } catch (e) { }
+}
 async function openSocket() {
   if (socket && NET.connected) return socket;
   const s = await ensureSession();
-  socket = client.createSocket(!!cfg.ssl, false);
-  socket.onmatchdata = onData;
-  socket.ondisconnect = () => { const was = NET.connected; NET.connected = false; socket = null; if (was) { emit('connection', false); if (joinedSid) rejoin(joinedSid); } };
-  await withTimeout(socket.connect(s, true), 10000, 'connection timed out');
+  const sk = socket = client.createSocket(!!cfg.ssl, false);
+  sk.onmatchdata = onData;
+  sk.ondisconnect = () => { // a socket we replaced closes late: it mustn't take the new one down with it
+    if (socket !== sk) return;
+    const was = NET.connected; NET.connected = false; socket = null; if (was) { emit('connection', false); if (joinedSid) rejoin(joinedSid); }
+  };
+  await withTimeout(sk.connect(s, true), 10000, 'connection timed out');
+  if (socket !== sk) throw new Error('connection replaced');
   NET.connected = true;
-  return socket;
+  return sk;
 }
 async function enterRoom(sid, skin, state) {
   const r = await rpcSafe('room_join', { sid });
@@ -220,7 +229,7 @@ export async function join(sid, name, skin, state) {
         else throw e;
       }
     }
-    if (socket) { try { socket.disconnect(false); } catch (e) { } socket = null; NET.connected = false; } // the socket carries the name: reconnect with it
+    dropSocket(); // the socket carries the name: reconnect with it
     await openSocket();
     NET.players.clear(); NET.session = { sk: 0, sd: 0, streak: 0 };
     wantSid = sid; NET.skin = skin || ''; await enterRoom(sid, skin, state);
