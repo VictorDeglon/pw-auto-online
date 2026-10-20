@@ -994,14 +994,18 @@ function arenaState(nk, logger, dispatcher, state, P, prev, p, tPrev, now) {
 
 // ---------------------------------------------------------------- start up
 function InitModule(ctx, logger, nk, initializer) {
-  function board(id, operator, reset) {
-    try { nk.leaderboardCreate(id, true, 'descending', operator, reset, null, true); } catch (e) { logger.debug('leaderboard %s: %s', id, e.message || e); }
+  // Plain calls only: Nakama reads InitModule's statements to find the registered functions, and a loop or an array
+  // literal here (a forEach over the race boards) made it exit at start-up without a word.
+  function board(id, operator, reset, order) {
+    try { nk.leaderboardCreate(id, true, order || 'descending', operator, reset, null, true); } catch (e) { logger.debug('leaderboard %s: %s', id, e.message || e); }
   }
   board(BOARD.kd, 'set', null);
   board(BOARD.level, 'set', null);
   board(BOARD.kills_week, 'increment', '0 0 * * 1'); // every Monday 00:00 UTC
   board(BOARD.flight, 'best', null); // the longest jump (cm), air time as the subscore
-  ['race0', 'race1', 'race2'].forEach(function (id) { try { nk.leaderboardCreate(BOARD[id], true, 'ascending', 'best', null, null, true); } catch (e) { logger.debug('leaderboard %s: %s', id, e.message || e); } }); // fastest time (ms)
+  board(BOARD.race0, 'best', null, 'ascending'); // the fastest time (ms) on each course
+  board(BOARD.race1, 'best', null, 'ascending');
+  board(BOARD.race2, 'best', null, 'ascending');
   initializer.registerMatch('pw_room', { matchInit: matchInit, matchJoinAttempt: matchJoinAttempt, matchJoin: matchJoin, matchLeave: matchLeave, matchLoop: matchLoop, matchTerminate: matchTerminate, matchSignal: matchSignal });
   initializer.registerRpc('profile', rpcProfile);
   initializer.registerRpc('skill_buy', rpcSkillBuy);
