@@ -576,7 +576,7 @@ import * as MAPKIT from './src/ui/mapkit.js';
 import { setGroundTint } from './src/nature/ground.js';
 import { updateBeacons } from './src/online/beacons.js';
 import { createOuter } from './src/world/outer.js';
-import { drawFog, fogSeen, FOG } from './src/ui/fog.js'; // map discovery (fog of war)
+import { drawFog, fogSeen, fogOpenAll, FOG } from './src/ui/fog.js'; // map discovery (fog of war); online, the whole map
 import { garageMarks } from './src/world/garages.js';
 import { CINE } from './src/story/cutscene.js';
 import { createBuilder } from './src/world/builder.js';
@@ -7151,7 +7151,7 @@ function beginPlay() {
   if (player.inCar && radio.on) radioPlay(false);
 }
 function startOffline() {
-  if (online) { SHELL.leaveServer(); clearRemotes(); resetWorld(); online = false; }
+  if (online) { SHELL.leaveServer(); clearRemotes(); resetWorld(); online = false; fogOpenAll(false); }
   const was = running; beginPlay(); $('pausesrv').textContent = 'FREE ROAM';
   if (was) return;
   if (hadSave && save.player) notify(`Welcome back to Poway. Progress restored: <b>$${Math.round(save.money).toLocaleString()}</b>, ${clock.label()}.`, 'green', 6000);
@@ -7159,7 +7159,7 @@ function startOffline() {
   if (save.rep < -60) notify(`Locals remember you. Reputation: ${repLabel()}.`, 'red', 7000);
 }
 function startOnline(sid, name) {
-  clearRemotes(); resetWorld(); syncRemotes(); online = true; lastHit = null; homeHp = 100; connectHome(sid, name);
+  clearRemotes(); resetWorld(); syncRemotes(); online = true; fogOpenAll(true); lastHit = null; homeHp = 100; connectHome(sid, name); // online, everyone has the whole map
   ACH.addTo('servers', sid);
   beginPlay(); SHELL.serverBadge(); $('pausesrv').textContent = NET.server ? name.toUpperCase() : 'ONLINE';
   if (job) { job = null; jobBeam.visible = false; $('job').hidden = true; }
@@ -7167,7 +7167,7 @@ function startOnline(sid, name) {
   notify(`You're on <b>${sid.replace(/^./, c => c.toUpperCase())}</b> as <b>${name}</b>. Other players show on the map. <b>Enter</b> to chat, hold <b>L</b> for the player list.`, 'green', 8000);
 }
 async function toMenu(screen) {
-  if (online) { await SHELL.leaveServer(); clearRemotes(); resetWorld(); online = false; }
+  if (online) { await SHELL.leaveServer(); clearRemotes(); resetWorld(); online = false; fogOpenAll(false); }
   persist(); running = false; if (paused) { paused = false; $('pause').classList.remove('show'); }
   if (document.pointerLockElement) document.exitPointerLock();
   showHud(false); radioStop(); if (SCORE.ex) { SCORE.ex.stop(); SCORE.ch.stop(); SCORE.mode = 'none'; SCORE.restT = 8; } if (engine) engine.g.gain.value = 0;

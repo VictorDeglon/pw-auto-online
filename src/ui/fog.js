@@ -5,6 +5,7 @@
 //   initFog(save)        once the world is up; reads / creates save.fog
 //   updateFog(dt)        every frame (from the story update): reveals around you as you move
 //   fogSeen(x, z, k)     has (x, z) been discovered? k = how much (0..1, default 0.5)
+//   fogOpenAll(on)       online: the whole map for everyone (no cloud, nothing recorded); off again when you leave
 //   drawFog(g, q)        paints the cloud, in g's current world transform (game metres); q = imageSmoothingQuality
 //                        ('high' by default, for the big map; the minimap, redrawn every frame, can pass 'low')
 //   fogStats()           { pct } explored, for the journal
@@ -117,7 +118,7 @@ function seedSpots(save) {
 }
 
 export function updateFog(dt) {
-  if (!F.ready) return;
+  if (!F.ready || F.all) return; // online: the whole map is open and the offline game's discovery is left as it was
   F.t -= dt; if (F.t > 0) return; F.t = 0.25;
   const f = ctx.focusPos(); if (!f || !isFinite(f.x)) return;
   if (Math.hypot(f.x - F.lx, f.z - F.lz) < STEP) return;
@@ -131,7 +132,7 @@ export function updateFog(dt) {
 }
 const cellOf = (G, x, z) => { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor((z - G.z0) / G.cell); return i < 0 || j < 0 || i >= G.nx || j >= G.nz ? -1 : j * G.nx + i; };
 export function fogSeen(x, z, k = 0.5) {
-  if (!F.ready) return true;
+  if (!F.ready || F.all) return true;
   let c = cellOf(F.fine, x, z); if (c >= 0) return F.fine.a[c] >= k * 255;
   c = cellOf(F.wide, x, z); return c >= 0 && F.wide.a[c] >= k * 255;
 }
@@ -157,7 +158,7 @@ function blit(g, G, c, quality) {
 // only the part of each cloud that's on the canvas is drawn; the county's is skipped when the view is all Poway, and
 // needs its hole clipped only when Poway is in view
 export function drawFog(g, quality = 'high') {
-  if (!F.ready) return;
+  if (!F.ready || F.all) return;
   const W = F.wide, P = F.fine, v = viewOf(g), pc = cellsIn(P, v);
   const inP = v && v[0] >= P.x0 && v[1] >= P.z0 && v[2] <= P.x0 + P.nx * P.cell && v[3] <= P.z0 + P.nz * P.cell, wc = inP ? null : cellsIn(W, v);
   // the county's coarse cloud everywhere but Poway, then Poway's fine one in the hole
@@ -169,6 +170,8 @@ export function drawFog(g, quality = 'high') {
   if (pc) { g.save(); blit(g, P, pc, quality); g.restore(); }
 }
 // share of Poway you've seen (the county is far too big to count)
+// online play (index.html startOnline, and leaving): everyone gets the whole map; discovery is the offline game's
+export function fogOpenAll(on) { on = !!on; if (F.all === on) return; F.all = on; F.ver++; }
 export function fogStats() { const P = F.fine, inner = P ? (P.nx - 2 * PAD / CELL) * (P.nz - 2 * PAD / CELL) : 1; return { pct: F.ready ? Math.min(100, Math.round(F.seen / inner * 100)) : 0 }; }
 // debug: open everything / reset (window.__gtp.fog)
 export const fogDebug = {

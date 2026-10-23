@@ -12,7 +12,8 @@ the edge of Tijuana) streams in as you travel, 2 km at a time, so only what's ne
 ## Playing
 
 - **Play online:** pick a server, then pick a username. The game asks for your name every time you join. Names must be
-  unique on that server (case doesn't count), 3–16 letters, numbers or `_`. Don't use your real name.
+  unique on that server (case doesn't count), 3–16 letters, numbers or `_`. Don't use your real name. Online,
+  everyone has the whole map; what you've explored offline is kept for free roam.
 - **Free roam:** offline single player with jobs and story missions. A new game opens with Tommy's last night at
   Lake Poway; the story then opens up street crime a piece at a time (the pause menu's journal lists every crime and
   what unlocks it). Crimes only bring the Sheriff if somebody sees them: a deputy, a security camera, or a witness who
