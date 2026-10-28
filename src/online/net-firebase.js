@@ -22,7 +22,7 @@ export const NET = {
 };
 const L = new Map(); // event -> Set(callback)
 export function on(ev, cb) { if (!L.has(ev)) L.set(ev, new Set()); L.get(ev).add(cb); return () => L.get(ev).delete(cb); }
-function emit(ev, data) { for (const cb of L.get(ev) || []) { try { cb(data); } catch (e) { console.error('[net]', ev, e); } } }
+export function emit(ev, data) { for (const cb of L.get(ev) || []) { try { cb(data); } catch (e) { console.error('[net]', ev, e); } } } // also src/games/localroom.js's way in
 
 let app = null, auth = null, db = null, subs = [], leaveFeedRef = null;
 const params = new URLSearchParams(location.search);

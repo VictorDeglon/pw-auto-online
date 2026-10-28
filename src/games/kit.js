@@ -1,6 +1,7 @@
 // Building blocks the crew-garage worlds share: canvas textures, instanced props, the big leaderboard screens and
 // tyre tracks that fade away. Everything a world builds goes under its own group, placed at the world's origin, so
 // the vertex data stays small numbers (the worlds are 80-120 km out; float32 vertices that far would shimmer).
+import { shownName } from '../online/shown.js';
 import { ctx } from '../ctx.js';
 
 export const FONT_D = 'Anton, Impact, sans-serif', FONT_U = '"Barlow Condensed", "Arial Narrow", Arial, sans-serif';
@@ -84,7 +85,7 @@ export function createScreen({ w = 24, h = 13.5, title = '', sub = '', accent = 
         const y = top + i * rh + rh / 2, me = hi && r.name === hi, podium = i < 3;
         if (me) { g.fillStyle = 'rgba(240,178,58,.18)'; g.fillRect(20 * k, y - rh / 2 + 2, px - 40 * k, rh - 4); }
         g.fillStyle = podium ? ['#ffd23f', '#d6dde8', '#d79a5a'][i] : '#f4f1ea'; g.font = `400 ${(podium ? 36 : 32) * k}px ${FONT_D}`;
-        g.fillText(String(r.rank), 36 * k, y); g.fillText(String(r.name).slice(0, 16).toUpperCase(), 100 * k, y);
+        g.fillText(String(r.rank), 36 * k, y); g.fillText(String(shownName(r.name)).slice(0, 16).toUpperCase(), 100 * k, y); // as this player sees names (src/online/shown.js)
         g.textAlign = 'right'; g.fillText(r.val, px - 230 * k, y);
         g.fillStyle = '#9aa3b8'; g.font = `600 ${26 * k}px ${FONT_U}`; g.fillText(r.sub || '', px - 34 * k, y + 2); g.textAlign = 'left';
       });

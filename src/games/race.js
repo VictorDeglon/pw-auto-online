@@ -174,8 +174,8 @@ export function createRace(api) {
           HUD.big(lapTime(e.time), `${e.mode === 'race' ? `P${e.place} · ` : ''}${e.rank === 1 && e.pb ? 'NEW COURSE RECORD!' : e.pb ? 'personal best' : 'best ' + lapTime(e.best)}`, e.rank === 1 && e.pb ? 'gold' : 'go', 5);
           if (e.laps && e.laps.length > 1) HUD.results('Your laps', A.name, e.laps.map((l, i) => ({ n: `Lap ${i + 1}`, v: lapTime(l) })).concat([{ n: 'Total', v: lapTime(e.time) }]), 7);
           if (e.mode === 'tt') setTimeout(() => { run = null; hints(); hud(); }, 3000);
-        } else api.notify(`<b>${HUD.esc(e.n)}</b> finished${e.place ? ' P' + e.place : ''} in ${lapTime(e.time)}${e.rank === 1 && e.pb ? ': a new record!' : ''}`);
-      } else if (e.k === 'race') api.notify(`Race on ${A.name}: ${e.n.map(HUD.esc).join(', ')}. Lights out in a few seconds.`, 'green', 4000);
+        } else api.notify(`<b>${HUD.who(e.n)}</b> finished${e.place ? ' P' + e.place : ''} in ${lapTime(e.time)}${e.rank === 1 && e.pb ? ': a new record!' : ''}`);
+      } else if (e.k === 'race') api.notify(`Race on ${A.name}: ${e.n.map(HUD.who).join(', ')}. Lights out in a few seconds.`, 'green', 4000);
       else if (e.k === 'results') {
         HUD.results('Race results', A.name, e.rows.map((r, i) => ({ n: `${r[4] ? r[6] : '-'}. ${r[1]}`, v: r[4] ? lapTime(r[5]) : r[7] === 'left' ? 'left' : 'did not finish' })), 9);
         if (run && run.mode === 'race') { run = null; hints(); }

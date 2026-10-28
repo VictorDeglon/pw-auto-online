@@ -9,6 +9,7 @@
 //  - Other players come from REMOTES (src/online/remote.js), which the net.js 'player:*' events fill whatever the
 //    transport is.
 import { REMOTES } from '../online/remote.js';
+import { shownName } from '../online/shown.js';
 
 const TAU = Math.PI * 2, INK = 'rgba(10,12,16,.92)', PAPER = '#f3ede1', FONT = '"Barlow Condensed", "Arial Narrow", Arial, sans-serif';
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -106,7 +107,7 @@ export function playerMarks(live) {
   for (const r of REMOTES.values()) {
     const st = r.st, p = r.ped; if (!st && !p) continue;
     const x = live || !p ? st.x : p.pos.x, z = live || !p ? st.z : p.pos.z;
-    out.push({ kind: 'player', pri: 1, x, z, color: r.color, label: r.name, group: 'player', edge: true, dead: !!(st && st.dead), car: !!(st && st.car), heading: p ? p.rotY : st.r });
+    out.push({ kind: 'player', pri: 1, x, z, color: r.color, label: shownName(r.name, r.id, r.skin), group: 'player', edge: true, dead: !!(st && st.dead), car: !!(st && st.car), heading: p ? p.rotY : st.r });
   }
   return out;
 }

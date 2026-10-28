@@ -2,7 +2,8 @@
 // the driveway. Online the doors are up and the inside is a ramp down into the dark; drive in and games.js takes it
 // from there. Offline the shutters are down (and solid).
 //   buildGarages()            once, after the world is built
-//   updateGarages(dt, open)   every frame: open = the crew garages can be used (online on the game server)
+//   updateGarages(dt, open)   every frame: open = the crew garages can be used (online: the game server, or this browser)
+//   shutDoorNear()            in front of a shut door (the games say why)
 //   garageTrigger()           -> { g, G, bay } when the player's car is rolling in through a door, else null
 //   garageMarks()             markers for both maps
 import { ctx } from '../ctx.js';
@@ -131,6 +132,16 @@ export function updateGarages(dt, open) {
     if (d.poly) d.poly.dead = d.open > 0.9;
   }
   hintT = Math.max(0, hintT - dt);
+}
+// in front of a shut door (within 14 m, on the street side): the games say why it's shut
+export function shutDoorNear() {
+  const p = ctx.player, pos = p.inCar ? p.inCar.pos : p.pos;
+  for (const B of built) for (const d of B.doors) {
+    if (d.open > 0.5) continue;
+    const dx = Math.sin(d.door.rot), dz = Math.cos(d.door.rot), u = (pos.x - d.door.x) * dx + (pos.z - d.door.z) * dz, w = (pos.x - d.door.x) * dz - (pos.z - d.door.z) * dx;
+    if (u > -14 && u < 1 && Math.abs(w) < DEFS.BAY_W) return true;
+  }
+  return false;
 }
 // the player's car rolling in through an open door, at least 2.5 m inside
 export function garageTrigger() {

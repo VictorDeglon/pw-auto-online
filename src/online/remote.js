@@ -8,6 +8,7 @@ import { ctx } from '../ctx.js';
 import { NET, on, unpack } from './net.js';
 import { HUMANS, ensureAvatar } from '../humans.js';
 import { makeAircraft } from '../aircraft.js';
+import { shownName } from './shown.js';
 
 const R = new Map(); // uid -> remote
 export const REMOTES = R;
@@ -23,7 +24,7 @@ function drawTag(s, text, color, hp) {
   const bw = w - 20, k = Math.max(0, Math.min(1, hp / 100)); g.fillStyle = 'rgba(255,255,255,.15)'; g.fillRect(128 - bw / 2, 44, bw, 6);
   g.fillStyle = k > 0.5 ? '#7cd36b' : k > 0.25 ? '#ffd23f' : '#ff5d5d'; g.fillRect(128 - bw / 2, 44, bw * k, 6);
   g.fillStyle = color; g.fillRect((256 - w) / 2, 54, w, 3);
-  t.needsUpdate = true; s.userData.hp = hp;
+  t.needsUpdate = true; s.userData.hp = hp; s.userData.nm = text;
 }
 function tagSprite(THREE, text, color) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
@@ -43,7 +44,7 @@ async function add(d) {
   await spawnPed(rem);
   rem.building = false;
   if (R.get(d.id) !== rem) { despawn(rem); return; } // left (or was re-added) while loading
-  ctx.notify(`<b style="color:${rem.color}">${esc(rem.name)}</b> is in town.`, '', 3500);
+  ctx.notify(`<b style="color:${rem.color}">${esc(shownName(rem.name, rem.id, rem.skin))}</b> is in town.`, '', 3500);
 }
 async function spawnPed(rem) { // keeps the old body (if any) on screen until the new one is ready
   const { THREE } = ctx;
@@ -57,15 +58,15 @@ async function spawnPed(rem) { // keeps the old body (if any) on screen until th
   p.pos.y = rem.st.y; p.rotY = rem.st.r;
   p.ai = remoteAI;
   if (p.rig.human && ctx.equipGuns) ctx.equipGuns(p.rig);
-  const tag = tagSprite(THREE, rem.name, rem.color); tag.position.y = 2.25; p.rig.g.add(tag); rem.tag = tag;
+  const tag = tagSprite(THREE, shownName(rem.name, rem.id, rem.skin), rem.color); tag.position.y = 2.25; p.rig.g.add(tag); rem.tag = tag;
   rem.ped = p;
 }
 function update(d) {
   const rem = R.get(d.id); if (!rem) return add(d);
   const st = unpack(d.p); if (!st) return;
   const was = rem.st && rem.st.ride; // someone getting in or out of your car
-  if (st.ride === NET.uid && was !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(d.n || rem.name)}</b> hopped in.`, '', 2500);
-  else if (was === NET.uid && st.ride !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(d.n || rem.name)}</b> got out.`, '', 2000);
+  if (st.ride === NET.uid && was !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(shownName(d.n || rem.name, rem.id, rem.skin))}</b> hopped in.`, '', 2500);
+  else if (was === NET.uid && st.ride !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(shownName(d.n || rem.name, rem.id, rem.skin))}</b> got out.`, '', 2000);
   rem.st = st; rem.lastT = performance.now(); rem.name = d.n;
   if (d.s && d.s !== rem.skin && !rem.building) { // they changed skin: rebuild the body
     rem.skin = d.s; rem.building = true; const old = rem.ped;
@@ -135,7 +136,7 @@ export function updateRemotes(dt) {
     }
     const show = d < DRAW;
     p.rig.g.visible = show && !rem.car && !st.ride && !rem.air; // driving, flying, or riding in someone's car: the person is inside
-    if (rem.tag) { rem.tag.visible = d < (rem.air ? 900 : TAG); rem.tag.position.y = rem.air ? 3.2 : rem.car ? 2.4 : 2.25; const hp = st.dead ? 0 : Math.round(st.hp ?? 100); if (hp !== rem.tag.userData.hp) drawTag(rem.tag, rem.name, rem.color, hp); }
+    if (rem.tag) { rem.tag.visible = d < (rem.air ? 900 : TAG); rem.tag.position.y = rem.air ? 3.2 : rem.car ? 2.4 : 2.25; const hp = st.dead ? 0 : Math.round(st.hp ?? 100), nm = shownName(rem.name, rem.id, rem.skin); if (hp !== rem.tag.userData.hp || nm !== rem.tag.userData.nm) drawTag(rem.tag, nm, rem.color, hp); }
     if (rem.car) {
       const g = rem.car.g; g.visible = show;
       if (rem.tag && rem.tag.parent !== g) { g.add(rem.tag); }
@@ -161,7 +162,7 @@ export function updateRemotes(dt) {
 // map blips: [{ x, z, name, color, car }]
 export function remoteBlips() {
   const out = [];
-  for (const rem of R.values()) if (rem.ped) out.push({ x: rem.ped.pos.x, z: rem.ped.pos.z, name: rem.name, color: rem.color, car: !!rem.car, dead: !!rem.st.dead });
+  for (const rem of R.values()) if (rem.ped) out.push({ x: rem.ped.pos.x, z: rem.ped.pos.z, name: shownName(rem.name, rem.id, rem.skin), raw: rem.name, color: rem.color, car: !!rem.car, dead: !!rem.st.dead });
   return out;
 }
 export function remoteList() { return [...R.values()].map(r => ({ id: r.id, name: r.name, color: r.color, hp: r.st.hp, dead: r.st.dead, car: !!r.st.car })); }

@@ -10,6 +10,7 @@ import { ACCOUNT, PRO, NET, on as onNet } from '../online/net.js';
 import { PROG, refresh, buySkill, resetSkills, onProgress, retryClaims } from '../progress.js';
 import * as CLOUD from '../online/cloud.js';
 import { renderGang } from './gangpanel.js';
+import { shownName, shownLine, onShownChange } from '../online/shown.js';
 
 
 const $ = id => document.getElementById(id);
@@ -25,7 +26,8 @@ export async function initCareer(hooks) {
   $('acctform').addEventListener('submit', submitAccount);
   onProgress((P, ev) => { renderHud(); if (screenOpen) renderCareer(); for (const e of ev || []) toast(e); updateSub(); });
   onNet('stats', renderHud); setInterval(renderHud, 2000); // the session line follows joins and leaves
-  onNet('announce', a => banner(a.m));
+  onNet('announce', a => banner(shownLine(a.m))); // names in it as this player sees them
+  onShownChange(() => { if (screenOpen) renderCareer(); });
   if (!ACCOUNT) { updateSub(); return; }
   try { await ACCOUNT.load(); } catch (e) { }
   await refresh(); retryClaims(); updateSub(); renderHud();
@@ -127,7 +129,7 @@ export async function loadBoard(el, which, limit, cachedOnly) {
 function score(r, which) { return which === 'kd' ? (r.score / 1000).toFixed(2) : which === 'level' ? `LV ${r.lvl}` : r.score; }
 function boardHtml(r, which) {
   if (!r.rows.length) return `<p class="fine">${which === 'kd' ? 'Nobody yet. You need 10 kills plus deaths to get on the K/D board.' : 'Nobody yet. Be the first.'}</p>`;
-  const me = ACCOUNT && ACCOUNT.info().username, rows = r.rows.map(x => `<li${x.name === me ? ' class="me"' : ''}><span class="rk">${x.rank}</span><span class="nm">${esc(x.name)}<small>${esc(x.title || '')}</small></span><b>${score(x, which)}</b>${which === 'kd' ? `<small class="kd">${x.k | 0}/${x.d | 0}</small>` : ''}</li>`).join('');
+  const me = ACCOUNT && ACCOUNT.info().username, rows = r.rows.map(x => `<li${x.name === me ? ' class="me"' : ''}><span class="rk">${x.rank}</span><span class="nm">${esc(x.name === me ? x.name : shownName(x.name))}<small>${esc(x.title || '')}</small></span><b>${score(x, which)}</b>${which === 'kd' ? `<small class="kd">${x.k | 0}/${x.d | 0}</small>` : ''}</li>`).join('');
   const mine = r.mine && !r.rows.some(x => x.name === me) ? `<li class="me sep"><span class="rk">${r.mine.rank}</span><span class="nm">You</span><b>${score(r.mine, which)}</b></li>` : '';
   return `<ol>${rows}${mine}</ol>`;
 }

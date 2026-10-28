@@ -15,7 +15,7 @@ import { police, resetPolice } from '../police.js';
 import * as SHELL from '../ui/shell.js';
 import * as MAPKIT from '../ui/mapkit.js';
 import { DEFS } from './defs.js';
-import { buildGarages, updateGarages, garageTrigger, garageMarks, GAME_COLORS } from './entrances.js';
+import { buildGarages, updateGarages, garageTrigger, garageMarks, shutDoorNear, GAME_COLORS } from './entrances.js';
 import { arrival, inExit } from './base.js';
 import { HUD } from './hud.js';
 import { CHEER } from './crowd.js';
@@ -193,12 +193,15 @@ function onKey(e) {
 }
 
 // ---------------------------------------------------------------- every frame
-let t = 0;
+let t = 0, shutT = 0;
 function update(rdt) {
   t += rdt;
   const F = typeof window !== 'undefined' && window.__freeze; if (F) { ctx.camera.position.set(...F.p); ctx.camera.lookAt(...F.t); ctx.camera.updateMatrixWorld(); if (ctx.sky) ctx.sky.position.copy(ctx.camera.position); } // tests: a fixed view for screenshots
   const open = !!(GAMENET && GAMENET.ready() && ctx.online);
   updateGarages(rdt, open);
+  if (!open && (shutT -= rdt) <= 0 && ST.phase === 'out' && shutDoorNear()) { // a shut door is never a mystery
+    shutT = 10; ctx.notify(ctx.online ? 'Crew garages are closed: the game server isn\'t reachable right now. Reload to try again.' : 'Crew garages are online only: join a server.', '', 4000);
+  }
   if (ST.phase === 'out') {
     if ((ST.cool -= rdt) > 0) return; // just came out, or the door said no: a moment before it can take you again
     const hit = garageTrigger(); if (hit) enter(hit.g);

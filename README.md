@@ -23,6 +23,9 @@ the edge of Tijuana) streams in as you travel, 2 km at a time, so only what's ne
   resolution that lowers the render scale when the frame rate drops. From *Medium* up the sky lights and reflects in
   the scene and haze gathers in the valley; *High* adds ambient occlusion and sharper shadows near you. The *Look* is
   *Realistic* (bloom, eye adaptation, a film tone curve) by default, or the half-cartoon *Stylized* look.
+- **Hide bad words and rude names** (Settings, on by default): online, swear words in chat show as `****` (spaced-out,
+  leetspeak and look-alike letters included), and a player whose name is rude shows up under a made-up first name that
+  suits their character. Turn it off to see what people typed. It only changes what you see; nobody else is affected.
 
 Online you can see other players on the minimap and the big map (M), chat (Enter), check who's on (hold L), and
 fight. Kills, deaths and busts show in the feed at the top of the screen.
@@ -41,6 +44,10 @@ their own, played with whoever else is on your server:
 - **Races** (Kirkham Raceway, Kirkham Way): Kirkham Circuit (3 laps), Canyon Sprint (point to point over hills) and
   Poway Speedway (4 laps). T starts a time trial whenever you like; C puts you in the queue for a race against the
   others (it starts 15 s after a second driver joins, up to eight cars). Each course has a board of best times.
+
+If the game server can't be reached (the site then plays online over Firebase), the garages still open: your browser
+runs the same rules for you alone, so Long Jump and the races work solo, with your best times kept on this computer;
+Hide & Seek needs other players. Offline, the doors stay shut and say so.
 
 Inside, the exit tunnel (or K twice) takes you back to the garage door. Nobody can hurt anyone in there except the
 seeker, and nothing counts toward kills and deaths. The server judges all of it: who's in which world, the jumps,

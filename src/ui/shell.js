@@ -13,6 +13,7 @@ import { CATEGORIES } from '../people.js';
 import { ACHIEVEMENTS, renderAchievements, achievementCount, bump as achBump } from './achievements.js';
 import { PRESETS, ORDER, saveGfx } from '../gfx.js';
 import { remoteList, colorOf } from '../online/remote.js';
+import { shownName, shownChat, onShownChange, MOD } from '../online/shown.js';
 import { openCareer, closeCareer, renderOnlineBoard } from './career.js';
 
 const $ = id => document.getElementById(id);
@@ -192,7 +193,7 @@ function openSettings() {
     box.append(b);
   }
   $('gfxnote').textContent = G.auto ? `Picked “${PRESETS[G.id].label}” for this computer. Change it if the game feels slow or looks rough.` : `Using “${PRESETS[G.id].label}”.`;
-  $('dynres').checked = G.dynamic; $('voiceson').checked = H.voices();
+  $('dynres').checked = G.dynamic; $('voiceson').checked = H.voices(); $('cleanchat').checked = MOD.on;
   for (const b of $('lookseg').children) { b.classList.toggle('on', +b.dataset.l === H.look()); b.onclick = () => { H.setLook(+b.dataset.l); openSettings(); }; }
   $('sens').value = H.sens(); $('sensv').textContent = (+H.sens()).toFixed(2) + '×';
   const sky = H.sky(); $('skylock').checked = sky.lock; $('skyset').classList.toggle('off', !sky.lock);
@@ -210,27 +211,29 @@ export function openChat() { chatOpen = true; $('chat').hidden = false; $('chati
 let chatClosedT = -1e9;
 export function chatClosedAgo() { return performance.now() - chatClosedT; } // ms since the chat box closed
 export function closeChat() { const was = chatOpen; chatOpen = false; if (was) { chatClosedT = performance.now(); if (H && H.chatClosed) H.chatClosed(); } if (!NET.server) $('chat').hidden = true; $('chat').classList.remove('open'); $('chatform').hidden = true; $('chatin').blur(); }
-function chatLine(html, cls) {
-  const log = $('chatlog'), d = document.createElement('div'); d.className = 'cm ' + (cls || ''); d.innerHTML = html; log.append(d);
+function chatLine(html, cls) { // html: a string, or a function that makes it (redrawn when the bad-words setting changes)
+  const log = $('chatlog'), d = document.createElement('div'); d.className = 'cm ' + (cls || ''); if (typeof html === 'function') d._html = html; d.innerHTML = d._html ? d._html() : html; log.append(d);
   while (log.children.length > 60) log.firstChild.remove();
   log.scrollTop = log.scrollHeight;
   setTimeout(() => { d.style.opacity = 0.0; }, 12000);
 }
-function sysChat(t) { chatLine(esc(t), 'sys'); }
+function sysChat(t) { chatLine(typeof t === 'function' ? () => esc(t()) : esc(t), 'sys'); }
 function chatClear() { $('chatlog').textContent = ''; }
-function onChat(m) { chatLine(`<b style="color:${m.mine ? 'var(--gold)' : colorOf(m.u)}">${esc(m.n)}</b>${esc(m.m)}`); }
+function onChat(m) { chatLine(() => `<b style="color:${m.mine ? 'var(--gold)' : colorOf(m.u)}">${esc(m.mine ? m.n : shownName(m.n, m.u))}</b>${esc(m.mine ? m.m : shownChat(m.m))}`); } // yours as you typed it
 const WNAME = w => String(w || '').replace(/_/g, ' ');
 function onFeed(f) {
-  const nm = (n, me) => `<b style="color:${me ? 'var(--gold)' : colorOf(f.u)}">${esc(n || '?')}</b>`;
-  let html = '';
-  if (f.k === 'join') { sysChat(`${f.a} joined.`); return; }
-  if (f.k === 'leave') { sysChat(`${f.a} left.`); return; }
-  if (f.k === 'kill') html = `${nm(f.a, f.a === NET.name)}<span class="w">☠ ${esc(WNAME(f.w) || 'killed')}</span>${nm(f.b, f.b === NET.name)}`;
-  else if (f.k === 'death') html = `${nm(f.a, f.mine)}<span class="w">was wasted${f.b ? ' · ' + esc(WNAME(f.b)) : ''}</span>`;
-  else if (f.k === 'busted') html = `${nm(f.a, f.mine)}<span class="w">got busted by the Sheriff</span>`;
-  else if (f.k === 'wreck') html = `${nm(f.a, f.mine)}<span class="w">wrecked</span>${nm(f.b, f.b === NET.name)}<span class="w">'s car</span>`;
-  else return;
-  const kf = $('killfeed'), d = document.createElement('div'); d.className = 'kf' + (f.a === NET.name || f.b === NET.name ? ' me' : ''); d.innerHTML = html; kf.prepend(d);
+  const nm = (n, me) => `<b style="color:${me ? 'var(--gold)' : colorOf(f.u)}">${esc(shownName(n) || '?')}</b>`;
+  if (f.k === 'join') { sysChat(() => `${shownName(f.a)} joined.`); return; }
+  if (f.k === 'leave') { sysChat(() => `${shownName(f.a)} left.`); return; }
+  const render = () => { // redrawn when the bad-words setting changes
+    if (f.k === 'kill') return `${nm(f.a, f.a === NET.name)}<span class="w">☠ ${esc(WNAME(f.w) || 'killed')}</span>${nm(f.b, f.b === NET.name)}`;
+    if (f.k === 'death') return `${nm(f.a, f.mine)}<span class="w">was wasted${f.b ? ' · ' + esc(WNAME(f.b)) : ''}</span>`;
+    if (f.k === 'busted') return `${nm(f.a, f.mine)}<span class="w">got busted by the Sheriff</span>`;
+    if (f.k === 'wreck') return `${nm(f.a, f.mine)}<span class="w">wrecked</span>${nm(f.b, f.b === NET.name)}<span class="w">'s car</span>`;
+    return '';
+  };
+  const html = render(); if (!html) return;
+  const kf = $('killfeed'), d = document.createElement('div'); d.className = 'kf' + (f.a === NET.name || f.b === NET.name ? ' me' : ''); d._html = render; d.innerHTML = html; kf.prepend(d);
   while (kf.children.length > 5) kf.lastChild.remove();
   setTimeout(() => { d.style.opacity = 0; setTimeout(() => d.remove(), 700); }, 7000);
 }
@@ -246,7 +249,7 @@ export function showPlayers(show) {
     const dead = rem && rem.dead !== undefined ? rem.dead : (p.p ? p.p.d : 0);
     const car = rem ? rem.car : !!(p.p && p.p.c);
     const color = rem ? rem.color : colorOf(id);
-    rows.push({ name: p.n || 'Player', color, hp, dead, car });
+    rows.push({ name: shownName(p.n, id, p.s) || 'Player', color, hp, dead, car });
   }
   el.innerHTML = `<h3>${esc(serverName(NET.server))} · ${rows.length}/${MAX_PLAYERS}</h3>` + rows.map(r => `<div><b style="color:${r.color}">${esc(r.name)}</b><span>${r.dead ? (r.dead === 2 ? 'busted' : 'wasted') : r.car ? 'driving' : 'on foot'} · ${Math.max(0, Math.round(r.hp))} hp</span></div>`).join('');
   el.hidden = false;
@@ -277,6 +280,11 @@ export function initShell(hooks) {
   $('wearbtn').onclick = wear;
   $('dynres').onchange = () => openSettings();
   $('voiceson').onchange = () => H.setVoices($('voiceson').checked);
+  $('cleanchat').onchange = () => { MOD.on = $('cleanchat').checked; };
+  onShownChange(() => { // the bad-words setting changed: redraw what's on screen
+    for (const d of [...$('chatlog').children, ...$('killfeed').children]) if (d._html) d.innerHTML = d._html();
+    if (!$('plist').hidden) showPlayers(true);
+  });
   $('sens').oninput = () => { H.setSens(+$('sens').value); $('sensv').textContent = (+$('sens').value).toFixed(2) + '×'; };
   $('skylock').onchange = () => { H.setSky({ lock: $('skylock').checked }); openSettings(); };
   $('skyhour').oninput = () => { H.setSky({ hour: +$('skyhour').value }); $('skyhourv').textContent = clockLabel(+$('skyhour').value); };

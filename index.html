@@ -429,6 +429,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     <label class="check"><input type="checkbox" id="dynres"> Dynamic resolution <small>lowers the render scale when the frame rate drops</small></label>
     <div class="row look"><span>Look</span><div class="seg" id="lookseg"><button data-l="3">Realistic</button><button data-l="2">Stylized</button><button data-l="1">Clean</button><button data-l="0">Off</button></div><small>Realistic: bloom, eye adaptation and a film tone curve. Stylized is the half-cartoon look with ink outlines. Off is fastest.</small></div>
     <label class="check"><input type="checkbox" id="voiceson"> Character voices</label>
+    <label class="check"><input type="checkbox" id="cleanchat"> Hide bad words and rude names <small>online: swear words in chat show as ****, and a player with a rude name shows up under a made-up first name. Off shows what they typed.</small></label>
     <label class="range">Mouse sensitivity <input type="range" id="sens" min="0.4" max="2" step="0.05"> <output id="sensv"></output></label>
     <label class="check"><input type="checkbox" id="skylock"> Lock my time and weather <small>on your screen only. Online, everyone else keeps the server's shared time and weather.</small></label>
     <div class="skyset" id="skyset">
@@ -549,6 +550,7 @@ import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes, syncRemotes, REMOTES } from './src/online/remote.js';
+import { shownName } from './src/online/shown.js'; // other players' names as this player sees them (bad-words setting)
 import { initNetTraffic, updateNetTraffic, NETTRAFFIC, netCarHit, netCarTake } from './src/online/traffic.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
@@ -3721,7 +3723,7 @@ function runCheat(id, arg) {
   switch (id) {
     case 'nuke': {
       let x, z, who = '';
-      if (arg) { const n = arg.toLowerCase(), r = remoteBlips().find(b => b.name.toLowerCase() === n) || remoteBlips().find(b => b.name.toLowerCase().startsWith(n)); if (!r) { notify(`No player called <b>${arg.replace(/[<>&]/g, '')}</b> here.`, 'red', 2500); return; } x = r.x; z = r.z; who = r.name; }
+      if (arg) { const n = arg.toLowerCase(), r = remoteBlips().find(b => b.name.toLowerCase() === n || b.raw.toLowerCase() === n) || remoteBlips().find(b => b.name.toLowerCase().startsWith(n) || b.raw.toLowerCase().startsWith(n)); if (!r) { notify(`No player called <b>${arg.replace(/[<>&]/g, '')}</b> here.`, 'red', 2500); return; } x = r.x; z = r.z; who = r.name; }
       else { const p = aimPoint(1500); x = p.x; z = p.z; }
       nukeAt(x, z, true, who); return;
     }
@@ -4396,7 +4398,7 @@ function nearestRemoteCar(maxD) {
   return best ? { r: best, d: bd } : null;
 }
 const escName = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); // player names into notify() HTML
-function startRide(r) { player.ride = { id: r.id, name: r.name }; player.rig.g.visible = false; cam.dist = 9; keys.clear(); player.fling = null; notify(`Riding with <b style="color:${r.color}">${escName(r.name)}</b>. <kbd>F</kbd> to get out.`, '', 3200); tone(420, 0.06, 'square', 0.15); }
+function startRide(r) { player.ride = { id: r.id, name: r.name }; player.rig.g.visible = false; cam.dist = 9; keys.clear(); player.fling = null; notify(`Riding with <b style="color:${r.color}">${escName(shownName(r.name, r.id))}</b>. <kbd>F</kbd> to get out.`, '', 3200); tone(420, 0.06, 'square', 0.15); }
 function endRide(why) {
   const R0 = player.ride; if (!R0) return; player.ride = null;
   const r = REMOTES.get(R0.id), car = r && r.car, yaw = car ? car.g.rotation.y : player.rotY, sx = Math.cos(yaw), sz = -Math.sin(yaw), w = car && car.W || 1.9;
@@ -7197,13 +7199,13 @@ onNet('hit', h => {
   lastHit = { name: h.n, w: h.w, t: simTime };
   hurtPlayer(h.d, 'pvp');
   if (player.dead) return;
-  if (Math.random() < 0.4) notify(`<b>${String(h.n).replace(/[<>&]/g, '')}</b> hit you (${String(h.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800);
+  if (Math.random() < 0.4) notify(`<b>${escName(shownName(String(h.n)))}</b> hit you (${String(h.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800);
 });
 // with the home server (server/): it owns health. It sends ours whenever another player hits us or it refuses a change.
 let homeHp = 100;
 onNet('hp', m => {
   if (!online) return; homeHp = m.h;
-  if (m.by) { lastHit = { name: m.by, w: m.w, t: simTime }; if (m.h > 0 && Math.random() < 0.4) notify(`<b>${String(m.by).replace(/[<>&]/g, '')}</b> hit you (${String(m.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800); }
+  if (m.by) { lastHit = { name: m.by, w: m.w, t: simTime }; if (m.h > 0 && Math.random() < 0.4) notify(`<b>${escName(shownName(String(m.by)))}</b> hit you (${String(m.w || '').replace(/[<>&]/g, '')}).`, 'red', 1800); }
   if (player.dead) return;
   player.health = m.h; if (m.h <= 0) die('wasted', 'pvp');
 });

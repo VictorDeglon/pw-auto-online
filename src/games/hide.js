@@ -272,7 +272,7 @@ export function createHide(api) {
       if (e.k === 'ko') {
         crowd.cheer(1, 4); crowd2.cheer(1, 4); CHEER.burst(0.8, Math.max(0.35, api.near(rx, rz, 900)));
         if (e.u === me()) { role = 'out'; HUD.big('FOUND', `${e.by} got you`, 'red', 3); setTimeout(() => { if (role === 'out') api.onFoot(roofSpot()); }, 1800); }
-        else api.notify(`<b>${HUD.esc(e.by)}</b> found <b>${HUD.esc(e.n)}</b>`, 'red', 3000);
+        else api.notify(`<b>${HUD.who(e.by)}</b> found <b>${HUD.who(e.n)}</b>`, 'red', 3000);
       }
       if (e.k === 'end') {
         const r = e.res; arm(false); if (blind) { blind = false; HUD.fade(false); }
@@ -280,7 +280,7 @@ export function createHide(api) {
         HUD.results(r.w === 'seeker' ? `${r.sn} wins` : 'Hiders win', r.why, [{ n: 'Found', v: String(r.kos) }, ...(r.surv || []).map(n => ({ n, v: 'never found' }))], 8);
         role = '';
       }
-      if (e.k === 'round') api.notify(e.seeker === me() ? 'You\'re the <b>seeker</b>.' : `<b>${HUD.esc(e.sn)}</b> is the seeker. Hide!`, 'green', 3500);
+      if (e.k === 'round') api.notify(e.seeker === me() ? 'You\'re the <b>seeker</b>.' : `<b>${HUD.who(e.sn)}</b> is the seeker. Hide!`, 'green', 3500);
       hud();
     },
     key(code) {

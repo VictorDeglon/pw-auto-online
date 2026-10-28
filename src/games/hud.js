@@ -1,6 +1,7 @@
 // The crew-garage HUD: a status bar at the top (game, phase, clock), a panel on the right (race standings, who's
 // still hiding), big centre text (countdowns, "KNOCKED OUT"), a results card, key hints at the bottom, and the black
 // fade the tunnel trips happen behind.
+import { shownName } from '../online/shown.js';
 const CSS = `
 #gmbar{position:fixed;z-index:6;top:calc(52px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);pointer-events:none;display:flex;align-items:stretch;gap:0;width:max-content;max-width:94vw;
   font:600 16px/1 var(--ui);color:var(--paper);text-shadow:0 1px 2px rgba(0,0,0,.6);filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
@@ -50,11 +51,12 @@ function make() {
   add('gmres'); add('gmhint'); add('gmfade', '<div class="m"></div>'); add('gmscope');
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const who = n => esc(shownName(String(n || ''))); // a player's name as you see it (src/online/shown.js)
 export const clock = ms => { ms = Math.max(0, ms); const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 export const lapTime = ms => { if (!(ms >= 0)) return '-'; const m = Math.floor(ms / 60000), s = (ms % 60000) / 1000; return `${m}:${s.toFixed(2).padStart(5, '0')}`; };
 
 export const HUD = {
-  esc,
+  esc, who,
   on(on) { make(); document.body.classList.toggle('gm-in', on); for (const id of ['gmbar', 'gmhint']) $(id).hidden = !on; if (!on) { $('gmside').hidden = true; $('gmbig').hidden = true; $('gmres').hidden = true; this.boxes([]); } },
   bar(title, sub, clockText, cls, status) {
     make(); const b = $('gmbar');
@@ -64,12 +66,12 @@ export const HUD = {
   },
   side(title, rows) { // rows: [{ n, v, me, out }]
     make(); const s = $('gmside'); if (!rows || !rows.length) { s.hidden = true; return; }
-    s.hidden = false; s.innerHTML = `<h5>${esc(title)}</h5>` + rows.map(r => `<div class="r${r.me ? ' me' : ''}${r.out ? ' out' : ''}"><span class="n">${esc(r.n)}</span><span class="v">${esc(r.v || '')}</span></div>`).join('');
+    s.hidden = false; s.innerHTML = `<h5>${esc(title)}</h5>` + rows.map(r => `<div class="r${r.me ? ' me' : ''}${r.out ? ' out' : ''}"><span class="n">${who(r.n)}</span><span class="v">${esc(r.v || '')}</span></div>`).join('');
   },
   big(text, sub = '', cls = '', secs = 2) { make(); const b = $('gmbig'); b.className = cls; b.children[0].textContent = text; b.children[1].textContent = sub; b.hidden = false; const t0 = b.children[0]; t0.style.animation = 'none'; void t0.offsetWidth; t0.style.animation = ''; bigT = secs; },
   results(title, sub, rows, secs = 8) { // rows: [{ n, v }]
     make(); const r = $('gmres');
-    r.innerHTML = `<h3>${esc(title)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}` + (rows || []).map(x => `<div class="row"><span class="n">${esc(x.n)}</span><span class="v">${esc(x.v || '')}</span></div>`).join('');
+    r.innerHTML = `<h3>${esc(title)}</h3>${sub ? `<p>${esc(sub)}</p>` : ''}` + (rows || []).map(x => `<div class="row"><span class="n">${who(x.n)}</span><span class="v">${esc(x.v || '')}</span></div>`).join('');
     r.hidden = false; resT = secs;
   },
   hint(html) { make(); $('gmhint').innerHTML = html; },

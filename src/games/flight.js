@@ -118,7 +118,7 @@ export function createFlight(api) {
     leave() { CHEER.stop(); },
     hud() {
       const top = rows && rows[0];
-      HUD.bar('Long Jump', 'Lakeside Jump Club', '', '', top ? `Record <b>${(top.score / 100).toFixed(1)} m</b> · ${HUD.esc(top.name)}` : 'No record yet: <b>set one</b>');
+      HUD.bar('Long Jump', 'Lakeside Jump Club', '', '', top ? `Record <b>${(top.score / 100).toFixed(1)} m</b> · ${HUD.who(top.name)}` : 'No record yet: <b>set one</b>');
       HUD.side('Longest jumps', (rows || []).slice(0, 8).map(r => ({ n: `${r.rank}. ${r.name}`, v: `${(r.score / 100).toFixed(1)} m`, me: r.name === api.myName() })));
     },
     onBoard(r) { board(r); this.hud(); },
@@ -131,7 +131,7 @@ export function createFlight(api) {
       for (const c of [crowd, crowd2]) c.cheer(wr ? 1 : 0.35 + pw * 0.6, wr ? 6 : 3.5);
       CHEER.burst(wr ? 1 : 0.3 + pw * 0.6, api.near(LIP + e.d, 0, 600));
       if (mine) HUD.big(`${e.d.toFixed(1)} M`, `${e.t.toFixed(2)} s in the air · ${e.v} km/h off the lip${wr ? ' · NEW RECORD!' : e.pb ? ' · personal best' : ''}`, wr ? 'gold' : 'go', 4);
-      else api.notify(`<b>${HUD.esc(e.n)}</b> jumped ${e.d.toFixed(1)} m${wr ? ': a new record!' : ''}`);
+      else api.notify(`<b>${HUD.who(e.n)}</b> jumped ${e.d.toFixed(1)} m${wr ? ': a new record!' : ''}`);
       for (const s of screens) s.draw(fmtRows(rows), live, api.myName());
     },
     key(code) { if (code === 'KeyR') { api.act('reset'); api.placeCar(start, 0, true); tracks.clear(); return true; } return false; },
