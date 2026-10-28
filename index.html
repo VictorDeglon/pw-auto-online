@@ -549,6 +549,7 @@ import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWe
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
+import { createCarMods } from './src/carmods.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes, syncRemotes, REMOTES } from './src/online/remote.js';
 import { shownName } from './src/online/shown.js'; // other players' names as this player sees them (bad-words setting)
 import { initNetTraffic, updateNetTraffic, NETTRAFFIC, netCarHit, netCarTake } from './src/online/traffic.js';
@@ -3299,7 +3300,7 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
   const cap = s.vmax * dmg * (v.onRoad ? 1 : down ? 3.2 : 1.3);
   if (vf > cap) vf -= (vf - cap) * (1 - Math.exp(-(down ? 0.4 : 1.2) * dt)); // overspeed bleeds off instead of snapping
   vf = Math.max(vf, -11);
-  if (brake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 22 * dt);
+  if (brake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 22 * (v.brakeMul || 1) * dt); // brakes upgrade (src/carmods.js)
   vf -= vf * (0.015 + 0.0003 * Math.abs(vf)) * dt * (down ? 0.8 : 3); // rolling + aero drag (light when bombing down a mountain)
   if (!throttle) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 1.6 * dt);
   const grip = (hand ? 1.1 : 9) * (1 - 0.5 * weather.wet) * (v.gripMul || 1) * (hp < 0.4 ? 0.6 + hp : 1) * (v.onRoad === false ? 0.7 : 1) * (v.tireMul || 1); // gripMul < 1: tires shredded by a spike strip; dirt slides more
@@ -5072,117 +5073,14 @@ const _dirt = new THREE.Color(0x4a4339);
 // A garage near Poway High. Drive a car in and press E: it's yours from then on (saved), repaired, and much tougher.
 // Lose it (wrecked, towed, left behind) and it's back in the garage, repaired. The mechanic sells upgrades that stay
 // with the car, paint and neon. C brings your last car to you.
-const MODS = {
-  engine: { name: 'Engine', max: 3, cost: [250, 500, 900], desc: '+12% top speed, +20% acceleration per level' },
-  armor: { name: 'Armor', max: 3, cost: [200, 450, 800], desc: 'takes 40% less damage per level' },
-  tires: { name: 'Tires', max: 2, cost: [150, 350], desc: 'more grip on and off road' },
-  turbo: { name: 'Glide turbo', max: 2, cost: [300, 700], desc: 'stronger SPACE glide in the air' },
-};
-const PAINTS = [['Factory', null], ['Gloss black', 0x18191b], ['Arctic white', 0xf2f2ef], ['Racing red', 0xc4161c], ['Poway gold', 0xd4a017], ['Electric blue', 0x1f5fff], ['Lime', 0x7ed321], ['Hot pink', 0xff4fa3], ['Gunmetal', 0x4b5258], ['Orange', 0xff7a1a]];
-const NEONS = [['None', null], ['Cyan', 0x00e5ff], ['Pink', 0xff2bd6], ['Green', 0x39ff14], ['Purple', 0x9b30ff], ['Red', 0xff1a1a]];
+// Tuning (src/carmods.js): the mechanic's upgrades, paint and finish, trim, glass, lights, rims and body parts
+const TUNE = createCarMods(THREE), MODS = TUNE.MODS, PAINTS = TUNE.COLORS, NEONS = TUNE.NEONS, PARTS = TUNE.PARTS;
+scene.add(TUNE.light); // the underglow's one real light, on the car you drive (always in the scene: no shader rebuilds)
 let GARAGE = null, garageOpen = false;
 function garageList() { return save.garage || (save.garage = []); }
 function ownedEntry(id) { return garageList().find(e => e.id === id); }
-function applyMods(v, e) {
-  const base = CAR[v.type], m = e.mods || {};
-  v.spec.vmax = base.vmax * (1 + 0.12 * (m.engine || 0)); v.spec.acc = base.acc * (1 + 0.2 * (m.engine || 0));
-  v.armorMul = 0.35 * Math.pow(0.6, m.armor || 0); // owned cars are much tougher; armor on top
-  v.tireMul = 1 + 0.25 * (m.tires || 0); v.turbo = 1 + 0.5 * (m.turbo || 0);
-  const paint = e.paint != null ? e.paint : null;
-  for (const mt of v.m.mats) { if (!mt.userData.base) continue; mt.color.copy(mt.userData.base).multiply(hex(paint != null ? paint : v.tint)); }
-  if (v.neon) { v.m.g.remove(v.neon); v.neon.geometry.dispose(); v.neon.material.dispose(); v.neon = null; }
-  if (e.neon != null) {
-    const n = new THREE.Mesh(new THREE.PlaneGeometry(v.spec.W * 1.1, v.spec.L * 0.95).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: e.neon, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
-    n.position.y = 0.08; v.m.g.add(n); v.neon = n;
-  }
-  applyParts(v, e);
-}
-// ============================================================ body shop: parts bolted onto your saved cars
-// Every part is built from primitives sized to the car (L, W, H; +Z forward, y = 0 at the ground) and saved with the
-// car (e.parts). Rocket boosters also add glide thrust.
-const PMAT = {
-  carbon: new THREE.MeshStandardMaterial({ color: 0x1a1b1e, roughness: 0.35, metalness: 0.4 }), chrome: new THREE.MeshStandardMaterial({ color: 0xd8dde2, roughness: 0.12, metalness: 1 }),
-  black: new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.7 }), steel: new THREE.MeshStandardMaterial({ color: 0x5d6168, roughness: 0.4, metalness: 0.8 }),
-  rubber: new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.95 }), led: new THREE.MeshBasicMaterial({ color: 0xfff6d8 }), red: new THREE.MeshStandardMaterial({ color: 0xb3141a, roughness: 0.5 }),
-  flame: new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }),
-};
-const decalMat = (draw) => new THREE.MeshBasicMaterial({ map: canvasTex(256, 512, draw), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
-const DECALS = {
-  stripes: decalMat(c => { c.fillStyle = '#f2f2ef'; c.fillRect(78, 0, 36, 512); c.fillRect(142, 0, 36, 512); }),
-  side: decalMat(c => { c.fillStyle = '#111'; c.fillRect(0, 230, 256, 40); c.fillStyle = '#f0b23a'; c.fillRect(0, 280, 256, 14); }),
-  flames: decalMat(c => { const g = c.createLinearGradient(0, 0, 0, 512); g.addColorStop(0, '#ffe14a'); g.addColorStop(0.5, '#ff7a1a'); g.addColorStop(1, '#d4161c'); c.fillStyle = g; for (let i = 0; i < 6; i++) { c.beginPath(); const x = 20 + i * 40; c.moveTo(x, 512); c.quadraticCurveTo(x + 50, 300, x + 10 + (i % 2) * 30, 120 + i * 20); c.quadraticCurveTo(x - 10, 320, x - 20, 512); c.fill(); } }),
-};
-const PARTS = {
-  spoiler: { name: 'Spoiler', opts: [['None', 0], ['Duck tail', 150], ['GT wing', 300], ['Drag wing', 450]] },
-  roof: { name: 'Roof', opts: [['None', 0], ['Rack + spare', 200], ['LED light bar', 250], ['Roof scoop', 180], ['Shark fin', 60], ['Cargo box', 160]] },
-  front: { name: 'Front', opts: [['None', 0], ['Bull bar', 220], ['Push bar + lights', 280], ['Splitter', 150]] },
-  hood: { name: 'Hood', opts: [['Stock', 0], ['Hood scoop', 200], ['Twin intakes', 260]] },
-  exhaust: { name: 'Exhaust', opts: [['Stock', 0], ['Twin tips', 120], ['Side pipes', 240], ['Truck stacks', 300]] },
-  stance: { name: 'Stance', opts: [['Stock', 0], ['Lowered', 200], ['Lifted + big tires', 400]] },
-  rims: { name: 'Rims', opts: [['Stock', 0], ['Chrome', 150], ['Gold', 200], ['Black', 100], ['Red', 120]] },
-  livery: { name: 'Livery', opts: [['None', 0], ['Racing stripes', 120], ['Side stripe', 100], ['Flames', 250]] },
-  rockets: { name: 'Rocket boosters', opts: [['None', 0], ['Twin boosters (+40% glide)', 900]] },
-};
-const RIMS = [null, 0xd8dde2, 0xd4a017, 0x151515, 0xc4161c];
-function buildParts(v, P) {
-  const g = new THREE.Group(), L = v.spec.L, W = v.spec.W, H = v.spec.H, lift = P.stance === 2 ? 0.25 : P.stance === 1 ? -0.1 : 0, top = H + lift;
-  const box = (w, h, d, x, y, z, m, rx = 0) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.rotation.x = rx; o.castShadow = true; g.add(o); return o; };
-  const cyl = (r, l, x, y, z, m, ax = 'z', seg = 12) => { const geo = new THREE.CylinderGeometry(r, r, l, seg); if (ax === 'z') geo.rotateX(Math.PI / 2); else if (ax === 'x') geo.rotateZ(Math.PI / 2); const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
-  const back = -L / 2, front = L / 2, deck = H * 0.62 + lift, roofY = top - 0.02;
-  switch (P.spoiler) {
-    case 1: box(W * 0.8, 0.06, 0.25, 0, deck + 0.05, back + 0.18, PMAT.carbon, -0.25); break;
-    case 2: box(W * 0.95, 0.05, 0.38, 0, deck + 0.38, back + 0.15, PMAT.carbon, -0.12); box(0.05, 0.36, 0.12, -W * 0.3, deck + 0.18, back + 0.2, PMAT.black); box(0.05, 0.36, 0.12, W * 0.3, deck + 0.18, back + 0.2, PMAT.black); box(0.04, 0.16, 0.42, -W * 0.475, deck + 0.42, back + 0.15, PMAT.carbon); box(0.04, 0.16, 0.42, W * 0.475, deck + 0.42, back + 0.15, PMAT.carbon); break;
-    case 3: box(W * 1.05, 0.06, 0.55, 0, deck + 0.75, back + 0.1, PMAT.carbon, -0.18); box(0.07, 0.75, 0.15, -W * 0.25, deck + 0.37, back + 0.15, PMAT.steel); box(0.07, 0.75, 0.15, W * 0.25, deck + 0.37, back + 0.15, PMAT.steel); break;
-  }
-  switch (P.roof) {
-    case 1: { for (const x of [-W * 0.35, W * 0.35]) box(0.06, 0.06, L * 0.42, x, roofY + 0.12, -L * 0.05, PMAT.black); for (const z of [-L * 0.22, 0, L * 0.15]) box(W * 0.75, 0.04, 0.05, 0, roofY + 0.15, z, PMAT.black); const t = cyl(0.36, 0.22, 0, roofY + 0.32, -L * 0.05, PMAT.rubber, 'y', 18); t.rotation.z = 0; cyl(0.2, 0.23, 0, roofY + 0.32, -L * 0.05, PMAT.steel, 'y', 12); break; }
-    case 2: box(W * 0.85, 0.12, 0.14, 0, roofY + 0.1, L * 0.12, PMAT.black); for (let i = 0; i < 6; i++) box(W * 0.11, 0.08, 0.02, -W * 0.33 + i * W * 0.132, roofY + 0.1, L * 0.12 + 0.075, PMAT.led); break;
-    case 3: box(W * 0.45, 0.2, L * 0.25, 0, roofY + 0.08, 0, PMAT.carbon); box(W * 0.35, 0.12, 0.03, 0, roofY + 0.1, L * 0.125 + 0.01, PMAT.black); break;
-    case 4: { const f = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 4).scale(0.5, 1, 2), PMAT.black); f.position.set(0, roofY + 0.08, -L * 0.15); g.add(f); break; }
-    case 5: box(W * 0.6, 0.32, L * 0.38, 0, roofY + 0.2, -L * 0.04, PMAT.black); break;
-  }
-  switch (P.front) {
-    case 1: { for (const x of [-W * 0.3, W * 0.3]) cyl(0.04, 0.8, x, 0.6 + lift, front + 0.12, PMAT.chrome, 'y'); cyl(0.045, W * 0.7, 0, 0.98 + lift, front + 0.12, PMAT.chrome, 'x'); cyl(0.045, W * 0.7, 0, 0.55 + lift, front + 0.18, PMAT.chrome, 'x'); break; }
-    case 2: box(W * 0.7, 0.5, 0.1, 0, 0.6 + lift, front + 0.12, PMAT.black); box(W * 0.6, 0.06, 0.05, 0, 0.88 + lift, front + 0.15, PMAT.led); for (const x of [-W * 0.25, W * 0.25]) box(0.18, 0.12, 0.08, x, 0.95 + lift, front + 0.12, PMAT.led); break;
-    case 3: box(W * 1.02, 0.04, 0.35, 0, 0.18 + lift, front - 0.05, PMAT.carbon); break;
-  }
-  switch (P.hood) {
-    case 1: box(W * 0.3, 0.14, L * 0.16, 0, H * 0.58 + lift + 0.07, L * 0.28, PMAT.black); box(W * 0.24, 0.08, 0.02, 0, H * 0.58 + lift + 0.09, L * 0.36, PMAT.rubber); break;
-    case 2: for (const x of [-W * 0.18, W * 0.18]) { box(W * 0.16, 0.08, L * 0.14, x, H * 0.58 + lift + 0.04, L * 0.27, PMAT.carbon); } break;
-  }
-  switch (P.exhaust) {
-    case 1: for (const x of [-W * 0.25, W * 0.25]) cyl(0.06, 0.25, x, 0.32 + lift, back - 0.05, PMAT.chrome); break;
-    case 2: for (const x of [-W * 0.52, W * 0.52]) cyl(0.07, L * 0.55, x, 0.32 + lift, -L * 0.05, PMAT.chrome); break;
-    case 3: for (const x of [-W * 0.42, W * 0.42]) { cyl(0.08, 1.6, x, top * 0.6 + 0.8, -L * 0.05, PMAT.chrome, 'y'); } break;
-  }
-  if (P.livery) {
-    const d = DECALS[['', 'stripes', 'side', 'flames'][P.livery]];
-    if (P.livery === 1) { const q = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.95, L * 0.98).rotateX(-Math.PI / 2), d); q.position.y = top + 0.012; g.add(q); }
-    else for (const s of [-1, 1]) { const q = new THREE.Mesh(new THREE.PlaneGeometry(L * 0.9, H * 0.45).rotateY(s * Math.PI / 2), d); if (P.livery === 3) q.material = d; q.position.set(s * (W / 2 + 0.012), H * 0.42 + lift, 0); g.add(q); }
-  }
-  if (P.rockets) {
-    for (const x of [-W * 0.3, W * 0.3]) { cyl(0.13, 0.7, x, top * 0.55 + 0.3, back + 0.15, PMAT.steel); const n = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.25, 12).rotateX(-Math.PI / 2), PMAT.red); n.position.set(x, top * 0.55 + 0.3, back + 0.6); g.add(n); const fl = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.7, 10).rotateX(Math.PI / 2), PMAT.flame); fl.position.set(x, top * 0.55 + 0.3, back - 0.55); fl.visible = false; g.add(fl); (g.userData.flames || (g.userData.flames = [])).push(fl); }
-  }
-  return g;
-}
-function applyParts(v, e) {
-  const P = e.parts || {};
-  if (v.partsG) { v.m.g.remove(v.partsG); v.partsG.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); }); v.partsG = null; }
-  v.m.body.position.y = P.stance === 2 ? 0.25 : P.stance === 1 ? -0.1 : 0;
-  for (const w of v.m.wheels) {
-    if (w.baseS === undefined) { w.baseS = w.w.scale.clone(); w.baseY = w.piv.position.y; }
-    w.w.scale.copy(w.baseS).multiplyScalar(P.stance === 2 ? 1.35 : 1); w.piv.position.y = w.baseY + (P.stance === 2 ? 0.12 : 0);
-  }
-  const rim = RIMS[P.rims || 0];
-  for (const w of v.m.wheels) w.w.traverse(o => { // the rim is the light-coloured part of the wheel; leave the rubber black
-    if (!o.isMesh || Array.isArray(o.material)) return;
-    if (!o.userData.ownMat) { o.material = o.material.clone(); o.userData.ownMat = true; o.userData.base = o.material.color.clone(); }
-    const b0 = o.userData.base; if (b0.r * 0.3 + b0.g * 0.6 + b0.b * 0.1 < 0.18) return;
-    o.material.color.copy(rim != null ? new THREE.Color(rim) : b0); o.material.metalness = rim === 0xd8dde2 || rim === 0xd4a017 ? 0.9 : 0.1; o.material.roughness = rim != null ? 0.25 : 0.6;
-  });
-  v.rocket = P.rockets ? 1.4 : 1; v.partsKey = Object.keys(P).length ? JSON.stringify(P).slice(0, 240) : ''; // others see the same parts
-  const g = buildParts(v, P); v.m.g.add(g); v.partsG = g;
-}
+function applyMods(v, e) { TUNE.applyPerf(v, CAR[v.type], e.mods || {}); TUNE.applyLook(v, e); }
+const applyLook = (t, look) => TUNE.applyLook(t, look); // other players' cars (src/online/remote.js)
 
 function spawnOwned(e, x, z, rot) {
   const v = new Vehicle(e.type, x, z, rot, e.tint, e.model); v.mine = true; v.keep = true; v.ownedId = e.id; settleCar(v); applyMods(v, e); return v;
@@ -5223,8 +5121,9 @@ function callCar() {
 function setupGarage() {
   const base = spawnPt && spawnPt.curb || spawnPt; if (!base || !base.ne) return;
   const tx = base.ne.tx, tz = base.ne.tz, nx = -tz, nz = tx;
-  // 70 m back along the road, set off the far side of the sidewalk
-  GARAGE = garageAt(base.x - tx * 70 + nx * 9, base.z - tz * 70 + nz * 9, Math.atan2(nx, nz), 'GARAGE', 'Your garage');
+  // the nearest spot on a proper street near the start where the whole shop fits (or, failing that, as before)
+  const site = garageSite(base.x, base.z, e => e.t >= 2 && e.t <= 5 && !e.outer);
+  GARAGE = site ? garageAt(site.x, site.z, site.rot, 'GARAGE', 'Your garage') : garageAt(base.x - tx * 70 + nx * 9, base.z - tz * 70 + nz * 9, Math.atan2(nx, nz), 'GARAGE', 'Your garage');
   GARAGES.push(GARAGE);
   // on load, owned cars that were out come back here; and spawn the last-used one at the bay
   const e = ownedEntry(save.lastCar); if (e && !liveOwned(e.id) && !(player.inCar && player.inCar.ownedId === e.id)) spawnOwned(e, GARAGE.x, GARAGE.z, GARAGE.rot);
@@ -5232,37 +5131,79 @@ function setupGarage() {
 // a garage bay facing the road: store, repair and tune your cars at any of them
 const GARAGES = [];
 let GARAGE_AT = null; // the one whose menu is open
+// A modern auto shop, its open front to the road (local +z runs in from the doorway at z = 0): polished floor, a
+// turntable with an LED ring for the car, glowing ceiling panels, a tool wall, a tyre rack and a two-post lift. No
+// lamps: lights in the scene cost every pixel, and a garage appearing as a tile loads would rebuild every shader.
+// The roof casts no shadow, so the sun lights the floor the way it would through skylights.
+const AUTOSHOP = (() => {
+  const T = (w, h, f, rep) => { const t = canvasTex(w, h, f); if (rep) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]); } return t; };
+  const ribs = T(128, 128, c => { c.fillStyle = '#2b2f35'; c.fillRect(0, 0, 128, 128); for (let x = 0; x < 128; x += 16) { c.fillStyle = '#353a42'; c.fillRect(x, 0, 6, 128); c.fillStyle = '#23272c'; c.fillRect(x + 6, 0, 2, 128); } }, [6, 2]);
+  const floor = T(256, 256, c => { c.fillStyle = '#a3a6a9'; c.fillRect(0, 0, 256, 256); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '40,40,40'},${Math.random() * 0.05})`; c.fillRect(Math.random() * 256, Math.random() * 256, 3, 3); } c.strokeStyle = 'rgba(40,42,46,.35)'; c.lineWidth = 2; c.strokeRect(0, 0, 256, 256); }, [4, 4]);
+  const peg = T(256, 128, c => { c.fillStyle = '#d9dcdf'; c.fillRect(0, 0, 256, 128); c.fillStyle = '#9ea3a8'; for (let y = 6; y < 128; y += 12) for (let x = 6; x < 256; x += 12) c.fillRect(x, y, 3, 3); c.fillStyle = '#c4161c'; for (let i = 0; i < 9; i++) c.fillRect(20 + i * 25, 30 + (i % 3) * 22, 6, 34); c.fillStyle = '#4b5258'; for (let i = 0; i < 6; i++) c.fillRect(30 + i * 36, 92, 22, 8); });
+  return {
+    wall: new THREE.MeshStandardMaterial({ map: ribs, color: 0xffffff, roughness: 0.5, metalness: 0.6 }), inner: new THREE.MeshStandardMaterial({ color: 0xe9ebee, roughness: 0.8 }),
+    floor: new THREE.MeshStandardMaterial({ map: floor, color: 0xffffff, roughness: 0.32, metalness: 0.15, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -16 }), // over the campus's ground layers dark: new THREE.MeshStandardMaterial({ color: 0x1b1d21, roughness: 0.4, metalness: 0.7 }),
+    steel: new THREE.MeshStandardMaterial({ color: 0x8a9098, roughness: 0.3, metalness: 0.9 }), turntable: new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.25, metalness: 0.7, polygonOffset: true, polygonOffsetFactor: -12, polygonOffsetUnits: -24 }), tyre: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.9 }), peg: new THREE.MeshStandardMaterial({ map: peg, roughness: 0.7 }),
+    panel: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf4f6ff).multiplyScalar(2.2), toneMapped: false }), amber: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf0b23a).multiplyScalar(2.5), toneMapped: false }),
+  };
+})();
+const SHOP_W = 7.25, SHOP_D = 15, SHOP_H = 6, SHOP_BAY = 7.2; // half width, depth, height; the bay's distance in from the door
 function garageAt(cx, cz, rot, title, name) {
-  const y = heightAt(cx, cz);
-  const g = new THREE.Group(); g.position.set(cx, y, cz); g.rotation.y = rot;
-  const wall = new THREE.MeshStandardMaterial({ color: 0xd8cdb6, roughness: 0.9 }), roofM = new THREE.MeshStandardMaterial({ color: 0x5a3a2a, roughness: 0.8 }), trim = new THREE.MeshStandardMaterial({ color: 0x2a2d31, roughness: 0.6 });
-  const box = (w, h, d, x, yy, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, yy, z); o.castShadow = o.receiveShadow = true; g.add(o); return o; };
-  box(0.3, 4, 11, -4.2, 2, 4, wall); box(0.3, 4, 11, 4.2, 2, 4, wall); box(8.7, 4, 0.3, 0, 2, 9.5, wall); box(9.2, 0.35, 11.6, 0, 4.15, 4, roofM); box(8.4, 0.05, 11, 0, 0.03, 4, trim);
-  box(8.7, 0.6, 0.35, 0, 3.7, -1.5, trim);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4, 0.8), new THREE.MeshBasicMaterial({ map: canvasTex(512, 102, c => { c.fillStyle = '#1b1e22'; c.fillRect(0, 0, 512, 102); c.fillStyle = '#f0b23a'; c.font = `bold ${title.length > 10 ? 44 : 64}px Arial`; c.textAlign = 'center'; c.fillText(title, 256, 75); }) }));
-  sign.position.set(0, 3.7, -1.69); sign.rotation.y = Math.PI; g.add(sign);
-  const lamp = new THREE.PointLight(0xffe2b0, 30, 18); lamp.position.set(0, 3.6, 4); g.add(lamp);
+  const y = heightAt(cx, cz), g = new THREE.Group(); g.position.set(cx, y, cz); g.rotation.y = rot;
+  const box = (w, h, d, x, yy, z, m, shadow = true) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, yy, z); o.castShadow = shadow; o.receiveShadow = true; g.add(o); return o; };
+  { // the floor follows the ground (cars drive on the ground itself), 4 cm above it
+    const fg = new THREE.PlaneGeometry(SHOP_W * 2, SHOP_D, 12, 12).rotateX(-Math.PI / 2), pa = fg.attributes.position;
+    for (let k = 0; k < pa.count; k++) { const lx = pa.getX(k), lz = pa.getZ(k) + SHOP_D / 2, wx = cx + Math.cos(rot) * lx + Math.sin(rot) * lz, wz = cz - Math.sin(rot) * lx + Math.cos(rot) * lz; pa.setXYZ(k, lx, heightAt(wx, wz) - y + 0.04, lz); }
+    fg.computeVertexNormals(); const fl = new THREE.Mesh(fg, AUTOSHOP.floor); fl.receiveShadow = true; g.add(fl);
+  }
+  for (const s of [-1, 1]) { box(0.3, SHOP_H + 1.2, SHOP_D, s * SHOP_W, SHOP_H / 2 - 0.6, SHOP_D / 2, AUTOSHOP.wall); box(0.05, SHOP_H - 0.3, SHOP_D - 0.4, s * (SHOP_W - 0.18), SHOP_H / 2, SHOP_D / 2, AUTOSHOP.inner, false); }
+  box(SHOP_W * 2 + 0.3, SHOP_H + 1.2, 0.3, 0, SHOP_H / 2 - 0.6, SHOP_D, AUTOSHOP.wall);
+  box(SHOP_W * 2 + 0.6, 0.3, SHOP_D + 0.4, 0, SHOP_H + 0.15, SHOP_D / 2, AUTOSHOP.wall, false); // the roof: no shadow (skylit)
+  box(SHOP_W * 2 + 0.3, 1.3, 0.35, 0, SHOP_H - 0.65, 0, AUTOSHOP.dark); // the header over the doorway
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, SHOP_W * 2 - 0.4, 20).rotateZ(Math.PI / 2), AUTOSHOP.dark); drum.position.set(0, SHOP_H - 1.6, 0.45); g.add(drum); // the rolled-up door
+  box(SHOP_W * 2 - 0.3, 0.06, 0.06, 0, SHOP_H - 1.32, -0.2, AUTOSHOP.amber, false); // an amber LED strip under the header
+  for (let i = 0; i < 3; i++) for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.9).rotateX(Math.PI / 2), AUTOSHOP.panel); p.position.set(s * 3.2, SHOP_H - 0.02, 3 + i * 4.5); g.add(p); } // ceiling light panels
+  const bayY = heightAt(cx + Math.sin(rot) * SHOP_BAY, cz + Math.cos(rot) * SHOP_BAY) - y, tt = new THREE.Mesh(new THREE.CylinderGeometry(3.3, 3.3, 0.07, 48), AUTOSHOP.turntable); tt.position.set(0, bayY + 0.06, SHOP_BAY); tt.receiveShadow = true; g.add(tt);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(3.32, 0.035, 8, 64).rotateX(Math.PI / 2), AUTOSHOP.amber); ring.position.set(0, bayY + 0.095, SHOP_BAY); g.add(ring);
+  const pegs = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.6), AUTOSHOP.peg); pegs.position.set(0, 2.3, SHOP_D - 0.2); pegs.rotation.y = Math.PI; g.add(pegs); box(7, 0.9, 0.8, 0, 0.45, SHOP_D - 0.7, AUTOSHOP.dark); // tool wall and bench
+  for (let k = 0; k < 4; k++) for (let r = 0; r < 2; r++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.13, 10, 22), AUTOSHOP.tyre); t.position.set(-SHOP_W + 0.55, 0.6 + r * 0.9, SHOP_D - 2.5 - k * 0.35); t.rotation.y = Math.PI / 2; t.castShadow = true; g.add(t); } // tyre rack
+  for (const z of [3.5, 7.5]) box(0.2, 3.6, 0.2, SHOP_W - 1.1, 1.8, z, AUTOSHOP.steel); box(0.18, 0.15, 4.2, SHOP_W - 1.1, 3.5, 5.5, AUTOSHOP.steel); // a two-post lift
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 1.05), new THREE.MeshBasicMaterial({ map: canvasTex(1024, 150, c => { c.fillStyle = '#121418'; c.fillRect(0, 0, 1024, 150); c.fillStyle = '#f0b23a'; c.font = `bold ${name.length > 20 ? 60 : 78}px Arial`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(name.toUpperCase(), 512, 70); c.fillStyle = '#9aa0a8'; c.font = '24px Arial'; c.fillText('PERFORMANCE · PAINT · BODY · LIGHTS', 512, 128); }), toneMapped: false, color: new THREE.Color(1.6, 1.6, 1.6) }));
+  sign.position.set(0, SHOP_H - 0.65, -0.19); sign.rotation.y = Math.PI; g.add(sign);
   scene.add(g);
   // walls block you; the open front faces the road
   const wpt = (lx, lz) => [cx + Math.cos(rot) * lx + Math.sin(rot) * lz, cz - Math.sin(rot) * lx + Math.cos(rot) * lz];
-  for (const [x0, z0, x1, z1] of [[-4.35, -1.5, -4.05, 9.65], [4.05, -1.5, 4.35, 9.65], [-4.35, 9.35, 4.35, 9.65]]) { const a = wpt(x0, z0), b = wpt(x1, z0), c = wpt(x1, z1), d = wpt(x0, z1); addPoly([...a, ...b, ...c, ...d], y, y + 4); }
-  const bay = wpt(0, 4), G = { x: bay[0], z: bay[1], rot: rot + Math.PI, door: wpt(0, -3), name, group: g };
-  addInteract({ x: bay[0], z: bay[1], r: 7, label: () => player.inCar ? `${name}: save / repair / mechanic` : `${name}: your cars`, onUse: () => openGarage(G) });
+  for (const [x0, z0, x1, z1] of [[-SHOP_W - 0.15, 0, -SHOP_W + 0.15, SHOP_D], [SHOP_W - 0.15, 0, SHOP_W + 0.15, SHOP_D], [-SHOP_W, SHOP_D - 0.15, SHOP_W, SHOP_D + 0.15]]) { const a = wpt(x0, z0), b = wpt(x1, z0), c = wpt(x1, z1), d = wpt(x0, z1); addPoly([...a, ...b, ...c, ...d], y, y + SHOP_H); }
+  const bay = wpt(0, SHOP_BAY), G = { x: bay[0], z: bay[1], rot: rot + Math.PI, door: wpt(0, -3), name, group: g, room: 6.2 };
+  addInteract({ x: bay[0], z: bay[1], r: 7.5, label: () => player.inCar ? `${name}: save / repair / tune` : `${name}: your cars`, onUse: () => openGarage(G) });
   return G;
+}
+// where a shop fits near (x0, z0): set back off a road, the whole footprint clear of buildings and roads, and flat
+function garageSite(x0, z0, filter, rings = [0, 60, 120, 180]) {
+  const tried = new Set(), q = { x: 0, z: 0 }, onRoad = (x, z) => (ROADS && ROADS.onRoad(x, z, 1.5)) || (OUTER.onRoad && OUTER.onRoad(x, z, 1.5));
+  for (const rr of rings) for (let a = 0; a < (rr ? 8 : 1); a++) {
+    const ne = nearestEdge(x0 + Math.cos(a * Math.PI / 4) * rr, z0 + Math.sin(a * Math.PI / 4) * rr, 160, filter); if (!ne || tried.has(ne.e)) continue; tried.add(ne.e);
+    const e = edges[ne.e];
+    for (const along of [0, 18, -18, 36, -36, 54, -54, 75, -75]) for (const side of [1, -1]) {
+      const nx = -ne.tz * side, nz = ne.tx * side, rot = Math.atan2(nx, nz), off = e.w / 2 + 4.5, cx = ne.x + ne.tx * along + nx * off, cz = ne.z + ne.tz * along + nz * off;
+      const wp = (lx, lz) => [cx + Math.cos(rot) * lx + Math.sin(rot) * lz, cz - Math.sin(rot) * lx + Math.cos(rot) * lz];
+      let ok = true, lo = 1e9, hi = -1e9;
+      for (const lx of [-SHOP_W, -SHOP_W / 2, 0, SHOP_W / 2, SHOP_W]) for (const lz of [1, 4.5, 8, 11.5, SHOP_D]) {
+        const [x, z] = wp(lx, lz); q.x = x; q.z = z; const h = heightAt(x, z); lo = Math.min(lo, h); hi = Math.max(hi, h);
+        if (collideCircle(q, 2, false) || onRoad(x, z) || offLimits(x, z, 1)) { ok = false; break; }
+      }
+      if (ok && hi - lo < 1) return { x: cx, z: cz, rot };
+    }
+  }
+  return null;
 }
 // out in the county: a bay set back from the road wherever there's room (the first time that tile is built)
 const GARAGE_SPOTS = [['Downtown Auto Body', 32.7090, -117.1530], ['Kearny Mesa Motors', 32.8270, -117.1350], ['Pacific Beach Garage', 32.8000, -117.2480], ['Escondido Body Shop', 33.1170, -117.0900],
   ['Oceanside Motor Works', 33.1990, -117.3700], ['El Cajon Garage', 32.7980, -116.9550], ['Chula Vista Auto', 32.6350, -117.0800], ['Ramona Garage', 33.0440, -116.8740]];
 const garagesWaiting = GARAGE_SPOTS.map(([name, lat, lon]) => { const k = ll(lat, lon); return k && [name, k.x, k.z]; }).filter(Boolean);
 function outerGarage(name, x, z) {
-  const ne = nearestEdge(x, z, 300, e => e.outer && e.t >= 2 && e.t <= 4 && e.len > 60); if (!ne) return false;
-  const e = edges[ne.e], probe = { x: 0, z: 0 };
-  for (const along of [0, 25, -25, 50, -50, 75, -75]) for (const side of [1, -1]) {
-    const nx = -ne.tz * side, nz = ne.tx * side, off = e.w / 2 + 12, cx = ne.x + ne.tx * along + nx * off, cz = ne.z + ne.tz * along + nz * off;
-    probe.x = cx; probe.z = cz; if (collideCircle(probe, 8, false) || OUTER.onRoad(cx, cz, 4)) continue;
-    GARAGES.push(garageAt(cx, cz, Math.atan2(nx, nz), 'GARAGE', name)); return true;
-  }
-  return false;
+  const site = garageSite(x, z, e => e.outer && e.t >= 2 && e.t <= 4 && e.len > 60, [0, 80, 160]); if (!site) return false;
+  GARAGES.push(garageAt(site.x, site.z, site.rot, 'GARAGE', name)); return true;
 }
 // outer tiles just built: open the shops and garages that were waiting for them
 function outerSpots(t) {
@@ -5285,7 +5226,7 @@ function showroom(dt) {
   const v = player.inCar; if (!v) return;
   if (SHOW.yaw === null) SHOW.yaw = v.rotY + 2.3; // a three-quarter front view to start
   if (!SHOW.drag && performance.now() - SHOW.last > 2500) SHOW.yaw += dt * 0.22; // a slow turntable when you're not turning it
-  const d = Math.max(5.5, v.spec.L * 1.45) * SHOW.dist, cx = v.pos.x, cy = v.pos.y + v.spec.H * 0.45, cz = v.pos.z;
+  const room = (GARAGE_AT && GARAGE_AT.room) || 99, d = Math.min(room, Math.max(5.5, v.spec.L * 1.45) * SHOW.dist), cx = v.pos.x, cy = v.pos.y + v.spec.H * 0.45, cz = v.pos.z; // inside the shop's walls
   camera.position.set(cx + Math.sin(SHOW.yaw) * d, cy + 0.9 + d * 0.16, cz + Math.cos(SHOW.yaw) * d); camera.lookAt(cx, cy, cz);
   const panel = $('garage') && $('garage').firstElementChild, pw = panel ? panel.offsetWidth : 0, W = innerWidth, H = innerHeight;
   if (pw && pw < W * 0.8) camera.setViewOffset(W, H, pw / 2, 0, W, H); else camera.clearViewOffset(); // car centred in the space left of the panel
@@ -5297,12 +5238,10 @@ function showroomInput(el) {
   const up = () => { if (SHOW.drag) { SHOW.drag = null; SHOW.last = performance.now(); el.style.cursor = 'grab'; } };
   el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   el.addEventListener('wheel', e => { if (e.target !== el) return; e.preventDefault(); SHOW.dist = clamp(SHOW.dist * (e.deltaY > 0 ? 1.08 : 1 / 1.08), 0.6, 2.2); SHOW.last = performance.now(); }, { passive: false });
-  // hover a paint, underglow or part to see it on the car before you pay; move away and it goes back
+  // hover any look option to see it on the car before you pay; move away and it goes back
   el.addEventListener('mouseover', e => {
     const b = e.target.closest && e.target.closest('button[data-act]'); const v = player.inCar, en = v && v.ownedId && ownedEntry(v.ownedId); if (!b || !en) return;
-    const [act, arg, x] = b.dataset.act.split(':'); if (!['paint', 'neon', 'part'].includes(act)) return;
-    const t = JSON.parse(JSON.stringify(en));
-    if (act === 'paint') t.paint = PAINTS[+arg][1]; else if (act === 'neon') t.neon = NEONS[+arg][1]; else (t.parts || (t.parts = {}))[arg] = +x;
+    const t = lookTry(JSON.parse(JSON.stringify(en)), b.dataset.act); if (!t) return;
     applyMods(v, t); SHOW.preview = true;
   });
   el.addEventListener('mouseout', e => {
@@ -5310,38 +5249,70 @@ function showroomInput(el) {
     const v = player.inCar, en = v && v.ownedId && ownedEntry(v.ownedId); if (en) applyMods(v, en); SHOW.preview = false;
   });
 }
+// a look action applied to a saved car entry (for trying it on, or for real); null if it isn't a look action
+const LOOKS = { paint: ['paint', i => TUNE.COLORS[i][1], 50], fin: ['finish', i => i, i => TUNE.FINISHES[i][1]], trim: ['trim', i => i, i => TUNE.TRIMS[i][1]], glass: ['glass', i => i, i => TUNE.GLASS[i][1]],
+  head: ['head', i => i, i => TUNE.HEADLIGHTS[i][1]], neon: ['neon', i => TUNE.NEONS[i][1], 150], rstyle: ['rimStyle', i => i, i => TUNE.RIM_STYLES[i][1]] };
+function lookTry(en, act) {
+  const [a, x, y] = act.split(':');
+  if (LOOKS[a]) { en[LOOKS[a][0]] = LOOKS[a][1](+x); return en; }
+  if (a === 'part') { (en.parts || (en.parts = {}))[x] = +y; return en; }
+  return null;
+}
+function lookCost(act) { const [a, x, y] = act.split(':'); if (LOOKS[a]) { const c = LOOKS[a][2]; return typeof c === 'function' ? c(+x) : c; } if (a === 'part') return PARTS[x].opts[+y][1]; return 0; }
 const btn = (act, label, dis) => `<button data-act="${act}" ${dis ? 'disabled' : ''} style="margin:3px 4px 3px 0;padding:6px 10px;background:${dis ? '#1b1f25' : '#2a313b'};color:${dis ? '#666' : 'inherit'};border:1px solid #3a424e;border-radius:6px;font:inherit;cursor:${dis ? 'default' : 'pointer'}">${label}</button>`;
+const swatch = hex => `<span style="display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px;border:1px solid #0006;background:${hex == null ? 'linear-gradient(135deg,#888 50%,#555 50%)' : '#' + hex.toString(16).padStart(6, '0')}"></span>`;
+const statBar = (label, n) => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:70px;opacity:.75">${label}</span><span style="flex:1;height:7px;background:#1b1f25;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${n * 10}%;background:linear-gradient(90deg,#f0b23a,#ff7a1a)"></i></span><b style="width:28px;text-align:right">${n.toFixed(1)}</b></div>`;
+const GTABS = [['perf', 'Performance'], ['paint', 'Paint'], ['wheels', 'Wheels'], ['body', 'Body'], ['lights', 'Lights']];
 function renderGarage() {
-  const el = $('garage'), v = player.inCar, e = v && v.ownedId && ownedEntry(v.ownedId), list = garageList();
-  let h = `<div style="background:rgba(22,25,31,.94);border-left:1px solid #3a3f48;padding:18px 22px;width:min(440px,94vw);height:100%;box-sizing:border-box;overflow:auto;cursor:default"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px;letter-spacing:.08em">GARAGE</div><div style="color:#7cc95b">$${save.money}</div></div>`;
+  const el = $('garage'), v = player.inCar, e = v && v.ownedId && ownedEntry(v.ownedId), list = garageList(), tab = SHOW.tab || 'perf';
+  let h = `<div style="background:rgba(22,25,31,.94);border-left:1px solid #3a3f48;padding:18px 22px;width:min(460px,94vw);height:100%;box-sizing:border-box;overflow:auto;cursor:default"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px">${GARAGE_AT && GARAGE_AT.name || 'GARAGE'}</div><div style="color:#7dff6a">$${Math.round(save.money).toLocaleString()}</div></div>`;
   if (v && !v.isCop && !v.dead) h += `<div style="margin:10px 0">${btn('store', e ? 'Repair this car (free)' : 'Save this car to the garage')}</div>`;
   else if (v && v.isCop) h += `<div style="opacity:.7;margin:10px 0">The mechanic won't touch a Sheriff's cruiser.</div>`;
   if (e) {
-    h += `<div style="margin-top:12px;font-size:17px">MECHANIC · ${carName(e)}</div>`;
-    for (const k in MODS) { const M2 = MODS[k], lv = e.mods[k] || 0, next = M2.cost[lv]; h += `<div style="margin:6px 0">${M2.name} ${'●'.repeat(lv)}${'○'.repeat(M2.max - lv)} <span style="opacity:.6">${M2.desc}</span><br>${lv < M2.max ? btn('mod:' + k, `Upgrade $${next}`, save.money < next) : '<span style="opacity:.6">maxed</span>'}</div>`; }
-    h += `<div style="margin-top:8px">Paint ($50)<br>${PAINTS.map((p, i) => btn('paint:' + i, `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${p[1] == null ? '#888' : '#' + p[1].toString(16).padStart(6, '0')};margin-right:5px"></span>${p[0]}`, save.money < 50 || e.paint === p[1])).join('')}</div>`;
-    h += `<div style="margin-top:8px">Underglow ($150)<br>${NEONS.map((p, i) => btn('neon:' + i, p[0], save.money < 150 || e.neon === p[1])).join('')}</div>`;
+    const opt = (act, label, on) => btn(act, label + (lookCost(act) && !on ? ` $${lookCost(act)}` : ''), on || save.money < lookCost(act));
+    const row = (title, inner) => `<div style="margin:9px 0 3px;opacity:.8;font-size:13px;letter-spacing:.06em;text-transform:uppercase">${title}</div><div>${inner}</div>`;
+    h += `<div style="margin-top:10px;font-size:17px">${carName(e)}</div><div style="display:flex;gap:4px;flex-wrap:wrap;margin:8px 0 4px">${GTABS.map(([k, n]) => `<button data-act="tab:${k}" style="padding:6px 11px;border-radius:7px;border:1px solid #3a424e;background:${k === tab ? '#f0b23a' : '#2a313b'};color:${k === tab ? '#111' : 'inherit'};font:inherit;cursor:pointer">${n}</button>`).join('')}</div>`;
     const P = e.parts || {};
-    h += `<div style="margin-top:12px;font-size:17px">BODY SHOP</div>`;
-    for (const k in PARTS) h += `<div style="margin:6px 0">${PARTS[k].name}<br>${PARTS[k].opts.map((o, i) => btn('part:' + k + ':' + i, o[1] ? `${o[0]} $${o[1]}` : o[0], (P[k] || 0) === i || save.money < o[1])).join('')}</div>`;
+    if (tab === 'perf') {
+      const R = TUNE.ratings(v.spec, v); h += `<div style="margin:8px 0">${statBar('Speed', R.speed)}${statBar('Accel', R.accel)}${statBar('Handling', R.handling)}${statBar('Braking', R.braking)}</div>`;
+      for (const k in MODS) { const M2 = MODS[k], lv = (e.mods || {})[k] || 0, next = M2.cost[lv]; h += `<div style="margin:7px 0">${M2.name} <span style="color:#f0b23a">${'●'.repeat(lv)}</span><span style="opacity:.35">${'●'.repeat(M2.max - lv)}</span> <span style="opacity:.6;font-size:13px">${M2.desc}</span><br>${lv < M2.max ? btn('mod:' + k, `Level ${lv + 1}: $${next}`, save.money < next) : '<span style="opacity:.6">Maxed</span>'}</div>`; }
+      h += `<div style="opacity:.6;font-size:12px">Upgrades build on the car's own numbers: a faster car gains more from the same level.</div>`;
+    }
+    if (tab === 'paint') {
+      h += row('Colour ($50)', TUNE.COLORS.map((p, i) => btn('paint:' + i, swatch(p[1]) + p[0], (e.paint ?? null) === p[1] || save.money < 50)).join(''));
+      h += row('Finish', TUNE.FINISHES.map((f, i) => opt('fin:' + i, f[0], (e.finish | 0) === i)).join(''));
+      h += row('Trim', TUNE.TRIMS.map((f, i) => opt('trim:' + i, swatch(f[2]) + f[0], (e.trim | 0) === i)).join(''));
+      h += row('Windows', TUNE.GLASS.map((f, i) => opt('glass:' + i, swatch(f[2]) + f[0], (e.glass | 0) === i)).join(''));
+      h += row('Livery', PARTS.livery.opts.map((o, i) => opt('part:livery:' + i, o[0], (P.livery | 0) === i)).join(''));
+    }
+    if (tab === 'wheels') {
+      h += row('Rim style', TUNE.RIM_STYLES.map((f, i) => opt('rstyle:' + i, f[0], (e.rimStyle | 0) === i)).join(''));
+      h += row('Rim colour', PARTS.rims.opts.map((o, i) => opt('part:rims:' + i, swatch(TUNE.RIM_COLORS[i][1]) + o[0], (P.rims | 0) === i)).join(''));
+      h += row('Stance', PARTS.stance.opts.map((o, i) => opt('part:stance:' + i, o[0], (P.stance | 0) === i)).join(''));
+    }
+    if (tab === 'body') for (const k of ['spoiler', 'front', 'hood', 'roof', 'skirts', 'rear', 'exhaust', 'rockets']) h += row(PARTS[k].name, PARTS[k].opts.map((o, i) => opt(`part:${k}:${i}`, o[0], (P[k] | 0) === i)).join(''));
+    if (tab === 'lights') {
+      h += row('Headlights', TUNE.HEADLIGHTS.map((f, i) => opt('head:' + i, swatch(f[2]) + f[0], (e.head | 0) === i)).join(''));
+      h += row('Underglow ($150)', NEONS.map((p, i) => btn('neon:' + i, swatch(p[1]) + p[0], (e.neon ?? null) === p[1] || save.money < 150)).join(''));
+      h += `<div style="opacity:.6;font-size:12px;margin-top:6px">Underglow lights the road under you, brightest at night.</div>`;
+    }
   }
-  h += `<div style="margin-top:14px;font-size:17px">YOUR CARS (${list.length}/8)</div>`;
+  h += `<div style="margin-top:16px;font-size:17px">YOUR CARS (${list.length}/8)</div>`;
   if (!list.length) h += `<div style="opacity:.6">None yet. Drive a car in here and save it.</div>`;
-  for (const c of list) { const live = liveOwned(c.id); h += `<div style="margin:6px 0">${carName(c)} <span style="opacity:.55">${live && !live.dead ? (live === player.inCar ? '· driving' : '· out') : '· in the garage'}</span> ${Object.entries(c.mods).filter(([, l]) => l).map(([k, l]) => `<span style="opacity:.6">${MODS[k].name} ${l}</span>`).join(' ')}<br>${btn('take:' + c.id, 'Take it out', player.inCar)}${btn('sell:' + c.id, 'Scrap', false)}</div>`; }
+  for (const c of list) { const live = liveOwned(c.id); h += `<div style="margin:6px 0">${carName(c)} <span style="opacity:.55">${live && !live.dead ? (live === player.inCar ? '· driving' : '· out') : '· in the garage'}</span> ${Object.entries(c.mods || {}).filter(([, n]) => n).map(([k, n]) => MODS[k] ? `${MODS[k].name} ${n}` : '').filter(Boolean).join(', ')}<br>${live === player.inCar ? '' : btn('take:' + c.id, 'Take it', !!player.inCar)}${btn('sell:' + c.id, 'Scrap')}</div>`; }
   h += `<div style="opacity:.6;font-size:13px;margin-top:10px">Hover an option to see it on the car · drag the car to turn it, scroll to zoom · C anywhere brings your last car to you · Esc or E to close</div>${btn('close', 'Close')}</div>`;
   el.innerHTML = h;
 }
 function garageClick(ev) {
-  const b = ev.target.closest('button'); if (!b || b.disabled) return; const [act, arg] = b.dataset.act.split(':');
+  const b = ev.target.closest('button'); if (!b || b.disabled) return; const act = b.dataset.act || '', [a, arg] = act.split(':');
   const v = player.inCar, e = v && v.ownedId && ownedEntry(v.ownedId);
-  if (act === 'close') return closeGarage();
-  if (act === 'store' && v) storeCar(v);
-  if (act === 'mod' && e) { const lv = e.mods[arg] || 0, c = MODS[arg].cost[lv]; if (save.money >= c) { save.money -= c; e.mods[arg] = lv + 1; applyMods(player.inCar, e); sfx.cash(); notify(`${MODS[arg].name} level ${lv + 1} fitted.`, 'green', 2000); } }
-  if (act === 'paint' && e) { if (save.money >= 50) { save.money -= 50; e.paint = PAINTS[+arg][1]; applyMods(player.inCar, e); sfx.cash(); } }
-  if (act === 'part' && e) { const [slot, idx] = [arg, +b.dataset.act.split(':')[2]], c = PARTS[slot].opts[idx][1]; if (save.money >= c) { save.money -= c; (e.parts || (e.parts = {}))[slot] = idx; if (idx) ACH.bump('parts'); applyMods(player.inCar, e); sfx.cash(); notify(`${PARTS[slot].name}: ${PARTS[slot].opts[idx][0]}.`, 'green', 1800); } }
-  if (act === 'neon' && e) { if (save.money >= 150) { save.money -= 150; e.neon = NEONS[+arg][1]; applyMods(player.inCar, e); sfx.cash(); } }
-  if (act === 'take' && !player.inCar) { const c = ownedEntry(arg); let lv = liveOwned(arg); if (lv) lv.remove(); const nv = spawnOwned(c, (GARAGE_AT || GARAGE).x, (GARAGE_AT || GARAGE).z, (GARAGE_AT || GARAGE).rot); player.inCar = nv; nv.driver = 'player'; nv.mode = 'free'; player.rig.g.visible = false; cam.dist = 9; save.lastCar = c.id; closeGarage(); return; }
-  if (act === 'sell') { const i = garageList().findIndex(c => c.id === arg); if (i >= 0) { const lv = liveOwned(arg); if (lv && lv !== player.inCar) lv.remove(); else if (lv) lv.ownedId = null; garageList().splice(i, 1); notify('Scrapped.', '', 1500); } }
+  if (a === 'close') return closeGarage();
+  if (a === 'tab') { SHOW.tab = arg; return renderGarage(); }
+  if (a === 'store' && v) storeCar(v);
+  if (a === 'mod' && e) { e.mods = e.mods || {}; const lv = e.mods[arg] || 0, c = MODS[arg].cost[lv]; if (save.money >= c) { save.money -= c; e.mods[arg] = lv + 1; applyMods(player.inCar, e); sfx.cash(); notify(`${MODS[arg].name} level ${lv + 1} fitted.`, 'green', 2000); } }
+  if (e && (LOOKS[a] || a === 'part')) { const c = lookCost(act); if (save.money >= c) { save.money -= c; lookTry(e, act); if (a === 'part' && +act.split(':')[2]) ACH.bump('parts'); applyMods(player.inCar, e); SHOW.preview = false; if (c) sfx.cash(); } }
+  if (a === 'take' && !player.inCar) { const c = ownedEntry(arg); let lv = liveOwned(arg); if (lv) lv.remove(); const G = GARAGE_AT || GARAGE, nv = spawnOwned(c, G.x, G.z, G.rot); player.inCar = nv; nv.driver = 'player'; nv.mode = 'free'; player.rig.g.visible = false; cam.dist = 9; save.lastCar = c.id; persist(); closeGarage(); return; }
+  if (a === 'sell') { const i = garageList().findIndex(c => c.id === arg); if (i >= 0) { const lv = liveOwned(arg); if (lv && lv !== player.inCar) lv.remove(); else if (lv) lv.ownedId = null; garageList().splice(i, 1); notify('Scrapped.', '', 1500); } }
   persist(); renderGarage();
 }
 
@@ -6886,6 +6857,7 @@ function frame(now) {
   tick(rdt);
 }
 function tick(rdt) {
+  TUNE.glow(player.inCar, nightAmount);
   scaleStep(rdt);
   if (!worldReady) return;
   if (NATURE.veg) NATURE.veg.update(rdt, camera, sun, SKYENV ? vegHemi : hemi);
@@ -6992,7 +6964,7 @@ let worldReady = false;
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
-  Object.assign(ctx, { applyParts, boatModel, CAR_TINTS,
+  Object.assign(ctx, { applyLook, lookOf: k => TUNE.lookOf(k), garageAt, garageSite, boatModel, CAR_TINTS,
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
     heightAt, los, rayBuildings, collideCircle, addPoly, nearestEdge, edgePos, laneSample, laneOff, walkOff, agentFromNearest, advance, endNode,
     findPath, nearestNode, randomEdgeNear, sidewalkNear, streetAt, areaAt, POIS, LANDMARKS,

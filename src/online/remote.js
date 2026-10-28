@@ -113,7 +113,7 @@ export function updateRemotes(dt) {
       if (rem.car) { ctx.scene.remove(rem.car.g); rem.car = null; }
       if (st.car && ctx.CAR[st.car.type]) {
         rem.car = ctx.buildCar(st.car.type, st.car.tint, st.car.model || undefined); ctx.scene.add(rem.car.g); rem.car.g.position.copy(p.pos);
-        if (st.car.pt && ctx.applyParts) try { ctx.applyParts({ m: rem.car, spec: { L: rem.car.L, W: rem.car.W, H: rem.car.H } }, { parts: JSON.parse(st.car.pt) }); } catch (e) { } // their body-shop parts
+        if (st.car.pt && ctx.applyLook) try { ctx.applyLook({ m: rem.car, spec: { L: rem.car.L, W: rem.car.W, H: rem.car.H }, tint: st.car.tint }, ctx.lookOf(st.car.pt)); } catch (e) { console.warn('[remote] look', e); } // their paint, lights and parts (src/carmods.js)
       }
       rem.carKey = key;
     }
