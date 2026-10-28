@@ -558,7 +558,8 @@ import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
 import { createSky } from './src/sky.js';
 import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } from './src/aircraft.js';
-import { createPilot } from './src/pilot.js';
+import { createPilot, BOATS as BOAT_STATS } from './src/pilot.js';
+import { createDealers } from './src/dealers.js';
 import { createNightLights, headlightBeam } from './src/nightlights.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
@@ -2060,6 +2061,8 @@ function buildSigns() {
 
 // ---------------- models
 const MODELS = {};
+const PLANT_CLEAR = []; // [flat polygon]: places with their own ground (shops, car lots): no trees, brush or grass
+function clearPlants(poly) { PLANT_CLEAR.push(poly); }
 const NATURE = { lib: null, veg: null, U: (u => (u.uFar.value = GFX.veg, u))(natureUniforms(THREE)), filter: null, counts: null, cover: null, gc: null, shrubs: 0 }; // src/nature state
 // grass and brush density: ?grass=0 turns them off, ?grass=0.5 halves them (src/nature/groundcover.js)
 const GRASS_Q = (() => { const q = new URLSearchParams(location.search).get('grass'); return q === null ? GFX.grass : clamp(+q || 0, 0, 2); })();
@@ -2095,7 +2098,7 @@ async function plantNature() {
   if (!NATURE.lib || NATURE.veg) return;
   const tick = () => new Promise(r => setTimeout(r, 0));
   const w = { roads: D.roads, roadSegGrid, RSG, ckey, cgrid, CELL, polys, pools: D.pools || [], areas: mapAreas, areaBins: mapBins, AB: MB,
-    exclude: window.GTP_NATURE_EXCLUDE || [], heightAt, groundAt, slopeAt, reject: offLimits };
+    exclude: [...(window.GTP_NATURE_EXCLUDE || []), ...PLANT_CLEAR], heightAt, groundAt, slopeAt, reject: offLimits };
   const filt = filterTrees(D.trees, w); NATURE.filter = filt.stats;
   NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
   const placed = assignPlants(D, filt, makeContext(D, w), NATURE.veg); NATURE.counts = placed.counts;
@@ -2111,7 +2114,7 @@ async function plantNature() {
       }
     };
     try {
-      NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas, exclude: window.GTP_NATURE_EXCLUDE || [] });
+      NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas, exclude: [...(window.GTP_NATURE_EXCLUDE || []), ...PLANT_CLEAR] });
       NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
     } catch (e) { console.error('[nature] cover map', e); }
   }
@@ -2599,6 +2602,7 @@ function updateBoats(dt) {
   for (const b of boats) {
     if (Math.abs(b.x - camera.position.x) > 1500 || Math.abs(b.z - camera.position.z) > 1500) { b.m.visible = false; continue; }
     b.m.visible = true; if (b.piloted) continue; // someone's at the helm (src/pilot.js)
+    if (b.moored) { b.m.position.set(b.x, b.lake.y + Math.sin(t * 1.3 + b.ph) * 0.05 - 0.12, b.z); b.m.rotation.set(Math.sin(t * 0.9 + b.ph) * 0.02, b.h, Math.sin(t * 1.1 + b.ph * 2) * 0.03, 'YXZ'); continue; } // yours, tied up
     const nx = b.x + Math.sin(b.h) * b.sp * dt * 6, nz = b.z + Math.cos(b.h) * b.sp * dt * 6; // look ahead
     if (!pip(nx, nz, b.lake.p) || polyEdgeDist2(nx, nz, b.lake.p) < 7) b.turn = 1.2; else if (Math.random() < dt * 0.05) b.turn = rand(-0.4, 0.4);
     b.h += b.turn * dt; b.turn *= Math.exp(-dt * 0.5);
@@ -4286,6 +4290,7 @@ addEventListener('keydown', e => {
   if (e.repeat) return;
   if (garageOpen) { if (e.code === 'KeyE' || e.code === 'Escape') closeGarage(); return; } // the garage menu has the keyboard
   if (shopOpen) { if (e.code === 'KeyE' || e.code === 'Escape') closeShop(); return; }
+  if (SALES && SALES.open) { if (e.code === 'KeyE' || e.code === 'Escape') SALES.close(); return; } // a car lot or the marina
   if (e.code === 'KeyF') toggleCar();
   if (e.code === 'KeyE') {
     if (!storySkip()) {
@@ -4364,12 +4369,13 @@ document.addEventListener('pointerlockchange', () => {
   if (was && !locked && running && !mapOpen && !travelOpen && !openMenu() && !SHELL.isChatOpen() && !CHEAT.open && SHELL.chatClosedAgo() > 600) setPaused(true); // a menu (the weapon wheel too) frees the mouse on purpose
 });
 // ---- one menu at a time. openMenu() names the one that's up; closeMenus(keep) shuts every other one.
-function openMenu() { return shopOpen ? 'shop' : garageOpen ? 'garage' : mapOpen ? 'map' : travelOpen ? 'travel' : (typeof CHEAT !== 'undefined' && CHEAT.open) ? 'cheats' : (typeof WHEEL !== 'undefined' && WHEEL.open) ? 'wheel' : SOCIAL.isOpen ? 'social' : null; }
+function openMenu() { return shopOpen ? 'shop' : garageOpen ? 'garage' : (SALES && SALES.open) ? 'dealer' : mapOpen ? 'map' : travelOpen ? 'travel' : (typeof CHEAT !== 'undefined' && CHEAT.open) ? 'cheats' : (typeof WHEEL !== 'undefined' && WHEEL.open) ? 'wheel' : SOCIAL.isOpen ? 'social' : null; }
 function closeMenus(keep) {
   if (keep !== 'shop' && shopOpen) closeShop();
   if (keep !== 'garage' && garageOpen) closeGarage();
+  if (keep !== 'dealer' && SALES && SALES.open) SALES.close();
   if (keep !== 'map' && mapOpen) toggleMap();
-  if (keep !== 'travel' && travelOpen && !shopOpen && !garageOpen) toggleTravel();
+  if (keep !== 'travel' && travelOpen && !shopOpen && !garageOpen && !(SALES && SALES.open)) toggleTravel();
   if (keep !== 'cheats' && typeof CHEAT !== 'undefined' && CHEAT.open) CHEAT.close();
   if (keep !== 'wheel' && typeof WHEEL !== 'undefined' && WHEEL.open) WHEEL.cancel();
   if (keep !== 'social' && SOCIAL.isOpen) $('social-modal').hidden = true; // a chat with a local (src/social.js)
@@ -4849,6 +4855,49 @@ function addDealer(di, name, kp) {
     addInteract({ x: q.x, z: q.z, r: 3.4, label: () => `<b>${name}</b>: guns, ammo, upgrades`, when: () => !player.inCar, onUse: () => openShop(D) });
   }
 }
+// ---- car lots and the marina (src/dealers.js): talk to the salesperson, preview on the turntable, buy
+let SALES = null;
+function lakeShore(x0, z0, r) { // the nearest lake shore to (x0, z0): { x, z, dx, dz (out over the water), y, lake }
+  let best = null, bd = r * r;
+  for (const lk of LAKES) {
+    if (lk.area < 5000) continue; const p = lk.p, n = p.length / 2;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const q = segClosest(x0, z0, p[j * 2], p[j * 2 + 1], p[i * 2], p[i * 2 + 1]), d2 = (q[0] - x0) ** 2 + (q[1] - z0) ** 2; if (d2 >= bd) continue;
+      let ex = p[i * 2] - p[j * 2], ez = p[i * 2 + 1] - p[j * 2 + 1]; const el = Math.hypot(ex, ez) || 1; ex /= el; ez /= el;
+      let dx = -ez, dz = ex; if (!pip(q[0] + dx * 4, q[1] + dz * 4, p)) { dx = -dx; dz = -dz; } if (!pip(q[0] + dx * 30, q[1] + dz * 30, p)) continue; // a dock needs open water
+      bd = d2; best = { x: q[0], z: q[1], dx, dz, y: lk.y, lake: lk };
+    }
+  }
+  return best;
+}
+function setupCarDealers() {
+  if (SALES) return;
+  SALES = createDealers({
+    THREE, scene, CAR, TUNE, buildCar, boatModel, boatKinds: () => Object.keys(BOAT_STATS), ll, site: garageSite, heightAt, addPoly, canvasTex, water: lakeShore, clearPlants,
+    addInteract: o => addInteract({ ...o, when: () => !player.inCar && !FLY.craft }),
+    person(x, z, rot) { const rig = buildRig({ kind: 'civ', skin: '#c58c5c', shirt: '#f4f4f2', pants: '#22252b', hair: '#2a1d14' }); rig.g.position.set(x, heightAt(x, z), z); rig.g.rotation.y = rot; scene.add(rig.g); collideCircle({ x, z }, 0.5); return rig; },
+    money: () => save.money, spend: n => { save.money -= n; persist(); }, notify, sfx,
+    addCar(L, at, look) {
+      if (garageList().length >= 8) { notify('Your garage is full (8 cars): scrap one at a garage first.', 'red', 3500); return false; }
+      const e = { id: 'c' + Date.now().toString(36), type: L.type, model: L.model, tint: 0xffffff, trim: L.trim, base: { ...L.base }, mods: {}, paint: look.paint, finish: look.finish, neon: null, parts: { ...(look.parts || {}) } };
+      garageList().push(e); save.lastCar = e.id; persist(); spawnOwned(e, at.x, at.z, at.rot); return true;
+    },
+    addBoat(L, at) {
+      const owned = save.boats || (save.boats = []); if (owned.length >= 6) { notify('You have six boats already.', 'red', 3000); return false; }
+      const o = { id: 'b' + Date.now().toString(36), kind: L.kind, at: at.name }; owned.push(o); persist(); dockBoat(o, at); return true;
+    },
+    opened() { travelOpen = true; keys.clear(); mouseDown = rightDown = false; if (document.pointerLockElement) document.exitPointerLock(); SHOW.yaw = null; SHOW.dist = 1; showHud(false); const el = $('dealer'); if (el && !el.dataset.wired) { el.dataset.wired = 1; showroomInput(el); } },
+    closed() { travelOpen = false; camera.clearViewOffset(); camera.updateProjectionMatrix(); if (running) showHud(true); persist(); lockPointer(); },
+  });
+  SALES.setup();
+  for (const o of save.boats || []) { const at = SALES.dealers.find(d => d.name === o.at); if (at) dockBoat(o, at); }
+}
+function dockBoat(o, at) { // one of your boats, tied up at that marina's dock
+  const m = boatModel(o.kind); if (!m) return; const e = at.slip(boats.filter(b => b.owned).length);
+  m.position.set(e.x, e.y, e.z); scene.add(m);
+  const b = { m, lake: at.water.lake, kind: o.kind, x: e.x, z: e.z, h: e.rot, sp: 0, ph: rand(0, TAU), turn: 0, owned: o.id, moored: true }; boats.push(b);
+  if (PILOT) PILOT.addBoat(b); // (a pilot made later takes every boat)
+}
 let shopOpen = false;
 function openShop(D) {
   if (shopOpen) return; shopOpen = true; travelOpen = true; keys.clear(); mouseDown = rightDown = false;
@@ -4967,7 +5016,7 @@ function initExtras() {
   SHOP.initShop({ weapons: WEAPONS, money: () => save.money, spend: n => { if (save.money < n) { tone(200, 0.08, 'square', 0.2); return false; } save.money -= n; return true; },
     arsenal: player.arsenal, upgrades: save.upgrades, owned, maxOf, stats: weaponStats, notify, sfx, close: closeShop,
     onBuy: (kind, w, k, lv) => { bus.emit('shop:buy', { kind, weapon: w.id, upgrade: k, level: lv }); if (kind === 'buy') player.weapon = WEAPONS.indexOf(w); persist(); } });
-  setupDealer(); setupTravel(); setupGarage(); initRegionBanner();
+  setupDealer(); setupTravel(); setupGarage(); setupCarDealers(); initRegionBanner();
   try { PLAZA = buildPlaza({ THREE, scene, BLD, POIS, heightAt, addInteract, notify, sfx, hour: () => hour, inCar: () => player.inCar }); } catch (e) { console.warn('plaza:', e); }
   ACH.initAchievements({ save, persist, bus, sfx, probe: () => {
     const v = player.inCar; return { mph: v ? Math.abs(v.speed || 0) * 2.237 : 0, airT: v && v.air ? v.airT : 0, wanted: police.wanted, inCar: !!v, hour,
@@ -5079,7 +5128,7 @@ scene.add(TUNE.light); // the underglow's one real light, on the car you drive (
 let GARAGE = null, garageOpen = false;
 function garageList() { return save.garage || (save.garage = []); }
 function ownedEntry(id) { return garageList().find(e => e.id === id); }
-function applyMods(v, e) { TUNE.applyPerf(v, CAR[v.type], e.mods || {}); TUNE.applyLook(v, e); }
+function applyMods(v, e) { TUNE.applyPerf(v, e.base || CAR[v.type], e.mods || {}); TUNE.applyLook(v, e); } // e.base: a dealer car's own (trim) numbers
 const applyLook = (t, look) => TUNE.applyLook(t, look); // other players' cars (src/online/remote.js)
 
 function spawnOwned(e, x, z, rot) {
@@ -5102,7 +5151,7 @@ function storeCar(v) { // drive in, press E: claim / repair
   save.lastCar = e.id; sfx.cash(); persist();
   return nv;
 }
-function carName(e) { const p = PAINTS.find(p => p[1] === e.paint); return `${p && p[1] != null ? p[0].toLowerCase() + ' ' : ''}${e.type}`; }
+function carName(e) { const p = PAINTS.find(p => p[1] === e.paint); return `${p && p[1] != null ? p[0].toLowerCase() + ' ' : ''}${e.trim ? e.trim + ' ' : ''}${e.type}`; }
 function lostOwned(v) { // wrecked or removed: it goes home, repaired
   const e = ownedEntry(v.ownedId); if (!e || v.lostNoted) return; v.lostNoted = true;
   if (!player.dead) notify(`Your ${carName(e)} was towed back to the garage, good as new.`, 'blue', 3500);
@@ -5174,12 +5223,13 @@ function garageAt(cx, cz, rot, title, name) {
   // walls block you; the open front faces the road
   const wpt = (lx, lz) => [cx + Math.cos(rot) * lx + Math.sin(rot) * lz, cz - Math.sin(rot) * lx + Math.cos(rot) * lz];
   for (const [x0, z0, x1, z1] of [[-SHOP_W - 0.15, 0, -SHOP_W + 0.15, SHOP_D], [SHOP_W - 0.15, 0, SHOP_W + 0.15, SHOP_D], [-SHOP_W, SHOP_D - 0.15, SHOP_W, SHOP_D + 0.15]]) { const a = wpt(x0, z0), b = wpt(x1, z0), c = wpt(x1, z1), d = wpt(x0, z1); addPoly([...a, ...b, ...c, ...d], y, y + SHOP_H); }
+  clearPlants([...wpt(-SHOP_W - 2, -4), ...wpt(SHOP_W + 2, -4), ...wpt(SHOP_W + 2, SHOP_D + 2), ...wpt(-SHOP_W - 2, SHOP_D + 2)]); // the shop and its apron
   const bay = wpt(0, SHOP_BAY), G = { x: bay[0], z: bay[1], rot: rot + Math.PI, door: wpt(0, -3), name, group: g, room: 6.2 };
   addInteract({ x: bay[0], z: bay[1], r: 7.5, label: () => player.inCar ? `${name}: save / repair / tune` : `${name}: your cars`, onUse: () => openGarage(G) });
   return G;
 }
 // where a shop fits near (x0, z0): set back off a road, the whole footprint clear of buildings and roads, and flat
-function garageSite(x0, z0, filter, rings = [0, 60, 120, 180]) {
+function garageSite(x0, z0, filter, rings = [0, 60, 120, 180], hw = SHOP_W, depth = SHOP_D) { // hw, depth: the footprint (a shop's by default)
   const tried = new Set(), q = { x: 0, z: 0 }, onRoad = (x, z) => (ROADS && ROADS.onRoad(x, z, 1.5)) || (OUTER.onRoad && OUTER.onRoad(x, z, 1.5));
   for (const rr of rings) for (let a = 0; a < (rr ? 8 : 1); a++) {
     const ne = nearestEdge(x0 + Math.cos(a * Math.PI / 4) * rr, z0 + Math.sin(a * Math.PI / 4) * rr, 160, filter); if (!ne || tried.has(ne.e)) continue; tried.add(ne.e);
@@ -5188,7 +5238,7 @@ function garageSite(x0, z0, filter, rings = [0, 60, 120, 180]) {
       const nx = -ne.tz * side, nz = ne.tx * side, rot = Math.atan2(nx, nz), off = e.w / 2 + 4.5, cx = ne.x + ne.tx * along + nx * off, cz = ne.z + ne.tz * along + nz * off;
       const wp = (lx, lz) => [cx + Math.cos(rot) * lx + Math.sin(rot) * lz, cz - Math.sin(rot) * lx + Math.cos(rot) * lz];
       let ok = true, lo = 1e9, hi = -1e9;
-      for (const lx of [-SHOP_W, -SHOP_W / 2, 0, SHOP_W / 2, SHOP_W]) for (const lz of [1, 4.5, 8, 11.5, SHOP_D]) {
+      for (const lx of [-hw, -hw / 2, 0, hw / 2, hw]) for (const lz of [1, depth * 0.3, depth * 0.53, depth * 0.77, depth]) {
         const [x, z] = wp(lx, lz); q.x = x; q.z = z; const h = heightAt(x, z); lo = Math.min(lo, h); hi = Math.max(hi, h);
         if (collideCircle(q, 2, false) || onRoad(x, z) || offLimits(x, z, 1)) { ok = false; break; }
       }
@@ -5222,13 +5272,13 @@ function openGarage(G) {
 function closeGarage() { garageOpen = false; travelOpen = false; const el = $('garage'); if (el) el.hidden = true; camera.clearViewOffset(); camera.updateProjectionMatrix(); if (running) showHud(true); const v = player.inCar, e = v && v.ownedId && ownedEntry(v.ownedId); if (e) applyMods(v, e); lockPointer(); }
 // ---- the showroom: while the garage is open the camera circles your car, which sits in the free part of the screen
 const SHOW = { yaw: null, dist: 1, drag: null, last: 0 };
-function showroom(dt) {
-  const v = player.inCar; if (!v) return;
+function showroom(dt, v = player.inCar, room = (GARAGE_AT && GARAGE_AT.room) || 99, menu = 'garage') { // v: { pos, spec: { L, H }, rotY }: your car, or a dealer's preview
+  if (!v) return;
   if (SHOW.yaw === null) SHOW.yaw = v.rotY + 2.3; // a three-quarter front view to start
   if (!SHOW.drag && performance.now() - SHOW.last > 2500) SHOW.yaw += dt * 0.22; // a slow turntable when you're not turning it
-  const room = (GARAGE_AT && GARAGE_AT.room) || 99, d = Math.min(room, Math.max(5.5, v.spec.L * 1.45) * SHOW.dist), cx = v.pos.x, cy = v.pos.y + v.spec.H * 0.45, cz = v.pos.z; // inside the shop's walls
+  const d = Math.min(room, Math.max(5.5, v.spec.L * 1.45) * SHOW.dist), cx = v.pos.x, cy = v.pos.y + v.spec.H * 0.45, cz = v.pos.z; // inside the shop's walls
   camera.position.set(cx + Math.sin(SHOW.yaw) * d, cy + 0.9 + d * 0.16, cz + Math.cos(SHOW.yaw) * d); camera.lookAt(cx, cy, cz);
-  const panel = $('garage') && $('garage').firstElementChild, pw = panel ? panel.offsetWidth : 0, W = innerWidth, H = innerHeight;
+  const panel = $(menu) && $(menu).firstElementChild, pw = panel ? panel.offsetWidth : 0, W = innerWidth, H = innerHeight;
   if (pw && pw < W * 0.8) camera.setViewOffset(W, H, pw / 2, 0, W, H); else camera.clearViewOffset(); // car centred in the space left of the panel
   camera.updateProjectionMatrix(); if (typeof sky !== 'undefined') sky.position.copy(camera.position);
 }
@@ -6879,7 +6929,7 @@ function tick(rdt) {
   // click takes control again: no pause menu bouncing up
   playCursor(canLock && !paused && !openMenu() && !locked && !SHELL.isChatOpen() && SHELL.chatClosedAgo() > 600 && performance.now() - lockAskT > 400);
   // the cheat sheet freezes everything this game runs (online, the other players carry on) without the pause menu over it
-  if (paused || mapOpen || travelOpen || CHEAT.open) { if (garageOpen && player.inCar) showroom(rdt); drawFrame(); return; }
+  if (paused || mapOpen || travelOpen || CHEAT.open) { if (garageOpen && player.inCar) showroom(rdt); else if (SALES && SALES.open && SALES.target) showroom(rdt, SALES.target, 99, 'dealer'); drawFrame(); return; }
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
   OUTER.update(rdt); updateLazy(worldHold ? 30 : 4); cullCore(rdt); // the world streams first: nothing else in the frame can hold it up
@@ -7094,7 +7144,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { OUTER, teleport, openGarage, closeGarage, SHOW, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';

@@ -17,7 +17,7 @@ const PLANES = { // stall (m/s), top speed, thrust, how fast it turns toward whe
   cessna: { stall: 24, top: 62, acc: 7, turn: 1.0, taxi: 12 },
   trainer: { stall: 28, top: 85, acc: 9, turn: 1.3, taxi: 14 },
 };
-const BOATS = { rowboat: { top: 4, acc: 2, turn: 1.0, motor: false }, runabout: { top: 19, acc: 6, turn: 0.9, motor: true }, pontoon: { top: 9, acc: 3, turn: 0.6, motor: true } };
+export const BOATS = { rowboat: { top: 4, acc: 2, turn: 1.0, motor: false }, runabout: { top: 19, acc: 6, turn: 0.9, motor: true }, pontoon: { top: 9, acc: 3, turn: 0.6, motor: true } };
 
 export function createPilot(D) {
   const { THREE } = D, crafts = [];
@@ -46,7 +46,7 @@ export function createPilot(D) {
 
   function board(cr) {
     const P = D.player; D.FLY.craft = cr; P.rig.g.visible = false; D.keys.clear();
-    if (cr.type === 'boat') { cr.b.piloted = true; cr.sp = 0; D.cam.dist = 9; }
+    if (cr.type === 'boat') { cr.b.piloted = true; cr.b.moored = false; cr.sp = 0; D.cam.dist = 9; }
     else { cr.thr = cr.type === 'heli' ? 0 : 0.2; cr.vel.set(0, 0, 0); D.cam.dist = cr.type === 'heli' ? 15 : 17; }
     const what = cr.type === 'boat' ? `the ${cr.kind}` : cr.type === 'heli' ? 'the helicopter' : `the ${cr.kind === 'cessna' ? 'Cessna' : 'trainer'}`;
     const how = cr.type === 'boat' ? 'W/S throttle, A/D steer' : cr.type === 'heli' ? 'W/S forward/back, A/D slide, Space up, C down, mouse to turn' : 'W/S throttle, A/D steer; past take-off speed, look up to lift off';
@@ -62,7 +62,7 @@ export function createPilot(D) {
         const p = { x, z }; if (D.collideCircle(p, 0.4)) continue; spot = p;
       }
       if (!spot) { D.notify('Too far from the shore: get closer to land to step off.', '', 2200); return; }
-      cr.b.piloted = false; cr.b.sp = cr.kind === 'runabout' ? 1.5 : 0.3; cr.b.turn = 0;
+      cr.b.piloted = false; cr.b.sp = cr.b.owned ? 0 : cr.kind === 'runabout' ? 1.5 : 0.3; cr.b.turn = 0; if (cr.b.owned) cr.b.moored = true; // yours stays where you left it
       P.pos.set(spot.x, D.heightAt(spot.x, spot.z), spot.z); P.air = 0;
     } else {
       const gy = D.heightAt(g.x, g.z), alt = g.y - half(cr.c) - gy, yaw = cr.g.rotation.y, sx = Math.cos(yaw), sz = -Math.sin(yaw), side = cr.type === 'heli' ? 3.2 : 6.5;

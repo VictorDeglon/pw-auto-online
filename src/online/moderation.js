@@ -27,7 +27,7 @@ const SUB = ['fuck', 'fack', 'fuk', 'fuq', 'fcuk', 'phuck', 'phuk', 'phuq', 'shi
   'nigg', 'fagg', 'whore', 'slut', 'bastard', 'twat', 'dildo', 'blowjob', 'handjob', 'jizz', 'cocksuck', 'pussy', 'penis', 'vagina',
   'porn', 'bollock', 'douche', 'retard', 'tranny', 'wetback', 'raghead', 'towelhead', 'damn', 'dammit', 'goddam', 'piss',
   'asshole', 'arsehole', 'dumbass', 'jackass', 'smartass', 'badass', 'fatass', 'lardass', 'kissass', 'asswipe', 'asshat', 'asslick',
-  'motherf', 'jerkoff', 'jackoff', 'cumshot', 'cumslut', 'kike', 'dickhead', 'dickface', 'dickwad'];
+  'motherf', 'jerkoff', 'jackoff', 'cumshot', 'cumslut', 'kike', 'dickhead', 'dickface', 'dickwad', 'shiet', 'biach'];
 const WORD = {
   ass: ['es', 'hat', 'hats', 'hole', 'holes', 'wipe', 'wipes', 'face', 'head', 'clown', 'lick', 'kisser'], arse: ['s', 'hole', 'holes'],
   hell: ['s', 'hole', 'holes'], crap: ['s', 'py', 'pier', 'per', 'pers', 'ping', 'ped'], dick: ['s', 'head', 'heads', 'face', 'wad', 'weed', 'hole'],
@@ -35,7 +35,7 @@ const WORD = {
   cum: ['s', 'ming', 'med', 'mer'], spunk: [], hoe: ['s'], 'rap!e': ['s', 'd', 'r', 'rs'], 'rap!ing': [], rapist: ['s'], bugger: ['s', 'ed', 'ing'],
   wank: ['s', 'er', 'ers', 'ing', 'ed', 'y'], spic: ['s'], chink: ['s'], gook: ['s'], coon: ['s'], dyke: ['s'], beaner: ['s'], paki: ['s'],
   wop: ['s'], nazi: ['s'], niga: ['s', 'h'], fag: ['s', 'got', 'gots'], tard: ['s'], sht: [], btch: ['es'], fck: ['ing', 'er', 'ed', 's'],
-  wtf: [], stfu: [], gtfo: [], omfg: [], azz: ['hole', 'holes'],
+  wtf: [], stfu: [], gtfo: [], omfg: [], azz: ['hole', 'holes'], shite: [], bich: ['es'],
 };
 // words that contain a sub root but are fine
 const OK = ['fukushima', 'fukuoka', 'fukuda', 'phuket', 'scunthorpe', 'shiitake', 'shitake', 'matsushita', 'mishit', 'mishits', 'pussycat', 'pussywillow', 'penistone', 'pissarro', 'snigger',
@@ -121,12 +121,27 @@ export function isProfane(text) { return maskProfanity(text) !== String(text ?? 
 export function cleanChat(text) { return on ? maskProfanity(text) : String(text ?? ''); }
 
 // ---------------------------------------------------------------- names
-// usernames are 3-16 of [A-Za-z0-9_]: read whole (f_u_c_k, xXFuckXx) and in parts (BigAss99 -> big, ass)
+// usernames are 3-16 of [A-Za-z0-9_]: read whole (f_u_c_k, xXFuckXx) and in parts (BigAss99 -> big, ass). A name is
+// held to more than chat is: a word that's fine to say (horny, Hitler, pedo, kys, DeezNuts) still isn't a fine name.
+const NAME_SUB = ['sex', 'horny', 'horni', 'boner', 'nutsack', 'ballsack', 'testic', 'scrotum', 'milf', 'dilf', 'thot', 'onlyfan', 'xxx', 'hooker',
+  'stripper', 'nude', 'naked', 'orgasm', 'erotic', 'fetish', 'deeznut', 'deznut', 'ligma', 'sugma', 'bofa', 'smallpp', 'bigpp', 'tinypp', 'butthole',
+  'buttplug', 'buttcheek', 'buttface', 'buttlick', 'sperm', 'pedo', 'paedo', 'molest', 'diddler', 'groomer', 'hitler', 'kkk', 'nazi',
+  'siegheil', 'jihad', 'swastika', 'whitepower', 'killyourself', 'killurself', 'kilyourself', 'suicide', 'gaylord', 'homo', 'lesbo', 'shemale', 'negro', 'spaz',
+  'cumm', 'cumdump', 'incest', 'bestial', 'pornstar', 'stepsis', 'stepbro', 'daddyissue'];
+const NAME_OK = ['essex', 'sussex', 'middlesex', 'wessex', 'sexton', 'thoth', 'torpedo', 'pedometer', 'montenegro', 'homogen', 'homer', 'nudel'];
+const NAME_WORD = ['pp', 'dih', 'kys', 'kms', 'anal', 'semen', 'cum', 'nuts', 'balls', 'nig', 'ni99', 'n1g', 'gyat'];
+const NAME_SUB_RE = NAME_SUB.map(w => new RegExp(spell(w, true))), NAME_WORD_RE = new RegExp(`^(?:${NAME_WORD.map(w => spell(w, true)).join('|')})$`);
+function nameBad(letters) { // a name's letters (or one part's), read as a name
+  const plain = letters.replace(/[^a-z]/g, ''); if (NAME_OK.some(w => plain.includes(w))) return false;
+  return NAME_SUB_RE.some(re => re.test(letters) || re.test(plain)) || NAME_WORD_RE.test(plain);
+}
 export function nameIsProfane(name) {
   name = String(name || ''); if (!name) return false;
   if (isProfane(name)) return true;
+  const read = t => words(t).map(w => w.s).join('');
+  if (nameBad(read(name))) return true;
   const parts = name.split(/_+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])/).filter(Boolean);
-  return parts.length > 1 && parts.some(p => isProfane(p));
+  return parts.length > 1 && parts.some(p => isProfane(p) || nameBad(read(p)));
 }
 function hash(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; }
 export function nickFor(key, sex) {

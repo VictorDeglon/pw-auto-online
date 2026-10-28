@@ -34,7 +34,7 @@ export function buildCoverMap(THREE, opts) {
   }
   const poly = p => { mk2.beginPath(); mk2.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) mk2.lineTo(p[i], p[i + 1]); mk2.closePath(); mk2.fill(); };
   for (const b of opts.buildings) poly(b[2]);
-  for (const a of opts.areas) if (a[0] === 0) poly(a[1]); // water
+  for (const a of opts.areas) if (a[0] === 0 || a[0] === 2) poly(a[1]); // water, parking lots
   for (const p of opts.exclude || []) poly(p);              // places with their own ground (the Poway High campus: turf, track, courts)
   const rect = (x, z, w, d, ang, grow) => { mk2.save(); mk2.translate(x, z); mk2.rotate(ang); mk2.fillRect(-w / 2 - grow, -d / 2 - grow, w + grow * 2, d + grow * 2); mk2.restore(); };
   for (const h of opts.houses) rect(h[0], h[1], h[2], h[3], h[4], 1);

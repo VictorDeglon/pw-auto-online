@@ -1,5 +1,5 @@
 // Tree cleanup (docs/roadmap/01-world-cleanup-trees.md): a deterministic pass over D.trees that drops canopies the
-// aerial detector put on roads, sidewalks, roofs, water, pools and playing fields, caps canopies that overhang
+// aerial detector put on roads, sidewalks, roofs, water, parking lots, pools and playing fields, caps canopies that overhang
 // roads, and thins near-duplicate detections. It never moves a tree, so the plants keep matching the photo.
 //
 // filterTrees(trees, w) -> { action: Uint8Array (0 keep, 1 drop), radius: Float32Array (possibly capped), stats }
@@ -48,7 +48,7 @@ export function roadEdgeDist(w, x, z, out) {
 export function filterTrees(trees, w) {
   const n = trees.length / 4;
   const action = new Uint8Array(n), radius = new Float32Array(n);
-  const stats = { total: n, sidewalk: 0, road: 0, building: 0, water: 0, pool: 0, field: 0, excluded: 0, duplicate: 0, capped: 0 };
+  const stats = { total: n, sidewalk: 0, road: 0, building: 0, water: 0, parking: 0, pool: 0, field: 0, excluded: 0, duplicate: 0, capped: 0 };
   // pools: rectangles [x, z, w, d, rot] binned on a 40 m grid
   const poolBins = new Map(), PB = 40;
   (w.pools || []).forEach((p, i) => {
@@ -85,9 +85,10 @@ export function filterTrees(trees, w) {
     // water, and the interior of playing fields / golf (edge rows within 4 m are real)
     const ab = w.areaBins.get(w.ckey(Math.floor(x / w.AB), Math.floor(z / w.AB)));
     if (ab) for (const ai of ab.a) {
-      const A = w.areas[ai]; if (A.k !== 0 && A.k !== 3) continue;
+      const A = w.areas[ai]; if (A.k !== 0 && A.k !== 2 && A.k !== 3) continue;
       if (!pointInPoly(x, z, A.p)) continue;
       if (A.k === 0) { hit = true; stats.water++; break; }
+      if (A.k === 2) { hit = true; stats.parking++; break; } // nothing grows in a parking lot
       if (polyEdgeDist(x, z, A.p) > 4) { hit = true; stats.field++; break; }
     }
     if (hit) { action[i] = DROP; continue; }

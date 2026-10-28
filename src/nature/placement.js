@@ -70,7 +70,7 @@ export function assignPlants(D, filt, ctx, veg, seed = 1234) {
     if (ctx.reject && ctx.reject(x, z)) continue; // on a road, sidewalk or shoulder
     const urban = ctx.built(x, z) >= 3, area = ctx.areaKind(x, z);
     let sp;
-    if (area === 2) sp = pickW(rnd, [['eucalyptus', 6], ['oak', 3], ['scruboak', 1]]);              // groves
+    if (area === 6) sp = pickW(rnd, [['eucalyptus', 6], ['oak', 3], ['scruboak', 1]]);              // groves (kind 2 is parking: nothing grows there)
     else if (urban || area === 1 || area === 3) {                                                     // planted
       if (kind === 3) sp = pickW(rnd, [['chap', 5], ['olive', 2], ['slender', 1], ['agave', 1]]);
       else if (kind === 0) sp = pickW(rnd, [['olive', 22], ['jacaranda', 16], ['slender', 14], ['palm_fan', 16], ['oak', 10], ['scruboak', 10], ['eucalyptus', 6], ['palm_date', 4]]);
