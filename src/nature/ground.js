@@ -65,6 +65,7 @@ const COMMON = /* glsl */`
 uniform highp sampler2DArray gAlb; uniform highp sampler2DArray gNrm;
 uniform vec3 gMean[5]; uniform float gTile[5]; uniform float gPhotoBias; uniform float gNear; uniform float gFar; uniform float gProcedural; uniform float gDetail;
 uniform float gEdgeOn; uniform vec4 gEdge; uniform float gEdgeW; uniform sampler2D gTint; uniform float gTintOn;
+uniform sampler2D gLand; uniform float gLandOn; uniform vec4 gLandR;
 varying vec3 vWp; varying vec3 vWn;
 float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -99,6 +100,11 @@ vec4 gRock(vec3 p, vec3 N, out vec3 nW) {
 export function setGroundTint(ground, tex, rect) {
   for (const u of ground.users || []) { u.gTint.value = tex; u.gTintOn.value = 1; u.gEdge.value = rect; }
 }
+// land use (src/nature/groundcover.js buildCoverMap: landTex): yards are a lawn or a dry garden of decomposed granite
+// and mulch beds, parks and fields are turf, whatever grey the photo shows there. rect: [x0, z0, width, depth]
+export function setGroundLand(ground, tex, rect) {
+  for (const u of ground.users || []) { u.gLand.value = tex; u.gLandOn.value = 1; u.gLandR.value = rect; }
+}
 
 // onBeforeCompile patch for MeshStandardMaterial terrain. opts: { photoBias, procedural, edge: [x0, z0, x1, z1], edgeW }
 // edge: the photo's rectangle in world x/z, for the photo terrain (see setGroundTint)
@@ -109,6 +115,7 @@ export function groundPatch(ground, opts = {}) {
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
+    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] },
   };
   (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
@@ -163,6 +170,15 @@ export function groundPatch(ground, opts = {}) {
         float wSoil = max(0.0, 1.0 - wLawn - wLit - wDry);
         float wRock = max(steep, smoothstep(0.24, 0.36, lum) * (1.0 - smoothstep(0.08, 0.2, yellow)) * smoothstep(0.06, 0.2, 1.0 - Nw.y) * (1.0 - wLawn));
         vec4 w = vec4(wSoil, wDry, wLawn, wLit) * (1.0 - wRock);
+        float lawnZ = 0.0, xeri = 0.0, mulch = 0.0;
+        if (gLandOn > 0.5) { // tended ground: lawn yards, parks and fields; dry gardens of granite and mulch
+          vec4 land = texture2D(gLand, (vWp.xz - gLandR.xy) / gLandR.zw);
+          float lawnLot = step(0.5, land.a);
+          lawnZ = max(land.g, land.r * lawnLot); xeri = land.r * (1.0 - lawnLot) * (1.0 - land.g);
+          mulch = smoothstep(0.42, 0.62, gFbm(vWp.xz * 0.28 + land.a * 31.0));
+          w = mix(w, vec4(1.0 - mulch, 0.0, 0.0, mulch), xeri * (1.0 - wRock));
+          w = mix(w, vec4(0.0, 0.0, 1.0, 0.0), lawnZ * (1.0 - wRock));
+        }
         vec3 col = photo; gNormalW = Nw;
         if (gF > 0.002) {
           vec3 n0, n1, n2, n3, nR; vec4 L0 = vec4(0), L1 = vec4(0), L2 = vec4(0), L3 = vec4(0), LR = vec4(0);
@@ -179,6 +195,8 @@ export function groundPatch(ground, opts = {}) {
           float bs = b.x + b.y + b.z + b.w + br + 1e-4; b /= bs; br /= bs;
           // photo-tinted detail: layer texture divided by its mean colour keeps the photo's hue and adds structure
           vec3 tint = soft * (0.88 + 0.24 * macro);
+          tint = mix(tint, vec3(0.062, 0.115, 0.026) * (0.85 + 0.3 * macro), lawnZ * 0.8);      // a watered lawn, not the photo's grey
+          tint = mix(tint, vec3(0.30, 0.22, 0.13) * (0.85 + 0.3 * macro), xeri * (1.0 - mulch) * 0.8); // decomposed granite
           vec3 dS = L0.rgb / gMean[0], dD = L1.rgb / gMean[1], dL = L2.rgb / gMean[2], dR = LR.rgb / gMean[4];
           float lumD = dot(dD, vec3(0.2126, 0.7152, 0.0722)), lumL = dot(dL, vec3(0.2126, 0.7152, 0.0722));
           vec3 near = tint * (b.x * dS + b.y * mix(vec3(lumD), dD, 0.25) + b.z * mix(vec3(lumL), dL, 0.5) + br * mix(vec3(dot(dR, vec3(0.333))), dR, 0.4));

@@ -3,8 +3,9 @@
 // Two pieces:
 //  - A cover map (one texel per 4 m over the play area) built at load from the aerial photo: the same colour
 //    classes the terrain shader uses (lawn, dry grass, chaparral/leaf litter, bare soil, paving), with roads,
-//    buildings, houses, pools and water masked out. R = grass density, G = brush density, B = dryness (green lawn
-//    to golden hillside), A = grass height.
+//    buildings, houses, pools, water and parking lots masked out. R = short (lawn) grass, G = brush, B = dryness,
+//    A = tall wild grass. A second map (landTex) holds the land use the ground shader also reads: R yards round
+//    houses, G parks and fields, B urban density, A 1 where the yard is a lawn (else a dry garden).
 //  - Two instanced layers that follow the camera, drawn with one draw call each: grass clumps out to ~55 m and
 //    brush clumps out to ~200 m. Every instance is anchored to a world grid cell (position and size come from a
 //    hash of the cell), so nothing swims as you move. The vertex shader reads the cover map for density and colour
@@ -40,14 +41,33 @@ export function buildCoverMap(THREE, opts) {
   for (const h of opts.houses) rect(h[0], h[1], h[2], h[3], h[4], 1);
   for (const p of opts.pools) rect(p[0], p[1], p[2], p[3], p[4], 1.2);
   const A = ph.getImageData(0, 0, W, H).data, M = mk2.getImageData(0, 0, W, H).data;
+  // land use: the yard round every house (R: 255 a lawn, 110 a dry garden, each house its own pick), parks, fields and
+  // golf (G); urban density (B) and the lawn flag (A) are filled in below. The ground shader reads it (setGroundLand).
+  const hsh = v => { const t = Math.sin(v * 12.9898) * 43758.5453; return t - Math.floor(t); };
+  const ly = mk(); ly.fillStyle = '#000'; ly.fillRect(x0, z0, x1 - x0, z1 - z0); ly.lineJoin = 'round'; ly.lineWidth = 22;
+  for (const b of opts.buildings) if (b[1] === 0 && b[0] < 8.5) {
+    const p = b[2]; let cx = 0, cz = 0; for (let i = 0; i < p.length; i += 2) { cx += p[i]; cz += p[i + 1]; } cx /= p.length / 2; cz /= p.length / 2;
+    ly.fillStyle = ly.strokeStyle = hsh(Math.round(cx) * 0.137 + Math.round(cz) * 0.311) < 0.6 ? 'rgb(255,0,0)' : 'rgb(110,0,0)'; // ~6 in 10 yards are lawn
+    ly.beginPath(); ly.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ly.lineTo(p[i], p[i + 1]); ly.closePath(); ly.stroke(); ly.fill();
+  }
+  ly.globalCompositeOperation = 'lighter'; ly.fillStyle = 'rgb(0,255,0)';
+  for (const a of opts.areas) if (a[0] === 1 || a[0] === 3) { const p = a[1]; ly.beginPath(); ly.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ly.lineTo(p[i], p[i + 1]); ly.closePath(); ly.fill(); }
+  const Y = ly.getImageData(0, 0, W, H).data;
+  const BG = 50, bgrid = new Map();
+  for (const b of opts.buildings) { const p = b[2], n = p.length / 2; let x = 0, z = 0; for (let i = 0; i < n; i++) { x += p[i * 2]; z += p[i * 2 + 1]; } const k = Math.floor(x / n / BG) * 100000 + Math.floor(z / n / BG); bgrid.set(k, (bgrid.get(k) || 0) + 1); }
+  const builtAt = (x, z) => { const gx = Math.floor(x / BG), gz = Math.floor(z / BG); let s = 0; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) s += bgrid.get((gx + a) * 100000 + gz + b) || 0; return s; };
+  const land = new Uint8Array(W * H * 4);
   const out = new Uint8Array(W * H * 4);
   const lin = new Float32Array(256); for (let i = 0; i < 256; i++) { const c = i / 255; lin[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const hash = (i) => { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); };
   for (let i = 0, n = W * H; i < n; i++) {
     const k = i * 4; let grass, brush, dry, tall;
+    const px = x0 + (i % W + 0.5) * mpp, pz = z0 + (Math.floor(i / W) + 0.5) * mpp;
+    const yard = Math.min(1, Y[k] / 110), park = Y[k + 1] / 255, urban = ss(2, 9, builtAt(px, pz)), lawnLot = Y[k] > 180 ? 1 : 0;
+    land[k] = Math.round(yard * 255); land[k + 1] = Y[k + 1]; land[k + 2] = Math.round(urban * 255); land[k + 3] = lawnLot * 255;
     if (A[k + 3] < 128) { // no photo: the outer hills are dry grass with chaparral patches
-      const v = hash(i); grass = 0.85; brush = 0.45 + 0.35 * v; dry = 0.8; tall = 1;
+      const v = hash(i); grass = 0; brush = 0.45 + 0.35 * v; dry = 0.8; tall = 0.9;
     } else {
       // same thresholds as the terrain shader (src/nature/ground.js), on linear colour
       const r = lin[A[k]], g = lin[A[k + 1]], b = lin[A[k + 2]];
@@ -60,19 +80,26 @@ export function buildCoverMap(THREE, opts) {
       const mx = Math.max(r, g, b), chroma = (mx - Math.min(r, g, b)) / (mx + 0.01);
       const paved = Math.max(ss(0.17, 0.26, lum) * (1 - ss(0.06, 0.14, yellow)), // concrete, driveways
         (1 - ss(0.10, 0.20, chroma)) * ss(0.02, 0.04, lum) * (1 - ss(0.05, 0.10, green))); // asphalt lots: grey, neither green nor gold
-      grass = (wLawn + wDry + wLit * 0.6 + wSoil * 0.35) * (1 - paved);
-      brush = (wLit * 0.95 + wDry * 0.35 + wSoil * 0.12) * (1 - paved);
+      grass = wLawn * (1 - paved);                                               // the photo's own green lawns
+      brush = (wLit * 0.95 + wDry * 0.3 + wSoil * 0.1) * (1 - paved);
       dry = Math.min(1, wDry + wSoil * 0.85 + wLit * 0.35);
-      tall = Math.min(1, wDry + wLit * 0.7 + wSoil * 0.5);
+      tall = (wDry * 0.95 + wSoil * 0.4 + wLit * 0.35) * (1 - paved);
     }
+    // town: yards are lawns or dry gardens, parks and fields are mown turf; wild brush and tall grass only out of town
+    const tended = Math.min(1, yard + park), wild = (1 - tended) * (1 - urban * 0.85);
+    grass = Math.max(grass * (1 - yard * (1 - lawnLot)), park, yard * lawnLot);
+    brush = brush * wild + yard * (1 - lawnLot) * 0.1;
+    tall = tall * (1 - tended) * (1 - urban * 0.6);
     const m = M[k] / 255;
     out[k] = Math.round(Math.min(1, grass) * m * 255); out[k + 1] = Math.round(Math.min(1, brush) * m * 255);
-    out[k + 2] = Math.round(dry * 255); out[k + 3] = Math.round(tall * 255);
+    out[k + 2] = Math.round(dry * 255); out[k + 3] = Math.round(Math.min(1, tall) * m * 255);
   }
   const tex = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.flipY = false; tex.needsUpdate = true;
+  const landTex = new THREE.DataTexture(land, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  landTex.magFilter = THREE.LinearFilter; landTex.minFilter = THREE.LinearFilter; landTex.flipY = false; landTex.needsUpdate = true;
   const at = (x, z) => { const i = Math.floor((x - x0) / mpp), j = Math.floor((z - z0) / mpp); if (i < 0 || j < 0 || i >= W || j >= H) return null; return out.subarray((j * W + i) * 4, (j * W + i) * 4 + 4); };
-  return { tex, x0, z0, sx: W * mpp, sz: H * mpp, at };
+  return { tex, landTex, x0, z0, sx: W * mpp, sz: H * mpp, at };
 }
 
 // ---------------------------------------------------------------- geometry: one grass tuft, one brush clump
@@ -103,6 +130,66 @@ function brushClump(THREE) { // three crossed cards and a cap; the fragment shad
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I); return g;
+}
+
+// ---------------------------------------------------------------- scanned cards (assets/pbr/atlas, ambientCG CC0)
+// colour + opacity pairs merged into one RGBA canvas; crop: [x, y, w, h] in the atlas
+// (an ImageData kept apart from any canvas: a canvas premultiplies, which blackens the colour under transparent
+// pixels, and then the mipmaps of thin blades average to black)
+async function atlasImage(base, name, crop) {
+  const load = async n => createImageBitmap(await (await fetch(base + n)).blob());
+  const [c, a] = await Promise.all([load(name + '_c.png'), load(name + '_a.png')]);
+  const [cx, cy, W, H] = crop || [0, 0, c.width, c.height];
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d', { willReadFrequently: true });
+  g.drawImage(c, -cx, -cy); const cd = g.getImageData(0, 0, W, H); g.clearRect(0, 0, W, H); g.drawImage(a, -cx, -cy); const ad = g.getImageData(0, 0, W, H).data;
+  for (let i = 0; i < W * H; i++) cd.data[i * 4 + 3] = ad[i * 4];
+  return cd;
+}
+function imageCanvas(im) { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; c.getContext('2d').putImageData(im, 0, 0); return c; }
+// RGBA texture, rows flipped so v runs up the card; transparent texels take the mean opaque colour so the mips stay true
+function cardTex(THREE, im) {
+  const W = im.width, H = im.height, d = im.data, out = new Uint8Array(W * H * 4); let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < W * H; i++) if (d[i * 4 + 3] > 128) { r += d[i * 4]; g += d[i * 4 + 1]; b += d[i * 4 + 2]; n++; }
+  if (n) { r /= n; g /= n; b /= n; }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const s = (y * W + x) * 4, o = ((H - 1 - y) * W + x) * 4, a = d[s + 3];
+    if (a < 24) { out[o] = r; out[o + 1] = g; out[o + 2] = b; out[o + 3] = a; } else { out[o] = d[s]; out[o + 1] = d[s + 1]; out[o + 2] = d[s + 2]; out[o + 3] = a; }
+  }
+  const t = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; t.needsUpdate = true;
+  return t;
+}
+// the leaves on a leaf sheet: bounding boxes of the opaque blobs
+function blobs(cv) {
+  const N = 96, t = document.createElement('canvas'); t.width = t.height = N; const g = t.getContext('2d', { willReadFrequently: true }); g.drawImage(cv, 0, 0, N, N);
+  const d = g.getImageData(0, 0, N, N).data, seen = new Uint8Array(N * N), out = [];
+  for (let s = 0; s < N * N; s++) {
+    if (seen[s] || d[s * 4 + 3] < 128) continue;
+    let x0 = N, y0 = N, x1 = 0, y1 = 0, cnt = 0; const st = [s]; seen[s] = 1;
+    while (st.length) { const q = st.pop(), x = q % N, y = (q / N) | 0; cnt++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue; const k = ny * N + nx; if (!seen[k] && d[k * 4 + 3] >= 128) { seen[k] = 1; st.push(k); } } }
+    if (cnt > 6) out.push([x0 / N * cv.width, y0 / N * cv.height, (x1 - x0 + 1) / N * cv.width, (y1 - y0 + 1) / N * cv.height]);
+  }
+  return out;
+}
+// a shrub card: scanned leaves stamped round a crown, darker inside, with a few twigs
+function leafCard(sheet, r) {
+  const L = blobs(sheet), c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d', { willReadFrequently: true });
+  g.strokeStyle = 'rgba(70,55,40,1)'; g.lineWidth = 3; for (let i = 0; i < 9; i++) { const x = 100 + r() * 56; g.beginPath(); g.moveTo(128 + (x - 128) * 0.25, 256); g.quadraticCurveTo(x, 200, 64 + r() * 128, 60 + r() * 120); g.stroke(); }
+  for (let i = 0; i < 420 && L.length; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()), x = 128 + Math.cos(a) * d * 108, y = 128 + Math.sin(a) * d * 100 - (1 - d) * 12; if (y > 236) continue;
+    const b = L[Math.floor(r() * L.length)], s = (26 + r() * 22) / Math.max(b[2], b[3]);
+    g.save(); g.translate(x, y); g.rotate(r() * Math.PI * 2); g.globalAlpha = 1; g.filter = `brightness(${(0.55 + 0.5 * d) * (0.85 + r() * 0.3)})`;
+    g.drawImage(sheet, b[0], b[1], b[2], b[3], -b[2] * s / 2, -b[3] * s / 2, b[2] * s, b[3] * s); g.restore();
+  }
+  return g.getImageData(0, 0, 256, 256);
+}
+export async function loadCards(THREE, base = 'assets/pbr/atlas/') {
+  const lum = im => { const d = im.data; let s = 0, n = 0; const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; for (let i = 0; i < d.length; i += 4 * 7) if (d[i + 3] > 128) { s += 0.299 * lin(d[i]) + 0.587 * lin(d[i + 1]) + 0.114 * lin(d[i + 2]); n++; } return n ? s / n : 0.2; };
+  const [lawn, oats, sheet] = await Promise.all([atlasImage(base, 'foliage001'), atlasImage(base, 'foliage004'), atlasImage(base, 'leafset013')]);
+  const oatsTop = new ImageData(new Uint8ClampedArray(oats.data.buffer.slice(0, oats.width * (oats.height >> 1) * 4)), oats.width, oats.height >> 1); // the top row of seed heads
+  const brush = leafCard(imageCanvas(sheet), rng(23));
+  return { lawn: cardTex(THREE, lawn), oats: cardTex(THREE, oatsTop), brush: cardTex(THREE, brush), lum: [lum(lawn), lum(brush), lum(oatsTop)] };
 }
 
 // ---------------------------------------------------------------- card textures, drawn once (no downloads)
@@ -139,7 +226,7 @@ function brushLeaves(g, r) {
 const IGN = 'fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))';
 const VS_HEAD = /* glsl */`
 attribute vec2 iCell;
-uniform vec2 uBase; uniform float uS, uR, uKind, uTime, uWind;
+uniform vec2 uBase; uniform float uS, uR, uKind, uTime, uWind, uGust;
 uniform sampler2D uCover; uniform vec4 uCov;
 uniform highp sampler2D uHgt; uniform vec4 uHg; // x0, z0, metres per texel, texels
 uniform vec4 uPush[3];
@@ -160,10 +247,10 @@ const VS_BODY = /* glsl */`
   float dist = distance(wp, cameraPosition.xz);
   vec2 cuv = (wp - uCov.xy) / uCov.zw, cm = 300.0 / uCov.zw; // the cover map's 300 m pad: no data out there (the outer world)
   vec4 cv = texture2D(uCover, cuv);
-  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.6) : min(1.0, cv.g * 1.3); // generous: the point is to hide the ground
+  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.6) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : min(1.0, cv.a * 1.4); // 0 lawn, 1 brush, 2 tall grass
   dens *= step(cm.x, cuv.x) * step(cuv.x, 1.0 - cm.x) * step(cm.y, cuv.y) * step(cuv.y, 1.0 - cm.y);
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
-  float thin = uKind < 0.5 ? mix(1.0, 0.35, smoothstep(uR * 0.3, uR, dist)) : 1.0;
+  float thin = uKind < 0.5 || uKind > 1.5 ? mix(1.0, 0.35, smoothstep(uR * 0.3, uR, dist)) : 1.0;
   vFade = 1.0 - smoothstep(uR * 0.6, uR, dist);
   float keep = step(h3, dens * thin) * step(0.001, vFade);
   float ang = h1 * 6.2831853, cs = cos(ang), sn = sin(ang);
@@ -171,13 +258,15 @@ const VS_BODY = /* glsl */`
   float sc;
   // the edge of the ring: clumps sink into the ground instead of dithering away
   float sink = smoothstep(0.0, 1.0, vFade);
-  if (uKind < 0.5) { sc = mix(0.16, 0.62, cv.a) * (0.7 + 0.6 * h4) * mix(0.75, 1.0, dens) * sink; p.xz *= (0.75 + 0.5 * cv.a) * (0.8 + 0.4 * h2); p.y *= sc; }
+  if (uKind < 0.5) { sc = (0.07 + 0.07 * h4) * sink; p.xz *= 0.42 * (0.8 + 0.4 * h2); p.y *= sc; }                     // mown lawn
+  else if (uKind > 1.5) { sc = (0.35 + 0.6 * h4) * mix(0.6, 1.0, dens) * sink; p.xz *= 0.55 * (0.8 + 0.4 * h2); p.y *= sc; } // wild oats and brome
   else { sc = (0.55 + 0.9 * h4) * (0.6 + 0.5 * dens) * sink; p *= sc; }
   p = vec3(cs * p.x + sn * p.z, p.y, -sn * p.x + cs * p.z);
-  // wind: grows with height above the ground
+  // wind: gusts roll across the field as waves (a travelling noise), the blades bend with height
   float hy = max(p.y, 0.0), ph = dot(wp, vec2(0.21, 0.17));
-  float sw = uWind * (uKind < 0.5 ? 0.18 : 0.04) * hy * hy;
-  p.x += sin(uTime * 1.9 + ph) * sw; p.z += cos(uTime * 1.5 + ph * 1.3) * sw * 0.7;
+  float wave = 0.5 + 0.5 * sin(dot(wp, vec2(0.13, 0.07)) - uTime * 1.7 + 2.0 * gh(floor(wp * 0.05)));
+  float sw = uWind * (uKind < 0.5 ? 0.25 : uKind > 1.5 ? 0.22 : 0.04) * hy * (uKind > 1.5 ? 1.0 : hy) * (0.6 + uGust * wave);
+  p.x += (sin(uTime * 1.9 + ph) * 0.4 + wave * uGust) * sw; p.z += (cos(uTime * 1.5 + ph * 1.3) * 0.4 + wave * uGust * 0.6) * sw;
   // pushed aside by the player and cars
   for (int k = 0; k < 3; k++) {
     vec2 d = wp + p.xz - uPush[k].xy; float l = length(d);
@@ -187,12 +276,15 @@ const VS_BODY = /* glsl */`
   vec3 transformed = vec3(wp.x + p.x, hgtAt(wp) - 0.04 + p.y, wp.y + p.z);
   // colour: lawn green to golden dry grass; brush from dark chaparral to grey-green sage
   float t = clamp(position.y, 0.0, 1.0);
-  if (uKind < 0.5) {
-    vec3 lawn = vec3(0.045, 0.10, 0.018), gold = vec3(0.28, 0.20, 0.075), olive = vec3(0.10, 0.10, 0.04);
-    vec3 c = mix(mix(lawn, olive, smoothstep(0.2, 0.6, cv.b)), gold, smoothstep(0.5, 0.95, cv.b + (h2 - 0.5) * 0.3));
-    vGC = c * (0.85 + 0.3 * h3);
-  } else {
-    vec3 chap = vec3(0.065, 0.08, 0.04), sage = vec3(0.16, 0.17, 0.115), dryb = vec3(0.2, 0.16, 0.085);
+  if (uKind < 0.5) { // irrigated lawn: green, a little patchy
+    vec3 lawn = vec3(0.055, 0.12, 0.022), tired = vec3(0.11, 0.12, 0.045);
+    vGC = mix(lawn, tired, smoothstep(0.5, 0.9, gh(floor(wp * 0.25))) * 0.5) * (0.85 + 0.3 * h3);
+  } else if (uKind > 1.5) { // wild grass: green in spring, gold through summer and fall
+    vec3 gold = vec3(0.36, 0.27, 0.12), straw = vec3(0.45, 0.38, 0.22), olive = vec3(0.13, 0.14, 0.05);
+    vec3 c = mix(olive, mix(gold, straw, h2), smoothstep(0.25, 0.7, cv.b + (h2 - 0.5) * 0.3));
+    vGC = c * (0.8 + 0.35 * h3);
+  } else { // chaparral and sage: dark olive to grey-green, dry brown in places
+    vec3 chap = vec3(0.075, 0.09, 0.045), sage = vec3(0.17, 0.18, 0.125), dryb = vec3(0.21, 0.17, 0.09);
     vec3 c = mix(chap, sage, h2 * 0.8); c = mix(c, dryb, smoothstep(0.75, 1.0, cv.b) * h4 * 0.6);
     vGC = c * (0.85 + 0.3 * h3);
   }
@@ -203,12 +295,14 @@ function patch(mat, U, kind) {
     Object.assign(sh.uniforms, U); sh.uniforms.uKind = { value: kind };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + VS_HEAD)
-      .replace('#include <beginnormal_vertex>', kind < 0.5
+      .replace('#include <beginnormal_vertex>', kind !== 1
         ? 'vec3 objectNormal = normalize(vec3(0.0, 1.0, 0.0) + 0.18 * normal);' // lit like the ground it grows from
         : 'vec3 objectNormal = normalize(vec3(position.x, position.y - 0.35, position.z) + vec3(0.0, 0.4, 0.0));')
       .replace('#include <begin_vertex>', VS_BODY);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vGC; varying float vFade; varying vec2 vLeaf; varying float vSeed; uniform sampler2D uCard;`)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        normal = normalize(vNormal); // both faces of a card take the light the way the ground does (a flipped back face faced the dirt and went black)`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vGC; varying float vFade; varying vec2 vLeaf; varying float vSeed; uniform sampler2D uCard; uniform float uCardLum;`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
         vec4 card = texture2D(uCard, vLeaf);
         { // an alpha cut that keeps its coverage as the texture's mips blur the thin blades (and stays sharp up close)
@@ -217,9 +311,9 @@ function patch(mat, U, kind) {
           if (card.a * (1.0 + mip * 0.3) < 0.5) discard;
         }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb *= vGC * card.rgb * 2.0 * mix(${kind > 0.5 ? '0.6, 1.1' : '0.5, 1.15'}, smoothstep(0.0, 0.8, vLeaf.y)); // darker at the root`);
+        diffuseColor.rgb *= vGC * (uCardLum > 0.0 ? vec3(dot(card.rgb, vec3(0.299, 0.587, 0.114)) / uCardLum) : card.rgb * 2.0) * mix(${kind > 0.5 && kind < 1.5 ? '0.6, 1.1' : '0.55, 1.12'}, smoothstep(0.0, 0.8, vLeaf.y)); // the scan's light and shade, darker at the root`);
   };
-  mat.customProgramCacheKey = () => 'groundcover' + kind;
+  mat.customProgramCacheKey = () => 'groundcover3' + kind;
 }
 
 // ---------------------------------------------------------------- the layers
@@ -227,10 +321,11 @@ export class GroundCover {
   // cover: buildCoverMap(); terrainAt(x, z) height of the rendered ground; U: shared nature uniforms (uTime, uWind)
   constructor(THREE, scene, cover, terrainAt, U, opts = {}) {
     this.THREE = THREE; this.cover = cover; this.terrainAt = terrainAt; this.U = U;
-    const q = opts.quality ?? 1;
+    const q = opts.quality ?? 1, C = opts.cards;
     this.layers = [
-      { kind: 0, s: 0.55 / Math.sqrt(q), R: 50, geo: grassTuft(THREE) },
-      { kind: 1, s: 3.2 / Math.sqrt(q), R: 200, geo: brushClump(THREE) },
+      { kind: 0, s: 0.32 / Math.sqrt(q), R: 34, geo: grassTuft(THREE) },  // mown lawn, dense and short
+      { kind: 1, s: 3.2 / Math.sqrt(q), R: 200, geo: brushClump(THREE) }, // shrubs
+      { kind: 2, s: 0.7 / Math.sqrt(q), R: 80, geo: grassTuft(THREE) },   // tall wild grass
     ];
     // height texture around the camera
     this.HN = 192; this.HM = 2.6; // texels, metres per texel (~500 m square)
@@ -241,20 +336,20 @@ export class GroundCover {
     this.shared = {
       uCover: { value: cover.tex }, uCov: { value: new THREE.Vector4(cover.x0, cover.z0, cover.sx, cover.sz) },
       uHgt: { value: this.hTex }, uHg: { value: new THREE.Vector4(0, 0, this.HM, this.HN) },
-      uTime: U.uTime, uWind: U.uWind,
+      uTime: U.uTime, uWind: U.uWind, uGust: U.uGust || { value: 0.6 },
       uPush: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
     };
-    const cards = [cardTexture(THREE, grassBlades), cardTexture(THREE, brushLeaves)];
+    const cards = C ? [C.lawn, C.brush, C.oats] : [cardTexture(THREE, grassBlades), cardTexture(THREE, brushLeaves), cardTexture(THREE, grassBlades)];
     for (const L of this.layers) {
       const N = Math.ceil(2 * L.R / L.s), cells = new Float32Array(N * N * 2);
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { cells[(j * N + i) * 2] = i - N / 2; cells[(j * N + i) * 2 + 1] = j - N / 2; }
       L.geo.setAttribute('iCell', new THREE.InstancedBufferAttribute(cells, 2)); L.geo.instanceCount = N * N;
-      const U2 = Object.assign({}, this.shared, { uBase: { value: new THREE.Vector2() }, uS: { value: L.s }, uR: { value: L.R }, uCard: { value: cards[L.kind] } });
+      const U2 = Object.assign({}, this.shared, { uBase: { value: new THREE.Vector2() }, uS: { value: L.s }, uR: { value: L.R }, uCard: { value: cards[L.kind] }, uCardLum: { value: C ? C.lum[L.kind] : 0 } });
       L.U = U2;
       const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
       patch(mat, U2, L.kind);
       const mesh = new THREE.Mesh(L.geo, mat); mesh.frustumCulled = false; mesh.receiveShadow = true; mesh.castShadow = false;
-      mesh.name = L.kind ? 'groundcover:brush' : 'groundcover:grass'; scene.add(mesh); L.mesh = mesh;
+      mesh.name = ['groundcover:lawn', 'groundcover:brush', 'groundcover:tall'][L.kind]; scene.add(mesh); L.mesh = mesh;
     }
     this.instances = this.layers.reduce((n, L) => n + L.geo.instanceCount, 0);
   }
@@ -285,7 +380,7 @@ export function scatterShrubs(cover, veg, heightAt, species, bounds, opts = {}) 
     const b = c[1] / 255; if (b < 0.25 || r() > b * 0.55) continue;
     if (opts.reject && opts.reject(px, pz)) continue;
     const hgt = 0.9 + r() * 1.6 + b * 0.8, s = hgt / baseH, br = 0.55 + r() * 0.25, dry = c[2] / 255;
-    const tint = [0.62 * br * (1 + dry * 0.25), 0.68 * br, 0.52 * br * (1 - dry * 0.15)];
+    const tint = [0.8 * br * (1 + dry * 0.25), 0.86 * br, 0.66 * br * (1 - dry * 0.15)]; // dark olive from afar, not black
     veg.add(species, px, heightAt(px, pz) - 0.15 * s, pz, r() * Math.PI * 2, s, Math.floor(r() * lib.variants.length), tint);
     n++;
   }

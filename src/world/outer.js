@@ -156,9 +156,9 @@ export function createOuter(E) {
     t.hN = hN;
     // roads: own edges then context copies, in the core's road format [name, type, width, pts, mph]
     const roads = [];
-    t.edges = (d.e || []).map(e => { const p = abs(e[6]); roads.push([e[5], e[2], e[3] * E.ROAD_SCALE, Array.from(p), e[7]]); return { a: e[0], b: e[1], t: e[2], w: e[3] * E.ROAD_SCALE, ow: e[4], name: e[5] >= 0 ? d.names[e[5]] : '', p, mph: e[7], fl: e[8] }; });
+    t.edges = (d.e || []).map(e => { const p = abs(e[6]), w = E.roadWidth ? E.roadWidth(e[2], e[3] * E.ROAD_SCALE, e[4]) : e[3] * E.ROAD_SCALE; roads.push([e[5], e[2], w, Array.from(p), e[7]]); return { a: e[0], b: e[1], t: e[2], w, ow: e[4], name: e[5] >= 0 ? d.names[e[5]] : '', p, mph: e[7], fl: e[8] }; });
     t.ownN = roads.length;
-    for (const x of d.x || []) roads.push([-1, x[0], x[1] * E.ROAD_SCALE, Array.from(abs(x[2])), 0]);
+    for (const x of d.x || []) roads.push([-1, x[0], E.roadWidth ? E.roadWidth(x[0], x[1] * E.ROAD_SCALE, 0) : x[1] * E.ROAD_SCALE, Array.from(abs(x[2])), 0]);
     t.roads = roads;
     t.blds = []; for (const b of d.b || []) { t.blds.push([b[0], b[1], Array.from(abs(b[2])), b[3] * 0.1]); if (due()) yield; }
     yield;

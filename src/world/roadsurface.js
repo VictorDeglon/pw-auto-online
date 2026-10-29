@@ -16,7 +16,7 @@
 // Which roads get a curb and sidewalk is decided from building density (rural north Poway has dirt shoulders).
 
 const CELL = 4;      // raster cell (m); the raster only decides WHICH road a point belongs to, distances are exact
-export const CROWN = 0, CURB_H = 0, LIFT = 0.0, FLAT = 14, BENCH = 0; // level with the ground: the terrain mesh is the road bed, roads sit a few cm on it
+export const CROWN = 0, CURB_H = 0.15, LIFT = 0.0, FLAT = 14, BENCH = 0; // a real 15 cm curb where the road has one; the walk and the bench behind it sit up at curb height
 const PSTEP = 4, PSIGMA = 20; // long-profile sample spacing and smoothing (m): roads ride over the 12.8 m terrain facets
 
 function segClosest(px, pz, ax, az, bx, bz, out) {

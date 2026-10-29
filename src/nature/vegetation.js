@@ -75,7 +75,7 @@ export function natureUniforms(THREE) {
   return {
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
     uSky: { value: new THREE.Color(0.5, 0.6, 0.7) }, uGround: { value: new THREE.Color(0.3, 0.28, 0.2) },
-    uTime: { value: 0 }, uWind: { value: 1 }, uNear: { value: 55 }, uBand: { value: 12 }, uFar: { value: 2400 },
+    uTime: { value: 0 }, uWind: { value: 1 }, uWindBase: { value: 1 }, uGust: { value: 0.5 }, uNear: { value: 55 }, uBand: { value: 12 }, uFar: { value: 2400 },
   };
 }
 
@@ -185,7 +185,9 @@ function patchNear(mat, U, sway, leaf) {
         #endif`);
     let fs = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vNearFade; uniform vec3 uSunDir, uSunCol;')
-      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nif (${IGN} >= vNearFade) discard;`);
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\nif (${IGN} >= vNearFade) discard;`)
+      .replace('#include <normal_fragment_begin>', leaf ? `#include <normal_fragment_begin>
+        normal = normalize(vNormal); // leaf normals point out of the crown on both faces: a flipped back face lit the inside` : '#include <normal_fragment_begin>');
     if (leaf) fs = fs
       .replace('#include <alphatest_fragment>', `{ // keep thin leaves from thinning out with the mip level, then cut at 0.5
           vec2 tsz = vec2(textureSize(map, 0)); vec2 dx = dFdx(vMapUv * tsz), dy = dFdy(vMapUv * tsz);
@@ -200,7 +202,7 @@ function patchNear(mat, U, sway, leaf) {
           reflectedLight.directDiffuse += diffuseColor.rgb * uSunCol * (back * 0.22 + thru * 0.5) * vec3(1.0, 1.06, 0.62) * RECIPROCAL_PI; }`);
     sh.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => 'nearveg' + sway + (leaf ? 'leaf' : '');
+  mat.customProgramCacheKey = () => 'nearveg2' + sway + (leaf ? 'leaf' : '');
 }
 
 // ---------------------------------------------------------------- the renderer
@@ -308,6 +310,10 @@ export class Vegetation {
   }
   update(dt, camera, sun, hemi) {
     const U = this.U; U.uTime.value += dt;
+    { // wind comes in gusts: a slow swell (incommensurate sines), the trees lean harder and the grass waves run faster
+      const t = U.uTime.value, g = Math.max(0, Math.min(1, 0.5 + 0.28 * Math.sin(t * 0.31) + 0.18 * Math.sin(t * 0.73 + 1.3) + 0.12 * Math.sin(t * 1.91 + 0.4)));
+      U.uGust.value = g; U.uWind.value = U.uWindBase.value * (0.6 + 0.7 * g);
+    }
     U.uSunDir.value.subVectors(sun.position, sun.target.position).normalize();
     U.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity);
     U.uSky.value.copy(hemi.color).multiplyScalar(hemi.intensity); U.uGround.value.copy(hemi.groundColor).multiplyScalar(hemi.intensity);
