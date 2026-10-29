@@ -8,6 +8,13 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.1 (2026-10-29)
+
+- **Finding the last freezes:** the loading screen times each of its steps in the console (`[boot]`), and any freeze
+  over a second is logged (`[freeze]`, with the step it happened in). `?jsprof` in the address starts the browser's
+  JS profiler from the first line, for measuring on players' machines.
+- The trees' collision setup runs in slices instead of one block.
+
 ## 0.8.0: Smooth Ride (2026-10-29)
 
 - **Far fewer freezes on Windows.** Under Chrome on Windows (Direct3D) every new standard-material shader holds the

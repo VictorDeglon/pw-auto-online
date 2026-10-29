@@ -1,4 +1,5 @@
 <meta charset="utf-8">
+<script>if (/[?&]jsprof\b/.test(location.search)) try { window.__P = new Profiler({ sampleInterval: 10, maxBufferSize: 1000000 }); } catch (e) { console.warn(e); }</script>
 <title>Poway Automobile Online</title>
 <meta name="description" content="Poway Automobile Online: free-roam driving and mayhem in a real-scale Poway, CA, in your browser. Five online servers.">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -736,7 +737,7 @@ const PROF = { t0: 0, t: 0, m: [], slow: [], gaps: [], tasks: [], n: 0, long: 0,
   },
   gap(now) { const g = now - this.lastNow; if (this.lastNow && g > 120) { this.gaps.push({ at: +(now / 1000).toFixed(1), ms: Math.round(g) }); if (this.gaps.length > 80) this.gaps.shift(); } this.lastNow = now; },
 };
-try { new PerformanceObserver(l => { for (const e of l.getEntries()) { PROF.tasks.push({ at: +(e.startTime / 1000).toFixed(1), ms: Math.round(e.duration), label: PROF.label }); if (PROF.tasks.length > 120) PROF.tasks.shift(); } }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
+try { new PerformanceObserver(l => { for (const e of l.getEntries()) { if (e.duration > 1000) { let where = PROF.label; try { where = where || (worldReady ? 'play' : 'loading: ' + DL.msg); } catch (x) { } console.warn('[freeze]', Math.round(e.duration) + 'ms at', (e.startTime / 1000).toFixed(1) + 's', where); } PROF.tasks.push({ at: +(e.startTime / 1000).toFixed(1), ms: Math.round(e.duration), label: PROF.label }); if (PROF.tasks.length > 120) PROF.tasks.shift(); } }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
 renderer.debug.checkShaderErrors = /[?&]debug\b/.test(location.search); // reading shader logs back stalls every compile; ?debug turns it on
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1014,8 +1015,10 @@ function showProgress() {
   SHELL.bootProgress(0.02 + 0.6 * DL.shown, DL.total ? `${DL.msg} ${Math.min(99, Math.floor(DL.shown * 100))}% · ${mb(DL.done)} of ${mb(DL.total)} MB` : DL.msg);
 }
 const progTimer = setInterval(() => { if (DL.on) showProgress(); else clearInterval(progTimer); }, 250); // streams move between progress() calls
+const BOOT_T = { t: performance.now(), msg: 'Starting' }; // the loading screen's steps, timed in the console ([boot])
 function progress(msg) {
   if (!DL.on) return;
+  { const base = String(msg).replace(/[\d,.]+%?/g, '#'), now = performance.now(); if (base !== BOOT_T.base) { console.info('[boot]', BOOT_T.msg, ((now - BOOT_T.t) / 1000).toFixed(1) + 's'); Object.assign(BOOT_T, { t: now, msg, base }); } }
   if (loadState.total && loadState.done >= loadState.total && !/Loading|Reading/.test(msg)) buildN++;
   DL.msg = msg; showProgress();
 }
@@ -2669,7 +2672,7 @@ async function plantNature() {
       if (!s) { placed.trees.push(x, z); placed.refs.push([sp, idx]); }
     }
   }
-  for (let i = 0; i < placed.trees.length; i += 2) { const ti = treeC.length / 2; treeC.push(placed.trees[i], placed.trees[i + 1]); gridAdd(placed.trees[i], placed.trees[i + 1], placed.trees[i], placed.trees[i + 1], 't', ti); addProp({ kind: 'tree', x: placed.trees[i], z: placed.trees[i + 1], ti, veg: placed.refs[i / 2], alive: true }); }
+  for (let i = 0, tY = performance.now(); i < placed.trees.length; i += 2) { if ((i & 4095) === 0 && performance.now() - tY > 6) { await tick(); tY = performance.now(); } const ti = treeC.length / 2; treeC.push(placed.trees[i], placed.trees[i + 1]); gridAdd(placed.trees[i], placed.trees[i + 1], placed.trees[i], placed.trees[i + 1], 't', ti); addProp({ kind: 'tree', x: placed.trees[i], z: placed.trees[i + 1], ti, veg: placed.refs[i / 2], alive: true }); }
   if (GRASS_Q > 0) {
     await tick();
     const drawPhoto = ctx => { // every aerial ground tile at its place in game coordinates
@@ -8080,6 +8083,7 @@ let worldReady = false;
   progress('Warming up the effects…'); await FX.warm(renderer, camera, POST.level > 0 ? AIM_RT : null); await NUKE_FX.warm(renderer, camera);
   progress('Preparing the shaders…'); await compileInSteps(compileUnits(scene.children), f => { DL.msg = `Preparing the shaders… ${Math.round(f * 100)}%`; showProgress(); }); // a piece at a time: the bar moves, nothing compiles in the first frame
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
+  console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
   worldReady = true; DL.on = false; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
