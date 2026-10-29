@@ -19,6 +19,7 @@ export function createCarMods(THREE) {
     weight: { name: 'Weight reduction', max: 3, cost: [400, 900, 1500], desc: 'lighter: quicker off the line and through turns' },
     armor: { name: 'Armour', max: 3, cost: [200, 450, 800], desc: 'takes 40% less damage a level' },
     turbo: { name: 'Glide turbo', max: 2, cost: [300, 700], desc: 'stronger SPACE glide in the air' },
+    hop: { name: 'Hydraulic jump', max: 5, cost: [900, 1600, 2600, 4000, 6000], desc: 'X jumps the car (and SPACE glides): higher and further every level' },
   };
   const COLORS = [['Factory', null], ['Gloss black', 0x0e0f11], ['Arctic white', 0xf2f2ef], ['Silver', 0xb9bec4], ['Gunmetal', 0x3e444b], ['Racing red', 0xc4161c],
     ['Candy apple', 0x9a0c16], ['Sunset orange', 0xff5a14], ['Poway gold', 0xd4a017], ['Sunflower', 0xf2c230], ['Lime', 0x7ed321], ['British green', 0x0f3d2a],
@@ -55,7 +56,7 @@ export function createCarMods(THREE) {
     s.turn = base.turn * (1 + 0.08 * lv('suspension')) * (1 + 0.04 * lv('weight'));
     v.brakeMul = 1 + 0.25 * lv('brakes');
     v.tireMul = (1 + 0.2 * lv('tires')) * (1 + 0.06 * lv('suspension'));
-    v.armorMul = 0.35 * Math.pow(0.6, lv('armor')); v.turbo = 1 + 0.5 * lv('turbo');
+    v.armorMul = 0.35 * Math.pow(0.6, lv('armor')); v.turbo = 1 + 0.5 * lv('turbo'); v.hopLv = lv('hop');
   }
   // 0..10 ratings for a car's stats (the dealer and the garage show them)
   const rate = (x, lo, hi) => Math.max(0, Math.min(10, Math.round((x - lo) / (hi - lo) * 100) / 10));

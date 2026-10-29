@@ -135,7 +135,7 @@ varying vec3 vTint; varying float vFade; varying vec3 vBr; varying vec3 vBu; var
 #include <fog_pars_fragment>
 void main() {
   if (${IGN} < 1.0 - vFade) discard;   // complement of the near mesh's dither
-  vec4 a = texture2D(uAlb, vUv0) * vW.x + texture2D(uAlb, vUv1) * vW.y + texture2D(uAlb, vUv2) * vW.z + texture2D(uAlb, vUv3) * vW.w;
+  vec4 a = texture2D(uAlb, vUv0, -0.6) * vW.x + texture2D(uAlb, vUv1, -0.6) * vW.y + texture2D(uAlb, vUv2, -0.6) * vW.z + texture2D(uAlb, vUv3, -0.6) * vW.w; // a sharper mip: leaves, not a smudge
   if (uPremul > .5) a.rgb /= max(a.a, .02); // baked premultiplied (src/nature/proctrees.js): the true leaf colour right to the edge, no dark rim against the sky
   float cov = clamp((a.a - 0.5) / max(fwidth(a.a), 1e-3) + 0.5, 0.0, 1.0);
   if (cov < 0.5) discard; // below this the fringe has no MSAA to soften it and reads as a dark halo
@@ -157,7 +157,7 @@ function impostorMaterial(THREE, sp, U) {
     vertexShader: IMP_VS, fragmentShader: IMP_FS, fog: true, alphaToCoverage: true,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]),
   });
-  Object.assign(m.uniforms, U, sp.lods.some(l => l) ? {} : { uNear: { value: 0 }, uBand: { value: 1e-3 } }, {
+  Object.assign(m.uniforms, U, sp.lods.some(l => l) ? (sp.near != null ? { uNear: { value: sp.near } } : {}) : { uNear: { value: 0 }, uBand: { value: 1e-3 } }, { // sp.near: small plants swap to their impostor sooner
     uAlb: { value: sp.alb }, uNrm: { value: sp.nrm }, uVar: { value: uVar }, uBlk: { value: uBlk },
     uBlocks: { value: new THREE.Vector2(sp.blocks[0], sp.blocks[1]) }, uG: { value: sp.G }, uTrans: { value: sp.trans ?? 0.18 }, uPremul: { value: sp.premul ? 1 : 0 },
   });
@@ -270,7 +270,7 @@ export class Vegetation {
           const leaf = !!m0.map && (m0.transparent || m0.alphaTest > 0); // the leaf cards (their texture has alpha)
           const m = m0.clone(); m.vertexColors = true; m.side = THREE.DoubleSide; m.roughness = leaf ? 0.75 : 0.92; m.metalness = 0;
           m.transparent = false; m.alphaTest = leaf ? 0.5 : 0; m.alphaToCoverage = leaf; m.depthWrite = true; m.envMapIntensity = 0.4; m.normalMap = null;
-          patchNear(m, this.U, sp.sway ?? 0.012, leaf); return m;
+          patchNear(m, sp.near != null ? { ...this.U, uNear: { value: sp.near } } : this.U, sp.sway ?? 0.012, leaf); return m;
         });
         const im = new THREE.InstancedMesh(lod.geo, mats, 64); im.count = 0; im.frustumCulled = false;
         im.castShadow = this.opts.nearShadows; im.receiveShadow = true; im.name = `near:${name}/${v}`;
@@ -283,13 +283,15 @@ export class Vegetation {
   // gather plants within the near radius into the near InstancedMeshes (cheap; runs when the camera moved)
   updateNear(cx, cz) {
     const { THREE } = this, R = this.U.uNear.value + this.U.uBand.value + 2, C = this.opts.cell, R2 = R * R;
+    if (!this.order) return; // not built yet
+    const r2 = this.order.map(n => { const sp = this.lib.species.get(n); return sp && sp.near != null ? (sp.near + this.U.uBand.value + 2) ** 2 : R2; });
     const lists = new Map();
     for (let gx = Math.floor((cx - R) / C); gx <= Math.floor((cx + R) / C); gx++)
       for (let gz = Math.floor((cz - R) / C); gz <= Math.floor((cz + R) / C); gz++) {
         const c = this.grid.get(gx * 100000 + gz); if (!c) continue;
         for (let k = 0; k < c.length; k += 2) {
           const si = c[k], i = c[k + 1], a = this.inst.get(this.order[si]);
-          const dx = a.x[i] - cx, dz = a.z[i] - cz; if (dx * dx + dz * dz > R2) continue;
+          const dx = a.x[i] - cx, dz = a.z[i] - cz; if (dx * dx + dz * dz > r2[si]) continue;
           const key = `${si}/${a.v[i]}`; if (!this.near.has(key)) continue;
           let l = lists.get(key); if (!l) lists.set(key, l = []); l.push(i);
         }

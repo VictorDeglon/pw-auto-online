@@ -60,9 +60,9 @@ float hg(float c, float g){ float g2 = g * g; return (1. - g2) / pow(1. + g2 - 2
 vec3 rotAxis(vec3 v, vec3 k, float a){ float c = cos(a), s = sin(a); return v * c + cross(k, v) * s + k * dot(k, v) * (1. - c); }
 
 // cumulus density on the cloud plane: domain-warped fbm, thresholded by the weather's cover
-float cumulus(vec2 uv, float th){
-  vec2 w = vec2(fbm3(uv * .55 + vec2(3.1, 7.7)), fbm3(uv * .55 + vec2(8.3, 1.9))) - .5;
-  float n = fbm(uv + w * 1.1);
+float cumulus(vec2 uv, float th){ // the warp itself drifts slowly, so the clouds billow and change shape as they go
+  vec2 w = vec2(fbm3(uv * .55 + vec2(3.1, 7.7) + time * .006), fbm3(uv * .55 + vec2(8.3, 1.9) - time * .005)) - .5;
+  float n = fbm(uv + w * 1.15);
   return smoothstep(th, th + .22 + cloud * .25, n);
 }
 
@@ -160,9 +160,10 @@ void main(){
     vec3 Ld = sy > -.05 ? sunDir : moonDir;
     float lightK = moonLit * mUp;
     vec3 lightCol = mix(vec3(1.), mix(vec3(1., .62, .3), vec3(1., .36, .28), 1. - g), dusk);
-    vec2 drift = vec2(time * .012, time * .005);
+    vec2 drift = vec2(time * .022, time * .009);                      // the onshore breeze carries them inland
     vec2 uv = d.xz / (d.y + .1) * 1.1 + drift;
-    float th = mix(.78, .18, cloud);                                  // the weather's cover
+    float fair = .09 * sin(time * .0071) + .06 * sin(time * .0173 + 1.3);  // fair weather isn't fixed: cumulus build and thin out over the minutes
+    float th = mix(.78, .18, clamp(cloud + max(0., fair + .05) * (1. - cloud), 0., 1.)); // the weather's cover
     float dens = cumulus(uv, th);
     float cov = dens * smoothstep(0., .1, d.y);
     // march toward the light across the cloud plane: how much cloud sits between this point and the light
@@ -180,6 +181,12 @@ void main(){
     cn += sodium * glow * (.022 + .045 * dens) * (1. + cloud * .6) * exp(-h * 2.5);
     vec3 cc = mix(cd, cn, night) * (1. - .55 * rain) + flash;
     col = mix(col, cc, cov * hor);
+    // a mid deck of altocumulus: small rounded cells in patches, slower, catching the light before the cumulus does
+    vec2 au = d.xz / (d.y + .08) * 2.6 + vec2(time * .009, time * .003) + 4.;
+    float apatch = smoothstep(.52, .72, fbm3(au * .18 + 2.)), acell = smoothstep(.55, .75, noise(au * 3.1) * .65 + noise(au * 6.3) * .35);
+    float alto = apatch * acell * smoothstep(0., .15, d.y) * (.7 - cloud * .4) * (1. - cov);
+    vec3 ac = mix(mix(horizon, top, .3) * 1.05 + lightCol * .55, band * 1.3, dusk * .7) * mix(1., .1, night);
+    col = mix(col, ac, alto * .75 * hor);
     // high cirrus streaks
     vec2 cu = d.xz / (d.y + .06) * .55 + vec2(time * .004, 0.) + 9.;
     float cirr = smoothstep(.58, .9, fbm(vec2(cu.x * .5, cu.y * 1.8))) * smoothstep(0., .2, d.y) * (.55 - cloud * .3);

@@ -332,3 +332,22 @@ export function ragdoll(r, kind, t = 0, seed = 0) {
     aim(L.ru, L.rf, -0.95, 0.15 + 0.25 * S(t * 7 + s + 2), 0.15); aim(L.rf, L.rh, -0.8, 0.3, 0.4);
   }
 }
+
+// ---- feet on the ground: after the clip has posed the legs, each foot is lifted (two-bone IK on thigh, calf, foot) to
+// where the ground under it really is, and the hips drop by as much as the lower foot needs, so a body stands on a
+// slope, a kerb or a step instead of floating over one foot and sinking the other. groundY(x, z): the visible surface.
+// r.g must already be at the ground height under the body's centre (rootY).
+const _fL = new THREE.Vector3(), _fR = new THREE.Vector3(), _ft = new THREE.Vector3(), _kp = new THREE.Vector3();
+export function plantFeet(r, groundY, rootY, dt) {
+  if (!r || !r.human) return; const L = limbs(r); if (!L.lt || !L.lc || !L.lft || !L.rt || !L.rc || !L.rft) return;
+  r.g.updateMatrixWorld(true); L.lft.getWorldPosition(_fL); L.rft.getWorldPosition(_fR);
+  const dL = Math.max(-0.45, Math.min(0.45, groundY(_fL.x, _fL.z) - rootY)), dR = Math.max(-0.45, Math.min(0.45, groundY(_fR.x, _fR.z) - rootY));
+  const drop = Math.min(0, dL, dR), k = 1 - Math.exp(-(dt || 0.016) * 14);
+  r.footDrop = (r.footDrop || 0) + (drop - (r.footDrop || 0)) * k; // eased: no snapping hips over a kerb
+  r.body.position.y += r.footDrop; r.g.updateMatrixWorld(true);
+  _kp.set(Math.sin(r.g.rotation.y), 0.25, Math.cos(r.g.rotation.y)); // knees bend forward
+  for (const [t, c, f, d] of [[L.lt, L.lc, L.lft, dL], [L.rt, L.rc, L.rft, dR]]) {
+    const lift = d - r.footDrop; if (Math.abs(lift) < 0.01) continue;
+    f.getWorldPosition(_ft); _ft.y += lift; reach(t, c, f, _ft, _kp);
+  }
+}

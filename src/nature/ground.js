@@ -213,9 +213,12 @@ export function groundPatch(ground, opts = {}) {
         vec4 w = vec4(wSoil, wDry, wLawn, wLit) * (1.0 - wRock);
         float lawnZ = 0.0, xeri = 0.0, mulch = 0.0;
         if (gLandOn > 0.5) { // tended ground: lawn yards, parks and fields; dry gardens of granite and mulch
-          vec4 land = texture2D(gLand, (vWp.xz - gLandR.xy) / gLandR.zw);
+          vec2 warp = vec2(gFbm(vWp.xz * 0.33) - 0.5, gFbm(vWp.xz * 0.33 + 7.3) - 0.5) * 2.4; // ragged, not ruled: lawns and gardens fray at their edges
+          vec4 land = texture2D(gLand, (vWp.xz + warp - gLandR.xy) / gLandR.zw);
           float lawnLot = step(0.5, land.a);
           lawnZ = max(land.g, land.r * lawnLot); xeri = land.r * (1.0 - lawnLot) * (1.0 - land.g);
+          float wear = smoothstep(0.6, 0.78, gFbm(vWp.xz * 0.21 + 3.7)) * (1.0 - land.g * 0.6); // worn and dried-out patches in the lawns
+          xeri = max(xeri, lawnZ * wear * 0.7); lawnZ *= 1.0 - wear * 0.7;
           mulch = smoothstep(0.42, 0.62, gFbm(vWp.xz * 0.28 + land.a * 31.0));
           w = mix(w, vec4(1.0 - mulch, 0.0, 0.0, mulch), xeri * (1.0 - wRock));
           w = mix(w, vec4(0.0, 0.0, 1.0, 0.0), lawnZ * (1.0 - wRock));
@@ -237,7 +240,8 @@ export function groundPatch(ground, opts = {}) {
           // photo-tinted detail: layer texture divided by its mean colour keeps the photo's hue and adds structure
           vec3 tint = soft * (0.88 + 0.24 * macro);
           tint *= mix(vec3(1.0), vec3(1.1, 1.02, 0.8), (1.0 - lawnZ) * (1.0 - xeri) * (1.0 - wRock)); // the wild: sun-baked, brown-green, never blue-grey
-          tint = mix(tint, vec3(0.062, 0.115, 0.026) * (0.85 + 0.3 * macro), lawnZ * 0.8);      // a watered lawn, not the photo's grey
+          float tired = smoothstep(0.45, 0.75, gFbm(vWp.xz * 0.09 + 11.0));
+          tint = mix(tint, mix(vec3(0.062, 0.115, 0.026), vec3(0.11, 0.12, 0.045), tired * 0.6) * (0.85 + 0.3 * macro), lawnZ * 0.8); // a watered lawn, patchy in the heat
           tint = mix(tint, vec3(0.30, 0.22, 0.13) * (0.85 + 0.3 * macro), xeri * (1.0 - mulch) * 0.8); // decomposed granite
           vec3 dS = L0.rgb / gMean[0], dD = L1.rgb / gMean[1], dL = L2.rgb / gMean[2], dR = LR.rgb / gMean[4];
           float lumD = dot(dD, vec3(0.2126, 0.7152, 0.0722)), lumL = dot(dL, vec3(0.2126, 0.7152, 0.0722));

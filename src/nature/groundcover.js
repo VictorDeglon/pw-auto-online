@@ -185,7 +185,7 @@ function leafCard(sheet, r) {
   }
   return g.getImageData(0, 0, 256, 256);
 }
-export async function loadCards(THREE, base = 'assets/pbr/atlas/') {
+export async function loadCards(THREE, base = 'assets/pbr/atlas/', scanned = {}) { // scanned.tall: a scanned grass clump card (src/nature/phplants.js grassCard)
   const lum = im => { const d = im.data; let s = 0, n = 0; const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; for (let i = 0; i < d.length; i += 4 * 7) if (d[i + 3] > 128) { s += 0.299 * lin(d[i]) + 0.587 * lin(d[i + 1]) + 0.114 * lin(d[i + 2]); n++; } return n ? s / n : 0.2; };
   const [lawn, oats, sheet] = await Promise.all([atlasImage(base, 'foliage001'), atlasImage(base, 'foliage004'), atlasImage(base, 'leafset013')]);
   const oatsTop = new ImageData(new Uint8ClampedArray(oats.data.buffer.slice(0, oats.width * (oats.height >> 1) * 4)), oats.width, oats.height >> 1); // the top row of seed heads
@@ -193,8 +193,8 @@ export async function loadCards(THREE, base = 'assets/pbr/atlas/') {
   const tall = (() => { const W = 1024, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d', { willReadFrequently: true });
     const bl = imageCanvas(lawn), oc = imageCanvas(oatsTop); g.filter = 'saturate(0.55) sepia(0.35) brightness(0.95)'; g.drawImage(bl, 0, H * 0.18, W, H * 0.82); g.drawImage(bl, W * 0.12, H * 0.3, W * 0.8, H * 0.7); g.filter = 'none'; g.drawImage(oc, 0, 0, W, H);
     return g.getImageData(0, 0, W, H); })();
-  const brush = leafCard(imageCanvas(sheet), rng(23));
-  return { lawn: cardTex(THREE, lawn), oats: cardTex(THREE, tall), brush: cardTex(THREE, brush), lum: [lum(lawn), lum(brush), lum(tall)] };
+  const brush = leafCard(imageCanvas(sheet), rng(23)), tall2 = scanned.tall || tall;
+  return { lawn: cardTex(THREE, lawn), oats: cardTex(THREE, tall2), brush: cardTex(THREE, brush), lum: [lum(lawn), lum(brush), lum(tall2)] };
 }
 
 // ---------------------------------------------------------------- card textures, drawn once (no downloads)
@@ -252,7 +252,7 @@ const VS_BODY = /* glsl */`
   float dist = distance(wp, cameraPosition.xz);
   vec2 cuv = (wp - uCov.xy) / uCov.zw, cm = 300.0 / uCov.zw; // the cover map's 300 m pad: no data out there (the outer world)
   vec4 cv = texture2D(uCover, cuv);
-  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.6) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : min(1.0, cv.a * 1.4); // 0 lawn, 1 brush, 2 tall grass
+  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.8) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : min(1.0, cv.a * 1.7 + cv.b * 0.55 * (1.0 - cv.r) * step(0.02, cv.g + cv.a + cv.b)); // 0 lawn, 1 brush, 2 wild grass (sparser dry grass on the dry ground too)
   dens *= step(cm.x, cuv.x) * step(cuv.x, 1.0 - cm.x) * step(cm.y, cuv.y) * step(cuv.y, 1.0 - cm.y);
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
   float thin = uKind < 0.5 || uKind > 1.5 ? mix(1.0, 0.35, smoothstep(uR * 0.3, uR, dist)) : 1.0;
@@ -328,9 +328,9 @@ export class GroundCover {
     this.THREE = THREE; this.cover = cover; this.terrainAt = terrainAt; this.U = U;
     const q = opts.quality ?? 1, C = opts.cards;
     this.layers = [
-      { kind: 0, s: 0.32 / Math.sqrt(q), R: 34, geo: grassTuft(THREE) },  // mown lawn, dense and short
+      { kind: 0, s: 0.26 / Math.sqrt(q), R: 30, geo: grassTuft(THREE) },  // mown lawn, dense and short
       { kind: 1, s: 3.2 / Math.sqrt(q), R: 200, geo: brushClump(THREE) }, // shrubs
-      { kind: 2, s: 0.7 / Math.sqrt(q), R: 80, geo: grassTuft(THREE) },   // tall wild grass
+      { kind: 2, s: 0.5 / Math.sqrt(q), R: 90, geo: grassTuft(THREE) },   // tall wild grass: thick enough that the dirt only shows through
     ];
     // height texture around the camera
     this.HN = 192; this.HM = 2.6; // texels, metres per texel (~500 m square)
@@ -376,17 +376,38 @@ export class GroundCover {
 // ---------------------------------------------------------------- far shrubs (impostors), map-wide
 // Scatters shrubs on a jittered grid wherever the cover map says brush. veg: Vegetation; species: a shrub-like
 // species that exists in the asset manifest. Returns the count.
+// stands and openings: chaparral grows in thick patches with bare or grassy gaps, not evenly spaced
+function vnoise(x, z) { const h = (i, j) => { const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return v - Math.floor(v); }; const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
+  return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - w) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * w; }
+export function clump(x, z) { const n = vnoise(x / 38, z / 38) * 0.6 + vnoise(x / 13 + 7, z / 13 + 3) * 0.4; return Math.min(1, Math.max(0, (n - 0.32) / 0.3)); }
 export function scatterShrubs(cover, veg, heightAt, species, bounds, opts = {}) {
   const lib = veg.lib.species.get(species); if (!lib) return 0;
   const step = opts.step ?? 13, cap = opts.cap ?? 220000; const r = rng(4242); let n = 0;
   const V = lib.variants[0], baseH = Math.max(0.3, V.height);
   for (let z = bounds[1]; z < bounds[3] && n < cap; z += step) for (let x = bounds[0]; x < bounds[2] && n < cap; x += step) {
     const px = x + r() * step, pz = z + r() * step, c = cover.at(px, pz); if (!c) continue;
-    const b = c[1] / 255; if (b < 0.25 || r() > b * 0.55) continue;
+    const b = c[1] / 255, k = clump(px, pz); if (b < 0.25 || r() > b * 0.55 * (0.25 + 1.1 * k)) continue;
     if (opts.reject && opts.reject(px, pz)) continue;
-    const hgt = 0.9 + r() * 1.6 + b * 0.8, s = hgt / baseH, br = 0.55 + r() * 0.25, dry = c[2] / 255;
+    const hgt = (0.7 + r() * 1.4 + b * 0.8) * (0.7 + 0.6 * k), s = hgt / baseH, br = 0.55 + r() * 0.25, dry = c[2] / 255; // bigger and closer in a stand
     const tint = [0.8 * br * (1 + dry * 0.25), 0.86 * br, 0.66 * br * (1 - dry * 0.15)]; // dark olive from afar, not black
     veg.add(species, px, heightAt(px, pz) - 0.15 * s, pz, r() * Math.PI * 2, s, Math.floor(r() * lib.variants.length), tint);
+    n++;
+  }
+  return n;
+}
+// a general scatter over the cover map: want(c) gives the chance at a spot (c: the cover texel RGBA), size [min, max]
+// in metres of height (or of width with byWidth), sink: how far into the ground (fraction of height)
+export function scatterOnCover(cover, veg, heightAt, species, bounds, o = {}) {
+  const lib = veg.lib.species.get(species); if (!lib) return 0;
+  const step = o.step ?? 10, cap = o.cap ?? 50000, r = rng(o.seed ?? 99), size = o.size || [0.6, 1.2]; let n = 0;
+  for (let z = bounds[1]; z < bounds[3] && n < cap; z += step) for (let x = bounds[0]; x < bounds[2] && n < cap; x += step) {
+    const px = x + r() * step, pz = z + r() * step, c = cover.at(px, pz); if (!c) continue;
+    const kc = o.clumped ? clump(px + 91, pz - 37) : 1; if (r() > o.want(c, px, pz) * (o.clumped ? 0.2 + 1.2 * kc : 1)) continue;
+    if (o.reject && o.reject(px, pz)) continue;
+    const vi = Math.floor(r() * lib.variants.length), V = lib.variants[vi], d = (size[0] + r() * (size[1] - size[0])) * (o.clumped ? 0.65 + 0.7 * kc : 1);
+    const s = d / Math.max(0.05, o.byWidth ? V.width : V.height), br = (o.bright ?? 0.85) + r() * 0.25, dry = c[2] / 255;
+    const tint = o.tint ? o.tint(br, dry) : [br, br, br];
+    veg.add(species, px, heightAt(px, pz) - (o.sink ?? 0.1) * V.height * s, pz, r() * Math.PI * 2, s, vi, tint);
     n++;
   }
   return n;

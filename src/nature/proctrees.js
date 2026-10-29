@@ -59,7 +59,7 @@ function twigCard(sheet, blobs, r, o = {}) {
     for (let k = 0; k < leaves / twigs; k++) {
       const [px, py, pa] = pts[Math.floor(r() * pts.length)], b = blobs[Math.floor(r() * blobs.length)], s = size * (0.75 + r() * 0.5) / Math.max(b[2], b[3]);
       g.save(); g.translate(px + (r() - 0.5) * 22, py + (r() - 0.5) * 22); g.rotate(pa + (r() - 0.5) * 2.2 + Math.PI / 2 + hang * 1.2);
-      g.filter = `brightness(${(0.5 + r() * 0.35) * (o.dark || 1)}) saturate(${0.55 + r() * 0.3}) hue-rotate(${-6 - r() * 8}deg)`; // SoCal leaves: olive, dusty, not lime
+      g.filter = `brightness(${(0.68 + r() * 0.5) * (o.dark || 1)}) saturate(${0.6 + r() * 0.35}) hue-rotate(${-6 - r() * 8}deg)`; // SoCal leaves: olive, dusty, not lime; each its own tone, some catching the light
       g.drawImage(sheet, b[0], b[1], b[2], b[3], -b[2] * s / 2, 0, b[2] * s, b[3] * s); g.restore();
       if (o.flowers && r() < o.flowers) { g.fillStyle = `hsl(${268 + r() * 16},${55 + r() * 20}%,${55 + r() * 15}%)`; for (let f = 0; f < 6; f++) { g.beginPath(); g.arc(px + (r() - 0.5) * 40, py + (r() - 0.5) * 40, 6 + r() * 6, 0, Math.PI * 2); g.fill(); } }
     }
@@ -127,7 +127,9 @@ class Builder {
   card(p, r, u, cc, ao, uv = [0, 0, 1, 1], bend = 0.65) {
     const q = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [p[0] + r[0] * a + u[0] * b, p[1] + r[1] * a + u[1] * b, p[2] + r[2] * a + u[2] * b]);
     const fn = norm(cross(r, u)), nrm = v => { const o = norm([v[0] - cc[0], v[1] - cc[1], v[2] - cc[2]]); return norm([o[0] * bend + fn[0] * (1 - bend), o[1] * bend + fn[1] * (1 - bend) + 0.15, o[2] * bend + fn[2] * (1 - bend)]); };
-    const U = [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]], C = q.map(v => { const k = ao * (0.75 + 0.25 * Math.min(1, Math.hypot(v[0] - cc[0], v[2] - cc[2]) / 3)); return [k, k, k]; });
+    const R = this.crownR || 3, U = [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]];
+    const C = q.map(v => { const d = Math.hypot(v[0] - cc[0], (v[1] - cc[1]) * 1.3, v[2] - cc[2]) / R, top = Math.max(0, Math.min(1, (v[1] - cc[1]) / R * 0.5 + 0.5));
+      const k = ao * (0.42 + 0.58 * Math.min(1, Math.max(0, (d - 0.25) / 0.75))) * (0.85 + 0.25 * top); return [k, k, k]; }); // deep in the crown it's dark; the sunny top and rim are bright
     this.tri(1, q[0], q[1], q[2], nrm(q[0]), nrm(q[1]), nrm(q[2]), U[0], U[1], U[2], C[0], C[1], C[2]);
     this.tri(1, q[0], q[2], q[3], nrm(q[0]), nrm(q[2]), nrm(q[3]), U[0], U[2], U[3], C[0], C[2], C[3]);
   }
@@ -157,7 +159,7 @@ function broadleaf(B, r, P) {
       v = B.limb(q, q2, r0, r1, depth === 0 ? 7 : depth === 1 ? 5 : 4, v, depth ? 0.7 : 0.5, 0.9); q = q2;
     }
     if (depth >= P.depth) { tips.push([q, dir]); return; }
-    if (depth >= P.depth - 1) tips.push([add(p, dir, len * 0.55), dir]); // leaves along the outer limbs too: a full crown, not pom-poms
+    if (depth >= P.depth - 2 && depth > 0) for (const f of [0.3, 0.62, 0.85]) tips.push([add(p, dir, len * f), dir, 0.55]); // leaves all along the outer limbs: a crown, not pom-poms on sticks
     const kids = P.kids[depth] + (r() < 0.5 ? 1 : 0);
     for (let k = 0; k < kids; k++) {
       const ang = P.spread[depth] * (0.75 + r() * 0.5), az = (k / kids) * Math.PI * 2 + r() * 1.2;
@@ -169,8 +171,9 @@ function broadleaf(B, r, P) {
   branch([0, 0, 0], [0, 1, 0], P.trunk, P.radius, 0, 0);
   // leaf cards round each tip, facing out of the crown
   let cx = 0, cy = 0, cz = 0; for (const [q] of tips) { cx += q[0]; cy += q[1]; cz += q[2]; } const cc = [cx / tips.length, cy / tips.length - P.card * 0.2, cz / tips.length];
-  for (const [q, d] of tips) for (let k = 0; k < P.cards; k++) {
-    const p = add(q, [(r() - 0.5) * P.card, (r() - 0.5) * P.card * 0.8 - P.hang * P.card * 0.5, (r() - 0.5) * P.card]);
+  { let m = 0; for (const [q] of tips) m = Math.max(m, Math.hypot(q[0] - cc[0], q[1] - cc[1], q[2] - cc[2])); B.crownR = m + P.card * 0.5; }
+  for (const [q, d, wgt] of tips) for (let k = 0, nk = Math.max(2, Math.round(P.cards * (wgt || 0.75))); k < nk; k++) {
+    const p = add(q, [(r() - 0.5) * P.card * 1.6, (r() - 0.5) * P.card * 1.1 - P.hang * P.card * 0.5, (r() - 0.5) * P.card * 1.6]); // loose sprays, gaps between them
     const out = norm([p[0] - cc[0] + (r() - 0.5), (p[1] - cc[1]) * 0.6, p[2] - cc[2] + (r() - 0.5)]);
     let up = norm(add([0, 1 - P.hang * 2, 0], d, 0.4)); if (Math.abs(up[0] * out[0] + up[1] * out[1] + up[2] * out[2]) > 0.95) up = [1, 0, 0];
     const rt = norm(cross(up, out)), u2 = norm(cross(out, rt)), s = P.card * (0.75 + r() * 0.5);
@@ -229,12 +232,13 @@ function palm(B, r, o) {
 // ---------------------------------------------------------------- the species
 async function makeVariants(THREE, base) {
   const r0 = rng(77);
-  const [gum, pepper, jac] = await Promise.all(['leafset022', 'leafset013', 'leafset002'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
+  const [gum, pepper, jac, oak] = await Promise.all(['leafset022', 'leafset013', 'leafset002', 'leafset024'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
   const card = (sheet, o, seed) => texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o));
   const T = {
     gum: card(gum, { twigs: 7, leaves: 460, size: 42, hang: 0.6 }, 11), pepper: card(pepper, { twigs: 8, leaves: 700, size: 26, hang: 0.9 }, 12),
     jac: card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring
     cyp: card(cyp, { twigs: 12, leaves: 1100, size: 16, dark: 0.88 }, 14),
+    oak: card(oak, { twigs: 9, leaves: 900, size: 17, dark: 0.82, hang: 0.15 }, 31), // coast live oak: small, glossy, dark leaves
     fan: texFrom(THREE, palmFanLeaf(rng(15))), date: texFrom(THREE, palmPinnaLeaf(rng(16))), dead: texFrom(THREE, palmPinnaLeaf(rng(17), true)),
     barkGum: texFrom(THREE, barkCanvas('gum', rng(18)), true, true), bark: texFrom(THREE, barkCanvas('brown', rng(19)), true, true),
     barkFan: texFrom(THREE, barkCanvas('fan', rng(20)), true, true), barkDate: texFrom(THREE, barkCanvas('date', rng(21)), true, true),
@@ -243,6 +247,7 @@ async function makeVariants(THREE, base) {
   const S = {
     palm_fan: { trans: 0.25, sway: 0.006, list: [] }, palm_date: { trans: 0.25, sway: 0.008, list: [] }, eucalyptus: { trans: 0.2, sway: 0.01, list: [] },
     jacaranda: { trans: 0.2, sway: 0.012, list: [] }, pepper: { trans: 0.25, sway: 0.016, list: [] }, slender: { trans: 0.15, sway: 0.008, list: [] },
+    oak: { trans: 0.15, sway: 0.008, list: [] },
   };
   const grow = (name, fn, bark, leaf) => { const B = new Builder(); fn(B); S[name].list.push({ geo: B.geometry(THREE), mats: mats(bark, leaf) }); };
   for (let i = 0; i < 3; i++) { const r = rng(100 + i); grow('palm_fan', B => palm(B, r, { kind: 'fan', height: [17, 12, 21][i], r0: 0.42, r1: 0.26, fronds: 34, skirt: i === 1 ? 0 : 2.8 + i }), T.barkFan, T.fan); }
@@ -251,6 +256,8 @@ async function makeVariants(THREE, base) {
   for (let i = 0; i < 2; i++) { const r = rng(400 + i); grow('jacaranda', B => broadleaf(B, r, { trunk: 2.6, radius: 0.3, depth: 3, kids: [4, 3, 2], spread: [0.85, 0.6, 0.55], ratio: [1.3, 0.62, 0.55], wiggle: 0.3, up: 0.06, droop: 0.15, cards: 7, card: 1.7, hang: 0.05 }), T.bark, T.jac); }
   for (let i = 0; i < 2; i++) { const r = rng(500 + i); grow('pepper', B => broadleaf(B, r, { trunk: 2.2, radius: 0.36, depth: 3, kids: [4, 3, 2], spread: [0.8, 0.7, 0.6], ratio: [1.1, 0.6, 0.55], wiggle: 0.45, up: 0.05, droop: 0.6, cards: 8, card: 1.8, hang: 0.85, tall: 1.6 }), T.bark, T.pepper); }
   for (let i = 0; i < 2; i++) { const r = rng(600 + i); grow('slender', B => cypress(B, r, [11, 14][i]), T.bark, T.cyp); }
+  // coast live oak: a short, thick trunk splitting low into big sinuous limbs; a dense, rounded crown wider than it is tall
+  for (let i = 0; i < 3; i++) { const r = rng(700 + i); grow('oak', B => broadleaf(B, r, { trunk: [1.8, 2.3, 1.5][i], radius: 0.55, depth: 3, kids: [4, 3, 3], spread: [1.0, 0.75, 0.65], ratio: [2.4, 0.62, 0.55], wiggle: 0.5, up: 0.04, droop: 0.25, cards: 11, card: 1.7, hang: 0.1, tall: 0.9 }), T.bark, T.oak); }
   return S;
 }
 

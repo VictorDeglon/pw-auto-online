@@ -339,14 +339,15 @@ function dispatch(dt) {
   police.spawnT -= dt; police.recruitT -= dt; police.roadblockT -= dt;
   let active = 0;
   for (const v of ctx.vehicles) if (v.isCop && !v.dead && v.dispatched && !v.roadblock) active++;
+  const quota = Math.max(1, Math.round(QUOTA[w] * (ctx.policeMul ? ctx.policeMul(c.x, c.z) : 1))); // La Jolla and downtown send more (src/world/zones.js)
   if (police.recruitT <= 0) { // patrols within radio range of the LKP respond
     police.recruitT = 1;
     for (const v of ctx.vehicles) {
-      if (active >= QUOTA[w]) break;
+      if (active >= quota) break;
       if (v.isCop && v.driver === 'cop' && !v.dead && !v.ai && hyp(v.pos.x - c.x, v.pos.z - c.z) < 320) { engage(v, 'respond'); active++; }
     }
   }
-  if (police.spawnT <= 0 && active < QUOTA[w]) { spawnUnit(false); police.spawnT = w >= 3 ? 2.5 : 4.5; }
+  if (police.spawnT <= 0 && active < quota) { spawnUnit(false); police.spawnT = (w >= 3 ? 2.5 : 4.5) / Math.max(0.6, quota / QUOTA[w]); }
   if (w >= 5 && !police.sed && spawnUnit(true)) police.sed = true;
   if (w >= 3 && police.roadblockT <= 0 && isSolid()) police.roadblockT = trySpawnRoadblock() ? rand(30, 45) : 3;
 }

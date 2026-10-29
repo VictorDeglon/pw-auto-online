@@ -28,6 +28,7 @@ export function createPost(THREE, renderer, camera, level = 2, opts = {}) {
     tCol: { value: null }, tDep: { value: null }, uRes: { value: new THREE.Vector2() }, uTime: { value: 0 },
     uNear: { value: camera.near }, uFar: { value: camera.far }, uExp: { value: 1 }, uInk: { value: 1 }, uFx: { value: 1 }, uNight: { value: 0 }, uDusk: { value: 0 }, uDbg: { value: 0 },
     uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uGrade: { value: 1 }, // sun on screen (uv, strength) for the light shafts; the colour grade's strength
+    uCloudSh: { value: new THREE.Vector4(0, 1, 0, 0) }, uCloudT: { value: 0 }, uCloudCov: { value: 0.75 }, // cloud shadows: sun direction + strength, wind time, cover threshold
   };
   const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }';
   const mat = new THREE.ShaderMaterial({
@@ -262,10 +263,13 @@ function realistic(THREE, renderer, U, O, VS) {
   const CU = {
     tCol: U.tCol, uRes: U.uRes, uTime: U.uTime, uNight: U.uNight, uDusk: U.uDusk, tBloom: { value: null }, tExp: { value: null }, tAO: { value: null },
     uBloom: { value: 0.05 }, uBloomN: { value: 1 / MIPS }, uExpK: { value: 1 }, uAO: { value: 0 }, uDbg: { value: 0 }, uAA: { value: 0 },
-    uSun: U.uSun, uGrade: U.uGrade,
+    uSun: U.uSun, uGrade: U.uGrade, tDepC: { value: null }, uIPV: { value: new THREE.Matrix4() }, uCloudSh: U.uCloudSh, uCloudT: U.uCloudT, uCloudCov: U.uCloudCov,
   };
   const comp = sm(/* glsl */`
-    uniform sampler2D tCol, tBloom, tExp, tAO; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA, uGrade; uniform vec3 uSun;
+    uniform sampler2D tCol, tBloom, tExp, tAO, tDepC; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA, uGrade, uCloudT, uCloudCov; uniform vec3 uSun; uniform vec4 uCloudSh; uniform mat4 uIPV;
+    float cH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float cN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(cH(i), cH(i + vec2(1., 0.)), f.x), mix(cH(i + vec2(0., 1.)), cH(i + vec2(1., 1.)), f.x), f.y); }
+    float cF(vec2 p) { float v = 0., a = .5; for (int i = 0; i < 4; i++) { v += a * cN(p); p = p * 2.03 + 17.1; a *= .5; } return v; }
     vec3 srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
     float lt(vec3 c) { return dot(c / (1. + c), vec3(.2126, .7152, .0722)); } // luma of a roughly tone-mapped colour
     float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime * 7.31) * 43758.5453); }
@@ -293,6 +297,17 @@ function realistic(THREE, renderer, U, O, VS) {
       col = mix(col, texture2D(tBloom, vUv).rgb * uBloomN, uBloom);                     // energy-preserving bloom
       float ex = exp2(texture2D(tExp, vec2(.5)).r) * uExpK;
       col *= ex;
+      if (uCloudSh.w > .001) { // cloud shadows sweeping over the ground: the cloud deck 1.4 km up, looked up toward the sun from each point
+        float dz = texture2D(tDepC, vUv).r;
+        if (dz < .99995) {
+          vec4 wp = uIPV * vec4(vUv * 2. - 1., dz * 2. - 1., 1.); wp /= wp.w;
+          vec3 L = normalize(uCloudSh.xyz); float tc = (1400. - wp.y) / max(L.y, .12);
+          vec2 q = (wp.xz + L.xz * tc) * .00055 + vec2(uCloudT * .0034, uCloudT * .0014);
+          vec2 w = vec2(cF(q * .55 + 3.1), cF(q * .55 + 8.3)) - .5;
+          float sh = smoothstep(uCloudCov, uCloudCov + .2, cF(q + w * 1.1));
+          col *= 1. - .42 * sh * uCloudSh.w;
+        }
+      }
       if (uSun.z > .001) { // light shafts: march toward the sun, gathering what's brighter than the exposed white (sky round
         // the sun gets through, trees, roofs and hills block it), so rays stream past whatever stands in front of the sun
         vec2 dl = (uSun.xy - vUv) * (1. / 28.); vec2 q = vUv; float dec = 1.; vec3 acc = vec3(0.);
@@ -358,6 +373,7 @@ function realistic(THREE, renderer, U, O, VS) {
         CU.tAO.value = aoT[1].texture; CU.uAO.value = aoK;
       } else CU.uAO.value = 0;
       CU.tBloom.value = mips[0].texture; CU.tExp.value = expT[expI].texture; CU.uAA.value = rt.samples ? 0 : 1;
+      CU.tDepC.value = rt.depthTexture || null; if (!rt.depthTexture) CU.uCloudSh.value.w = 0; else CU.uIPV.value.copy(cam.matrixWorld).multiply(cam.projectionMatrixInverse);
       CU.uBloom.value = 0.045 + night * 0.035;
       pass(comp, null);
     },

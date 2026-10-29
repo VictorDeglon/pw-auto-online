@@ -196,7 +196,7 @@ function openSettings() {
   $('dynres').checked = G.dynamic; $('voiceson').checked = H.voices(); $('cleanchat').checked = MOD.on;
   for (const b of $('lookseg').children) { b.classList.toggle('on', +b.dataset.l === H.look()); b.onclick = () => { H.setLook(+b.dataset.l); openSettings(); }; }
   $('sens').value = H.sens(); $('sensv').textContent = (+H.sens()).toFixed(2) + '×';
-  const sky = H.sky(); $('skylock').checked = sky.lock; $('skyset').classList.toggle('off', !sky.lock);
+  const sky = H.sky(); $('skylock').checked = sky.lock; $('wxfreeze').checked = !!sky.freeze; $('skyset').classList.toggle('off', !sky.lock && !sky.freeze);
   $('skyhour').value = sky.hour; $('skyhourv').textContent = clockLabel(sky.hour);
   const wx = $('skywx'); wx.textContent = '';
   for (const [k, name] of H.weathers()) { const b = document.createElement('button'); b.textContent = name; b.classList.toggle('on', k === sky.weather); b.onclick = () => { H.setSky({ weather: k }); openSettings(); }; wx.append(b); }
@@ -287,6 +287,7 @@ export function initShell(hooks) {
   });
   $('sens').oninput = () => { H.setSens(+$('sens').value); $('sensv').textContent = (+$('sens').value).toFixed(2) + '×'; };
   $('skylock').onchange = () => { H.setSky({ lock: $('skylock').checked }); openSettings(); };
+  $('wxfreeze').onchange = () => { H.setSky({ freeze: $('wxfreeze').checked }); openSettings(); };
   $('skyhour').oninput = () => { H.setSky({ hour: +$('skyhour').value }); $('skyhourv').textContent = clockLabel(+$('skyhour').value); };
   $('gfxapply').onclick = applyGfx;
   $('gfxsub').textContent = `Graphics: ${PRESETS[H.gfx.id].label}`;

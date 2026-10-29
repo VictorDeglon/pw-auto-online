@@ -73,3 +73,45 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - People walk only where there's a sidewalk or trail. The crowd wears everyday clothes; uniforms only where they work.
 - Surfaces are scanned PBR (assets/pbr, CC0) with wear: grime at the foot of walls, streaks under sills, patched
   asphalt, stained slabs.
+
+## Water (`src/world/water.js`)
+
+- **Pools:** clear as glass: a white plaster shell, a 15 cm band of blue mosaic tile at the waterline, a shallow end
+  with steps sloping to the deep end; the water itself is a Fresnel mirror over the shell, which turns turquoise with
+  depth and carries the sun's caustics. Some are lit at night. Cast coping, a light concrete deck, the ground and grass
+  cut out round each pool (`setPoolHoles`, `src/nature/ground.js`).
+- **Lakes:** dark, cold and choppy, never bright blue; whitecaps when it blows; a band of wet decomposed granite and
+  mud at the shore, not lawn to the waterline.
+- **The sea:** swell lines up with the shore (it reads the distance to land), builds, breaks and runs up the sand as
+  whitewater; Pacific blue-black offshore, green over the sand. Beaches get lifeguard towers, umbrellas, towels, boards.
+- **Fountains:** tiered cast stone, water sheeting off each bowl, a jet, spray, on a round paved court.
+
+## Streets, edges and nature
+
+- Streets end the way Poway's do: cul-de-sacs among houses, barricades with END markers elsewhere (`src/world/roadends.js`).
+- House fronts have depth: stoops, beds with mow curbs, sills, trim, lanterns, mailboxes, curb cuts, side gates.
+- Main roads with houses backing onto them get tan split-face block walls with pilasters; country roads get white
+  ranch fences; estates get stone pillars and open iron gates.
+- Trails are decomposed granite (`SURF.path`): compacted down the middle, loose at ragged edges, stones along them.
+- Ground never shows bare and flat: lawns are dense, wild ground is grass, bushes in clumped stands, pebbles and stones;
+  lawn and garden edges fray and lawns have worn patches.
+- Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
+  crown; real meshes out to ~85 m on High.
+- Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.
+- The sky moves: clouds billow and drift, fair-weather cumulus come and go, and their shadows cross the ground.
+- Dusk is violet overhead and orange at the horizon (`C.duskTop`, `C.duskHor` in index.html), with pink-lit clouds.
+
+## Zones (`src/world/zones.js`)
+
+The county by money and character: rich (La Jolla, Del Mar, Rancho Santa Fe, Coronado, Fairbanks Ranch), comfortable
+(north Poway's Green Valley and High Valley, Rancho Bernardo, Scripps Ranch, Carmel Valley, Point Loma), downtown,
+beach towns, working neighbourhoods (Barrio Logan, City Heights, National City, El Cajon, Escondido, Chula Vista), and
+the back country. A zone sets the car mix, cash and loot, and the police presence (more patrols in rich areas and
+downtown).
+
+## Sound
+
+- The main theme (*Descent into Luxury*) owns the menus: main menu after the loading screen, and the pause screen.
+- On foot the game's exploring songs take turns with silence, so the place can be heard: birds and a hawk by day,
+  crickets and coyotes at night, wind gusts outdoors. In a car it's the radio; a supercar comes on to *Out of Pocket*.
+- Thunder follows lightning by the speed of sound. Rain and wind are muffled indoors and in cars.

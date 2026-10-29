@@ -8,6 +8,41 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.7.1 (2026-10-28)
+
+- **Water by kind:** clear pools with a tile band, steps, a sloped floor, caustics and night lights, the ground cut out
+  round each one; dark, choppy lakes with muddy shores; the sea near the coast with swell that lines up with the beach,
+  breaks and runs up the sand; working fountains at three plazas; beaches with lifeguard towers, umbrellas, towels
+  and boards.
+- **Streets that end like Poway's:** cul-de-sac bulbs on residential dead ends, barricades with END markers elsewhere,
+  NO OUTLET and DEAD END signs. Manholes and valve covers. Signs stand off their posts and have galvanised backs.
+- **House fronts with depth:** stoops, planting beds with mow curbs, window sills, garage trim, coach lights,
+  mailboxes, driveway curb cuts, wooden side gates. Block walls with pilasters along the main roads, white ranch
+  fences in the country, open iron gates on estate drives.
+- **Trails:** decomposed granite with ragged edges, worn lines and granite stones; gravel shoulders on country roads.
+- **Nature:** coast live oaks grown at their real size, brighter leaves shaded through the crown, real tree meshes out
+  to ~85 m; scanned shrubs, wild bushes in clumps, ice plant on the freeway banks, pebbles and stones on bare ground,
+  dead branches under the brush (Poly Haven, CC0); thicker lawns and wild grass from a scanned grass clump; lawns and
+  gardens with frayed edges and worn patches. Regional trees and house colours out in the county.
+- **Driving:** brush and chaparral slow the car and scratch it up; ranch, trail and yard fences and block walls break
+  when you hit them fast enough (and hurt the car). Jumping is the **Hydraulic jump** upgrade (X; SPACE glides), higher
+  and further every level.
+- **Sky:** clouds billow and change shape, drift on the breeze, fair-weather cumulus build and thin out, a mid deck of
+  altocumulus; their shadows sweep across the ground.
+- **People:** feet planted on the ground you see, hips dropping on slopes and kerbs.
+- **Plazas:** shops as parodies with look-alike lettering; store signs now face the street.
+- **Zones** (`src/world/zones.js`): La Jolla, Del Mar, Rancho Santa Fe and Coronado money; north Poway estates;
+  downtown; the beach towns; working neighbourhoods; the back country. They set the traffic and parked cars (sports
+  cars and SUVs where the money is, pickups out east), how much cash people carry, ammo drops, and how many patrol
+  cars answer a call (more in the rich areas and downtown).
+- **Dusk:** violet overhead, orange at the horizon, like the real thing.
+- **Music:** the game's own songs. *Descent into Luxury* loops on the main menu and the pause screen; *Sunset Freeway*
+  and *California Twilight* play on foot as you explore, with quiet spells between; KPOW 96.9 Sunset Radio plays
+  *Out of Pocket*, *California Dreamin'* and *Bad Investment* (a supercar tunes straight to *Out of Pocket*).
+- **Sound:** thunder rolls in a second per 343 m after the flash, with a crack when it's close; wind gusts on foot
+  outdoors; rain muffled under a roof or in a car; birds by day, a hawk over the brush, crickets and coyotes at night.
+- **Weather:** a Freeze the weather setting keeps today's weather while the day goes on; off, the weather cycles.
+
 ## 0.7.0: Golden Hour (2026-10-28)
 
 - **Look:** a Sunset Western colour grade (amber highlights, warm-brown shadows, olive greens, filmic curve, grain,

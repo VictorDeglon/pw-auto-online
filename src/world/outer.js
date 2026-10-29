@@ -144,6 +144,7 @@ export function createOuter(E) {
     }
   }
   function* prepare(t) {
+    if (!t.d) return; // dropped before its turn came
     const d = t.d, x0 = t.x0, z0 = t.z0, s = 0.1; t.phase = 'parse';
     const abs = a => { const out = new Float32Array(a.length); let x = 0, z = 0; for (let k = 0; k < a.length; k += 2) { x += a[k]; z += a[k + 1]; out[k] = x0 + x * s; out[k + 1] = z0 + z * s; } return out; }; // delta-coded decimetres
     for (let j = 0, h = d.h; j < HN; j++) for (let i = 1; i < HN; i++) h[j * HN + i] += h[j * HN + i - 1]; // the posts: steps along each row

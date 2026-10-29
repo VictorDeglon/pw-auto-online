@@ -59,8 +59,9 @@ export function createAtmosphere(THREE) {
     col = col * T + ins * (1. - T) * fogP.z;
     // the end of the view: into the horizon colour (with the sun's glow on that side)
     #ifndef FOG_EXP2
-      float e = smoothstep(fogNear, fogFar, vFogDepth);
-      col = mix(col, fogColor + fogSunCol * mie * fogQ.y * .5, e);
+      float e = smoothstep(fogNear, fogFar, vFogDepth); e = e * e * (3. - 2. * e); // a long, soft S: the land thins into the horizon, no white wall
+      vec3 edge = mix(fogColor * vec3(.86, .9, .97), fogAir, .25) + fogSunCol * mie * fogQ.y * .35; // the far ridges go blue-grey, a shade under the sky's horizon
+      col = mix(col, edge, e);
     #endif
     return col;
   }

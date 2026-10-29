@@ -451,6 +451,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     <label class="check"><input type="checkbox" id="cleanchat"> Hide bad words and rude names <small>online: swear words in chat show as ****, and a player with a rude name shows up under a made-up first name. Off shows what they typed.</small></label>
     <label class="range">Mouse sensitivity <input type="range" id="sens" min="0.4" max="2" step="0.05"> <output id="sensv"></output></label>
     <label class="check"><input type="checkbox" id="skylock"> Lock my time and weather <small>on your screen only. Online, everyone else keeps the server's shared time and weather.</small></label>
+    <label class="check"><input type="checkbox" id="wxfreeze"> Freeze the weather <small>keep today's weather (pick it below) while the day goes on; off, the weather cycles: clear, cloudy, fog, rain, storms.</small></label>
     <div class="skyset" id="skyset">
       <label class="range">Time <input type="range" id="skyhour" min="0" max="23.75" step="0.25"> <output id="skyhourv"></output></label>
       <div class="row look"><span>Weather</span><div class="seg wrap" id="skywx"></div></div>
@@ -462,7 +463,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     <header><h2>Controls</h2><p>Keyboard and mouse.</p></header>
     <div class="keys">
       <kbd>W A S D</kbd><span>Move / drive</span><kbd>Mouse</kbd><span>Look</span>
-      <kbd>Shift</kbd><span>Sprint</span><kbd>Space</kbd><span>Jump / handbrake / glide</span>
+      <kbd>Shift</kbd><span>Sprint</span><kbd>Space</kbd><span>Jump / handbrake / glide</span><kbd>X</kbd><span>Car jump (upgrade)</span>
       <kbd>Click</kbd><span>Punch / shoot</span><kbd>Right click</kbd><span>Aim</span>
       <kbd>1–0, wheel</kbd><span>Weapons (buy more at the dealers, pink on the map)</span><kbd>G</kbd><span>Detonate sticky bombs</span>
       <kbd>F</kbd><span>Enter, exit, carjack · online: ride with another player</span><kbd>E</kbd><span>Talk, use</span>
@@ -552,7 +553,8 @@ import { filterTrees } from './src/world/treeFilter.js';
 import { RoadSurface } from './src/world/roadsurface.js';
 import { loadVegetation, Vegetation, natureUniforms } from './src/nature/vegetation.js';
 import { makeContext, assignPlants } from './src/nature/placement.js';
-import { buildCoverMap, GroundCover, scatterShrubs, loadCards } from './src/nature/groundcover.js';
+import { buildCoverMap, GroundCover, scatterShrubs, scatterOnCover, loadCards } from './src/nature/groundcover.js';
+import { loadPHPlants, grassCard } from './src/nature/phplants.js';
 import { growTrees } from './src/nature/proctrees.js';
 import { loadRocks, loadBoulders } from './src/nature/rocks.js';
 import { createFauna } from './src/nature/fauna.js';
@@ -568,7 +570,7 @@ import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
-import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll, freeHuman } from './src/humans.js';
+import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll, freeHuman, plantFeet } from './src/humans.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
@@ -590,6 +592,8 @@ import { roadWidth, roadFitter } from './src/world/roadwidth.js';
 import { planYard, yardPaving, BIN_COLORS } from './src/world/yards.js';
 import { createWater } from './src/world/water.js';
 import { findRoadEnds, bulbRoads } from './src/world/roadends.js';
+import { zoneAt, pickCar } from './src/world/zones.js';
+import { createMusic, OWN as OWN_MUSIC } from './src/audio/music.js';
 import { createNightLights, headlightBeam } from './src/nightlights.js';
 import * as ACH from './src/ui/achievements.js';
 import { createPost } from './src/post.js';
@@ -901,6 +905,13 @@ function tri3(h00, h10, h01, h11, fx, fy) { return fx > fy ? h00 + (h10 - h00) *
 function signOk(x, z) { return !ROADS || !ROADS.onAsphalt(x, z, 0.5); } // poles off any carriageway
 function offLimits(x, z, margin = 1) { return !!ROADS && ROADS.onRoad(x, z, margin); }
 function groundAt(x, z) { const g = meshAt(x, z); return g !== null ? benchOver(x, z, g) : builtAt(x, z); }
+// the surface a foot actually lands on: the asphalt and walk ribbons sit a few cm over the road surface; elsewhere the
+// rendered ground mesh (not the smooth height, which a 4 m mesh only approximates)
+function standAt(x, z) {
+  if (ROADS && ROADS.onRoad(x, z, 0)) return heightAt(x, z) + 0.063;
+  const b = typeof BUILDER !== 'undefined' && BUILDER ? BUILDER.surfaceAt(x, z, heightAt(x, z) + 2) : -1e9;
+  return Math.max(groundAt(x, z) + 0.01, b);
+}
 function meshAt(x, z) {
   const g = coreMeshAt(x, z); if (g !== null) return g;
   return OUTER.ready ? OUTER.meshAt(x, z) : null;
@@ -1240,7 +1251,7 @@ function collideCircle(pos, r, withTrees = true, y) { // y: the bottom of whatev
         let nx = pos.x - bx, nz = pos.z - bz; const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L;
         if (inside) { nx = -nx; nz = -nz; }
         pos.x = bx + nx * r; pos.z = bz + nz * r;
-        hit = _hitN; hit.x = nx; hit.z = nz; hit.depth = inside ? d + r : r - d;
+        hit = _hitN; hit.x = nx; hit.z = nz; hit.depth = inside ? d + r : r - d; hit.poly = P;
       }
     }
     if (withTrees) for (const ti of c.t) {
@@ -1248,7 +1259,7 @@ function collideCircle(pos, r, withTrees = true, y) { // y: the bottom of whatev
       const tx = treeC[ti * 2], tz = treeC[ti * 2 + 1];
       if (y !== undefined && y > heightAt(tx, tz) + 9) continue;
       const dx = pos.x - tx, dz = pos.z - tz, d = Math.hypot(dx, dz), rr = r + 0.35;
-      if (d < rr && d > 1e-4) { pos.x = tx + dx / d * rr; pos.z = tz + dz / d * rr; hit = _hitN; hit.x = dx / d; hit.z = dz / d; hit.depth = rr - d; }
+      if (d < rr && d > 1e-4) { pos.x = tx + dx / d * rr; pos.z = tz + dz / d * rr; hit = _hitN; hit.x = dx / d; hit.z = dz / d; hit.depth = rr - d; hit.poly = null; }
     }
   }
   if (typeof BUILDER !== 'undefined' && BUILDER) {
@@ -1791,8 +1802,9 @@ function trail(ch, p, off, sg, ri) {
     q(4, 5, 6, 7, 0, 1, 0); q(0, 1, 5, 4, -dx, 0, -dz); q(3, 2, 6, 7, dx, 0, dz); q(0, 3, 7, 4, -rx, 0, -rz); q(1, 2, 6, 5, rx, 0, rz);
   };
   for (let i = 0; i < posts.length; i++) {
-    const [x, y, z, tx, tz] = posts[i]; box(ch.wood, x - tx * 0.06, y + 0.62, z - tz * 0.06, x + tx * 0.06, y + 0.62, z + tz * 0.06, 0.06, 0.66, col);
-    if (i > 0) { const [x0, y0, z0] = posts[i - 1]; for (const h of [0.55, 1.05]) box(ch.wood, x0, y0 + h, z0, x, y + h, z, 0.03, 0.05, col); }
+    const [x, y, z, tx, tz] = posts[i], down = i > 0 && BROKEN.has(fenceKey(posts[i - 1][0], posts[i - 1][2])); // a span a car went through
+    if (!down || !BROKEN.has(fenceKey(x, z))) box(ch.wood, x - tx * 0.06, y + 0.62, z - tz * 0.06, x + tx * 0.06, y + 0.62, z + tz * 0.06, 0.06, 0.66, col);
+    if (i > 0 && !down) { const [x0, y0, z0] = posts[i - 1]; for (const h of [0.55, 1.05]) box(ch.wood, x0, y0 + h, z0, x, y + h, z, 0.03, 0.05, col); }
     if ((ri * 13 + Math.floor(i / 6)) % 7 === 0 && i > 0) { const [x0, y0, z0] = posts[i - 1], hx = -tz * sg * 0.75, hz = tx * sg * 0.75; box(ch.hedge, x0 + hx, (y0 + y) / 2 + 0.6, z0 + hz, x + hx, (y0 + y) / 2 + 0.6, z + hz, 0.55, 0.62, hex(0x6f8a4e)); }
   }
 }
@@ -1923,7 +1935,7 @@ function addBuilding(b, lazy) {
     const Y = planYard(flat, B.roles, { onRoad: (x, z) => ROADS.onRoad(x, z, 0), inside: ROAD_FIT.inside }, mulberry(Math.floor(B.seed * 1e6) + 11));
     if (Y) {
       B.yard = Y; for (const q of yardPaving(Y)) clearPlants(q);
-      for (const [x0, z0, x1, z1] of Y.fences) { const L = Math.hypot(x1 - x0, z1 - z0) || 1, nx = -(z1 - z0) / L * 0.12, nz = (x1 - x0) / L * 0.12; addPoly([x0 + nx, z0 + nz, x1 + nx, z1 + nz, x1 - nx, z1 - nz, x0 - nx, z0 - nz], mn - 0.3, mn + 1.8); }
+      for (const [x0, z0, x1, z1] of Y.fences) { const L = Math.hypot(x1 - x0, z1 - z0) || 1, nx = -(z1 - z0) / L * 0.12, nz = (x1 - x0) / L * 0.12; addPoly([x0 + nx, z0 + nz, x1 + nx, z1 + nz, x1 - nx, z1 - nz, x0 - nx, z0 - nz], mn - 0.3, mn + 1.8); polys[polys.length - 1].brk = { kind: 'block', str: 12, key: fenceKey(x0, z0) }; }
       if (Y.ac) addPoly([Y.ac[0] - 0.45, Y.ac[1] - 0.45, Y.ac[0] + 0.45, Y.ac[1] - 0.45, Y.ac[0] + 0.45, Y.ac[1] + 0.45, Y.ac[0] - 0.45, Y.ac[1] + 0.45], mn - 0.3, mn + 0.9);
       for (const sh of Y.shrubs) GARDEN.push(['scruboak', sh[0], sh[1], sh[2]]);
       if (Y.tree) GARDEN.push([Y.tree[2], Y.tree[0], Y.tree[1], 0]);
@@ -2057,7 +2069,7 @@ function drawYard(ch, B) {
   }
   const bc = BLOCK_C[Math.floor(B.seed * 997) % BLOCK_C.length], H = 1.75, T = 0.1;
   for (let [x0, z0, x1, z1, gate] of Y.fences) { // a stuccoed block wall with a cap; the side gate (wood) next to the house
-    let L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.5) continue; const nx = -(z1 - z0) / L, nz = (x1 - x0) / L;
+    let L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.5 || BROKEN.has(fenceKey(x0, z0))) continue; const nx = -(z1 - z0) / L, nz = (x1 - x0) / L; // (knocked down: gone)
     if (gate && L > 1.9) {
       const tx = (x1 - x0) / L, tz = (z1 - z0) / L, gx = x0 + tx * 0.72, gz = z0 + tz * 0.72, gy = drapeAt(gx, gz), wd = hex(Math.floor(B.seed * 31) % 3 ? 0x8a6a4a : 0x6b5a48);
       obox(ch.wood, gx, gz, tx, tz, 0.5, 0.025, gy + 0.05, gy + 1.62, wd); // boards
@@ -2517,7 +2529,7 @@ function brushDrag(x, z) {
   return 1 - Math.min(0.55, Math.max(0, b - 0.25) * 0.85 + Math.max(0, t - 0.5) * 0.15);
 }
 const GARDEN = []; // [species, x, z, scale (0: a tree's own size)]: shrubs and yard trees the houses planted (src/world/yards.js)
-const NATURE = { lib: null, veg: null, U: (u => (u.uFar.value = GFX.veg, u))(natureUniforms(THREE)), filter: null, counts: null, cover: null, gc: null, shrubs: 0 }; // src/nature state
+const NATURE = { lib: null, veg: null, U: (u => (u.uFar.value = GFX.veg, u.uNear.value = clamp(GFX.veg / 28, 35, 90), u))(natureUniforms(THREE)), filter: null, counts: null, cover: null, gc: null, shrubs: 0 }; // src/nature state (uNear: real tree meshes out to ~85 m on High, impostors beyond)
 // grass and brush density: ?grass=0 turns them off, ?grass=0.5 halves them (src/nature/groundcover.js)
 const GRASS_Q = (() => { const q = new URLSearchParams(location.search).get('grass'); return q === null ? GFX.grass : clamp(+q || 0, 0, 2); })();
 function mergeModel(root, scale, tint) { // flatten a GLB into one geometry with vertex colours
@@ -2556,6 +2568,10 @@ async function plantNature() {
   try { // the species the scans don't cover, grown in code and baked into impostors (src/nature/proctrees.js)
     const grown = await growTrees(THREE, renderer); for (const [k, sp] of grown) NATURE.lib.species.set(k, sp);
   } catch (e) { console.warn('[nature] grown trees', e); }
+  try { // scanned shrubs, wild bushes, ice plant, stones and pebbles, dead branches (src/nature/phplants.js, Poly Haven CC0)
+    const NEAR = { shrub: 24, bush: 24, iceplant: 20, pebbles: 14, stone: 20, branches: 14 };
+    const ph = await loadPHPlants(THREE, gltfLoader, renderer); for (const [k, sp] of ph) { sp.near = NEAR[k] ?? 20; NATURE.lib.species.set(k, sp); }
+  } catch (e) { console.warn('[nature] scanned plants', e); }
   const filt = filterTrees(D.trees, w); NATURE.filter = filt.stats;
   NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
   const placed = assignPlants(D, filt, makeContext(D, w), NATURE.veg); NATURE.counts = placed.counts;
@@ -2588,10 +2604,11 @@ async function plantNature() {
   { // the houses' own planting: foundation shrubs and a front-yard tree each (src/world/yards.js)
     const rr = mulberry(9917);
     for (const [want, x, z, s] of GARDEN) {
-      const sp = NATURE.lib.species.has(want) ? want : 'olive', lib = NATURE.lib.species.get(sp); if (!lib) continue;
+      const want2 = want === 'scruboak' && NATURE.lib.species.has('shrub') ? 'shrub' : want; // foundation shrubs: the scanned garden ones
+      const sp = NATURE.lib.species.has(want2) ? want2 : 'olive', lib = NATURE.lib.species.get(sp); if (!lib) continue;
       const vi = Math.floor(rr() * lib.variants.length), V = lib.variants[vi], idx = NATURE.veg.inst.get(sp) ? NATURE.veg.inst.get(sp).x.length : 0;
-      const scale = s || (sp.startsWith('palm') ? 0.8 + rr() * 0.4 : (7 + rr() * 6) / Math.max(0.5, V.height)); // a front-yard tree is a mature one: 7-13 m
-      const tint = sp === 'scruboak' ? [0.78 + rr() * 0.1, 0.86, 0.66] : [1, 1, 1];
+      const scale = s && sp === 'shrub' ? (0.7 + rr() * 0.75) / Math.max(0.2, V.height) : s || (sp.startsWith('palm') ? 0.8 + rr() * 0.4 : (7 + rr() * 6) / Math.max(0.5, V.height)); // a front-yard tree is a mature one: 7-13 m
+      const tint = sp === 'scruboak' ? [0.78 + rr() * 0.1, 0.86, 0.66] : sp === 'shrub' ? [0.95 + rr() * 0.1, 1.0, 0.9] : [1, 1, 1];
       if (!NATURE.veg.add(sp, x, groundAt(x, z) - 0.05, z, rr() * Math.PI * 2, scale, vi, tint)) continue;
       if (!s) { placed.trees.push(x, z); placed.refs.push([sp, idx]); }
     }
@@ -2610,11 +2627,29 @@ async function plantNature() {
     try {
       NATURE.cover = buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas, exclude: [...(window.GTP_NATURE_EXCLUDE || []), ...PLANT_CLEAR] });
       NATURE.shrubs = scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
+      // the chaparral's understorey: buckwheat- and sage-like bushes among the scrub oak, thick where the photo's brush is
+      const ctxB = makeContext(D, w), Q = Math.min(1, GRASS_Q), wild = (x, z) => offLimits(x, z, 2) || ctxB.built(x, z) >= 2;
+      NATURE.bushes = scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'bush', D.bounds, { step: 6, cap: Math.round(200000 * Q), seed: 77, size: [0.5, 1.9], sink: 0.1, reject: wild, clumped: true,
+        want: c => { const b = c[1] / 255, t = c[3] / 255; return b > 0.12 ? Math.min(0.9, b * 0.7 + t * 0.15) : t > 0.4 ? 0.12 : 0; }, tint: (br, dry) => [0.92 * br * (1 + dry * 0.25), 0.9 * br, 0.74 * br * (1 - dry * 0.2)] });
+      // bare ground isn't bare: granite pebbles and stones on the dirt out of town
+      const bare = c => { const g = c[0] / 255, b = c[1] / 255, t = c[3] / 255; return (1 - g) * (1 - b * 0.8) * (1 - t * 0.7); };
+      NATURE.pebbles = scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'pebbles', D.bounds, { step: 6, cap: Math.round(140000 * Q), seed: 31, size: [0.9, 2.2], byWidth: true, sink: 0.25, reject: wild, want: c => Math.max(0, bare(c) - 0.35) * 0.9 });
+      NATURE.stones = scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'stone', D.bounds, { step: 9, cap: Math.round(60000 * Q), seed: 53, size: [0.15, 0.7], sink: 0.3, reject: wild, want: c => Math.max(0, bare(c) - 0.2) * 0.5 + (c[1] / 255) * 0.08,
+        tint: br => [br * 1.0, br * 0.94, br * 0.86] });
+      NATURE.branches = scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'branches', D.bounds, { step: 14, cap: Math.round(20000 * Q), seed: 61, size: [1.2, 2.4], byWidth: true, sink: 0.05, reject: wild, want: c => (c[1] / 255) * 0.18 });
+      // ice plant on the freeway banks
+      if (NATURE.lib.species.has('iceplant')) { const rr2 = mulberry(808); let ni = 0;
+        for (const r of D.roads) { if (r[1] !== 0) continue; const p = r[3]; for (let k = 0; k + 3 < p.length; k += 2) { const ax = p[k], az = p[k + 1], L = Math.hypot(p[k + 2] - ax, p[k + 3] - az); if (L < 1) continue; const tx = (p[k + 2] - ax) / L, tz = (p[k + 3] - az) / L;
+          for (let s2 = 0; s2 < L; s2 += 2.6) for (const sg of [-1, 1]) { const o = sg * (r[2] / 2 + 4.5 + rr2() * 10), x = ax + tx * s2 - tz * o, z = az + tz * s2 + tx * o; if (offLimits(x, z, 1) || rr2() < 0.25) continue;
+            const lib = NATURE.lib.species.get('iceplant'), V = lib.variants[0], sc = (1.6 + rr2() * 1.4) / Math.max(0.2, V.width); if (NATURE.veg.add('iceplant', x, groundAt(x, z) - 0.05, z, rr2() * TAU, sc, 0, [0.9 + rr2() * 0.15, 0.95, 0.85])) ni++; } } }
+        NATURE.iceplant = ni; }
+      console.info('[nature] bushes', NATURE.bushes, 'pebbles', NATURE.pebbles, 'stones', NATURE.stones, 'branches', NATURE.branches, 'ice plant', NATURE.iceplant);
     } catch (e) { console.error('[nature] cover map', e); }
   }
   NATURE.veg.build();
   if (NATURE.cover) {
-    const cards = await loadCards(THREE).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
+    const tallCard = await grassCard(THREE, gltfLoader, renderer, 'grass_medium_01').catch(() => null); // a scanned wild grass clump (Poly Haven CC0)
+    const cards = await loadCards(THREE, undefined, { tall: tallCard }).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
     NATURE.gc = new GroundCover(THREE, scene, NATURE.cover, groundAt, NATURE.U, { quality: GRASS_Q, cards });
     const C = NATURE.cover; setGroundLand(TX.ground, C.landTex, [C.x0, C.z0, C.sx, C.sz]); // lawns and dry gardens in the ground itself
     // wildlife round you (src/nature/fauna.js): hawks, ravens, rabbits, ground squirrels and their burrows, coyotes at night
@@ -2669,7 +2704,7 @@ function buildEdgeWalls() {
     for (let i = 0; i + 1 < run.length; i++) {
       const [x0, z0] = run[i], [x1, z1] = run[i + 1], L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.2) continue; const nx = -(z1 - z0) / L, nz = (x1 - x0) / L, ch = chunkAt((x0 + x1) / 2, (z0 + z1) / 2);
       const g0 = Math.min(drapeAt(x0, z0), drapeAt(x1, z1)) - 0.3, top = Math.max(drapeAt(x0, z0), drapeAt(x1, z1)) + H, vH = top - g0;
-      FAC = [total + 0.01, vH, STYLE.shed, seed];
+      FAC = [total + 0.01, vH, STYLE.shed, seed]; const r0 = ch.wall[3].p.length / 3;
       for (const sg of [1, -1]) { const ax = x0 + nx * T * sg, az = z0 + nz * T * sg, bx = x1 + nx * T * sg, bz = z1 + nz * T * sg;
         tri(ch.wall[3], [ax, g0, az], [bx, g0, bz], [bx, top, bz], c, c, c, [along, 0], [along + L, 0], [along + L, vH], nx * sg, 0, nz * sg);
         tri(ch.wall[3], [ax, g0, az], [bx, top, bz], [ax, top, az], c, c, c, [along, 0], [along + L, vH], [along, vH], nx * sg, 0, nz * sg); }
@@ -2677,15 +2712,18 @@ function buildEdgeWalls() {
       obox(ch.wall[3], (x0 + x1) / 2, (z0 + z1) / 2, (x1 - x0) / L, (z1 - z0) / L, L / 2 + 0.01, T + 0.035, top, top + 0.07, cap);
       if (i % 3 === 0) obox(ch.wall[3], x0, z0, (x1 - x0) / L, (z1 - z0) / L, 0.24, 0.24, g0, top + 0.18, c.clone().multiplyScalar(1.04)); // pilaster
       addPoly([x0 + nx * 0.14, z0 + nz * 0.14, x1 + nx * 0.14, z1 + nz * 0.14, x1 - nx * 0.14, z1 - nz * 0.14, x0 - nx * 0.14, z0 - nz * 0.14], g0, top);
+      polys[polys.length - 1].brk = { kind: 'block', str: 15, ranges: [[ch.wall[3], r0, ch.wall[3].p.length / 3]], col: c.getHex() };
       along += L;
     }
     const [xe, ze, txe, tze] = run[run.length - 1]; const ch = chunkAt(xe, ze); obox(ch.wall[3], xe, ze, txe, tze, 0.24, 0.24, drapeAt(xe, ze) - 0.3, drapeAt(xe, ze) + H + 0.18, c.clone().multiplyScalar(1.04));
     stats.wall++; EDGE_SPOTS.wall.push(run[0]);
   };
   const drawRanch = run => { // posts every 2.4 m, three rails
-    for (let i = 0; i < run.length; i++) { const [x, z, tx, tz] = run[i], ch = chunkAt(x, z), y = drapeAt(x, z); obox(ch.wood, x, z, tx, tz, 0.065, 0.065, y - 0.3, y + 1.32, WHITE);
+    for (let i = 0; i < run.length; i++) { const [x, z, tx, tz] = run[i], ch = chunkAt(x, z), y = drapeAt(x, z), r0 = ch.wood.p.length / 3; obox(ch.wood, x, z, tx, tz, 0.065, 0.065, y - 0.3, y + 1.32, WHITE);
       if (i + 1 < run.length) { const [x1, z1] = run[i + 1], y1 = drapeAt(x1, z1), L = Math.hypot(x1 - x, z1 - z), ux = (x1 - x) / L, uz = (z1 - z) / L, nx = -uz * 0.075, nz = ux * 0.075;
-        for (const h of [0.42, 0.8, 1.18]) { const ym = (y + y1) / 2 + h; obox(ch.wood, (x + x1) / 2 + nx, (z + z1) / 2 + nz, ux, uz, L / 2, 0.016, ym, ym + 0.14, WHITE); } } }
+        for (const h of [0.42, 0.8, 1.18]) { const ym = (y + y1) / 2 + h; obox(ch.wood, (x + x1) / 2 + nx, (z + z1) / 2 + nz, ux, uz, L / 2, 0.016, ym, ym + 0.14, WHITE); }
+        const px = -uz * 0.09, pz = ux * 0.09; addPoly([x + px, z + pz, x1 + px, z1 + pz, x1 - px, z1 - pz, x - px, z - pz], y - 0.3, y + 1.3); // a span a car can smash through
+        polys[polys.length - 1].brk = { kind: 'wood', str: 2.5, ranges: [[ch.wood, r0, ch.wood.p.length / 3]], col: 0xefeee8 }; } }
     stats.ranch++; EDGE_SPOTS.ranch.push(run[0]);
   };
   D.roads.forEach((r, ri) => {
@@ -2728,6 +2766,14 @@ function buildEdgeWalls() {
       }
       stats.gate++; EDGE_SPOTS.gate.push([gx, gz, dx, dz]);
     }
+  });
+  // the trail fences (drawn with their chunks): a breakable span between each pair of posts, as trail() places them
+  D.roads.forEach((r, ri) => { const ts = ROADS.trailSide ? ROADS.trailSide(ri) : 0; if (!ts) return; const [, , w, p0] = r, p = densify(p0, 3), fo = ts * (w / 2 + ROADS.sw[ri] + 1.4) + ts * 1.5;
+    const posts = []; let along = 0, next = 0;
+    for (let i = 0; i + 3 < p.length; i += 2) { const ax = p[i], az = p[i + 1], L = Math.hypot(p[i + 2] - ax, p[i + 3] - az); if (L < 0.01) continue; const tx = (p[i + 2] - ax) / L, tz = (p[i + 3] - az) / L;
+      while (next <= along + L) { const s2 = next - along; posts.push([ax + tx * s2 - tz * fo, az + tz * s2 + tx * fo]); next += 2.8; } along += L; }
+    for (let i = 1; i < posts.length; i++) { const [x0, z0] = posts[i - 1], [x1, z1] = posts[i], L = Math.hypot(x1 - x0, z1 - z0) || 1, nx = -(z1 - z0) / L * 0.08, nz = (x1 - x0) / L * 0.08, y = heightAt(x0, z0);
+      addPoly([x0 + nx, z0 + nz, x1 + nx, z1 + nz, x1 - nx, z1 - nz, x0 - nx, z0 - nz], y - 0.3, y + 1.2); polys[polys.length - 1].brk = { kind: 'wood', str: 2.5, key: fenceKey(x0, z0), col: (ri * 7) % 10 < 4 ? 0xeceae4 : 0x9c8b74 }; }
   });
   console.info('[edges] block walls', stats.wall, 'ranch fences', stats.ranch, 'estate gates', stats.gate);
 }
@@ -2943,7 +2989,7 @@ async function buildWorld() {
     paint: (x, z, tx, tz, len, wid) => bar(chunkAt(x, z).line, x, z, tx, tz, len, wid, 0.06, [0.9, 0.9, 0.87]),
     onRoad: (x, z, m) => offLimits(x, z, m), blocked: (x, z, r) => { _bp.x = x; _bp.z = z; return !!collideCircle(_bp, r, false); },
     nearestRoad: (x, z) => { const ne = nearestEdge(x, z, 140, e => e.t >= 1 && e.t <= 5); if (!ne) return null; const e = edges[ne.e]; let nx = x - ne.x, nz = z - ne.z; const L = Math.hypot(nx, nz) || 1; nx /= L; nz /= L; const o = Math.max(1.5, e.w / 2 - 1.8); return { x: ne.x + nx * o, z: ne.z + nz * o, tx: ne.tx, tz: ne.tz }; },
-    spawnParked: (x, z, rot) => { const v = new Vehicle(pick(['sedan', 'sedan', 'suv', 'suv', 'pickup', 'sports', 'van']), x, z, rot); v.parked = true; v.mode = 'free'; settleCar(v); return v; },
+    spawnParked: (x, z, rot) => { const v = new Vehicle(pickCar(zoneHere(x, z)), x, z, rot); v.parked = true; v.mode = 'free'; settleCar(v); return v; },
     traffic: en => { let best = null, bd = 160; for (const v of vehicles) { if (v.mode !== 'rail' || v.driver !== 'ai' || v.keep || v.dead || v.isCop || v.speed < 2 || v.spec.L > 6.5) continue; const d = hyp(v.pos.x - en.x, v.pos.z - en.z); if (d < bd) { bd = d; best = v; } } return best; },
     walkToCar: car => { const a = Math.random() * TAU, x = car.pos.x + Math.sin(a) * 22, z = car.pos.z + Math.cos(a) * 22; const p = new Ped(x, z); p.state = 'walk'; startToCar(p, car); },
     driverOut: v => { const p = ejectDriver(v, false); p.state = 'idle'; p.timer = rand(0.5, 1.2); v.react = -1000; },
@@ -3518,6 +3564,15 @@ function tone(freq, dur, type, gain, slide, delay = 0) {
   const g = AC.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.05);
 }
+// on foot, outdoors: the place's own sounds. Small birds by day where there are trees and gardens, a hawk over the
+// brush, crickets in the grass at night and now and then a coyote out in the hills. Nothing in the rain or indoors.
+let ambT = 3;
+function ambienceStep(dt, indoors) {
+  ambT -= dt; if (ambT > 0 || indoors || weather.rain > 0.25 || !NATURE.cover) return;
+  const p = player.pos, c = NATURE.cover.at(p.x, p.z), green = c ? (c[0] + c[1]) / 510 : 0.3, wild = c ? (c[1] + c[3]) / 510 : 0.2, night = nightAmount > 0.5;
+  if (!night) { ambT = rand(1.8, 6) / (0.5 + green); sfx.chirp(0.5 + green * 0.6, rand(2600, 4200)); if (wild > 0.35 && Math.random() < 0.06) sfx.hawk(0.8); }
+  else { ambT = rand(0.6, 2.2); if (green + wild > 0.25) sfx.cricket(0.6 + wild * 0.5); if (wild > 0.4 && Math.random() < 0.02) sfx.howl(0.8); }
+}
 function volAt(x, z, range = 90) { const p = focusPos(); return clamp(1 - Math.hypot(x - p.x, z - p.z) / range, 0, 1); }
 const sfx = {
   gun: v => { noise(0.18, 'highpass', 900, 0.9 * v); noise(0.35, 'lowpass', 300, 0.8 * v); },
@@ -3528,7 +3583,11 @@ const sfx = {
   boom: v => { noise(1.6, 'lowpass', 220, 1.2 * v); tone(60, 1.2, 'sine', 0.9 * v, 25); },
   horn: v => { tone(392, 0.45, 'square', 0.18 * v); tone(494, 0.45, 'square', 0.15 * v); },
   cash: () => { tone(988, 0.08, 'square', 0.15); tone(1319, 0.2, 'square', 0.15, null, 0.08); },
-  thunder: v => noise(3.5, 'lowpass', 160, 1.1 * v, rand(0.3, 2)),
+  thunder: (v, d = 2000) => { const delay = d / 343; if (d < 900) noise(0.35, 'highpass', 1800, 0.55 * v, delay); noise(5.5 + d / 900, 'lowpass', d < 900 ? 320 : 150, 1.15 * v, delay); noise(3.2, 'lowpass', 70, 0.9 * v, delay + rand(0.4, 1.4)); }, // crack, then the long roll
+  chirp: (v, f = 3200) => { for (let k = 0, n = 2 + randi(0, 3); k < n; k++) tone(f * rand(0.9, 1.15), 0.07, 'sine', 0.05 * v, f * rand(1.2, 1.6), k * rand(0.09, 0.14)); }, // a small bird
+  cricket: v => { for (let k = 0; k < 3; k++) tone(4400 + rand(-150, 150), 0.035, 'sine', 0.035 * v, null, k * 0.06); },
+  howl: v => { tone(rand(520, 600), 2.2, 'sine', 0.06 * v, rand(880, 980)); tone(rand(780, 820), 1.6, 'sine', 0.03 * v, rand(600, 660), 0.4); }, // a coyote, far off
+  hawk: v => tone(2600, 1.1, 'sawtooth', 0.025 * v, 1500),
   phone: v => { tone(1336, 0.12, 'sine', 0.2 * v); tone(941, 0.12, 'sine', 0.2 * v, null, 0.15); },
   job: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.25, 'triangle', 0.25, null, i * 0.12)); },
   hit: v => { noise(0.12, 'bandpass', 1500, 0.5 * v); },
@@ -3539,6 +3598,7 @@ const sfx = {
 // tracks (CC BY 4.0). Add your own: drop MP3s in assets/music and list them in assets/music/stations.json
 // ([{ "name": "...", "tracks": [{ "title": "...", "artist": "...", "file": "x.mp3" }] }]); they're appended at boot.
 const STATIONS = [
+  { name: 'KPOW 96.9 · Sunset Radio', own: true, tracks: OWN_MUSIC.radio.map(t => ({ title: t.title, artist: 'PW Auto Originals', file: t.file, electro: !!t.electro })) }, // the game's own songs (src/audio/music.js)
   ...procSongs().map(S => ({ name: S.name, proc: true, tracks: S.songs })),
   { name: 'KMAC 102.3 · Funk Classics', tracks: ['Who Likes to Party', 'Funkorama', 'Dirt Rhodes', 'Cut and Run', 'Breaktime'].map(t => ({ title: t, artist: 'Kevin MacLeod', file: 'assets/music/' + t.replace(/ /g, '_') + '.mp3' })) },
   { name: 'Lake Poway Lounge 104.7', tracks: ['Backbay Lounge', 'Spy Glass', 'Hard Boiled', 'Local Forecast - Elevator', 'Monkeys Spinning Monkeys'].map(t => ({ title: t, artist: 'Kevin MacLeod', file: 'assets/music/' + t.replace(/ /g, '_') + '.mp3' })) },
@@ -3556,7 +3616,7 @@ function radioPlay(next) {
   } else {
     if (radio.comp) radio.comp.stop();
     if (!radio.el) { radio.el = new Audio(); radio.el.addEventListener('ended', () => radioPlay(true)); }
-    radio.el.src = t.file; radio.el.volume = radio.vol; radio.el.currentTime = next ? 0 : rand(0, 60);
+    radio.el.src = t.file; radio.el.volume = radio.vol; radio.el.currentTime = next || radio.fromStart ? 0 : rand(0, 60); radio.fromStart = false;
     radio.el.play().catch(() => { });
   }
   const el = $('radio'); el.hidden = false; el.innerHTML = ''; const nm = document.createElement('span'); nm.textContent = S.name; const sm = document.createElement('small'); sm.textContent = `${t.artist} – ${t.title}`; el.append(nm, sm);
@@ -3577,7 +3637,7 @@ function updateScore(dt) {
   if (!AC || !running || paused) return;
   if (!SCORE.ex) { SCORE.ex = createComposer(AC, musicBus); SCORE.ch = createComposer(AC, musicBus); SCORE.ex.onend = () => { SCORE.restT = rand(30, 75); if (SCORE.mode === 'explore') scoreTo('rest'); }; SCORE.ch.onend = () => { if (SCORE.mode === 'chase') { SCORE.mode = 'none'; } }; }
   const radioOn = player.inCar && radio.on;
-  let want = police.wanted > 0 && !player.dead ? 'chase' : radioOn ? 'none' : 'explore';
+  let want = police.wanted > 0 && !player.dead ? 'chase' : 'none'; // on foot, the game's own exploring songs play (MUSIC, src/audio/music.js)
   if (want === 'explore' && SCORE.restT > 0) { SCORE.restT -= dt; want = 'rest'; }
   if (want !== SCORE.mode && !(want === 'explore' && SCORE.mode === 'explore')) scoreTo(want);
   if (SCORE.mode === 'chase' && SCORE.ch.playing && Math.random() < dt) SCORE.ch.fade(0.3 + 0.05 * police.wanted, 1); // louder the hotter it gets
@@ -4048,6 +4108,7 @@ function carHitWorld(v) {
   const c = carCircles(v), r = v.spec.W / 2 + 0.05; let worst = null;
   for (let k = 0; k < 2; k++) {
     const p = { x: c[k * 2], z: c[k * 2 + 1] }; const h = collideCircle(p, r, true, v.pos.y + 0.3);
+    if (h && h.poly && h.poly.brk && !h.poly.dead) { const vn = -(v.vel.x * h.x + v.vel.y * h.z); if (vn > h.poly.brk.str) { breakFence(h.poly, v, vn); continue; } } // fast enough: straight through it
     if (h) {
       const dx = p.x - c[k * 2], dz = p.z - c[k * 2 + 1]; v.pos.x += dx; v.pos.z += dz;
       const vn = v.vel.x * h.x + v.vel.y * h.z;
@@ -4066,6 +4127,29 @@ function carHitWorld(v) {
     if (worst > 30) launchCar(v, Math.min(1.6, (worst - 30) * 0.08), (worst - 30) * 0.03 * Math.sign(v.speed || 1), 0); // only a huge hit lifts the rear, a little
     { const rx = _wn.px - v.pos.x, rz = _wn.pz - v.pos.z, I = (v.spec.L * v.spec.L + v.spec.W * v.spec.W) / 12; v.spinV = clamp((v.spinV || 0) + (hx * rz - hz * rx) * worst * 0.9 / I * 0.35, -3, 3); } // a glancing hit turns the car
   }
+}
+// ---- fences and walls a car can drive through: polys with brk = { kind: 'wood' | 'block', str (m/s it takes),
+// key (lazily drawn: skipped when its chunk is rebuilt), ranges ([gb, a, e]: drawn at load, flattened now), col }
+const BROKEN = new Set(); // keys of fence spans knocked down
+const fenceKey = (x, z) => Math.round(x * 4) + ',' + Math.round(z * 4);
+function breakFence(P, v, vn) {
+  const b = P.brk; P.dead = true; if (b.key) BROKEN.add(b.key);
+  const block = b.kind === 'block', x = (P.minx + P.maxx) / 2, z = (P.minz + P.maxz) / 2, y = heightAt(x, z);
+  v.vel.multiplyScalar(block ? 0.5 : 0.84); // it takes speed out of you
+  if (v.driver === 'player') { damageCar(v, block ? 14 + vn * 2.2 : 3 + vn * 0.5, 'player'); shake = Math.max(shake, block ? 0.8 : 0.3); }
+  if (block) { carCrashed(v, vn); dentCar(v, v.pos.x + v.fx * v.spec.L * 0.45, v.pos.y + 0.6, v.pos.z + v.fz * v.spec.L * 0.45, -v.fx, 0, -v.fz, 0.18, 1.4); }
+  FX.chips(x, y + 0.8, z, block ? 22 : 14, b.col || (block ? 0xcdbd9f : 0x8a6e52), block ? 7 : 9, block ? 0.32 : 0.22, 40);
+  smoke.emit(x, y + 0.5, z, 0, 0.8, 0, 1.6, 2.6, 0.72, 0.68, 0.6, 1.6);
+  (block ? sfx.crash : sfx.clank)(volAt(x, z) * (block ? 1 : 0.6));
+  if (b.ranges) for (const [g, a, e] of b.ranges) { const m = g._mesh; if (!m) continue; const pos = m.geometry.attributes.position; for (let i = a; i < e; i++) pos.setXYZ(i, pos.getX(a), pos.getY(a) - 50, pos.getZ(a)); pos.needsUpdate = true; }
+  if (b.key) { const L = chunkAt(x, z).lazy; if (L && L.built) L.dirty = true; } // its chunk rebuilds without it
+  if (v.driver === 'player') bus.emit('car:crash', { a: v, b: null, impact: vn });
+}
+// soft obstacles: brush and chaparral grab at a car off the road, slow it and scratch it up
+function brushOnCar(v, dt) {
+  if (v.onRoad || v.air || !NATURE.cover) return; const bd = brushDrag(v.pos.x, v.pos.z); if (bd > 0.97) return;
+  const k = 1 - bd, sp = Math.hypot(v.vel.x, v.vel.y), f = Math.exp(-k * 1.6 * (1 + sp * 0.03) * dt); v.vel.multiplyScalar(f);
+  if (sp > 9 && v.driver === 'player') { damageCar(v, k * (sp - 9) * 2.4 * dt, 'player'); if (Math.random() < k * 0.5) FX.chips(v.pos.x + v.fx * 2, v.pos.y + 0.6, v.pos.z + v.fz * 2, 2, 0x5d6b3a, 4, 0.12, 20); }
 }
 function carCrashed(v, imp) { // a hard hit: wear, and a crunch you can hear getting worse
   v.crashes = (v.crashes || 0) + 1; if (v.crashes > 10) v.crashes = 10; batter(v, clamp(imp / 16, 0.25, 1));
@@ -4203,7 +4287,7 @@ class Ped {
     this.walkMul = rand(0.85, 1.2); this.personality = this.isCop ? 'cop' : pick(['normal', 'normal', 'normal', 'coward', 'coward', 'tough', 'tough', 'karen']);
     this.anger = 0; this.fear = 0; this.callT = 0; this.sayCd = 0; this.target = null; this.homeCar = opts.car || null;
     this.voice = rand(0.8, 1.5); this.marker = null; this.removed = false; this.punchCd = 0; this.shootCd = rand(0.5, 1.5); this.bustT = 0; this.fleeFrom = null; this.reported = false;
-    this.money = this.isCop ? 0 : randi(5, 90);
+    this.money = this.isCop ? 0 : Math.round(randi(5, 90) * (0.4 + 1.8 * zoneHere(x, z).wealth)); // La Jolla wallets are fatter
     this.ai = this.isCop ? copPedAI : null; // p.ai(p, dt) -> {speed, mode} | null drives the ped (deputies, story NPCs)
     peds.push(this);
   }
@@ -4263,6 +4347,7 @@ function killPed(p, by) {
   if (p.burn > 0) { p.burn = 0; charPed(p); p.smolder = 8; }
   if (p.money > 0) spawnPickup('cash', p.pos.x + rand(-0.5, 0.5), p.pos.z + rand(-0.5, 0.5), p.money);
   if (p.isCop && Math.random() < 0.6) spawnPickup('ammo', p.pos.x + 0.6, p.pos.z, 12);
+  else if (!p.isCop) { const Z = zoneHere(p.pos.x, p.pos.z); if (Math.random() < (Z.wealth - 0.55) * 0.6) spawnPickup('ammo', p.pos.x + 0.6, p.pos.z, Math.round(10 + Z.wealth * 30)); } // the rich carry (and their security does)
   if (by === 'player') {
     save.stats.kills++; if (p.isCop) save.stats.copsKilled++;
     crime(p.isCop ? 'copkill' : 'murder', p.pos.x, p.pos.z, p.isCop ? 3 : 2, p);
@@ -4705,8 +4790,8 @@ const pickWeather = r => r < 0.35 ? 'clear' : r < 0.55 ? 'sunny' : r < 0.67 ? 'c
 // (Settings) overrides that on this screen only. Offline and unlocked, the hour runs and the weather wanders on its own.
 const SKY_KEY = 'pao.sky';
 const SKY = (() => {
-  try { const s = JSON.parse(localStorage.getItem(SKY_KEY) || '{}'); return { lock: !!s.lock, hour: Number.isFinite(s.hour) ? s.hour : 17.5, weather: WEATHERS[s.weather] ? s.weather : 'clear' }; }
-  catch (e) { return { lock: false, hour: 17.5, weather: 'clear' }; }
+  try { const s = JSON.parse(localStorage.getItem(SKY_KEY) || '{}'); return { lock: !!s.lock, freeze: !!s.freeze, hour: Number.isFinite(s.hour) ? s.hour : 17.5, weather: WEATHERS[s.weather] ? s.weather : 'clear' }; }
+  catch (e) { return { lock: false, freeze: false, hour: 17.5, weather: 'clear' }; }
 })();
 const saveSky = () => { try { localStorage.setItem(SKY_KEY, JSON.stringify(SKY)); } catch (e) { } };
 const skyHash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); return ((h ^ (h >>> 12)) >>> 0) / 4294967296; };
@@ -4722,7 +4807,7 @@ rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
 const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xaab6c4, transparent: true, opacity: 0.45 }));
 rain.frustumCulled = false; scene.add(rain);
 const C = {
-  dayTop: hex('#3f86d6'), dayHor: hex('#c4dcef'), duskTop: hex('#3a4f7a'), duskHor: hex('#f09a55'), nightTop: hex('#070d1d'), nightHor: hex('#1b263b'),
+  dayTop: hex('#3f86d6'), dayHor: hex('#c4dcef'), duskTop: hex('#4f4683'), duskHor: hex('#f09a55'), nightTop: hex('#070d1d'), nightHor: hex('#1b263b'), // dusk: violet overhead, orange at the horizon (STYLE.md)
   grayTop: hex('#6d7680'), grayHor: hex('#a9b0b6'), hazeHor: hex('#d9b98a'),
 };
 const _warmFill = hex('#f4e6d2'), _wsc = new THREE.Color();
@@ -4767,6 +4852,7 @@ function updateWeather(dt) {
   const mode = SKY.lock ? 'lock' : online && NET.server ? 'shared' : 'own';
   if (mode === 'lock') { if (weather.key !== SKY.weather) setWeather(SKY.weather, true); }
   else if (mode === 'shared') { const s = sharedSky(NET.server, serverNow()); if (weather.key !== s.weather) setWeather(s.weather, skyMode !== 'shared'); } // a change while you're on is announced
+  else if (SKY.freeze) { if (weather.key !== SKY.weather) setWeather(SKY.weather, true); } // frozen weather: the clock still runs
   else { weather.nextT -= dt; if (weather.nextT <= 0) setWeather(pickWeather(Math.random())); }
   const W = WEATHERS[weather.key], k = 1 - Math.exp(-dt * 0.15);
   weather.cloud = lerp(weather.cloud, W.cloud, k); weather.rain = lerp(weather.rain, W.rain, k); weather.fog = lerp(weather.fog, W.fog, k);
@@ -4784,11 +4870,11 @@ function updateWeather(dt) {
   const hor = C.nightHor.clone().lerp(C.dayHor, day).lerp(C.duskHor, dusk * 0.8).lerp(C.grayHor.clone().multiplyScalar(0.15 + 0.85 * day), Math.max(weather.cloud * 0.8, weather.fog)).lerp(C.hazeHor, weather.haze * 0.5 * day);
   skyU.top.value.copy(top); skyU.horizon.value.copy(hor); skyU.sunDir.value.copy(sunDir); skyU.cloud.value = weather.cloud; skyU.night.value = night; skyU.time.value = simTime;
   skyU.sunCol.value.setRGB(1, 0.85 - dusk * 0.3, 0.6 - dusk * 0.3); skyU.dusk.value = smooth(-0.12, 0.02, sy) * (1 - smooth(0.05, 0.32, sy)) * (1 - weather.cloud * 0.6) * (1 - weather.fog * 0.6);
-  if (weather.storm > 0.5) { lightningT -= dt; if (lightningT <= 0) { lightningT = rand(4, 14); flash = 1; sfx.thunder(0.9); } }
+  if (weather.storm > 0.5) { lightningT -= dt; if (lightningT <= 0) { lightningT = rand(4, 14); const d = rand(300, 5000); flash = clamp(1.4 - d / 4500, 0.35, 1); sfx.thunder(clamp(1.25 - d / 5000, 0.3, 1), d); } } // the flash, then the thunder a second per 343 m later
   flash = Math.max(0, flash - dt * 4); skyU.flash.value = flash * 0.5;
   scene.fog.color.copy(hor).lerp(hex('#e98a52'), skyU.dusk.value * 0.35); scene.background = null; POST.U.uDusk.value = skyU.dusk.value;
   const far = Math.min(GFX.view, lerp(2300, 140, Math.pow(weather.fog, 0.8))) * (1 - weather.rain * 0.3) * (1 - weather.haze * 0.25);
-  scene.fog.far = far; scene.fog.near = far * (ATM ? 0.62 : weather.fog > 0.5 ? 0.05 : 0.22); // with ATM the near/far pair is only the fade at the end of the view
+  scene.fog.far = far; scene.fog.near = far * (ATM ? 0.5 : weather.fog > 0.5 ? 0.05 : 0.22); // with ATM the near/far pair is only the fade at the end of the view (a long one: no hard edge)
   const cfar = Math.min(2600, far + 200); if (Math.abs(camera.far - cfar) > 30) { camera.far = cfar; camera.updateProjectionMatrix(); }
   // by night the key light is the moon when it's up (stronger the fuller it is), else soft light from high overhead;
   // it fades out for a moment as the sun hands over so the shadows don't jump
@@ -4799,13 +4885,17 @@ function updateWeather(dt) {
   // fill: the sky by day; at night a moonlit blue from above and the town's warm light bouncing up from below, enough
   // to read the street, cars and people without making it look like day
   hemi.intensity = (0.55 + day * 0.65) * (1 - weather.cloud * 0.15) + night * (0.5 + 0.25 * moon.lit * moonUp + 0.15 * weather.cloud) + flash * 3;
-  hemi.color.copy(hor).lerp(_warmFill, 0.55).lerp(_nightSky, night); // the sky, softened by light bounced off warm ground and walls hemi.groundColor.setRGB(0.45 * (0.2 + day), 0.4 * (0.2 + day), 0.3 * (0.2 + day)).lerp(_nightGround, night);
+  hemi.color.copy(hor).lerp(_warmFill, 0.55).lerp(_nightSky, night); hemi.groundColor.setRGB(0.45 * (0.2 + day), 0.4 * (0.2 + day), 0.3 * (0.2 + day)).lerp(_nightGround, night); // the sky, softened by light bounced off warm ground and walls
   const f = focusPos();
   sun.position.set(f.x + ld.x * 300, f.y + ld.y * 300 + 20, f.z + ld.z * 300); sun.target.position.set(f.x, f.y, f.z);
   { // where the sun sits on screen, for the light shafts (src/post.js); they fade as it leaves the frame, sets or clouds over
     _sunSV.copy(camera.position).addScaledVector(ld, 3000).project(camera);
     const off = Math.max(0, Math.max(Math.abs(_sunSV.x), Math.abs(_sunSV.y)) - 1), front = _sunSV.z < 1 ? 1 : 0;
     POST.U.uSun.value.set(_sunSV.x * 0.5 + 0.5, _sunSV.y * 0.5 + 0.5, front * Math.max(0, 1 - off * 1.4) * smooth(-0.02, 0.12, ld.y) * (1 - weather.cloud * 0.75) * (1 - nightAmount));
+  }
+  { // cloud shadows on the ground (src/post.js): the same cover the sky draws, fair-weather cumulus coming and going
+    const fair = 0.09 * Math.sin(simTime * 0.0071) + 0.06 * Math.sin(simTime * 0.0173 + 1.3), cov = clamp(weather.cloud + Math.max(0, fair + 0.05) * (1 - weather.cloud), 0, 1);
+    POST.U.uCloudSh.value.set(ld.x, ld.y, ld.z, sy > 0.04 ? day * (1 - weather.cloud * 0.8) * clamp((ld.y - 0.04) * 6, 0, 1) : 0); POST.U.uCloudT.value = simTime; POST.U.uCloudCov.value = lerp(0.78, 0.18, cov);
   }
   if (CASC) CASC.update(camera, ld);
   if (WATER) WATER.update(dt, camera, { sunDir: ld, sunCol: _wsc.copy(sun.color).multiplyScalar(sun.intensity), night: nightAmount, day, wind: 0.7 + weather.rain * 0.5 + weather.storm * 0.9 + weather.cloud * 0.2 });
@@ -4833,7 +4923,7 @@ function updateWeather(dt) {
     }
     rainGeo.attributes.position.needsUpdate = true;
   }
-  if (rainSnd) rainSnd.gain.value = weather.rain * 0.22;
+  if (rainSnd) rainSnd.gain.value = weather.rain * 0.22 * (player.inCar ? 0.45 : ARCH_WORLD && ARCH_WORLD.isInside && ARCH_WORLD.isInside() ? 0.25 : 1); // muffled by a roof
 }
 const headlight = new THREE.SpotLight(0xfff2d0, 0, 70, 0.5, 0.5, 1.2); scene.add(headlight, headlight.target);
 const heliLight = new THREE.SpotLight(0xffffff, 0, 120, 0.22, 0.4, 1); scene.add(heliLight, heliLight.target);
@@ -4924,7 +5014,13 @@ function randomEdgeNear(x, z, rmin, rmax, filter) {
   }
   return null;
 }
-function carType() { const r = Math.random(); return r < 0.38 ? 'sedan' : r < 0.62 ? 'suv' : r < 0.78 ? 'pickup' : r < 0.85 ? 'sports' : r < 0.94 ? 'van' : 'police'; }
+// what kind of place this is (src/world/zones.js): La Jolla money, downtown, the beach towns, working neighbourhoods,
+// the back country. It picks the traffic, how many patrol cars, what people carry and what they drop.
+const _zc = new Map();
+function zoneHere(x, z) { const k = Math.round(x / 120) * 100000 + Math.round(z / 120); let Z = _zc.get(k); if (!Z) { Z = zoneAt(-z / KZ + LAT0, x / KX + LON0); if (_zc.size > 4000) _zc.clear(); _zc.set(k, Z); } return Z; }
+ctx.policeMul = (x, z) => zoneHere(x, z).police;
+function carType(x, z) { const Z = x === undefined ? null : zoneHere(x, z); if (!Z) { const r = Math.random(); return r < 0.38 ? 'sedan' : r < 0.62 ? 'suv' : r < 0.78 ? 'pickup' : r < 0.85 ? 'sports' : r < 0.94 ? 'van' : 'police'; }
+  return Math.random() < 0.06 * Z.police ? 'police' : pickCar(Z); }
 // traffic: on a lane run (never inside a junction), clear of other cars, mostly ahead of the player and out of view;
 // arterials get more cars than residential streets. any = initial fill (no view / heading constraints).
 const SPAWN_P = [0.5, 1, 0.9, 0.7, 0.4, 0.28];
@@ -4949,7 +5045,7 @@ function spawnTraffic(px, pz, rmin, rmax, any) {
   lanePos(e, dir, s, latOf(L), _ca);
   if (!any && hyp(_ca.x - px, _ca.z - pz) < 280 && inView(_ca.x, _ca.z)) return;
   for (const o of vehicles) if (Math.abs(o.pos.x - _ca.x) < 14 && Math.abs(o.pos.z - _ca.z) < 14 && hyp(o.pos.x - _ca.x, o.pos.z - _ca.z) < 13) return;
-  const type = carType(), v = new Vehicle(type, _ca.x, _ca.z, Math.atan2(_ca.tx, _ca.tz));
+  const type = carType(_ca.x, _ca.z), v = new Vehicle(type, _ca.x, _ca.z, Math.atan2(_ca.tx, _ca.tz));
   v.mode = 'rail'; v.driver = type === 'police' ? 'cop' : 'ai'; v.agent = { e: ne.e, dir, s, next: null }; railInit(v);
   v.speed = legVmax(v.agent.rt[0], v) * 0.7; settleCar(v);
 }
@@ -5080,7 +5176,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyK') toggleTravel();
   // Y / T: next weather / +1 hour. With the lock on they move the lock (online too: it's this screen only);
   // online without it the sky is the server's
-  if (e.code === 'KeyY' && (SKY.lock || !online)) { const k = WEATHER_ORDER[(WEATHER_ORDER.indexOf(weather.key) + 1) % WEATHER_ORDER.length]; if (SKY.lock) { SKY.weather = k; saveSky(); } setWeather(k); }
+  if (e.code === 'KeyY' && (SKY.lock || !online)) { const k = WEATHER_ORDER[(WEATHER_ORDER.indexOf(weather.key) + 1) % WEATHER_ORDER.length]; if (SKY.lock || SKY.freeze) { SKY.weather = k; saveSky(); } setWeather(k); }
   if (e.code === 'KeyT' && SKY.lock) { SKY.hour = (SKY.hour + 1) % 24; saveSky(); }
   else if (e.code === 'KeyT' && !online) { if (e.shiftKey) clock.addDays(1); else { hour += 1; if (hour >= 24) { hour -= 24; clock.addDays(1); } } }
   if (e.code === 'KeyV') { voices = !voices; notify('Voices ' + (voices ? 'on' : 'off'), '', 1500); if (!voices && window.speechSynthesis) speechSynthesis.cancel(); }
@@ -5245,6 +5341,7 @@ function toggleCar() {
   player.inCar = v; v.driver = 'player'; v.mode = 'free'; v.parked = false; v.agent = null; cam.dist = 9;
   player.seatAnim = { kind: 'in', v, t: 0, dur: Math.min(1.1, 0.5 + hyp(v.pos.x - player.pos.x, v.pos.z - player.pos.z) * 0.08), x0: player.pos.x, z0: player.pos.z }; // walk to the door, get in
   if (v.vel.length() < 0.1) v.vel.set(0, 0);
+  if (radio.on && v.type === 'sports') { radio.st = 0; radio.track = STATIONS[0].tracks.findIndex(t => t.electro); radio.fromStart = true; } // a supercar: Out of Pocket, from the top
   if (radio.on) radioPlay(false);
   bus.emit('car:enter', { vehicle: v, stolen });
 }
@@ -6174,9 +6271,16 @@ function updatePlayer(dt) {
     const st = getIn ? 0 : (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0) - (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0);
     if (v.dead || v.burn) drivePhysics(v, 0, st, false, true, dt); else drivePhysics(v, thr, st, getIn, !getIn && keys.has('Space'), dt);
     if (v.air && !v.dead) { v.pitchV += thr * 2.4 * dt; v.rollV -= st * 2.8 * dt; } // a little air control
-    if (v.air && !v.dead && keys.has('Space') && !GAMES.inside) { // SPACE in the air: glide (not in the crew games). Most of gravity cancelled, thrust up to ~140 m/s
-      if (v.airT < 0.15 && !v.boosted) { v.vy = Math.max(v.vy, 0) + 14; v.boosted = true; sfx.whoosh(1); shake = Math.max(shake, 0.4); } // the kick off the lip
-      v.vy += GRAV * 0.62 * dt; const hs = Math.hypot(v.vel.x, v.vel.y); // cancels most of gravity, not all: you always come back down
+    // jumping is an upgrade (src/carmods.js 'hop', fitted at a garage): X hops the car off the ground, higher and further
+    // every level; SPACE in the air kicks off a lip and glides, with more lift the more levels you have
+    const hop = v.hopLv || 0; v.hopCd = Math.max(0, (v.hopCd || 0) - dt);
+    if (keys.has('KeyX') && !getIn && !v.dead && !v.air && !GAMES.inside) {
+      if (hop > 0 && v.hopCd <= 0) { const up = 3.6 + 1.6 * hop, fwd = 1 + 1.3 * hop; launchCar(v, up, -0.05 * hop, 0); v.vel.x += v.fx * fwd; v.vel.y += v.fz * fwd; v.hopCd = 2.4 - hop * 0.2; sfx.punch && sfx.punch(0.6); shake = Math.max(shake, 0.25); smoke.emit(v.pos.x, v.pos.y + 0.2, v.pos.z, 0, 0.6, 0, 1.4, 2.2, 0.75, 0.7, 0.62, 1.4); }
+      else if (hop === 0 && simTime - (v.hopHint || -99) > 8) { v.hopHint = simTime; notify('Fit a <b>Hydraulic jump</b> at a garage to jump this car.', '#f0b23a', 2600); }
+    }
+    if (v.air && !v.dead && keys.has('Space') && !GAMES.inside && hop > 0) { // SPACE in the air: glide (not in the crew games); needs the jump upgrade, stronger each level
+      if (v.airT < 0.15 && !v.boosted) { v.vy = Math.max(v.vy, 0) + 4 + 2.5 * hop; v.boosted = true; sfx.whoosh(1); shake = Math.max(shake, 0.4); } // the kick off the lip
+      v.vy += GRAV * (0.22 + 0.08 * hop) * dt; const hs = Math.hypot(v.vel.x, v.vel.y); // cancels part of gravity: you always come back down
       if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 0.8 + Math.random() * 0.5; });
       if (hs < 140 * (v.turbo || 1) * (v.rocket || 1)) { const a = 26 * (v.turbo || 1) * (v.rocket || 1) * dt; v.vel.x += Math.sin(v.rotY) * a; v.vel.y += Math.cos(v.rotY) * a; }
       v.pitchV *= Math.exp(-3 * dt); v.rollV *= Math.exp(-3 * dt); v.pitch = lerp(v.pitch, 0.05, 1 - Math.exp(-2 * dt)); v.roll = lerp(v.roll, 0, 1 - Math.exp(-2 * dt)); // flies level
@@ -6187,9 +6291,9 @@ function updatePlayer(dt) {
     if (!v.air) v.boosted = false;
     { const tank = nitroSeconds(); player.nitro = Math.min(tank, (player.nitro ?? tank) + dt * 0.08); if (carRepairPerS() && !v.dead && v.health < 100) v.health = Math.min(100, v.health + carRepairPerS() * dt); } // Nitrous refills, Road Mechanic
     if ((CH.nitro || player.nitro > 0.05) && (keys.has('ShiftLeft') || keys.has('ShiftRight')) && !v.dead && !(GAMES.inside && v.air)) { if (!CH.nitro) player.nitro -= dt; const hs = Math.hypot(v.vel.x, v.vel.y); if (hs < 95) { v.vel.x += Math.sin(v.rotY) * 24 * dt; v.vel.y += Math.cos(v.rotY) * 24 * dt; } if (v.partsG && v.partsG.userData.flames) v.partsG.userData.flames.forEach(f => { f.visible = true; f.scale.z = 1 + Math.random() * 0.6; }); }
-    if (v.partsG && v.partsG.userData.flames && !(v.air && keys.has('Space'))) v.partsG.userData.flames.forEach(f => f.visible = false);
+    if (v.partsG && v.partsG.userData.flames && !(v.air && keys.has('Space') && (v.hopLv || 0) > 0)) v.partsG.userData.flames.forEach(f => f.visible = false);
     if (v.flipped && !v.dead && st && v.vel.length() < 2 && !v.air) { v.flipped = false; launchCar(v, 4.6, 0, -Math.sign(st) * 4.4); } // rock it back over
-    carHitWorld(v); boundsClamp(v.pos); settleCar(v, dt);
+    carHitWorld(v); brushOnCar(v, dt); boundsClamp(v.pos); settleCar(v, dt);
     player.pos.set(v.pos.x, v.pos.y, v.pos.z); player.rotY = v.rotY;
     if (mouseDown && player.weapon > 0 && player.shootCd <= 0) playerShoot();
     if (S2) { const sp = Math.abs(v.speed), lat = Math.abs(v.vel.x * v.fz - v.vel.y * v.fx); S2.engine(v.speed, thr, !v.dead); S2.screech(!v.air && !v.dead && sp > 4 ? clamp((lat - 2.5) / 6, 0, 1) + (keys.has('Space') && sp > 8 ? 0.5 : 0) : 0); S2.wind(clamp((sp - 22) / 40, 0, 1) + (v.air ? 0.35 : 0)); }
@@ -6226,7 +6330,10 @@ function updatePlayer(dt) {
   player.evasive = player.rollT > 0 || player.slideT > 0;
   if (player.aiming || (mouseDown && player.weapon > 0)) player.rotY = Math.atan2(fwdX, fwdZ);
   player.speed = speed;
-  if (S2) { S2.engine(0, 0, false); S2.screech(0); S2.wind(0);
+  if (S2) { S2.engine(0, 0, false); S2.screech(0);
+    const indoors = !!(ARCH_WORLD && ARCH_WORLD.isInside && ARCH_WORLD.isInside());
+    S2.wind(indoors ? 0 : clamp((NATURE.U.uGust.value - 0.45) * 0.7 + weather.storm * 0.4 + weather.rain * 0.12, 0, 0.6)); // gusts now and then, outdoors only
+    ambienceStep(dt, indoors);
     if (!player.dead && player.air <= 0.01 && speed > 0.6) { player.stepD = (player.stepD || 0) + speed * dt; const stride = speed > 5 ? 1.7 : speed > 2.5 ? 1.45 : 1.1;
       if (player.stepD > stride) { player.stepD = 0; S2.step(ROADS && ROADS.onRoad(player.pos.x, player.pos.z, 0.2) ? 'asphalt' : areaKindAt(player.pos.x, player.pos.z) === 1 ? 'grass' : 'dirt', speed > 5 ? 1 : 0.7); } } }
   if (keys.has('Space') && player.air <= 0.001 && !CH.fly) player.vy = CH.jump ? 17 : 5.2;
@@ -6292,6 +6399,9 @@ function updatePlayer(dt) {
   else if (player.slideT > 0) { r.body.rotation.x = -1.05; r.body.position.y = 0.25; }
   else if (player.crouch && speed > 0.2) { r.body.rotation.x = 0.35; r.body.position.y = -0.25; }
   else if (!player.dead) { r.body.rotation.x = 0; r.body.position.y = 0; }
+  if (r.human && !player.dead && player.air <= 0.01 && !(player.rollT > 0) && !(player.slideT > 0) && !CH.fly) { // feet on the ground you can see
+    const gy0 = standAt(player.pos.x, player.pos.z); r.g.position.y = gy0; plantFeet(r, standAt, gy0, dt);
+  }
   player.mode = pmode;
   r.gun.visible = player.weapon > 0;
   if (r.human) { // the Rocketbox player: real gun models, arms posed along the camera's aim
@@ -6938,7 +7048,7 @@ function holdUp(p, dt) {
   p.timer = 1.3; p.handsT += dt;
 }
 function robPed(p) {
-  const rich = p.rig && p.rig.avatar && /^Business/.test(p.rig.avatar), cash = Math.round(rand(12, 140) * (rich ? 2.2 : 1) * (hour > 20 || hour < 5 ? 1.3 : 1));
+  const rich = p.rig && p.rig.avatar && /^Business/.test(p.rig.avatar), Z = zoneHere(p.pos.x, p.pos.z), cash = Math.round(rand(12, 140) * (rich ? 2.2 : 1) * (hour > 20 || hour < 5 ? 1.3 : 1) * (0.4 + 1.8 * Z.wealth));
   save.money += cash; sfx.cash(); notify(`You took <b>$${cash}</b>. Someone will have seen that.`, 'green', 3000); p.talk('robbed');
   p.robbed = true; p.flee(player.pos.x, player.pos.z, 14); if (!p.callT) { p.callT = rand(4, 8); p.pendingSev = 2; p.pendingWhy = 'robbery'; }
   save.rep -= 4; ACH.bump && ACH.bump('robberies');
@@ -7692,7 +7802,12 @@ function frame(now) {
   requestAnimationFrame(frame);
   const rdt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // rAF time can be a hair behind performance.now() on the first frame: a negative step blew up the suspension
   tick(rdt);
+  { // music: the theme on the main menu and the pause screen, the exploring songs on foot when nothing else is playing
+    const menuUp = !$('menu').hidden || paused;
+    MUSIC.theme(menuUp); MUSIC.explore(running && !menuUp && !player.inCar && !player.inPlane && !(police.wanted > 0) && !player.dead); MUSIC.update(rdt);
+  }
 }
+const MUSIC = createMusic();
 function tick(rdt) {
   TUNE.glow(player.inCar, nightAmount);
   scaleStep(rdt);
@@ -7956,7 +8071,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { get WATER() { return WATER; }, EDGE_SPOTS, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
