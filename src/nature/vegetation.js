@@ -246,23 +246,28 @@ export class Vegetation {
     return one;
   }
   count() { let n = 0; for (const a of this.inst.values()) n += a.x.length; return n; }
-  build() {
+  build() { const it = this._build(); while (!it.next().done); }
+  // the same, a few milliseconds at a time between the game's frames; the new meshes stay hidden until it's done (then
+  // compile them off the frame: renderer.compileAsync) so nothing half-built shows
+  async buildAsync(ms = 6) { const it = this._build(true); let t = performance.now(); while (!it.next().done) if (performance.now() - t > ms) { await new Promise(r => setTimeout(r, 0)); t = performance.now(); } }
+  *_build(hide) {
     const { THREE } = this; const quad = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
-    let si = 0; this.order = [];
+    let si = 0; const order = []; this.added = [];
     for (const [name, a] of this.inst) {
-      const sp = this.lib.species.get(name), n = a.x.length; this.order.push(name);
+      yield;
+      const sp = this.lib.species.get(name), n = a.x.length; order.push(name);
       const g = new THREE.InstancedBufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(quad, 3)); g.setIndex([0, 1, 2, 0, 2, 3]);
       const P = new Float32Array(n * 4), SV = new Float32Array(n * 2), T = new Float32Array(a.t);
-      for (let i = 0; i < n; i++) { P[i * 4] = a.x[i]; P[i * 4 + 1] = a.y[i]; P[i * 4 + 2] = a.z[i]; P[i * 4 + 3] = a.rot[i]; SV[i * 2] = a.s[i]; SV[i * 2 + 1] = a.v[i]; }
+      for (let i = 0; i < n; i++) { P[i * 4] = a.x[i]; P[i * 4 + 1] = a.y[i]; P[i * 4 + 2] = a.z[i]; P[i * 4 + 3] = a.rot[i]; SV[i * 2] = a.s[i]; SV[i * 2 + 1] = a.v[i]; if ((i & 16383) === 16383) yield; }
       g.setAttribute('iPos', new THREE.InstancedBufferAttribute(P, 4)); g.setAttribute('iSV', new THREE.InstancedBufferAttribute(SV, 2));
       g.setAttribute('iTint', new THREE.InstancedBufferAttribute(T, 3)); g.instanceCount = n;
       const mesh = new THREE.Mesh(g, impostorMaterial(THREE, sp, this.U)); mesh.frustumCulled = false; mesh.renderOrder = 1;
       (this.meshes || (this.meshes = new Map())).set(name, mesh);
-      mesh.name = 'impostors:' + name; this.scene.add(mesh);
+      mesh.name = 'impostors:' + name; if (hide) mesh.visible = false; this.scene.add(mesh); this.added.push(mesh);
       // spatial grid for the near-LOD gather
       const C = this.opts.cell;
-      for (let i = 0; i < n; i++) { const k = Math.floor(a.x[i] / C) * 100000 + Math.floor(a.z[i] / C); let c = this.grid.get(k); if (!c) this.grid.set(k, c = []); c.push(si, i); }
+      for (let i = 0; i < n; i++) { const k = Math.floor(a.x[i] / C) * 100000 + Math.floor(a.z[i] / C); let c = this.grid.get(k); if (!c) this.grid.set(k, c = []); c.push(si, i); if ((i & 16383) === 16383) yield; }
       // near meshes, one InstancedMesh per variant with a LOD
       sp.lods.forEach((lod, v) => {
         if (!lod) return;
@@ -275,10 +280,11 @@ export class Vegetation {
         const im = new THREE.InstancedMesh(lod.geo, mats, 64); im.count = 0; im.frustumCulled = false;
         im.castShadow = this.opts.nearShadows; im.receiveShadow = true; im.name = `near:${name}/${v}`;
         im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(64 * 3), 3);
-        this.scene.add(im); this.near.set(`${si}/${v}`, im);
+        if (hide) im.visible = false; this.scene.add(im); this.near.set(`${si}/${v}`, im); this.added.push(im);
       });
       si++;
     }
+    this.order = order;
   }
   // gather plants within the near radius into the near InstancedMeshes (cheap; runs when the camera moved)
   updateNear(cx, cz) {

@@ -231,7 +231,8 @@ export function createOuter(E) {
     t.phase = 'roads'; on();
     let n = 0;
     for (const e of t.edges) {
-      E.paveRoad(e.t, e.w, densify(e.p, 3), e.p);
+      if (E.paveRoadSteps) { for (const _ of E.paveRoadSteps(e.t, e.w, densify(e.p, 3), e.p)) if (due()) { off(); yield; on(); } } // a long road pauses part way
+      else E.paveRoad(e.t, e.w, densify(e.p, 3), e.p);
       E.mapRoad(e);
       n++; if (due()) { off(); yield; on(); }
     }

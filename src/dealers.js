@@ -18,14 +18,17 @@ export function createDealers(H) {
     { type: 'sports', model: 'q-sports', name: 'Coupe', price: 38000, blurb: 'The fastest thing on the lot.' },
     { type: 'bus', model: 'q-bus', name: 'Party bus', price: 30000, blurb: 'Bring everyone.' },
   ];
-  const BOATS = [
-    { kind: 'jetski', name: 'Jet ski', price: 7000, blurb: 'Tiny and very fast.' },
-    { kind: 'rowboat', name: 'Rowboat', price: 900, blurb: 'Oars and quiet.' },
-    { kind: 'runabout', name: 'Runabout', price: 15000, blurb: 'A classic lake boat.' },
-    { kind: 'speedboat', name: 'Speedboat', price: 42000, blurb: 'Twin engines and a deep V hull.' },
-    { kind: 'pontoon', name: 'Pontoon', price: 22000, blurb: 'A floating living room.' },
-    { kind: 'cruiser', name: 'Cabin cruiser', price: 85000, blurb: 'A cabin, a galley and a sun deck.' },
-    { kind: 'yacht', name: 'Party yacht', price: 260000, blurb: 'Three decks. Walk around while it moves.' },
+  const BOATS = [ // the boat models: src/world/boatmodels.js; how they handle: src/pilot.js BOATS
+    { kind: 'kayak', name: 'Sit-on-top kayak', price: 650, blurb: 'A paddle and the whole lake.' },
+    { kind: 'rowboat', name: 'Aluminium rowboat', price: 900, blurb: 'Oars and quiet.' },
+    { kind: 'pedal', name: 'Pedal boat', price: 1400, blurb: 'Two seats, a canopy, your legs.' },
+    { kind: 'jon', name: '14 ft fishing boat', price: 4800, blurb: 'Riveted aluminium and a 15 hp tiller.' },
+    { kind: 'runabout', name: 'Bowrider', price: 18000, blurb: 'Bow seats, a split screen, a sterndrive.' },
+    { kind: 'pontoon', name: 'Tritoon', price: 32000, blurb: 'A floating living room with a bimini.' },
+    { kind: 'center', name: 'Center console', price: 68000, blurb: 'T-top, rod holders, twin 250s.' },
+    { kind: 'speedboat', name: 'Sport boat', price: 95000, blurb: 'A deep V and twin 300s. Hold on.' },
+    { kind: 'sailboat', name: '30 ft sloop', price: 74000, blurb: 'A cabin, a wheel, the wind (and a diesel).' },
+    { kind: 'yacht', name: 'Flybridge yacht', price: 1250000, blurb: 'Fifty feet of it. Radar, a flybridge, a swim platform.' },
   ];
   const LOTS = [ // car lots: name, lat, lon (on the auto rows), and the marina
     ['Poway Auto Mall', 32.95745, -117.03915, 'car'], ['Parkway Motors', 32.94295, -117.05605, 'car'], ['Carmel Mountain Motors', 32.98075, -117.07955, 'car'],

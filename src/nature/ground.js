@@ -111,6 +111,13 @@ export function setGroundLand(ground, tex, rect) {
 // per 16 m cell) and a table of the pools' rectangles. The pool's coping and deck cover the cut's edge.
 //   setPoolHoles(pools, cell)   pools: [[x, z, w, d, angle]]
 export const HOLE_U = { gHoles: { value: null }, gHoleP: { value: null }, gHoleR: { value: [0, 0, 16, 0] }, gHoleOn: { value: 0 } };
+// tracks pressed into soft sand (src/world/tracks.js): a texture following the player, R the dent, G the sand pushed up
+// beside it; the ground darkens in the dents and takes their slopes
+export const TRACK_U = { gTrk: { value: null }, gTrkWin: { value: [0, 0, 1, 0] } };
+const TRACK_GLSL = /* glsl */`
+uniform sampler2D gTrk; uniform vec4 gTrkWin;
+vec2 trkAt(vec2 p) { vec2 uv = (p - gTrkWin.xy) / gTrkWin.z; if (gTrkWin.w < 0.5 || uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec2(0.0); return texture2D(gTrk, uv).rg; }
+float trkH(vec2 p) { vec2 t = trkAt(p); return (t.g * 0.7 - t.r) * 0.1; } // metres: down in the rut, up on its berm`;
 export const HOLE_GLSL = /* glsl */`
 uniform sampler2D gHoles, gHoleP; uniform vec4 gHoleR; uniform float gHoleOn;
 float poolHole(vec2 p, float m) { // m: extra margin (the grass also keeps off the deck)
@@ -152,7 +159,7 @@ export function groundPatch(ground, opts = {}) {
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
-    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U,
+    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...TRACK_U,
   };
   (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
@@ -161,7 +168,7 @@ export function groundPatch(ground, opts = {}) {
       .replace('#include <common>', '#include <common>\nvarying vec3 vWp; varying vec3 vWn;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz; vWn = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF;\n' + HOLE_GLSL)
+      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF;\n' + HOLE_GLSL + TRACK_GLSL)
       .replace('#include <map_fragment>', /* glsl */`
       if (poolHole(vWp.xz, 0.0) > 0.5) discard; // a pool here (setPoolHoles)
       #include <map_fragment>
@@ -255,6 +262,11 @@ export function groundPatch(ground, opts = {}) {
           gNormalW = normalize(mix(Nw, normalize(nGround * (1.0 - br) + nR * br), gF));
         }
         diffuseColor.rgb = col;
+        if (gTrkWin.w > 0.5) { // tracks in the sand: darker, damper sand in the dents, the slopes of ruts and berms in the normal
+          vec2 tk = trkAt(vWp.xz); diffuseColor.rgb *= 1.0 - tk.r * 0.45 + tk.g * 0.1;
+          float e = gTrkWin.z / 1024.0, h0 = trkH(vWp.xz), hx = trkH(vWp.xz + vec2(e, 0.0)), hz = trkH(vWp.xz + vec2(0.0, e));
+          gNormalW = normalize(gNormalW + vec3(h0 - hx, 0.0, h0 - hz) / e);
+        }
       }`)
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize((viewMatrix * vec4(gNormalW, 0.0)).xyz);');
   };

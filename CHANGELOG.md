@@ -8,6 +8,43 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.7.2 (2026-10-28)
+
+- **Fewer freezes:** the plants, ground cover, grown trees and their impostors now build in small slices after the
+  loading screen instead of in one block (that froze the game for seconds just after it started), and their shaders
+  compile off the frame before they show; the scene's shaders compile during the loading screen too. The minimap
+  redraws its base map only when you leave it (it redrew every few seconds and whenever your speed changed the zoom);
+  long roads pave in steps; the grass under you re-reads the ground a few rows a frame; leaf textures are stamped from
+  pre-tinted sheets (a canvas filter per leaf took seconds). The tree atlas no longer keeps four hidden copies of
+  itself in video memory. A frame profiler (`window.__gtp.prof`) records where any slow frame went.
+- **Palms** lean and curve back toward the sky, at heights from 4 to 26 m, trimmed with a boot of leaf bases or still in
+  their skirts of dead fronds, thin or full. Queen palms join the fan and date palms. The plazas' cone palms are gone:
+  their islands grow real ones.
+- **Power lines where they really run** (`assets/world/power.json`, OpenStreetMap): about 20,000 towers and poles out
+  to 50 km. Lattice towers with X-braced panels, crossarms and disc strings for the 138-230 kV lines; the 500 kV
+  towers with their V-strings; tubular steel poles with davit arms; tall wood 69 kV poles with post insulators and a
+  12 kV circuit underbuilt; gantries at the substations. Along Poway's rural and estate roads, wooden distribution
+  poles laid by rule (the tracts are fed underground): crossarms and braces, pin insulators, transformers with their
+  cutouts and jumpers, guyed dead-ends and angles, cobra-head streetlights, phone and cable lines below the power,
+  service drops to the houses, some streets with only the telephone poles left. The wires sag between them and stay
+  crisp at any distance. Hit a wooden pole fast enough and it snaps, arcing, and its wires come down.
+- **Boats, rebuilt:** real lofted hulls (a deep V at the transom into a fine entry, chines, flared topsides) for the
+  lakes' rental boats, rowboats, pedal boats and kayaks, bowriders, center consoles with T-tops and twin outboards,
+  sport boats, tritoons, 30 ft sloops with their rigging and 50 ft flybridge yachts. More of them for sale at the
+  marina.
+- **Marinas** (`assets/world/harbor.json`, OpenStreetMap): San Diego's docks down to their fingers, with about 5,000
+  boats in their slips (bigger slips, bigger boats), bobbing on their lines; the fixed piers on their pile bents; rock
+  breakwaters and jetties.
+- **Trailers** in the driveways: boats backed in on their trailers, travel trailers, utility trailers, and horse
+  trailers in the country.
+- **Surf:** real surfboards stuck in the sand; surf rental shacks on the beaches (soft tops on a rack, wetsuits,
+  a SURF flag); a third of the beach towns' cars carry boards on a roof rack.
+- **Soft sand:** tyres leave ruts and people leave footprints on the beach; they fade over a couple of minutes. Sand
+  drags at cars and slows you on foot.
+- **Bikes and scooters:** beach cruisers, step-through scooters and rental kick scooters on the sidewalks (mostly in the
+  beach towns and downtown); ride them with F, and you're on them: on the saddle, feet on the pedals, leaning into
+  the turns.
+
 ## 0.7.1 (2026-10-28)
 
 - **Water by kind:** clear pools with a tile band, steps, a sloped floor, caustics and night lights, the ground cut out

@@ -100,6 +100,29 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.
 - The sky moves: clouds billow and drift, fair-weather cumulus come and go, and their shadows cross the ground.
 - Dusk is violet overhead and orange at the horizon (`C.duskTop`, `C.duskHor` in index.html), with pink-lit clouds.
+- Palms are never ruler-straight: fan palms lean and curve back up, at mixed heights, some trimmed to a boot of leaf
+  bases, some in their skirts of dead fronds (`src/nature/proctrees.js`).
+
+## Power lines (`src/world/power.js`)
+
+- Transmission lines go where OpenStreetMap has them (`assets/world/power.json`, `tools/world/power.py`); street lines
+  only along rural and estate roads, because Poway's tracts are fed underground.
+- Every structure is modelled to its hardware: weathered wood with checks and old staples, crossarms with braces and
+  through-bolts, pin and post insulators, transformers with cutouts, guys with yellow guards, lattice with X-bracing.
+- Wires sag (more on long spans) and are never thinner than a pixel; aluminium reads grey against the sky, not white.
+
+## Boats, marinas and the beach (`src/world/boatmodels.js`, `harbor.js`, `surf.js`)
+
+- Hulls are lofted (deep V aft, fine entry, chines, flare), never boxes. White gelcoat is the norm; navy, red and
+  green hulls are the exception. Bottom paint below the waterline.
+- Marinas come from the mapped docks; the bigger the slip, the bigger the boat; boats bob out of step with each other.
+- Beaches have surf rental shacks by the towers, boards stuck in the sand, boards on car roofs in the beach towns.
+- Sand is soft: ruts and footprints, fading over a couple of minutes.
+
+## Two wheels (`src/twowheel.js`)
+
+- Beach cruisers, step-through scooters and rental kick scooters; the rider is the player's own avatar, posed on the
+  saddle with feet on the pedals and hands on the grips (`ride()` in `src/humans.js`), leaning into turns.
 
 ## Zones (`src/world/zones.js`)
 

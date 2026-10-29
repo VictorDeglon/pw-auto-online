@@ -10,6 +10,8 @@
 
 const G = 8; // views per side, as the scanned species
 
+const idle = () => new Promise(r => setTimeout(r, 0)); // growing and baking yield to the game's frames between pieces
+
 function rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 // ---------------------------------------------------------------- textures
@@ -46,8 +48,20 @@ function texFrom(THREE, cv, srgb = true, repeat = false) {
   t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.anisotropy = 4; t.needsUpdate = true;
   t.userData.mean = [r / 255, gg / 255, b / 255]; return t;
 }
+// the leaf sheet in a handful of tones, each filtered once at half size: stamping thousands of leaves each with its own
+// canvas filter took seconds and froze the game
+function toneSheets(sheet, dark = 1) {
+  const W = Math.ceil(sheet.width / 2), H = Math.ceil(sheet.height / 2), out = [];
+  for (let k = 0; k < 8; k++) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+    g.filter = `brightness(${(0.68 + (k / 7) * 0.5) * dark}) saturate(${0.6 + ((k * 5) % 8) / 7 * 0.35}) hue-rotate(${-6 - ((k * 3) % 8) / 7 * 8}deg)`; // SoCal leaves: olive, dusty, not lime; some catching the light
+    g.drawImage(sheet, 0, 0, W, H); out.push(c);
+  }
+  return out;
+}
 // a twig card: thin twigs and scanned leaves stamped along them (droop: leaves hang)
 function twigCard(sheet, blobs, r, o = {}) {
+  const tones = toneSheets(sheet, o.dark || 1);
   const c = document.createElement('canvas'); c.width = c.height = 512; const g = c.getContext('2d', { willReadFrequently: true });
   const twigs = o.twigs ?? 5, leaves = o.leaves ?? 160, size = o.size ?? 60, hang = o.hang ?? 0;
   g.lineCap = 'round';
@@ -59,8 +73,7 @@ function twigCard(sheet, blobs, r, o = {}) {
     for (let k = 0; k < leaves / twigs; k++) {
       const [px, py, pa] = pts[Math.floor(r() * pts.length)], b = blobs[Math.floor(r() * blobs.length)], s = size * (0.75 + r() * 0.5) / Math.max(b[2], b[3]);
       g.save(); g.translate(px + (r() - 0.5) * 22, py + (r() - 0.5) * 22); g.rotate(pa + (r() - 0.5) * 2.2 + Math.PI / 2 + hang * 1.2);
-      g.filter = `brightness(${(0.68 + r() * 0.5) * (o.dark || 1)}) saturate(${0.6 + r() * 0.35}) hue-rotate(${-6 - r() * 8}deg)`; // SoCal leaves: olive, dusty, not lime; each its own tone, some catching the light
-      g.drawImage(sheet, b[0], b[1], b[2], b[3], -b[2] * s / 2, 0, b[2] * s, b[3] * s); g.restore();
+      g.drawImage(tones[Math.floor(r() * tones.length)], b[0] / 2, b[1] / 2, b[2] / 2, b[3] / 2, -b[2] * s / 2, 0, b[2] * s, b[3] * s); g.restore(); // each leaf its own tone
       if (o.flowers && r() < o.flowers) { g.fillStyle = `hsl(${268 + r() * 16},${55 + r() * 20}%,${55 + r() * 15}%)`; for (let f = 0; f < 6; f++) { g.beginPath(); g.arc(px + (r() - 0.5) * 40, py + (r() - 0.5) * 40, 6 + r() * 6, 0, Math.PI * 2); g.fill(); } }
     }
   }
@@ -78,14 +91,14 @@ function palmFanLeaf(r) { // a Washingtonia fan: pleated segments radiating from
   }
   return c;
 }
-function palmPinnaLeaf(r, dead = false) { // a date-palm frond seen flat: rachis up the middle, narrow leaflets angled forward
+function palmPinnaLeaf(r, dead = false, queen = false) { // a date-palm frond seen flat: rachis up the middle, narrow leaflets angled forward
   const c = document.createElement('canvas'); c.width = 256; c.height = 1024; const g = c.getContext('2d', { willReadFrequently: true });
   g.strokeStyle = dead ? 'rgb(120,96,60)' : 'rgb(110,120,60)'; g.lineWidth = 10; g.beginPath(); g.moveTo(128, 1024); g.lineTo(128, 0); g.stroke();
   for (let y = 1000; y > 10; y -= 9) {
     const t = y / 1024, len = (t > 0.85 ? 0 : 118) * Math.sin(Math.min(1, (1 - t) * 1.25) * Math.PI * 0.95) + 6, tone = 0.75 + r() * 0.35;
     if (t > 0.86 && r() < 0.7) { g.strokeStyle = 'rgb(90,90,50)'; g.lineWidth = 3; } // spines near the base
-    else g.strokeStyle = dead ? `rgb(${Math.round(150 * tone)},${Math.round(120 * tone)},${Math.round(75 * tone)})` : `rgb(${Math.round(98 * tone)},${Math.round(118 * tone)},${Math.round(58 * tone)})`; // Canary palm green, a little yellow
-    g.lineWidth = t > 0.86 ? 3 : 7; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(128 + s * len * 0.5, y - len * 0.35, 128 + s * len, y - len * 0.75 + (r() - 0.5) * 10); g.stroke(); }
+    else g.strokeStyle = dead ? `rgb(${Math.round(150 * tone)},${Math.round(120 * tone)},${Math.round(75 * tone)})` : queen ? `rgb(${Math.round(64 * tone)},${Math.round(104 * tone)},${Math.round(46 * tone)})` : `rgb(${Math.round(98 * tone)},${Math.round(118 * tone)},${Math.round(58 * tone)})`; // Canary palm green, a little yellow; queen palms darker
+    g.lineWidth = t > 0.86 ? 3 : queen ? 5 : 7; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(128, y); if (queen) g.quadraticCurveTo(128 + s * len * 0.6, y - len * 0.1, 128 + s * len * 0.95, y + len * 0.25 + (r() - 0.5) * 14); else g.quadraticCurveTo(128 + s * len * 0.5, y - len * 0.35, 128 + s * len, y - len * 0.75 + (r() - 0.5) * 10); g.stroke(); } // queen leaflets hang soft
   }
   return c;
 }
@@ -189,43 +202,67 @@ function cypress(B, r, H) {
       B.card(p, rt.map(v => v * s * 0.5), [0, s * 0.7, 0], cc, 0.85 + r() * 0.15, [0, 0, 1, 1], 0.8); }
   }
 }
-// palms: a trunk up a gentle curve, a crown of fronds. fan: Washingtonia; date: Phoenix canariensis
+// palms: a trunk that leans and curves back toward the sky, a crown of fronds. fan: Washingtonia robusta (tall, thin, a
+// flared foot, often leaning; trimmed ones keep a 'boot' of cut leaf bases under the crown, untrimmed ones a skirt of dead
+// fronds); date: Phoenix canariensis (thick, diamond-patterned, a huge ball of arching fronds); queen: Syagrus (a slender
+// ringed grey trunk, soft feathery fronds that arch and hang)
+//   o: { kind, height (trunk length), r0, r1 (radius at foot, at top), fronds, lean (radians from vertical at the foot),
+//        curve (0: a straight lean .. 1: upright again at the top), skirt (m of dead fronds), boot (m of leaf bases), frond (size) }
 function palm(B, r, o) {
-  const H = o.height, lean = [(r() - 0.5) * 0.12, 1, (r() - 0.5) * 0.12], segs = Math.ceil(H / 1.4); let p = [0, 0, 0], v = 0;
-  for (let s = 0; s < segs; s++) { const t = s / segs, d = norm([lean[0] * (1 + t), 1, lean[2] * (1 + t)]), q = add(p, d, H / segs);
-    v = B.limb(p, q, o.r0 + (o.r1 - o.r0) * t + (s === 0 ? 0.12 : 0), o.r0 + (o.r1 - o.r0) * (t + 1 / segs), 8, v, s === 0 ? 0.55 : 0.8, 0.9); p = q; }
-  const top = p, cc = add(top, [0, 0.3, 0]);
-  if (o.kind === 'date') B.limb(add(top, [0, -0.6, 0]), add(top, [0, 0.5, 0]), o.r1 * 1.15, o.r1 * 0.5, 8, v, 0.85, 0.9); // the 'pineapple' of leaf bases
-  const n = o.fronds;
+  const H = o.height, az = r() * Math.PI * 2, lean = o.lean || 0, curve = o.curve || 0, segs = Math.max(6, Math.ceil(H / 1.1));
+  const wob = [(r() - 0.5) * 0.05, (r() - 0.5) * 0.05, r() * 6]; // trunks are never quite true
+  let p = [0, 0, 0], v = 0, d = [0, 1, 0];
+  const flare = o.kind === 'date' ? 1.25 : o.kind === 'queen' ? 1.3 : 1.7; // the swollen foot (Washingtonia's is wide)
+  for (let s = 0; s < segs; s++) {
+    const t0 = s / segs, t1 = (s + 1) / segs, tm = (t0 + t1) / 2, a = lean * (1 - curve * Math.pow(tm, 1.3));
+    d = norm([Math.sin(a) * Math.cos(az) + wob[0] * Math.sin(tm * 6 + wob[2]), Math.cos(a), Math.sin(a) * Math.sin(az) + wob[1] * Math.cos(tm * 5 + wob[2])]);
+    const L = s === 0 ? Math.min(0.7, H / segs) : (H - Math.min(0.7, H / segs)) / (segs - 1), q = add(p, d, L);
+    const rad = t => { const base = o.r0 + (o.r1 - o.r0) * t; return base * (1 + (flare - 1) * Math.exp(-t * H / 0.55)); };
+    const boot = o.boot && (H - (s + 1) * (H / segs)) < o.boot; // the top stretch: leaf bases left by trimming
+    v = B.limb(p, q, rad(t0) * (boot ? 1.35 : 1), rad(t1) * (boot ? 1.4 : 1), o.kind === 'fan' ? 9 : 10, v, s === 0 ? 0.5 : boot ? 0.62 : 0.82, boot ? 0.66 : 0.9);
+    if (boot) for (let k = 0; k < 7; k++) { const ang = k / 7 * Math.PI * 2 + s * 0.9, out = [Math.cos(ang), 0.55, Math.sin(ang)], b0 = add(p, out, rad(t1) * 1.1); B.limb(b0, add(b0, norm(out), 0.28 + r() * 0.12), 0.07, 0.04, 3, 0, 0.55, 0.65); } // cut petiole stubs
+    p = q;
+  }
+  const top = p, up = norm(add(d, [0, 1, 0])), e1 = perp(up), e2 = cross(up, e1), cc = add(top, up, 0.3);
+  const dirAt = (az2, el) => norm(add(add(e1.map(x => x * Math.cos(az2) * Math.cos(el)), e2.map(x => x * Math.sin(az2) * Math.cos(el))), up.map(x => x * Math.sin(el))));
+  if (o.kind === 'date') B.limb(add(top, up, -0.7), add(top, up, 0.5), o.r1 * 1.2, o.r1 * 0.5, 10, v, 0.8, 0.9); // the 'pineapple' of leaf bases
+  if (o.kind === 'queen') B.limb(add(top, up, -1.2), add(top, up, 0.4), o.r1 * 0.95, o.r1 * 0.55, 8, v, 0.85, 0.95); // the smooth green crownshaft
+  const n = o.fronds, F0 = o.frond || 1;
   for (let k = 0; k < n; k++) {
-    const az = k * 2.39996 + r() * 0.3, el = o.kind === 'fan' ? 1.15 - (k / n) * 1.6 + (r() - 0.5) * 0.25 : 1.0 - (k / n) * 1.45 + (r() - 0.5) * 0.2; // golden-angle spiral, young fronds up
-    const dir = norm([Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)]);
+    const age = k / n, azk = k * 2.39996 + r() * 0.3; // golden-angle spiral; young fronds point up, old ones droop
+    const el = o.kind === 'fan' ? 1.2 - age * 1.75 + (r() - 0.5) * 0.25 : o.kind === 'queen' ? 0.95 - age * 1.2 + (r() - 0.5) * 0.25 : 1.0 - age * 1.45 + (r() - 0.5) * 0.2;
+    const dir = dirAt(azk, el), aoF = 0.98 - age * 0.18; // inner and old fronds are a little darker
     if (o.kind === 'fan') {
-      const pet = 1.8 + r() * 0.5, base = add(top, dir, 0.2), hb = add(base, dir, pet); B.limb(base, hb, 0.06, 0.035, 3, 0, 0.75, 0.85);
-      // the fan, folded a little along its middle: two quads spanning the leaf canvas
-      const rt = norm(cross([0, 1, 0], dir).some(Math.abs) ? cross([0, 1, 0], dir) : [1, 0, 0]), up = norm(cross(dir, rt)), F = 1.7 + r() * 0.35;
-      const fold = (side, uv) => { const w = norm(add(rt, up, 0.35 * side)).map(x => x * F * 0.25); B.card(add(add(hb, dir, F * 0.5), w, side), w, dir.map(x => x * F * 0.5), cc, 0.95, uv, 0.5); }; // a shallow V: the outer edges lift
+      const pet = (1.5 + r() * 0.6) * F0, base = add(top, dir, 0.2), hb = add(base, dir, pet); B.limb(base, hb, 0.06, 0.035, 3, 0, 0.75, 0.85);
+      // the fan, folded a little along its middle: two quads spanning the leaf canvas, tipped down as it ages
+      const rt = norm(cross([0, 1, 0], dir).some(Math.abs) ? cross([0, 1, 0], dir) : [1, 0, 0]), upv = norm(cross(dir, rt)), F = (1.55 + r() * 0.4) * F0;
+      const fd = norm(add(dir, [0, -0.25 - age * 0.5, 0]));
+      const fold = (side, uv) => { const w = norm(add(rt, upv, 0.35 * side)).map(x => x * F * 0.25); B.card(add(add(hb, fd, F * 0.5), w, side), w, fd.map(x => x * F * 0.5), cc, aoF, uv, 0.5); };
       fold(-1, [0, 0, 0.5, 1]); fold(1, [0.5, 0, 1, 1]);
     } else {
-      // an arching frond: a strip that rises then droops, leaflets on the texture
-      const L = 4.8 + r() * 0.9, segN = 6, rt = norm(cross([0, 1, 0], [dir[0], 0, dir[2]]).some(Math.abs) ? cross([0, 1, 0], [dir[0], 0, dir[2]]) : [1, 0, 0]); let q = add(top, dir, 0.3), dd = dir;
+      // an arching frond: a strip that rises then droops, leaflets on the texture. Queen palm leaflets stand in several
+      // planes (plumose): two pairs of wings, one up, one down
+      const queen = o.kind === 'queen', L = (queen ? 3.6 + r() * 0.9 : 4.6 + r() * 1.0) * F0, segN = queen ? 7 : 6, droop = queen ? 0.75 : 0.42;
+      const hd = [dir[0], 0, dir[2]], rt = norm(cross([0, 1, 0], hd).some(Math.abs) ? cross([0, 1, 0], hd) : [1, 0, 0]); let q = add(top, dir, 0.3), dd = dir;
       for (let s = 0; s < segN; s++) {
-        const nd = norm(add(dd, [0, -0.42 * (s + 1) / segN, 0])), q2 = add(q, nd, L / segN), w = 0.42 * Math.sin(Math.min(1, (s + 0.5) / segN * 1.15) * Math.PI * 0.9) + 0.06, mid = add(q, nd, L / segN * 0.5); // arching, leaflets ~40 cm
+        const nd = norm(add(dd, [0, -droop * (s + 1) / segN * (0.7 + age * 0.6), 0])), q2 = add(q, nd, L / segN), w = (queen ? 0.5 : 0.42) * Math.sin(Math.min(1, (s + 0.5) / segN * 1.15) * Math.PI * 0.9) + 0.06, mid = add(q, nd, L / segN * 0.5);
         const v0 = s / segN, v1 = (s + 1) / segN, upn = norm(cross(nd, rt));
-        for (const side of [-1, 1]) { // a shallow V along the rachis
-          const wing = norm(add(rt.map(x => x * side), upn, 0.35)), a = q, b = q2, c = add(q2, wing, w), d = add(q, wing, w);
-          const u0 = side < 0 ? 0.5 : 0.5, u1 = side < 0 ? 0 : 1, nn = norm(add(upn, norm([mid[0] - cc[0], mid[1] - cc[1], mid[2] - cc[2]]), 0.8));
-          B.tri(1, a, b, c, nn, nn, nn, [u0, v0], [u0, v1], [u1, v1], [0.9, 0.9, 0.9], [0.95, 0.95, 0.95], [0.95, 0.95, 0.95]);
-          B.tri(1, a, c, d, nn, nn, nn, [u0, v0], [u1, v1], [u1, v0], [0.9, 0.9, 0.9], [0.95, 0.95, 0.95], [0.9, 0.9, 0.9]);
+        for (const tilt of queen ? [0.45, -0.55] : [0.35]) for (const side of [-1, 1]) {
+          const wing = norm(add(rt.map(x => x * side), upn, tilt)), a = q, b = q2, c = add(q2, wing, w), dq = add(q, wing, w);
+          const u0 = 0.5, u1 = side < 0 ? 0 : 1, nn = norm(add(upn, norm([mid[0] - cc[0], mid[1] - cc[1], mid[2] - cc[2]]), 0.8)), k0 = 0.9 * aoF, k1 = 0.95 * aoF;
+          B.tri(1, a, b, c, nn, nn, nn, [u0, v0], [u0, v1], [u1, v1], [k0, k0, k0], [k1, k1, k1], [k1, k1, k1]);
+          B.tri(1, a, c, dq, nn, nn, nn, [u0, v0], [u1, v1], [u1, v0], [k0, k0, k0], [k1, k1, k1], [k0, k0, k0]);
         }
         q = q2; dd = nd;
       }
     }
   }
-  if (o.skirt) { // a skirt of dead fronds hanging down the trunk under the crown
-    for (let k = 0; k < 22; k++) { const az = k / 22 * Math.PI * 2 + r() * 0.2, out = [Math.cos(az), 0, Math.sin(az)], y = top[1] - 0.3 - r() * 0.4, L = o.skirt * (0.7 + r() * 0.5);
-      const p = [top[0] + out[0] * (o.r1 + 0.25), y - L * 0.5, top[2] + out[2] * (o.r1 + 0.25)], rt = norm(cross([0, 1, 0], out));
-      B.card(p, rt.map(x => x * 0.55), [out[0] * 0.15, L * 0.5, out[2] * 0.15], add(top, [0, -L * 0.5, 0]), 0.75, [0, 0, 1, 1], 0.4); }
+  if (o.skirt) { // a skirt of dead fronds hanging down the trunk under the crown, thatched in two rows
+    for (let row = 0; row < 2; row++) for (let k = 0; k < 20; k++) {
+      const az2 = k / 20 * Math.PI * 2 + row * 0.16 + r() * 0.2, out = add(e1.map(x => x * Math.cos(az2)), e2.map(x => x * Math.sin(az2))), L = o.skirt * (0.6 + r() * 0.5) * (row ? 0.75 : 1);
+      const y0 = -0.25 - r() * 0.35 - row * o.skirt * 0.35, p0 = add(add(top, up, y0), out, o.r1 * 1.1 + 0.2 + row * 0.08), rt = norm(cross(up, out));
+      B.card(add(p0, up, -L * 0.5), rt.map(x => x * (0.5 + r() * 0.15)), add(up.map(x => x * L * 0.5), out, 0.12 + row * 0.05), add(top, up, -L * 0.6), 0.7 - row * 0.08, [0, 0, 1, 1], 0.4);
+    }
   }
 }
 
@@ -233,31 +270,38 @@ function palm(B, r, o) {
 async function makeVariants(THREE, base) {
   const r0 = rng(77);
   const [gum, pepper, jac, oak] = await Promise.all(['leafset022', 'leafset013', 'leafset002', 'leafset024'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
-  const card = (sheet, o, seed) => texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o));
+  const card = async (sheet, o, seed) => { await idle(); return texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o)); };
   const T = {
-    gum: card(gum, { twigs: 7, leaves: 460, size: 42, hang: 0.6 }, 11), pepper: card(pepper, { twigs: 8, leaves: 700, size: 26, hang: 0.9 }, 12),
-    jac: card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring
-    cyp: card(cyp, { twigs: 12, leaves: 1100, size: 16, dark: 0.88 }, 14),
-    oak: card(oak, { twigs: 9, leaves: 900, size: 17, dark: 0.82, hang: 0.15 }, 31), // coast live oak: small, glossy, dark leaves
-    fan: texFrom(THREE, palmFanLeaf(rng(15))), date: texFrom(THREE, palmPinnaLeaf(rng(16))), dead: texFrom(THREE, palmPinnaLeaf(rng(17), true)),
+    gum: await card(gum, { twigs: 7, leaves: 460, size: 42, hang: 0.6 }, 11), pepper: await card(pepper, { twigs: 8, leaves: 700, size: 26, hang: 0.9 }, 12),
+    jac: await card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring
+    cyp: await card(cyp, { twigs: 12, leaves: 1100, size: 16, dark: 0.88 }, 14),
+    oak: await card(oak, { twigs: 9, leaves: 900, size: 17, dark: 0.82, hang: 0.15 }, 31), // coast live oak: small, glossy, dark leaves
+    fan: texFrom(THREE, palmFanLeaf(rng(15))), date: texFrom(THREE, palmPinnaLeaf(rng(16))), dead: texFrom(THREE, palmPinnaLeaf(rng(17), true)), queen: texFrom(THREE, palmPinnaLeaf(rng(22), false, true)),
     barkGum: texFrom(THREE, barkCanvas('gum', rng(18)), true, true), bark: texFrom(THREE, barkCanvas('brown', rng(19)), true, true),
     barkFan: texFrom(THREE, barkCanvas('fan', rng(20)), true, true), barkDate: texFrom(THREE, barkCanvas('date', rng(21)), true, true),
   };
   const mats = (bark, leaf) => [new THREE.MeshStandardMaterial({ map: bark, roughness: 0.95 }), new THREE.MeshStandardMaterial({ map: leaf, alphaTest: 0.5, roughness: 0.75, side: THREE.DoubleSide })];
   const S = {
-    palm_fan: { trans: 0.25, sway: 0.006, list: [] }, palm_date: { trans: 0.25, sway: 0.008, list: [] }, eucalyptus: { trans: 0.2, sway: 0.01, list: [] },
+    palm_fan: { trans: 0.25, sway: 0.006, list: [] }, palm_date: { trans: 0.25, sway: 0.008, list: [] }, palm_queen: { trans: 0.3, sway: 0.012, list: [] }, eucalyptus: { trans: 0.2, sway: 0.01, list: [] },
     jacaranda: { trans: 0.2, sway: 0.012, list: [] }, pepper: { trans: 0.25, sway: 0.016, list: [] }, slender: { trans: 0.15, sway: 0.008, list: [] },
     oak: { trans: 0.15, sway: 0.008, list: [] },
   };
-  const grow = (name, fn, bark, leaf) => { const B = new Builder(); fn(B); S[name].list.push({ geo: B.geometry(THREE), mats: mats(bark, leaf) }); };
-  for (let i = 0; i < 3; i++) { const r = rng(100 + i); grow('palm_fan', B => palm(B, r, { kind: 'fan', height: [17, 12, 21][i], r0: 0.42, r1: 0.26, fronds: 34, skirt: i === 1 ? 0 : 2.8 + i }), T.barkFan, T.fan); }
-  for (let i = 0; i < 2; i++) { const r = rng(200 + i); grow('palm_date', B => palm(B, r, { kind: 'date', height: [7, 10.5][i], r0: 0.62, r1: 0.52, fronds: 46 }), T.barkDate, T.date); }
+  const jobs = [], grow = (name, fn, bark, leaf) => jobs.push(() => { const B = new Builder(); fn(B); S[name].list.push({ geo: B.geometry(THREE), mats: mats(bark, leaf) }); });
+  // palms, each its own: tall leaners curving back up, trimmed ones with a boot, young bushy ones still in their skirts
+  const FAN = [{ height: 22, lean: 0.12, curve: 0.3, fronds: 30, boot: 1.6 }, { height: 14, lean: 0.05, fronds: 38, skirt: 3.6 }, { height: 26, lean: 0.32, curve: 0.65, fronds: 26, boot: 1.2 },
+    { height: 9, lean: 0.2, curve: 0.25, fronds: 42, skirt: 2.4, frond: 1.1 }, { height: 18, lean: 0.24, fronds: 28, skirt: 1.3 }, { height: 24, lean: 0.08, curve: 0.5, fronds: 21, boot: 0.8, frond: 0.9 }];
+  FAN.forEach((f, i) => { const r = rng(100 + i); grow('palm_fan', B => palm(B, r, { kind: 'fan', r0: 0.36, r1: 0.24, ...f }), T.barkFan, T.fan); });
+  const DATE = [{ height: 7, lean: 0.04, fronds: 50 }, { height: 11, lean: 0.12, curve: 0.4, fronds: 40 }, { height: 4.5, lean: 0.06, fronds: 58, frond: 1.08 }];
+  DATE.forEach((f, i) => { const r = rng(200 + i); grow('palm_date', B => palm(B, r, { kind: 'date', r0: 0.62, r1: 0.52, ...f }), T.barkDate, T.date); });
+  const QUEEN = [{ height: 9, lean: 0.06, fronds: 16 }, { height: 12, lean: 0.16, curve: 0.5, fronds: 13, frond: 1.1 }];
+  QUEEN.forEach((f, i) => { const r = rng(250 + i); grow('palm_queen', B => palm(B, r, { kind: 'queen', r0: 0.2, r1: 0.17, ...f }), T.barkFan, T.queen); });
   for (let i = 0; i < 3; i++) { const r = rng(300 + i); grow('eucalyptus', B => broadleaf(B, r, { trunk: [6, 8, 5][i], radius: 0.42, depth: 3, kids: [3, 3, 2], spread: [0.55, 0.65, 0.7], ratio: [0.9, 0.7, 0.6], wiggle: 0.4, up: 0.22, droop: 0.35, cards: 11, card: 2.3, hang: 0.45, tall: 1.4 }), T.barkGum, T.gum); }
   for (let i = 0; i < 2; i++) { const r = rng(400 + i); grow('jacaranda', B => broadleaf(B, r, { trunk: 2.6, radius: 0.3, depth: 3, kids: [4, 3, 2], spread: [0.85, 0.6, 0.55], ratio: [1.3, 0.62, 0.55], wiggle: 0.3, up: 0.06, droop: 0.15, cards: 7, card: 1.7, hang: 0.05 }), T.bark, T.jac); }
   for (let i = 0; i < 2; i++) { const r = rng(500 + i); grow('pepper', B => broadleaf(B, r, { trunk: 2.2, radius: 0.36, depth: 3, kids: [4, 3, 2], spread: [0.8, 0.7, 0.6], ratio: [1.1, 0.6, 0.55], wiggle: 0.45, up: 0.05, droop: 0.6, cards: 8, card: 1.8, hang: 0.85, tall: 1.6 }), T.bark, T.pepper); }
   for (let i = 0; i < 2; i++) { const r = rng(600 + i); grow('slender', B => cypress(B, r, [11, 14][i]), T.bark, T.cyp); }
   // coast live oak: a short, thick trunk splitting low into big sinuous limbs; a dense, rounded crown wider than it is tall
   for (let i = 0; i < 3; i++) { const r = rng(700 + i); grow('oak', B => broadleaf(B, r, { trunk: [1.8, 2.3, 1.5][i], radius: 0.55, depth: 3, kids: [4, 3, 3], spread: [1.0, 0.75, 0.65], ratio: [2.4, 0.62, 0.55], wiggle: 0.5, up: 0.04, droop: 0.25, cards: 11, card: 1.7, hang: 0.1, tall: 0.9 }), T.bark, T.oak); }
+  for (const j of jobs) { await idle(); j(); } // one tree at a time between frames
   return S;
 }
 
@@ -277,12 +321,12 @@ export async function growTrees(THREE, renderer, base = 'assets/pbr/atlas/', opt
 }
 // species records (vegetation library format) from { name: { trans, sway, list: [{ geo, mats }] } }, all baked into one
 // impostor atlas (src/nature/rocks.js uses it too)
-export function speciesFrom(THREE, renderer, S, opts = {}) {
+export async function speciesFrom(THREE, renderer, S, opts = {}) {
   const all = []; for (const [name, sp] of Object.entries(S)) sp.list.forEach((v, i) => all.push({ name, i, ...v }));
   const cell = opts.cell || 112, cols = 4, rows = Math.ceil(all.length / cols), W = cols * G * cell, H = rows * G * cell;
-  const rtA = new THREE.WebGLRenderTarget(W, H, { samples: 4, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+  const rtA = new THREE.WebGLRenderTarget(W, H, { samples: 4, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
   rtA.texture.colorSpace = THREE.SRGBColorSpace;
-  const rtN = new THREE.WebGLRenderTarget(W / 2, H / 2, { samples: 4, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+  const rtN = new THREE.WebGLRenderTarget(W / 2, H / 2, { samples: 4, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
   const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(0, cols * G, rows * G, 0, -10, 10); cam.position.set(0, 0, 5); cam.updateMatrixWorld(); cam.updateProjectionMatrix();
   const meshesA = [], meshesN = [];
   all.forEach((v, k) => {
@@ -301,22 +345,42 @@ export function speciesFrom(THREE, renderer, S, opts = {}) {
     }
     iA.frustumCulled = iN.frustumCulled = false; meshesA.push(iA); meshesN.push(iN);
   });
-  const prev = { rt: renderer.getRenderTarget(), auto: renderer.autoClear, col: renderer.getClearColor(new THREE.Color()), a: renderer.getClearAlpha(), tm: renderer.toneMapping, sh: renderer.shadowMap.enabled };
-  renderer.autoClear = true; renderer.shadowMap.enabled = false;
-  for (const m of meshesA) scene.add(m);
-  renderer.setRenderTarget(rtA); renderer.setClearColor(new THREE.Color(0, 0, 0), 0); renderer.clear(); renderer.render(scene, cam); // onto transparent black: premultiplied, so edges and mips carry no background colour
-  for (const m of meshesA) scene.remove(m); for (const m of meshesN) scene.add(m);
-  renderer.setRenderTarget(rtN); renderer.setClearColor(new THREE.Color(0.5, 0.5, 1), 0); renderer.clear(); renderer.render(scene, cam);
-  renderer.setRenderTarget(prev.rt); renderer.autoClear = prev.auto; renderer.setClearColor(prev.col, prev.a); renderer.shadowMap.enabled = prev.sh;
+  // one variant per pass with a frame between passes (the whole atlas in one go held the GPU for a long moment). The
+  // game renders in between, so the renderer's state is borrowed only for each pass and handed straight back.
+  const borrow = () => ({ rt: renderer.getRenderTarget(), auto: renderer.autoClear, col: renderer.getClearColor(new THREE.Color()), a: renderer.getClearAlpha(), sh: renderer.shadowMap.enabled });
+  const giveBack = k => { renderer.setRenderTarget(k.rt); renderer.autoClear = k.auto; renderer.setClearColor(k.col, k.a); renderer.shadowMap.enabled = k.sh; };
+  const pass = async (rt, list, col) => {
+    for (let i = 0; i < list.length; i++) {
+      const k = borrow(); renderer.shadowMap.enabled = false; renderer.setRenderTarget(rt);
+      if (i === 0) { renderer.setClearColor(col, 0); renderer.clear(); }
+      renderer.autoClear = false; scene.add(list[i]); renderer.render(scene, cam); scene.remove(list[i]); giveBack(k);
+      await idle();
+    }
+  };
+  await pass(rtA, meshesA, new THREE.Color(0, 0, 0)); // onto transparent black: premultiplied, so edges and mips carry no background colour
+  await pass(rtN, meshesN, new THREE.Color(0.5, 0.5, 1));
   for (const m of [...meshesA, ...meshesN]) { scene.remove(m); for (const mt of [].concat(m.material)) mt.dispose(); m.dispose(); }
+  // the bake is antialiased (4 samples); keeping a multisampled target alive holds 4 more copies of the atlas in GPU
+  // memory for nothing, so copy each into a plain one with mipmaps and let the multisampled one go
+  const plain = (src, srgb) => {
+    const dst = new THREE.WebGLRenderTarget(src.width, src.height, { generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+    if (srgb) dst.texture.colorSpace = THREE.SRGBColorSpace;
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ uniforms: { map: { value: src.texture } }, depthTest: false, depthWrite: false, blending: THREE.NoBlending,
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }', fragmentShader: 'uniform sampler2D map; varying vec2 vUv; void main() { gl_FragColor = texture2D(map, vUv); }' }));
+    q.frustumCulled = false; const sc2 = new THREE.Scene(); sc2.add(q);
+    renderer.setRenderTarget(dst); renderer.render(sc2, cam); q.geometry.dispose(); q.material.dispose(); src.dispose(); return dst;
+  };
+  const k = borrow(); renderer.autoClear = true; renderer.shadowMap.enabled = false;
+  const tA = plain(rtA, true), tN = plain(rtN, false);
+  giveBack(k);
   // species records in the vegetation library's format (veg.json + loaded textures)
   const out = new Map();
   for (const [name, sp] of Object.entries(S)) {
     const vs = all.filter(v => v.name === name);
-    out.set(name, { name, G, cell, blocks: [cols, rows], trans: sp.trans, sway: sp.sway, alb: rtA.texture, nrm: rtN.texture, procedural: true, premul: true,
+    out.set(name, { name, G, cell, blocks: [cols, rows], trans: sp.trans, sway: sp.sway, alb: tA.texture, nrm: tN.texture, procedural: true, premul: true,
       variants: vs.map(v => ({ name: name + v.i, block: v.block, center: v.center, radius: v.radius, height: v.height, width: v.width, lod: true })),
       lods: vs.map(v => ({ geo: v.geo, mats: v.mats })) });
   }
-  out.targets = [rtA, rtN];
+  out.targets = [tA, tN];
   return out;
 }

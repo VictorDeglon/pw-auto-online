@@ -422,32 +422,11 @@ export function createPlazaLandChunk(parent, opts = {}) {
     const mulch = new THREE.Mesh(new THREE.BoxGeometry(islandW, 0.3, islandD), darkMulchMat);
     mulch.position.y = 0.16;
 
-    // 3D Palm Tree / Ornamental Tree
-    const treeGroup = new THREE.Group();
+    // the island's tree: a marker the game plants a real one on (index.html initArchWorld -> GARDEN): fan palms at the
+    // Spanish and lifestyle centres, pepper trees elsewhere
+    const treeGroup = new THREE.Object3D();
     treeGroup.position.set(0, 0.3, 0);
-
-    if (plazaStyle === 'spanish' || plazaStyle === 'lifestyle') {
-      // Mexican Fan Palm
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 7.5, 10), palmTrunkMat);
-      trunk.position.y = 3.75;
-      treeGroup.add(trunk);
-
-      // Fronds canopy
-      for (let f = 0; f < 8; f++) {
-        const frond = new THREE.Mesh(new THREE.ConeGeometry(1.6, 3.2, 5), foliageMat);
-        frond.rotation.z = 0.6;
-        frond.rotation.y = (f * Math.PI) / 4;
-        frond.position.set(0, 7.2, 0);
-        treeGroup.add(frond);
-      }
-    } else {
-      // California Pepper / Cypress Tree
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.38, 4.5, 8), palmTrunkMat);
-      trunk.position.y = 2.25;
-      const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(2.4, 1), foliageMat);
-      crown.position.y = 5.2;
-      treeGroup.add(trunk, crown);
-    }
+    treeGroup.userData.plant = plazaStyle === 'spanish' || plazaStyle === 'lifestyle' ? (plazaStyle === 'lifestyle' && ix > 0 ? 'palm_queen' : 'palm_fan') : 'pepper';
 
     islandGroup.add(islandCurb, mulch, treeGroup);
     landGroup.add(islandGroup);

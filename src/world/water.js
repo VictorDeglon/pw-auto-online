@@ -17,6 +17,7 @@
 //   W.fountain(x, y, z, size)       a working fountain
 //   W.update(dt, camera, { sunDir, sunCol, night, day, wind })
 //   W.ocean.heightAt(x, z)          the sea surface (null where there's no sea near)
+import { surfboardGeometry, boardMaterial, surfShack, BOARD_COLORS } from './surf.js';
 const NOISE = /* glsl */`
 float wH21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 vec2 wH22(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
@@ -273,15 +274,16 @@ function createBeach(THREE, scene, groundAt, free) {
   const U = 60, um = new THREE.InstancedMesh(new THREE.ConeGeometry(1.15, 0.38, 10, 1, true).translate(0, 2.1, 0), M(0xffffff, { side: THREE.DoubleSide, roughness: 0.9 }), U);
   const up = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.022, 0.022, 2.3, 6).translate(0, 1.0, 0), post, U);
   const tw = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.85, 1.8).rotateX(-Math.PI / 2).translate(0, 0.02, 0), M(0xffffff, { roughness: 1 }), U * 2);
-  const sb = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 6).scale(0.27, 1.0, 0.05).translate(0, 0.62, 0), M(0xffffff, { roughness: 0.4 }), U);
+  const sb = new THREE.InstancedMesh(surfboardGeometry(THREE, 'short').rotateX(-Math.PI / 2), boardMaterial(THREE), U); // boards stuck tail-down in the sand (src/world/surf.js)
   for (const m of [um, up, tw, sb]) { m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; grp.add(m); }
-  const CANOPY = [0xe8473c, 0x2f7fd1, 0xf4c430, 0x3aa876, 0xf28c28, 0xffffff, 0x7b3fa0], TOWEL = [0xe94f64, 0x2ba3c7, 0xf7d046, 0xff8c42, 0x5b4fd1, 0x2ecc71, 0xf0f0f0], BOARD = [0xf4f4f0, 0xf6c945, 0x55b6e0, 0xef6b5b];
+  const CANOPY = [0xe8473c, 0x2f7fd1, 0xf4c430, 0x3aa876, 0xf28c28, 0xffffff, 0x7b3fa0], TOWEL = [0xe94f64, 0x2ba3c7, 0xf7d046, 0xff8c42, 0x5b4fd1, 0x2ecc71, 0xf0f0f0], BOARD = BOARD_COLORS;
+  const shacks = [0, 1, 2, 3].map(i => { const s = surfShack(THREE, i); s.visible = false; grp.add(s); return s; }); // surf rental stands, near some of the towers
   const towers = []; let rr = 1; const rnd = () => (rr = (rr * 16807) % 2147483647) / 2147483647;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1), yA = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
   return {
     group: grp,
     place(cx, cz, N, CELL, F, sea) {
-      for (const t of towers) grp.remove(t); towers.length = 0; um.count = up.count = tw.count = sb.count = 0; rr = Math.floor(Math.abs(cx * 7 + cz * 13)) % 2147483646 + 1;
+      for (const t of towers) grp.remove(t); towers.length = 0; um.count = up.count = tw.count = sb.count = 0; for (const s of shacks) s.visible = false; rr = Math.floor(Math.abs(cx * 7 + cz * 13)) % 2147483646 + 1;
       const at = (i, j) => F[j * N + i], spots = [];
       for (let j = 2; j < N - 2; j++) for (let i = 2; i < N - 2; i++) { const s = at(i, j); if (s > -46 && s < -14) spots.push([i, j, s]); }
       if (!spots.length) return;
@@ -294,6 +296,13 @@ function createBeach(THREE, scene, groundAt, free) {
         if (placed.some(p => Math.hypot(p[0] - x, p[1] - z) < 280)) continue;
         const [dx, dz] = seaDir(i, j), t = tower(HUTS[towers.length % HUTS.length]); t.position.set(x, h - 0.05, z); t.rotation.y = Math.atan2(-dx, -dz); grp.add(t); towers.push(t); placed.push([x, z]);
         if (towers.length >= 10) break;
+      }
+      // a rental stand up the beach from every other tower, along the sand to one side
+      let si = 0;
+      for (let k = 0; k < placed.length && si < shacks.length; k += 2) {
+        const t = towers[k], a = t.rotation.y, dx = -Math.sin(a), dz = -Math.cos(a); // toward the water
+        for (const along of [26, -26, 40]) { const x = placed[k][0] - dx * 14 + dz * along, z = placed[k][1] - dz * 14 - dx * along, h = groundAt(x, z);
+          if (h === null || h === undefined || h > sea + 6 || !free(x, z, 5)) continue; const sh = shacks[si++]; sh.position.set(x, h - 0.05, z); sh.rotation.y = a + Math.PI; sh.visible = true; break; } // the counter to the water
       }
       // the day's camp: umbrellas with towels and boards, in loose groups, thicker near the towers
       for (const [i, j, s] of spots.sort(() => rnd() - 0.5)) {

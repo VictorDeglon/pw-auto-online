@@ -17,7 +17,12 @@ const PLANES = { // stall (m/s), top speed, thrust, how fast it turns toward whe
   cessna: { stall: 24, top: 62, acc: 7, turn: 1.0, taxi: 12 },
   trainer: { stall: 28, top: 85, acc: 9, turn: 1.3, taxi: 14 },
 };
-export const BOATS = { rowboat: { top: 4, acc: 2, turn: 1.0, motor: false }, runabout: { top: 19, acc: 6, turn: 0.9, motor: true }, pontoon: { top: 9, acc: 3, turn: 0.6, motor: true } };
+export const BOATS = { // m/s, m/s², rad/s at speed; the boat models are src/world/boatmodels.js
+  rowboat: { top: 4, acc: 2, turn: 1.0, motor: false }, kayak: { top: 3.2, acc: 1.6, turn: 1.3, motor: false }, pedal: { top: 2.4, acc: 1, turn: 0.9, motor: false },
+  jon: { top: 8, acc: 2.6, turn: 1.0, motor: true }, runabout: { top: 19, acc: 6, turn: 0.9, motor: true }, pontoon: { top: 11, acc: 3, turn: 0.6, motor: true },
+  center: { top: 24, acc: 6.5, turn: 0.8, motor: true }, speedboat: { top: 31, acc: 8.5, turn: 0.75, motor: true },
+  sailboat: { top: 7, acc: 1.2, turn: 0.5, motor: true }, yacht: { top: 14, acc: 1.5, turn: 0.35, motor: true },
+};
 
 export function createPilot(D) {
   const { THREE } = D, crafts = [];
@@ -46,7 +51,7 @@ export function createPilot(D) {
 
   function board(cr) {
     const P = D.player; D.FLY.craft = cr; P.rig.g.visible = false; D.keys.clear();
-    if (cr.type === 'boat') { cr.b.piloted = true; cr.b.moored = false; cr.sp = 0; D.cam.dist = 9; }
+    if (cr.type === 'boat') { cr.b.piloted = true; cr.b.moored = false; cr.sp = 0; D.cam.dist = Math.max(9, ((cr.g.userData && cr.g.userData.L) || 5) * 1.35); } // a yacht wants the camera further back
     else { cr.thr = cr.type === 'heli' ? 0 : 0.2; cr.vel.set(0, 0, 0); D.cam.dist = cr.type === 'heli' ? 15 : 17; }
     const what = cr.type === 'boat' ? `the ${cr.kind}` : cr.type === 'heli' ? 'the helicopter' : `the ${cr.kind === 'cessna' ? 'Cessna' : 'trainer'}`;
     const how = cr.type === 'boat' ? 'W/S throttle, A/D steer' : cr.type === 'heli' ? 'W/S forward/back, A/D slide, Space up, C down, mouse to turn' : 'W/S throttle, A/D steer; past take-off speed, look up to lift off';

@@ -60,7 +60,7 @@ export function planYard(flat, roles, H, rnd) {
   // a front-yard tree, halfway out, off the drive and the walk
   if (rnd() < 0.6) {
     const d = reach(Y.door > fl / 2 ? fl * 0.2 : fl * 0.8, 40); const u = Y.door > fl / 2 ? fl * 0.2 : fl * 0.8;
-    if (d > 6) { const p = pt(u, d * 0.5); const sp = ['jacaranda', 'jacaranda', 'pepper', 'pepper', 'palm_fan', 'palm_fan', 'olive', 'olive', 'palm_date', 'slender'][Math.floor(rnd() * 10)]; if (clear(p)) Y.tree = [p[0], p[1], sp]; }
+    if (d > 6) { const p = pt(u, d * 0.5); const sp = ['jacaranda', 'jacaranda', 'pepper', 'pepper', 'palm_fan', 'palm_fan', 'olive', 'olive', 'palm_date', 'slender', 'palm_queen', 'palm_queen'][Math.floor(rnd() * 12)]; if (clear(p)) Y.tree = [p[0], p[1], sp]; }
   }
   return Y;
 }

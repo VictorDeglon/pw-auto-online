@@ -338,6 +338,19 @@ export function ragdoll(r, kind, t = 0, seed = 0) {
 // slope, a kerb or a step instead of floating over one foot and sinking the other. groundY(x, z): the visible surface.
 // r.g must already be at the ground height under the body's centre (rootY).
 const _fL = new THREE.Vector3(), _fR = new THREE.Vector3(), _ft = new THREE.Vector3(), _kp = new THREE.Vector3();
+// on a bike or a scooter: the hips onto the seat (seat: a world point, or null standing on a kick scooter), each foot to
+// its pedal or the floorboard, each hand to its grip; knees bend forward, elbows out and down (fwd: the ride's forward)
+const _rk = new THREE.Vector3(), _re = new THREE.Vector3(), _rp = new THREE.Vector3(), _rd = new THREE.Vector3();
+export function ride(r, seat, feet, hands, fwd) {
+  if (!r || !r.human) return; const L = limbs(r); if (!L.lt || !L.lc || !L.lft || !L.lu || !L.lf || !L.lh) return;
+  r.g.updateMatrixWorld(true);
+  if (seat) { const pel = r.inst.getObjectByName('Bip01_Pelvis'); if (pel) { pel.getWorldPosition(_rp); _rd.subVectors(seat, _rp); // move the body so the pelvis sits on the seat
+      r.body.parent.updateMatrixWorld(true); const inv = r.body.parent.matrixWorld.clone().invert(); const a = r.body.position.clone().applyMatrix4(r.body.parent.matrixWorld).add(_rd).applyMatrix4(inv); r.body.position.copy(a); r.g.updateMatrixWorld(true); } }
+  _rk.copy(fwd).multiplyScalar(1).add(_up).normalize();                               // knees: forward and up
+  reach(L.lt, L.lc, L.lft, feet[0], _rk); reach(L.rt, L.rc, L.rft, feet[1], _rk);
+  _re.copy(fwd).multiplyScalar(-0.6).add(_up.clone().multiplyScalar(-1)).normalize();   // elbows: down and back
+  reach(L.lu, L.lf, L.lh, hands[0], _re); reach(L.ru, L.rf, L.rh, hands[1], _re);
+}
 export function plantFeet(r, groundY, rootY, dt) {
   if (!r || !r.human) return; const L = limbs(r); if (!L.lt || !L.lc || !L.lft || !L.rt || !L.rc || !L.rft) return;
   r.g.updateMatrixWorld(true); L.lft.getWorldPosition(_fL); L.rft.getWorldPosition(_fR);

@@ -20,7 +20,12 @@ import { HOLE_U, HOLE_GLSL } from './ground.js';
 
 // ---------------------------------------------------------------- the cover map
 // opts: { bounds: [x0, z0, x1, z1], drawAerial(ctx), roads, buildings, houses, pools, areas, mpp }
-export function buildCoverMap(THREE, opts) {
+// long jobs work in slices of a few milliseconds and yield to the game's frames between them (one big block froze the
+// game for seconds right after it started)
+const idle = () => new Promise(r => setTimeout(r, 0));
+function slicer(ms = 6) { let t = performance.now(); return async () => { if (performance.now() - t > ms) { await idle(); t = performance.now(); } }; }
+export async function buildCoverMap(THREE, opts) {
+  const slice = slicer();
   const pad = 300, x0 = opts.bounds[0] - pad, z0 = opts.bounds[1] - pad, x1 = opts.bounds[2] + pad, z1 = opts.bounds[3] + pad;
   let mpp = opts.mpp || 4; while ((x1 - x0) / mpp > 4096 || (z1 - z0) / mpp > 4096) mpp *= 1.25;
   const W = Math.ceil((x1 - x0) / mpp), H = Math.ceil((z1 - z0) / mpp);
@@ -41,7 +46,7 @@ export function buildCoverMap(THREE, opts) {
   const rect = (x, z, w, d, ang, grow) => { mk2.save(); mk2.translate(x, z); mk2.rotate(ang); mk2.fillRect(-w / 2 - grow, -d / 2 - grow, w + grow * 2, d + grow * 2); mk2.restore(); };
   for (const h of opts.houses) rect(h[0], h[1], h[2], h[3], h[4], 1);
   for (const p of opts.pools) rect(p[0], p[1], p[2], p[3], p[4], 1.2);
-  const A = ph.getImageData(0, 0, W, H).data, M = mk2.getImageData(0, 0, W, H).data;
+  await slice(); const A = ph.getImageData(0, 0, W, H).data; await slice(); const M = mk2.getImageData(0, 0, W, H).data; await slice();
   // land use: the yard round every house (R: 255 a lawn, 110 a dry garden, each house its own pick), parks, fields and
   // golf (G); urban density (B) and the lawn flag (A) are filled in below. The ground shader reads it (setGroundLand).
   const hsh = v => { const t = Math.sin(v * 12.9898) * 43758.5453; return t - Math.floor(t); };
@@ -53,7 +58,7 @@ export function buildCoverMap(THREE, opts) {
   }
   ly.globalCompositeOperation = 'lighter'; ly.fillStyle = 'rgb(0,255,0)';
   for (const a of opts.areas) if (a[0] === 1 || a[0] === 3) { const p = a[1]; ly.beginPath(); ly.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ly.lineTo(p[i], p[i + 1]); ly.closePath(); ly.fill(); }
-  const Y = ly.getImageData(0, 0, W, H).data;
+  await slice(); const Y = ly.getImageData(0, 0, W, H).data; await slice();
   const BG = 50, bgrid = new Map();
   for (const b of opts.buildings) { const p = b[2], n = p.length / 2; let x = 0, z = 0; for (let i = 0; i < n; i++) { x += p[i * 2]; z += p[i * 2 + 1]; } const k = Math.floor(x / n / BG) * 100000 + Math.floor(z / n / BG); bgrid.set(k, (bgrid.get(k) || 0) + 1); }
   const builtAt = (x, z) => { const gx = Math.floor(x / BG), gz = Math.floor(z / BG); let s = 0; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) s += bgrid.get((gx + a) * 100000 + gz + b) || 0; return s; };
@@ -63,6 +68,7 @@ export function buildCoverMap(THREE, opts) {
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const hash = (i) => { const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); };
   for (let i = 0, n = W * H; i < n; i++) {
+    if ((i & 8191) === 0) await slice();
     const k = i * 4; let grass, brush, dry, tall;
     const px = x0 + (i % W + 0.5) * mpp, pz = z0 + (Math.floor(i / W) + 0.5) * mpp;
     const yard = Math.min(1, Y[k] / 110), park = Y[k + 1] / 255, urban = ss(2, 9, builtAt(px, pz)), lawnLot = Y[k] > 180 ? 1 : 0;
@@ -177,11 +183,15 @@ function blobs(cv) {
 function leafCard(sheet, r) {
   const L = blobs(sheet), c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d', { willReadFrequently: true });
   g.strokeStyle = 'rgba(70,55,40,1)'; g.lineWidth = 3; for (let i = 0; i < 9; i++) { const x = 100 + r() * 56; g.beginPath(); g.moveTo(128 + (x - 128) * 0.25, 256); g.quadraticCurveTo(x, 200, 64 + r() * 128, 60 + r() * 120); g.stroke(); }
+  // the sheet at eight brightnesses, each filtered once (a filter per leaf took seconds and froze the game)
+  const B0 = 0.47, B1 = 1.27, tones = Array.from({ length: 8 }, (_, k) => { const c2 = document.createElement('canvas'); c2.width = Math.ceil(sheet.width / 2); c2.height = Math.ceil(sheet.height / 2);
+    const g2 = c2.getContext('2d'); g2.filter = `brightness(${B0 + (B1 - B0) * k / 7})`; g2.drawImage(sheet, 0, 0, c2.width, c2.height); return c2; });
   for (let i = 0; i < 420 && L.length; i++) {
     const a = r() * Math.PI * 2, d = Math.sqrt(r()), x = 128 + Math.cos(a) * d * 108, y = 128 + Math.sin(a) * d * 100 - (1 - d) * 12; if (y > 236) continue;
     const b = L[Math.floor(r() * L.length)], s = (26 + r() * 22) / Math.max(b[2], b[3]);
-    g.save(); g.translate(x, y); g.rotate(r() * Math.PI * 2); g.globalAlpha = 1; g.filter = `brightness(${(0.55 + 0.5 * d) * (0.85 + r() * 0.3)})`;
-    g.drawImage(sheet, b[0], b[1], b[2], b[3], -b[2] * s / 2, -b[3] * s / 2, b[2] * s, b[3] * s); g.restore();
+    const br = (0.55 + 0.5 * d) * (0.85 + r() * 0.3), tk = tones[Math.max(0, Math.min(7, Math.round((br - B0) / (B1 - B0) * 7)))];
+    g.save(); g.translate(x, y); g.rotate(r() * Math.PI * 2); g.globalAlpha = 1;
+    g.drawImage(tk, b[0] / 2, b[1] / 2, b[2] / 2, b[3] / 2, -b[2] * s / 2, -b[3] * s / 2, b[2] * s, b[3] * s); g.restore();
   }
   return g.getImageData(0, 0, 256, 256);
 }
@@ -361,12 +371,23 @@ export class GroundCover {
   refreshHeights(cx, cz) {
     const N = this.HN, M = this.HM, x0 = cx - N * M / 2, z0 = cz - N * M / 2;
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) this.hData[j * N + i] = this.terrainAt(x0 + i * M, z0 + j * M);
-    this.hTex.needsUpdate = true; this.shared.uHg.value.set(x0, z0, M, N); this.hCenter.x = cx; this.hCenter.z = cz;
+    this.hTex.needsUpdate = true; this.shared.uHg.value.set(x0, z0, M, N); this.hCenter.x = cx; this.hCenter.z = cz; this.hJob = null;
+  }
+  // the same, a few rows a frame into a second buffer, swapped in when it's done (the whole grid in one frame, every
+  // 40 m you moved, hitched the drive)
+  stepHeights(cx, cz, ms) {
+    const N = this.HN, M = this.HM;
+    let J = this.hJob; if (!J || J.cx !== cx || J.cz !== cz) J = this.hJob = { cx, cz, x0: cx - N * M / 2, z0: cz - N * M / 2, j: 0, buf: (this.hJob && this.hJob.buf) || new Float32Array(N * N) };
+    const t0 = performance.now();
+    while (J.j < N && performance.now() - t0 < ms) { const j = J.j++; for (let i = 0; i < N; i++) J.buf[j * N + i] = this.terrainAt(J.x0 + i * M, J.z0 + j * M); }
+    if (J.j < N) return;
+    this.hData.set(J.buf); this.hTex.needsUpdate = true; this.shared.uHg.value.set(J.x0, J.z0, M, N); this.hCenter.x = cx; this.hCenter.z = cz; this.hJob = null;
   }
   // push: up to three [x, z, radius] (player, the car you're in, ...)
   update(camera, pushes = []) {
-    const p = camera.position;
-    if (Math.hypot(p.x - this.hCenter.x, p.z - this.hCenter.z) > 40) this.refreshHeights(Math.round(p.x / this.HM) * this.HM, Math.round(p.z / this.HM) * this.HM);
+    const p = camera.position, d = Math.hypot(p.x - this.hCenter.x, p.z - this.hCenter.z);
+    if (d > 150) this.refreshHeights(Math.round(p.x / this.HM) * this.HM, Math.round(p.z / this.HM) * this.HM); // a jump (teleport, fast travel): now
+    else if (d > 30 || this.hJob) { const J = this.hJob, c = J && Math.hypot(p.x - J.cx, p.z - J.cz) < 60 ? J : { cx: Math.round(p.x / this.HM) * this.HM, cz: Math.round(p.z / this.HM) * this.HM }; this.stepHeights(c.cx, c.cz, 1.5); }
     for (const L of this.layers) L.U.uBase.value.set(Math.floor(p.x / L.s), Math.floor(p.z / L.s));
     for (let k = 0; k < 3; k++) { const q = pushes[k]; this.shared.uPush.value[k].set(q ? q[0] : 0, q ? q[1] : 0, q ? q[2] : 0, 0); }
   }
@@ -380,11 +401,13 @@ export class GroundCover {
 function vnoise(x, z) { const h = (i, j) => { const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return v - Math.floor(v); }; const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j, u = fx * fx * (3 - 2 * fx), w = fz * fz * (3 - 2 * fz);
   return (h(i, j) * (1 - u) + h(i + 1, j) * u) * (1 - w) + (h(i, j + 1) * (1 - u) + h(i + 1, j + 1) * u) * w; }
 export function clump(x, z) { const n = vnoise(x / 38, z / 38) * 0.6 + vnoise(x / 13 + 7, z / 13 + 3) * 0.4; return Math.min(1, Math.max(0, (n - 0.32) / 0.3)); }
-export function scatterShrubs(cover, veg, heightAt, species, bounds, opts = {}) {
+export async function scatterShrubs(cover, veg, heightAt, species, bounds, opts = {}) {
+  const slice = slicer(); let it = 0;
   const lib = veg.lib.species.get(species); if (!lib) return 0;
   const step = opts.step ?? 13, cap = opts.cap ?? 220000; const r = rng(4242); let n = 0;
   const V = lib.variants[0], baseH = Math.max(0.3, V.height);
   for (let z = bounds[1]; z < bounds[3] && n < cap; z += step) for (let x = bounds[0]; x < bounds[2] && n < cap; x += step) {
+    if ((++it & 1023) === 0) await slice();
     const px = x + r() * step, pz = z + r() * step, c = cover.at(px, pz); if (!c) continue;
     const b = c[1] / 255, k = clump(px, pz); if (b < 0.25 || r() > b * 0.55 * (0.25 + 1.1 * k)) continue;
     if (opts.reject && opts.reject(px, pz)) continue;
@@ -397,10 +420,12 @@ export function scatterShrubs(cover, veg, heightAt, species, bounds, opts = {}) 
 }
 // a general scatter over the cover map: want(c) gives the chance at a spot (c: the cover texel RGBA), size [min, max]
 // in metres of height (or of width with byWidth), sink: how far into the ground (fraction of height)
-export function scatterOnCover(cover, veg, heightAt, species, bounds, o = {}) {
+export async function scatterOnCover(cover, veg, heightAt, species, bounds, o = {}) {
+  const slice = slicer(); let it = 0;
   const lib = veg.lib.species.get(species); if (!lib) return 0;
   const step = o.step ?? 10, cap = o.cap ?? 50000, r = rng(o.seed ?? 99), size = o.size || [0.6, 1.2]; let n = 0;
   for (let z = bounds[1]; z < bounds[3] && n < cap; z += step) for (let x = bounds[0]; x < bounds[2] && n < cap; x += step) {
+    if ((++it & 1023) === 0) await slice();
     const px = x + r() * step, pz = z + r() * step, c = cover.at(px, pz); if (!c) continue;
     const kc = o.clumped ? clump(px + 91, pz - 37) : 1; if (r() > o.want(c, px, pz) * (o.clumped ? 0.2 + 1.2 * kc : 1)) continue;
     if (o.reject && o.reject(px, pz)) continue;

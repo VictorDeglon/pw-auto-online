@@ -28,6 +28,8 @@ python fetch.py osm          # Tijuana from Overpass, in 8 strips
 python osm.py                # -> work/osm.pickle (4-5 minutes)
 python osm.py mexico         # adds the strips
 python build.py              # -> assets/world/index.json, t/*.json.gz (a few minutes)
+python power.py              # -> assets/world/power.json: the transmission lines, towers and poles, substations
+python harbor.py             # -> assets/world/harbor.json: marina docks, piers, breakwaters, with their water level
 python photos.py             # -> assets/world/p/*.webp, overview.jpg
 ```
 
