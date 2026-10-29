@@ -5270,7 +5270,7 @@ function updateJob(dt) {
   const f = focusPos(), d = hyp(job.x - f.x, job.z - f.z);
   $('job').innerHTML = `<b>${Math.max(0, Math.ceil(job.t))}s</b>${job.what} ${job.name} · ${Math.round(d)} m`;
   if (d < 10) {
-    const pay = Math.round((job.reward + Math.max(0, Math.round(job.t * 2))) * (1 + 0.1 * skill('worker'))); save.money += pay; // Hard Worker save.rep += 3; save.stats.jobs++;
+    const pay = Math.round((job.reward + Math.max(0, Math.round(job.t * 2))) * (1 + 0.1 * skill('worker'))); save.money += pay; /* Hard Worker */ save.rep += 3; save.stats.jobs++;
     big('DELIVERED', `+$${pay} · Poway thanks you`, 'pass', 3); sfx.job(); bus.emit('job:done', { job, pay }); job = null; jobBeam.visible = false; $('job').hidden = true; persist();
   } else if (job.t <= 0) { big('LATE', 'The customer left a one-star review', 'wasted', 2.5); save.rep -= 1; bus.emit('job:failed', { job }); job = null; jobBeam.visible = false; $('job').hidden = true; }
 }
