@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Builds the server module (roads.js + traffic.js + index.js: Nakama loads one file), copies it to the Nakama box and
+# Builds the server module (roads.js + traffic.js + peds.js + index.js: Nakama loads one file), copies it to the Nakama box and
 # restarts Nakama so it loads it.
 # Usage: server/nakama/deploy.sh <ssh-host>   (the box set up as in server/nakama/README.md)
 set -euo pipefail
 HOST="${1:?usage: deploy.sh <ssh-host>}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
-OUT="$(mktemp)"; cat "$DIR/roads.js" "$DIR/traffic.js" "$DIR/index.js" > "$OUT"; node --check "$OUT" 2>/dev/null || { cp "$OUT" "$OUT.js"; node --check "$OUT.js"; }
+OUT="$(mktemp)"; cat "$DIR/roads.js" "$DIR/traffic.js" "$DIR/peds.js" "$DIR/index.js" > "$OUT"; node --check "$OUT" 2>/dev/null || { cp "$OUT" "$OUT.js"; node --check "$OUT.js"; }
 scp -q "$OUT" "$HOST:nakama/data/modules/index.js.new"; rm -f "$OUT" "$OUT.js"
 ssh "$HOST" 'set -e; cd ~/nakama; mv data/modules/index.js.new data/modules/index.js; chmod 600 data/modules/index.js
   screen -S pw-nakama -X quit 2>/dev/null || true; for i in $(seq 1 20); do screen -ls | grep -q "\.pw-nakama\b" || break; sleep 0.5; done

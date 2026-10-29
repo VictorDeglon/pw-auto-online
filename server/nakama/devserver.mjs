@@ -57,8 +57,8 @@ const reg = { rpc: {}, match: {}, before: {} };
 const initializer = new Proxy({}, { get: (_, name) => (a, b) => {
   if (name === 'registerRpc') reg.rpc[a] = b; else if (name === 'registerMatch') reg.match[a] = b; else reg.before[name + (typeof a === 'string' ? ':' + a : '')] = typeof a === 'function' ? a : b;
 } });
-// the module as deploy.sh builds it: roads.js + traffic.js + index.js in one file (MODULE=<file> tests a built file instead)
-const src = process.env.MODULE ? readFileSync(process.env.MODULE, 'utf8') : ['roads.js', 'traffic.js', 'index.js'].filter(f => existsSync(join(DIR, f))).map(f => readFileSync(join(DIR, f), 'utf8')).join('');
+// the module as deploy.sh builds it: roads.js + traffic.js + peds.js + index.js in one file (MODULE=<file> tests a built file instead)
+const src = process.env.MODULE ? readFileSync(process.env.MODULE, 'utf8') : ['roads.js', 'traffic.js', 'peds.js', 'index.js'].filter(f => existsSync(join(DIR, f))).map(f => readFileSync(join(DIR, f), 'utf8')).join('');
 globalThis.__DEVLOG = (k, o) => log('info', '%s %s', k, JSON.stringify(o)); // the module's optional dev logging
 // Nakama's JS runtime freezes the objects a module creates at load, and runs it in strict mode: writing to one later
 // throws there although plain Node allows it. FREEZE=1 does the same here (strict mode, every top-level value deep-frozen).

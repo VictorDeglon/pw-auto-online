@@ -22,9 +22,9 @@ export function on(ev, cb) { if (!L.has(ev)) L.set(ev, new Set()); L.get(ev).add
 function emit(ev, data) { for (const cb of L.get(ev) || []) { try { cb(data); } catch (e) { console.error('[net]', ev, e); } } }
 
 const OP = {
-  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, NPC_KILL: 12, TCAR_HIT: 13, TCAR_TAKE: 14,
+  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, NPC_KILL: 12, TCAR_HIT: 13, TCAR_TAKE: 14, PED_HIT: 15,
   SNAP: 20, ROSTER: 21, JOIN: 22, LEAVE: 23, HPSET: 24, CHAT_OUT: 25, FEED_OUT: 26, EVENT_OUT: 27, RUIN_OUT: 28, CROWD_OUT: 29,
-  CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35, TRAFFIC: 36,
+  CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35, TRAFFIC: 36, PEDS: 37,
   GAME_JOIN: 41, GAME_LEAVE: 42, GAME_ACT: 43, GAME_IN: 50, GAME_OUT: 51, GAME_STATE: 52, GAME_EVENT: 53, GAME_BOARD: 54, // crew garages (13, 14 and 36 are the street traffic)
 };
 const DEVICE_KEY = 'pw-auto-online-device', SESSION_KEY = 'pw-auto-online-session';
@@ -250,7 +250,7 @@ export async function leave() {
   if (mid && socket) { try { await socket.leaveMatch(mid); } catch (e) { } }
   HOME.open = false;
   for (const id of NET.players.keys()) emit('player:remove', id);
-  NET.players.clear(); NET.server = null; NET.name = null; shown.clear(); emit('traffic:on', false);
+  NET.players.clear(); NET.server = null; NET.name = null; shown.clear(); emit('traffic:on', false); emit('peds:on', false);
   if (lockRelease) { lockRelease(); lockRelease = null; } // other tabs may go online as this account now
   if (NET.world) { NET.world = ''; emit('game:out', { g: '', lost: true }); }
 }
@@ -293,6 +293,7 @@ function onData(m) {
       for (const r of d.ruins || []) emit('ruin', { ...r, old: true, age: Math.max(0, (d.t - r.t) / 1000) });
       for (const c of d.crowds || []) emit('crowd', c);
       emit('traffic:on', !!d.traffic); // the room runs the cars (src/online/traffic.js draws them)
+      emit('peds:on', !!d.peds); // ... and the people (src/online/peds.js)
       if (welcomed) { welcomed(); welcomed = null; }
       break;
     }
@@ -306,6 +307,7 @@ function onData(m) {
     case OP.HPSET: emit('hp', d); break;
     case OP.SNAPTO: emit('snap', d); break;
     case OP.TRAFFIC: emit('traffic', d); break;
+    case OP.PEDS: emit('peds', d); break;
     case OP.CHAT_OUT: emit('chat', { id: d.t + d.u, ...d, mine: d.u === NET.uid }); break;
     case OP.FEED_OUT: emit('feed', { id: d.t + d.u + d.k, ...d, mine: d.u === NET.uid }); break;
     case OP.EVENT_OUT: emit('event', d); break;
@@ -373,6 +375,8 @@ export function setRuin(i, x, z) { sendOp(OP.RUIN, { i: i | 0, x: Math.round(x *
 // the room's traffic: a hit on one of its cars, or taking one for yourself
 export function trafficHit(id, d) { sendOp(OP.TCAR_HIT, { id, d: Math.max(0, Math.min(150, Math.round(d))) }); }
 export function trafficTake(id) { sendOp(OP.TCAR_TAKE, { id }); }
+// the room's people: a hit on one of them (the room decides when it's dead)
+export function pedHit(id, d) { sendOp(OP.PED_HIT, { id, d: Math.max(0, Math.min(300, Math.round(d))) }); }
 export function sendCrowd(e) { sendOp(OP.CROWD, { e: String(e).slice(0, 12000) }); }
 export function clearCrowd() { sendOp(OP.CROWD_CLEAR, {}); }
 

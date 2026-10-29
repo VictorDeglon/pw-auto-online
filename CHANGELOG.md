@@ -8,6 +8,15 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.6 (2026-10-29)
+
+- **One town for everyone online:** the game server now walks the people on the sidewalks, the way it already drove the
+  traffic. Every player sees the same people in the same places, wherever they are; a shot or an explosion sends them
+  all running, and someone killed falls for everybody. Games online spawn no people of their own any more.
+- **The same chase for everyone:** the cops after a wanted player (the cruisers on a call, sirens and all, and the
+  deputies on foot) show up in every other player's game too. Hitting one of them, or taking their car, reaches the
+  game that runs them.
+
 ## 0.8.5 (2026-10-29)
 
 - **Smoother play:** the streaming (the outer county's tiles, the town's streets and buildings, the plants' tiles, the

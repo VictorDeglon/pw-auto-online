@@ -585,6 +585,7 @@ import { createCarMods } from './src/carmods.js';
 import { initRemotes, updateRemotes, remoteBlips, clearRemotes, syncRemotes, REMOTES } from './src/online/remote.js';
 import { shownName } from './src/online/shown.js'; // other players' names as this player sees them (bad-words setting)
 import { initNetTraffic, updateNetTraffic, NETTRAFFIC, netCarHit, netCarTake } from './src/online/traffic.js';
+import { initNetPeds, updateNetPeds, NETPEDS, netPedHit } from './src/online/peds.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
@@ -4445,14 +4446,16 @@ class Ped {
   talk(kind, cls) { if (this.sayCd > 0) return; this.sayCd = 3.5; say(this, pick(LINES[kind]), cls ?? (this.isCop ? 'cop' : (kind === 'greet' ? '' : 'mad'))); }
   knock(vx, vy, vz, dmg, by) {
     if (this.remote) { remoteHurt(this, dmg, by); return; }
-    if (this.puppet) { puppetHurt(this, dmg, by); return; }
+    if (this.netPed) { netPedHit(this, dmg); if (this.state === 'dead' || this.health - dmg > 0) { if (this.state !== 'dead') { this.health -= dmg; bleed(this, dmg, this.hitDir); this.hitDir = null; } return; } } // the room's person: the room moves them; a lethal hit falls here at once
+    else if (this.puppet) { puppetHurt(this, dmg, by); return; }
     if (this.state === 'dead' || this.invuln) return;
     this.vel.set(vx, vy, vz); this.state = 'fly'; this.timer = 0; this.air = 0.01;
     this.damage(dmg, by, true);
   }
   damage(amt, by, flying) {
     if (this.remote) { remoteHurt(this, amt, by); return; }
-    if (this.puppet) { puppetHurt(this, amt, by); return; }
+    if (this.netPed) { if (by !== 'net') netPedHit(this, amt); if (this.state === 'dead' || this.health - amt > 0) { if (this.state !== 'dead') { this.health -= amt; bleed(this, amt, this.hitDir); this.hitDir = null; } return; } } // the room's person: the room moves them; a lethal hit falls here at once
+    else if (this.puppet) { puppetHurt(this, amt, by); return; }
     if (this.state === 'dead' || this.invuln) return;
     if (by === 'player') amt *= npcDmgMul(); else if (this.isCompanion) amt *= 1 - 0.15 * skill('bodyguard'); // Dead Eye, Outlaw; Bodyguards
     this.health -= amt; bleed(this, amt, this.hitDir); if (this.hitDir) { const L = Math.hypot(this.hitDir.x, this.hitDir.z) || 1; this.staggerDir = { x: this.hitDir.x / L, z: this.hitDir.z / L }; } this.hitDir = null;
@@ -7575,7 +7578,7 @@ function updatePopulation(dt) {
   const carsNow = vehicles.filter(v => !v.mine && !v.dispatched && !v.parked).length;
   if (!(online && NETTRAFFIC.on)) for (let i = carsNow < wantCars * 0.7 ? 2 : 1; i > 0 && carsNow < wantCars; i--) spawnTraffic(f.x, f.z, carsNow < wantCars * 0.5 ? 60 : 150, 340);
   const pedsNow = peds.filter(p => !p.remote && (!p.isCop || !p.homeCar)).length;
-  if (pedsNow < wantPeds) spawnPed(f.x, f.z, pedsNow < wantPeds * 0.5 ? 20 : 80, 240);
+  if (pedsNow < wantPeds && !(online && NETPEDS.on)) spawnPed(f.x, f.z, pedsNow < wantPeds * 0.5 ? 20 : 80, 240); // online, the room's people (src/online/peds.js)
 }
 
 // ============================================================ camera
@@ -8059,7 +8062,7 @@ function tick(rdt) {
   const dt = rdt * timeScale; simTime += dt;
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
   { const tL = performance.now(); updateLazy(worldHold ? 30 : Math.max(0.5, Math.min(bgBudget(lazyQueue.length > 6 ? 6 : 4), (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5))); STREAM_MS += usedOut + performance.now() - tL; } PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
-  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
+  updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); updateNetPeds(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
   PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
   MILITARY.update(dt);
@@ -8437,6 +8440,12 @@ bus.on('player:died', ({ kind, src }) => {
 });
 initRemotes();
 initNetTraffic(); // online, the room runs the traffic (src/online/traffic.js)
+initNetPeds({ // ... and the people (src/online/peds.js): the same ones for everyone
+  make: (x, z, look) => { const civ = (HUMANS.crowd && HUMANS.crowd.civ) || HUMANS.pools.civ || [], avatar = civ.length ? civ[look % civ.length] : null;
+    const p = new Ped(x, z, { look: { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; if (avatar && p.rig.avatar !== avatar) reskinWhenLoaded(p, avatar); return p; },
+  kill: p => { p.money = 0; p.health = 0; killPed(p, 'net'); }, // someone else's kill: no cash falls here (it fell where they are)
+  onStart: () => { for (const p of peds.slice()) if (!p.remote && !p.puppet && !p.isCop && !p.keep && !p.story && !p.isCompanion && p !== player.target) p.remove(); }, // our own people make way for the room's
+});
 onNet('traffic:on', on => { // our own traffic makes way for the room's (parked cars and yours stay)
   if (on) for (const c of vehicles.slice()) if (!c.net && c.driver === 'ai' && !c.keep && !c.mine && !c.isCop && !c.dispatched && !c.story && c !== player.inCar) c.remove();
 });
@@ -8444,7 +8453,7 @@ initWorld({
   focus: () => focusPos(), peds: () => peds, vehicles: () => vehicles, playerCar: () => player.inCar, notify,
   avatarIndex: a => a || '', avatarName: a => a || null, carTypeIndex: t => Object.keys(CAR).indexOf(t), carTypeName: i => Object.keys(CAR)[i] || null,
   modelIndex: (t, m) => Math.max(0, CAR[t].model.indexOf(m)), modelName: (t, i) => CAR[t].model[i] || CAR[t].model[0],
-  makePuppetPed: (x, z, avatar) => { const p = new Ped(x, z, { look: { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; if (avatar && p.rig.avatar !== avatar) reskinWhenLoaded(p, avatar); return p; }, // the leader's exact person: load their avatar if we haven't
+  makePuppetPed: (x, z, avatar, cop) => { const p = new Ped(x, z, { look: cop ? { kind: 'police', avatar, gun: true, skin: '#b07a55', shirt: '#b8a77a', sleeve: '#b8a77a', pants: '#2c4430', hat: '#2c4430' } : { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; if (avatar && p.rig.avatar !== avatar) reskinWhenLoaded(p, avatar); return p; }, // the leader's exact person: load their avatar if we haven't
   makePuppetCar: (type, x, z, r, tint, model) => { const v = new Vehicle(type, x, z, r, tint, model); v.keep = true; v.mode = 'puppet'; settleCar(v); return v; },
   settle: (v, dt) => settleCar(v, dt), wreck: v => wreckCar(v),
   clearAmbient: () => { // stop running our own town here: the leader's people and cars take over

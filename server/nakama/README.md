@@ -4,7 +4,8 @@ The online game runs on a [Nakama](https://heroiclabs.com/nakama/) server (Apach
 site, and it's the fallback: if the game can't reach Nakama, online play runs on the Firebase Realtime Database as
 before (`src/online/net.js` picks at load).
 
-What the server decides, so a modified browser can't fake it (in `index.js`, plus `traffic.js` for the cars):
+What the server decides, so a modified browser can't fake it (in `index.js`, plus `traffic.js` for the cars and
+`peds.js` for the people):
 
 - **Rooms:** one authoritative match per server (Silverwood, Elysium, Asgard, Avalon, Vaeloria), 20 players each.
   Positions are relayed 10 times a second. Every hit is checked: the shooter must be in range, the damage within the
@@ -32,6 +33,13 @@ What the server decides, so a modified browser can't fake it (in `index.js`, plu
   most 110 per room) and sends each player the cars within 560 m five times a second. Browsers only draw them
   (`src/online/traffic.js`). A hit slows or wrecks a car for everyone; getting in takes it out of the room's traffic.
   `roads.js` is generated: `node tools/traffic/build-roads.mjs` after `poway-data.js` changes.
+- **People:** the room walks the people on the sidewalks and trails (`peds.js`, on the same road graph): about 22
+  round each player (40–170 m out, dropped past 240 m, at most 170 per room), strolling, pausing, and running from
+  gunshots and explosions. Each player gets the people within 200 m five times a second; browsers draw them
+  (`src/online/peds.js`) and spawn none of their own. A hit is checked (range, at most 15 a second) and the room
+  decides who dies, so everyone sees the same body.
+- **Cops** stay in the wanted player's own game (`src/police.js`); the deputies and cruisers on a call ride along in
+  that player's crowd message, which the room relays, and everyone else draws them (`src/online/world.js`).
 - **Saves:** the player's own cloud save (`save/game`) is written by the game (`src/online/cloud.js`). Only its owner
   can read or write it.
 
@@ -69,7 +77,7 @@ Any Linux or macOS box with about 1 GB of RAM will do. It runs as an ordinary us
 (mode 600) and never leave the box. The admin console is only reachable through an SSH tunnel:
 `ssh -L 7351:127.0.0.1:7351 <host>`, then open http://127.0.0.1:7351.
 
-Deploy a new version of the module (joins `roads.js`, `traffic.js` and `index.js` into
+Deploy a new version of the module (joins `roads.js`, `traffic.js`, `peds.js` and `index.js` into
 the one module file Nakama loads, copies it, restarts Nakama, checks the log):
 
 ```bash

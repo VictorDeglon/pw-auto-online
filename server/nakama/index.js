@@ -16,9 +16,9 @@
 var SERVERS = ['silverwood', 'elysium', 'asgard', 'avalon', 'vaeloria']; // must match src/online/config.js
 var MAX_PLAYERS = 20, TICK_RATE = 10, EMPTY_TICKS = TICK_RATE * 600; // a room with nobody in it closes after 10 minutes
 var OP = {
-  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, SKIN: 11, NPC_KILL: 12, TCAR_HIT: 13, TCAR_TAKE: 14,
+  STATE: 1, HIT: 2, HP: 3, RESPAWN: 4, CHAT: 5, FEED: 6, EVENT: 7, RUIN: 8, CROWD: 9, CROWD_CLEAR: 10, SKIN: 11, NPC_KILL: 12, TCAR_HIT: 13, TCAR_TAKE: 14, PED_HIT: 15,
   SNAP: 20, ROSTER: 21, JOIN: 22, LEAVE: 23, HPSET: 24, CHAT_OUT: 25, FEED_OUT: 26, EVENT_OUT: 27, RUIN_OUT: 28, CROWD_OUT: 29,
-  CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35, TRAFFIC: 36,
+  CROWD_GONE: 30, STATS: 31, SNAPTO: 32, WELCOME: 33, ANNOUNCE: 34, PLAYER: 35, TRAFFIC: 36, PEDS: 37,
   GAME_JOIN: 41, GAME_LEAVE: 42, GAME_ACT: 43, GAME_IN: 50, GAME_OUT: 51, GAME_STATE: 52, GAME_EVENT: 53, GAME_BOARD: 54, // crew garages (13, 14 and 36 belong to the street traffic)
 };
 
@@ -346,7 +346,7 @@ function matchJoin(ctx, logger, nk, dispatcher, tick, state, presences) {
     var roster = []; for (var k in state.players) if (k !== P.uid) roster.push(rosterEntry(state.players[k]));
     var ruins = []; for (var ri in state.ruins) ruins.push(state.ruins[ri]);
     var crowds = []; for (var ci in state.crowds) if (ci !== P.uid) crowds.push({ id: ci, e: state.crowds[ci].e, t: state.crowds[ci].t });
-    send(dispatcher, OP.WELCOME, { t: Date.now(), sid: state.sid, you: rosterEntry(P), roster: roster, ruins: ruins, crowds: crowds, traffic: typeof ROADS !== 'undefined' }, [pr]); // traffic: the room runs the cars
+    send(dispatcher, OP.WELCOME, { t: Date.now(), sid: state.sid, you: rosterEntry(P), roster: roster, ruins: ruins, crowds: crowds, traffic: typeof ROADS !== 'undefined', peds: typeof ROADS !== 'undefined' }, [pr]); // traffic: the room runs the cars
     var o = others(state, P); if (o.length) send(dispatcher, OP.JOIN, rosterEntry(P), o);
     feedOut(dispatcher, state, 'join', { u: P.uid, a: P.name });
     logger.info('+ %s on %s', P.name, state.sid);
@@ -488,12 +488,15 @@ function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
       case OP.NPC_KILL: onNpcKill(dispatcher, state, P, q); break;
       case OP.TCAR_HIT: if (typeof ROADS !== 'undefined') onCarHit(state, P, q); break;
       case OP.TCAR_TAKE: if (typeof ROADS !== 'undefined') onCarTake(state, P, q); break;
+      case OP.PED_HIT: if (typeof ROADS !== 'undefined') onPedHit(state, P, q); break;
       case OP.CHAT: {
         var text = String(q.m || '').replace(/\s+/g, ' ').trim().slice(0, 160); if (!text || now - P.chatAt < 700) break;
         P.chatAt = now; send(dispatcher, OP.CHAT_OUT, { u: P.uid, n: P.name, m: text, t: now }); break;
       }
       case OP.FEED: if (q.k === 'busted' || q.k === 'wreck') feedOut(dispatcher, state, q.k, { u: P.uid, a: P.name, b: String(q.b || '').slice(0, 16) }); break;
-      case OP.EVENT: { q.u = P.uid; q.t = now; var o = othersIn(state, P); if (o.length) send(dispatcher, OP.EVENT_OUT, q, o); break; }
+      case OP.EVENT: { q.u = P.uid; q.t = now; var o = othersIn(state, P); if (o.length) send(dispatcher, OP.EVENT_OUT, q, o);
+        if ((q.k === 'boom' || q.k === 'nuke') && typeof q.x === 'number' && typeof q.z === 'number') (state.pdBooms || (state.pdBooms = [])).push([q.x, q.z, q.k === 'nuke' ? 900 : Math.min(140, (+q.R || 7) * 6)]); // the room's people run from it (peds.js)
+        break; }
       case OP.RUIN: {
         var idx = q.i | 0; if (idx < 0 || P.g) break; var ru = { i: idx, x: +q.x || 0, z: +q.z || 0, t: now, u: P.uid };
         state.ruins[idx] = ru; var o2 = others(state, P); if (o2.length) send(dispatcher, OP.RUIN_OUT, ru, o2); break;
@@ -518,6 +521,7 @@ function matchLoop(ctx, logger, nk, dispatcher, tick, state, messages) {
     var allPl = state.players, inTown = {}, away = false; for (var tk in allPl) { if (allPl[tk].g) away = true; else inTown[tk] = allPl[tk]; }
     if (away) state.players = inTown;
     try { trafficTick(state, dispatcher, 1 / TICK_RATE, tick); } catch (e) { logger.warn('traffic: %s', e.message || e); }
+    try { pedsTick(state, dispatcher, 1 / TICK_RATE, tick); } catch (e) { logger.warn('peds: %s', e.message || e); } // the room's people (peds.js)
     state.players = allPl;
   }
   if (tick % NPC_FLUSH_TICKS === 0) for (var k3 in state.players) flushNpc(nk, logger, dispatcher, state, state.players[k3]);
