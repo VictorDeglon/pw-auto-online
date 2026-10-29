@@ -1,7 +1,7 @@
 // Trees grown in code for the species Poway is full of that the scanned set (oak, olive, scrub oak) doesn't cover:
 // Mexican fan palms (tall, thin, with a skirt of dead fronds), Canary Island date palms (thick, diamond-patterned
 // trunks under a ball of arching fronds), blue gums (tall pale eucalyptus with drooping leaves), jacarandas (wide
-// umbrella crowns, purple in late spring), California pepper trees (weeping) and Italian cypress (columns).
+// umbrella crowns, in leaf), California pepper trees (weeping) and Italian cypress (columns).
 // Each variant is real geometry: tapered bark limbs, leaf cards built from scanned leaves (assets/pbr/atlas, ambientCG
 // CC0), palm fronds; leaf normals bend outward from the crown so a crown shades like a volume. At load every variant is
 // baked into the octahedral impostor atlas format of the scanned species (src/nature/vegetation.js: 8 x 8 views of
@@ -233,7 +233,7 @@ async function makeVariants(THREE, base) {
   const card = (sheet, o, seed) => texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o));
   const T = {
     gum: card(gum, { twigs: 7, leaves: 460, size: 42, hang: 0.6 }, 11), pepper: card(pepper, { twigs: 8, leaves: 700, size: 26, hang: 0.9 }, 12),
-    jac: card(jac, { twigs: 7, leaves: 650, size: 22, flowers: 0.06 }, 13), cyp: card(cyp, { twigs: 10, leaves: 800, size: 18 }, 14),
+    jac: card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring cyp: card(cyp, { twigs: 10, leaves: 800, size: 18 }, 14),
     fan: texFrom(THREE, palmFanLeaf(rng(15))), date: texFrom(THREE, palmPinnaLeaf(rng(16))), dead: texFrom(THREE, palmPinnaLeaf(rng(17), true)),
     barkGum: texFrom(THREE, barkCanvas('gum', rng(18)), true, true), bark: texFrom(THREE, barkCanvas('brown', rng(19)), true, true),
     barkFan: texFrom(THREE, barkCanvas('fan', rng(20)), true, true), barkDate: texFrom(THREE, barkCanvas('date', rng(21)), true, true),
