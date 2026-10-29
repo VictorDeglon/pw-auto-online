@@ -286,6 +286,9 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 .skillhead{display:flex;justify-content:space-between;align-items:center;gap:12px}.skillhead h3{margin:0;font:400 28px/1 var(--display);text-transform:uppercase}
 .trees{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}@media (max-width:900px){.trees{grid-template-columns:1fr}}
 .tree{display:flex;flex-direction:column;gap:8px}
+.trees2 .tabs button small{opacity:.7;margin-left:4px}.skrow{margin:10px 0 4px;padding-left:12px;border-left:2px solid #2b3550}.skrow.shut{opacity:.6}.skrow.cap{border-left-color:var(--gold)}
+.skrowh{font:700 13px/1 var(--ui);letter-spacing:.12em;text-transform:uppercase;color:var(--paper);margin-bottom:8px}.skrowh small{color:var(--dim);letter-spacing:.04em;text-transform:none;font-weight:500;margin-left:8px}
+.skgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
 .sk{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-left:4px solid #2b3550;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
 .sk.has{border-left-color:var(--gold)}.sk.locked{opacity:.55}.sk .t{display:flex;justify-content:space-between;align-items:center;gap:8px}.sk b{font:700 16px var(--ui)}.sk small{font:500 13px/1.3 var(--ui);color:var(--dim)}
 .pips{display:flex;gap:3px}.pips i{width:10px;height:10px;transform:skewX(-12deg);background:rgba(255,255,255,.12)}.pips i.on{background:var(--gold)}
@@ -2548,7 +2551,7 @@ function clearPlants(poly) { PLANT_CLEAR.push(poly); }
 function brushDrag(x, z) {
   const C = NATURE.cover; if (!C || (ROADS && ROADS.onRoad(x, z, 0.5))) return 1;
   const c = C.at(x, z); if (!c) return 1; const b = c[1] / 255, t = c[3] / 255;
-  return 1 - Math.min(0.55, Math.max(0, b - 0.25) * 0.85 + Math.max(0, t - 0.5) * 0.15);
+  return 1 - Math.min(0.55, Math.max(0, b - 0.25) * 0.85 + Math.max(0, t - 0.5) * 0.15) * (1 - 0.25 * skill('offroad')); // Off-Roader
 }
 const GARDEN = []; // [species, x, z, scale (0: a tree's own size)]: shrubs and yard trees the houses planted (src/world/yards.js)
 const NATURE = { lib: null, veg: null, U: (u => (u.uFar.value = GFX.veg, u.uNear.value = clamp(GFX.veg / 28, 35, 90), u))(natureUniforms(THREE)), filter: null, counts: null, cover: null, gc: null, shrubs: 0 }; // src/nature state (uNear: real tree meshes out to ~85 m on High, impostors beyond)
@@ -4348,6 +4351,7 @@ class Ped {
     if (this.remote) { remoteHurt(this, amt, by); return; }
     if (this.puppet) { puppetHurt(this, amt, by); return; }
     if (this.state === 'dead' || this.invuln) return;
+    if (by === 'player') amt *= npcDmgMul(); else if (this.isCompanion) amt *= 1 - 0.15 * skill('bodyguard'); // Dead Eye, Outlaw; Bodyguards
     this.health -= amt; bleed(this, amt, this.hitDir); if (this.hitDir) { const L = Math.hypot(this.hitDir.x, this.hitDir.z) || 1; this.staggerDir = { x: this.hitDir.x / L, z: this.hitDir.z / L }; } this.hitDir = null;
     if (by === 'player') { this.anger = 100; this.target = 'player'; }
     if (this.health <= 0) { killPed(this, by); return; }
@@ -4389,7 +4393,7 @@ function killPed(p, by) {
   else if (!p.isCop) { const Z = zoneHere(p.pos.x, p.pos.z); if (Math.random() < (Z.wealth - 0.55) * 0.6) spawnPickup('ammo', p.pos.x + 0.6, p.pos.z, Math.round(10 + Z.wealth * 30)); } // the rich carry (and their security does)
   if (by === 'player') {
     save.stats.kills++; if (p.isCop) save.stats.copsKilled++;
-    crime(p.isCop ? 'copkill' : 'murder', p.pos.x, p.pos.z, p.isCop ? 3 : 2, p);
+    if (!p.robber) crime(p.isCop ? 'copkill' : 'murder', p.pos.x, p.pos.z, p.isCop ? 3 : 2, p);
   }
   if (p.homeCar) { p.homeCar.crewOut = Math.max(0, (p.homeCar.crewOut || 1) - 1); p.homeCar.crewLost = (p.homeCar.crewLost || 0) + 1; }
   bus.emit('ped:killed', { ped: p, by });
@@ -4414,11 +4418,15 @@ scene.add(player.rig.g); player.rig.gun.visible = false;
 function focusPos() { return player.inCar ? player.inCar.pos : player.pos; }
 player.arsenal = { pistol: 84 }; // weapon id -> rounds; a key present = you own it
 Object.defineProperty(player, 'ammo', { get() { return this.arsenal.pistol | 0; }, set(n) { this.arsenal.pistol = n; }, configurable: true });
+// Haggler: part of what you spend in shops comes back
+function haggle(n) { const r = skill('haggler'); if (r && n > 0) save.money += Math.round(n * 0.04 * r); }
 function hurtPlayer(amt, src) {
   if (player.dead || CH.god || simTime < (player.shieldUntil || 0)) return; // Comeback: a short shield after respawning
   amt *= 1 - 0.05 * skill('tough');
+  if (skill('guardian') && COMPANIONS.some(c => c.state !== 'dead' && hyp(c.pos.x - player.pos.x, c.pos.z - player.pos.z) < 15)) amt *= 0.85; // Guardian
   if (player.evasive && (src === 'gun' || src === 'pvp') && Math.random() < 0.5) return; // a roll or slide can make them miss
-  if (player.inCar && src !== 'explosion') { damageCar(player.inCar, amt * 0.7, null); amt *= 0.35; }
+  if (player.inCar && src !== 'explosion') { damageCar(player.inCar, amt * 0.7, null); amt *= 0.35 * (skill('stunt') ? 0.5 : 1); }
+  if (player.health - amt <= 0 && skill('laststand') && !player.lastStand) { player.lastStand = true; amt = player.health - 1; player.shieldUntil = simTime + 3; notify('<b>Last Stand.</b> Three seconds. Make them count.', 'red', 2500); } // once a life
   player.health -= amt; player.lastHurt = simTime;
   $('vignette').style.boxShadow = 'inset 0 0 160px 40px rgba(200,20,20,.55)';
   setTimeout(() => $('vignette').style.boxShadow = '', 160);
@@ -4804,8 +4812,8 @@ function updatePickups(dt) {
     k.t -= dt; if (k.t <= 0) { scene.remove(k.m); pickups.splice(i, 1); continue; }
     const p = focusPos(), d = hyp(p.x - k.x, p.z - k.z);
     if (d < (player.inCar ? 2.8 : 1.3) && !player.dead) {
-      if (k.kind === 'cash') { save.money += k.amount; notify(`+$${k.amount}`, 'green', 1800); sfx.cash(); }
-      else if (k.kind === 'ammo') { player.ammo += k.amount; notify(`+${k.amount} rounds`, '', 1800); sfx.cash(); }
+      if (k.kind === 'cash') { const n = Math.round(k.amount * (1 + 0.1 * skill('pickpocket'))); save.money += n; notify(`+$${n}`, 'green', 1800); sfx.cash(); } // Sticky Fingers
+      else if (k.kind === 'ammo') { const n = Math.round(k.amount * (1 + 0.2 * skill('scavenger'))); player.ammo += n; notify(`+${n} rounds`, '', 1800); sfx.cash(); } // Scavenger
       else if (k.kind === 'health') { if (player.health >= 100) continue; player.health = 100; notify('Patched up.', 'green', 1800); sfx.cash(); }
       if (k.respawn) { k.cool = 60; k.m.visible = false; } else { scene.remove(k.m); pickups.splice(i, 1); }
     }
@@ -5193,7 +5201,7 @@ function updateJob(dt) {
   const f = focusPos(), d = hyp(job.x - f.x, job.z - f.z);
   $('job').innerHTML = `<b>${Math.max(0, Math.ceil(job.t))}s</b>${job.what} ${job.name} · ${Math.round(d)} m`;
   if (d < 10) {
-    const pay = job.reward + Math.max(0, Math.round(job.t * 2)); save.money += pay; save.rep += 3; save.stats.jobs++;
+    const pay = Math.round((job.reward + Math.max(0, Math.round(job.t * 2))) * (1 + 0.1 * skill('worker'))); save.money += pay; // Hard Worker save.rep += 3; save.stats.jobs++;
     big('DELIVERED', `+$${pay} · Poway thanks you`, 'pass', 3); sfx.job(); bus.emit('job:done', { job, pay }); job = null; jobBeam.visible = false; $('job').hidden = true; persist();
   } else if (job.t <= 0) { big('LATE', 'The customer left a one-star review', 'wasted', 2.5); save.rep -= 1; bus.emit('job:failed', { job }); job = null; jobBeam.visible = false; $('job').hidden = true; }
 }
@@ -5849,7 +5857,9 @@ function upLv(w, k) { return (((save.upgrades || {})[w.id] || {})[k]) | 0; }
 function maxOf(w) { return Math.round((w.max || 0) * (1 + SHOP.UPGRADES.cap.step * upLv(w, 'cap')) * (1 + 0.15 * skill('mags'))); }
 function dmgMul(w) { return (1 + SHOP.UPGRADES.dmg.step * upLv(w, 'dmg')) * (1 + 0.04 * skill('damage')); } // skills: src/progress.js
 function cdOf(w) { return (w.cd || 0.3) * (1 - SHOP.UPGRADES.rate.step * upLv(w, 'rate')) / (1 + 0.05 * skill('trigger')); }
-function accMul(w) { return (1 - SHOP.UPGRADES.acc.step * upLv(w, 'acc')) * (1 - 0.1 * skill('steady')); }
+function accMul(w) { return (1 - SHOP.UPGRADES.acc.step * upLv(w, 'acc')) * (1 - 0.1 * skill('steady')) * (player.inCar ? 1 - 0.15 * skill('driveby') : 1); }
+// skills that only count against NPCs (other players' damage is capped by the room, server/nakama/index.js): Dead Eye, Outlaw
+function npcDmgMul() { return (skill('deadeye') && player.aiming && !player.inCar && player.speed < 0.5 ? 1.3 : 1) * (skill('outlaw') && police.wanted > 0 ? 1.15 : 1); }
 function weaponStats(w) {
   const per = w.dmg ? (w.dmg[0] + w.dmg[1]) / 2 * (w.pellets || 1) : w.id === 'airstrike' ? 900 : 320;
   return { dmg: per * dmgMul(w) / 300, rate: Math.min(1, 0.05 / cdOf(w)), acc: w.spread ? 1 - w.spread * accMul(w) * 9 : 0.5, cap: maxOf(w) / ((w.max || 1) * 1.9) };
@@ -5952,7 +5962,7 @@ function initExtras() {
     if (nr.human) { scene.remove(old.g); nr.g.position.copy(old.g.position); nr.g.rotation.copy(old.g.rotation); nr.g.visible = old.g.visible; player.rig = nr; scene.add(nr.g); equipGuns(nr); }
   }
   if (!save.upgrades || typeof save.upgrades !== 'object') save.upgrades = {};
-  SHOP.initShop({ weapons: WEAPONS, money: () => save.money, spend: n => { if (save.money < n) { tone(200, 0.08, 'square', 0.2); return false; } save.money -= n; return true; },
+  SHOP.initShop({ weapons: WEAPONS, money: () => save.money, spend: n => { if (save.money < n) { tone(200, 0.08, 'square', 0.2); return false; } save.money -= n; haggle(n); return true; },
     arsenal: player.arsenal, upgrades: save.upgrades, owned, maxOf, stats: weaponStats, notify, sfx, close: closeShop,
     onBuy: (kind, w, k, lv) => { bus.emit('shop:buy', { kind, weapon: w.id, upgrade: k, level: lv }); if (kind === 'buy') player.weapon = WEAPONS.indexOf(w); persist(); } });
   setupDealer(); setupTravel(); setupGarage(); setupCarDealers(); initRegionBanner();
@@ -6303,7 +6313,7 @@ function garageClick(ev) {
   if (a === 'close') return closeGarage();
   if (a === 'tab') { SHOW.tab = arg; return renderGarage(); }
   if (a === 'store' && v) storeCar(v);
-  if (a === 'mod' && e) { e.mods = e.mods || {}; const lv = e.mods[arg] || 0, c = MODS[arg].cost[lv]; if (save.money >= c) { save.money -= c; e.mods[arg] = lv + 1; applyMods(player.inCar, e); sfx.cash(); notify(`${MODS[arg].name} level ${lv + 1} fitted.`, 'green', 2000); } }
+  if (a === 'mod' && e) { e.mods = e.mods || {}; const lv = e.mods[arg] || 0, c = MODS[arg].cost[lv]; if (save.money >= c) { save.money -= c; haggle(c); e.mods[arg] = lv + 1; applyMods(player.inCar, e); sfx.cash(); notify(`${MODS[arg].name} level ${lv + 1} fitted.`, 'green', 2000); } }
   if (e && (LOOKS[a] || a === 'part')) { const c = lookCost(act); if (save.money >= c) { save.money -= c; lookTry(e, act); if (a === 'part' && +act.split(':')[2]) ACH.bump('parts'); applyMods(player.inCar, e); SHOW.preview = false; if (c) sfx.cash(); } }
   if (a === 'take' && !player.inCar) { const c = ownedEntry(arg); let lv = liveOwned(arg); if (lv) lv.remove(); const G = GARAGE_AT || GARAGE, nv = spawnOwned(c, G.x, G.z, G.rot); player.inCar = nv; nv.driver = 'player'; nv.mode = 'free'; player.rig.g.visible = false; cam.dist = 9; save.lastCar = c.id; persist(); closeGarage(); return; }
   if (a === 'sell') { const i = garageList().findIndex(c => c.id === arg); if (i >= 0) { const lv = liveOwned(arg); if (lv && lv !== player.inCar) lv.remove(); else if (lv) lv.ownedId = null; garageList().splice(i, 1); notify('Scrapped.', '', 1500); } }
@@ -6322,9 +6332,9 @@ function respawn() {
   if (GAMES.respawn()) return; // in a crew-garage world: back at its start, no bill
   const kind = player.deadKind; const P = kind === 'wasted' ? HOSPITAL : SHERIFF;
   if (player.inCar) { player.inCar.driver = null; player.inCar = null; }
-  player.dead = false; player.health = 100; player.knock = 0; player.shieldUntil = simTime + 1.5 * skill('comeback'); player.rig.g.visible = true; player.rig.body.rotation.set(0, 0, 0); player.rig.body.position.y = 0;
+  player.dead = false; player.health = 100; player.knock = 0; player.lastStand = false; player.shieldUntil = simTime + 1.5 * skill('comeback'); player.rig.g.visible = true; player.rig.body.rotation.set(0, 0, 0); player.rig.body.position.y = 0;
   player.pos.set(P.x, heightAt(P.x, P.z), P.z); player.air = 0; player.rotY = P.rot; cam.yaw = P.rot + Math.PI; cam.dist = 6.5;
-  const fee = kind === 'wasted' ? Math.min(save.money, 150 + Math.round(save.money * 0.05)) : Math.min(save.money, 200 + Math.round(save.money * 0.1));
+  const fee = skill('taxfree') ? 0 : Math.round((kind === 'wasted' ? Math.min(save.money, 150 + Math.round(save.money * 0.05)) : Math.min(save.money, 200 + Math.round(save.money * 0.1))) * (1 - 0.25 * skill('lawyer'))); // Good Lawyer, Tax Free
   save.money -= fee;
   if (kind === 'busted') { const lost = Math.floor(player.ammo / 2); player.ammo -= lost; notify(`Bail: $${fee}. Deputies kept ${lost} rounds.`, 'blue', 6000); }
   else notify(`Palomar Medical Center Poway bill: $${fee}.`, 'red', 6000);
@@ -6406,7 +6416,7 @@ function updatePlayer(dt) {
   }
   else if (player.knock > 0) { player.knock -= dt; }
   else if (ml > 0) {
-    mx /= ml; mz /= ml; speed = (sprint && !player.crouch ? 7.2 : 3.4) * (1 + 0.05 * skill('runner')); if (player.aiming) speed = 2.4; if (player.crouch) speed = 1.8;
+    mx /= ml; mz /= ml; speed = (sprint && !player.crouch ? 7.2 : 3.4) * (1 + 0.05 * skill('runner')); if (player.aiming) speed = skill('heavy') ? 3.4 : 2.4; if (player.crouch) speed = 1.8; speed *= player.burden || 1; // heist bags (src/story/heists.js)
     if (CH.speed) speed *= 3; if (CH.fly && player.air > 0.5) speed = sprint ? 38 : 14;
     if (player.health < 30 && speed > 3) speed *= 0.8; // hurt: you can't run flat out
     if (player.air <= 0 && !CH.fly) speed *= brushDrag(player.pos.x, player.pos.z) * (onSand(player.pos.x, player.pos.z) ? 0.8 : 1); // thick chaparral: you push through it; soft sand drags at your feet
@@ -7091,7 +7101,12 @@ function collideCars(v) {
           if (imp > 7) { carCrashed(v, imp); carCrashed(o, imp); }
           if (v.driver === 'player' || o.driver === 'player') bus.emit('car:crash', { a: v, b: o, impact: imp });
           const share = 2 * m1 / (m1 + m2); // the lighter car takes more of it
-          damageCar(o, imp * 2.2 * clamp(share, 0.4, 1.6), v.driver === 'player' ? 'player' : null); damageCar(v, imp * 1.6 * clamp(2 - share, 0.4, 1.6), null);
+          // who drove into whom: each car's own speed toward the other (the loop order doesn't decide fault)
+          const vIn = v.vel.x * nx + v.vel.y * nz, oIn = -(o.vel.x * nx + o.vel.y * nz);
+          // a deputy's contact is a trained nudge, not a crash: the suspect's car takes half
+          const soft = c => { const by = c === v ? o : v, demo = skill('demolition') ? (c === player.inCar ? 0.5 : by === player.inCar ? 2 : 1) : 1; // Demolition
+            return demo * (c === player.inCar && by.isCop && by.driver === 'cop' ? 0.5 : 1); };
+          damageCar(o, imp * 2.2 * clamp(share, 0.4, 1.6) * soft(o), v.driver === 'player' ? 'player' : null); damageCar(v, imp * 1.6 * clamp(2 - share, 0.4, 1.6) * soft(v), null);
           const mx = px, mz = pz, dd = Math.min(0.3, Math.max(0, imp - 4) * 0.018);
           dentCar(v, mx, v.pos.y + 0.7, mz, -nx, 0, -nz, dd, 1.3); dentCar(o, mx, o.pos.y + 0.7, mz, nx, 0, nz, dd * 1.2, 1.4);
           if (imp > 9) shards(o, Math.min(8, imp * 0.4));
@@ -7104,7 +7119,7 @@ function collideCars(v) {
           if (v.driver === 'player') {
             shake = Math.min(1, imp / 18);
             if (o.driver === 'ai') { o.angerAt = 'player'; o.react = rand(0.8, 1.6); if (imp > 6) o.hitRunCheck = 12; if (o.personality > 0.6) setTimeout(() => { if (!o.removed && o.driver === 'ai') sfx.horn(volAt(o.pos.x, o.pos.z)); }, 400); }
-            if (o.isCop && o.driver === 'cop') rammedCop(o, imp);
+            if (o.isCop && o.driver === 'cop' && vIn > oIn + 1) rammedCop(o, imp); // only when you hit them, not when they nudge you
             if (o.parked && imp > 5) { o.parked = false; if (Math.random() < 0.5) { for (let i = 0; i < 3; i++) setTimeout(() => sfx.horn(volAt(o.pos.x, o.pos.z) * 0.6), i * 450); } }
           }
         }

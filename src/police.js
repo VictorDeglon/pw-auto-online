@@ -27,6 +27,7 @@ export const police = {
   lkp: null, detect: 0, cool: 0, suspect: null, visible: 0,
   threatT: -99, rammedT: -99, recklessT: -99, tipT: 0, radioT: 0, recruitT: 0,
   roadblock: null, roadblockT: 20, stop: null, sed: false, stunT: 0, lastTheft: null, redNode: -1,
+  nextSlot: 0, pitT: 0, // pursuit formation (chaseDrive)
 };
 export const NEED = [0, 10, 16, 24, 32, 42];         // seconds unseen (outside the search area) to clear each level
 export const SEARCH_R = [0, 80, 110, 150, 190, 230];  // search-area radius around the last known position
@@ -106,6 +107,7 @@ function visMul() {
 // How well a unit at (ox,oy,oz) facing rotY sees the player: 0 = not at all, up to 1 = point blank.
 function sight(ox, oy, oz, rotY, range, cosFov, close) {
   const f = ctx.focusPos(), dx = f.x - ox, dz = f.z - oz, d = Math.hypot(dx, dz);
+  const P = ctx.player; if (!P.inCar && P.crouch && skill('ghost')) range *= 0.5; // Ghost
   range = Math.max(range * visMul(), close + 1); if (d > range) return 0;
   if (d > close && (dx * Math.sin(rotY) + dz * Math.cos(rotY)) / d < cosFov) return 0;
   if (!ctx.los(ox, oy, oz, f.x, f.y + 1.2, f.z)) return 0;
@@ -178,12 +180,14 @@ function loseWanted() {
   const prev = police.wanted;
   police.wanted = 0; police.heat = 0; police.cool = 0; police.lkp = null; police.detect = 0; police.sed = false; police.violent = false;
   ctx.notify('You lost the Sheriff.', 'green'); radio('All units, suspect lost. Resume patrol.', true);
+  if (skill('fixer')) { const n = 250 * prev; ctx.save.money += n; ctx.notify(`<b>Fixer.</b> Your guy in records made it go away: +$${n}`, 'green', 3500); }
   clearCops(false); ctx.save.rep += 1; ctx.save.stats.evaded = (ctx.save.stats.evaded || 0) + 1; if (prev >= 3) ctx.save.stats.evaded3 = (ctx.save.stats.evaded3 || 0) + 1;
   emit('wanted', { level: 0, prev });
 }
 
 export function crime(kind, x, z, sev, victim) {
   const { save, peds, vehicles, player } = ctx;
+  if ((victim && victim.robber) || ((kind === 'gunfire' || kind === 'assault') && ctx.vigilante && ctx.vigilante())) return; // stopping robbers isn't a crime (src/story/heists.js)
   // Dragging a driver out of their car is between you and the owner (they come after you themselves, see revenge()
   // in index.html); the Sheriff only cares when it's one of theirs. A car stolen off a driveway goes through the
   // witnesses like anything else.
@@ -319,6 +323,7 @@ function engage(v, task) {
 }
 function release(v) {
   v.ai = null; v.task = null; v.mode = 'free'; v.siren = false; v.dispatched = false; v.leaving = true; v.searchPt = null; v.path = null; v.roadblock = false;
+  v.slot = undefined; v.pitUntil = 0;
 }
 function spawnUnit(sed) {
   const c = police.lkp || ctx.focusPos(), f = ctx.focusPos();
@@ -384,7 +389,7 @@ function copCarAI(v, dt) {
   else if (isSolid() || (dl > SEARCH_R[police.wanted] * 0.7 && !v.searchPt)) driveTo(v, c.x, c.z, dt); // respond to the LKP
   else searchDrive(v, dt);
   if (police.wanted >= 4 && isSolid() && freshly(v, now()) && hyp(f.x - v.pos.x, f.z - v.pos.z) < 35 && Math.random() < dt * 0.7)
-    npcFire(v.pos.x, v.pos.y + 1.5, v.pos.z, 0.18 + 0.03 * police.wanted, 6); // passenger fire
+    npcFire(v.pos.x, v.pos.y + 1.5, v.pos.z, 0.18 + 0.03 * police.wanted, 5); // passenger fire
 }
 function searchDrive(v, dt) {
   const c = police.lkp || ctx.focusPos(), t = now();
@@ -411,15 +416,28 @@ function chaseDrive(v, dt) {
   if (cs > 6) v.deployed = false;
   const hx = cs > 2 ? car.vel.x / cs : car.fx, hz = cs > 2 ? car.vel.y / cs : car.fz;
   const rx = v.pos.x - car.pos.x, rz = v.pos.z - car.pos.z, along = rx * hx + rz * hz, side = rx * hz - rz * hx;
-  let tx, tz, maxSpeed = v.spec.vmax;
-  if (w <= 2) { // shadow: sit ~10 m back with lights on, no ramming
-    tx = car.pos.x - hx * 10; tz = car.pos.z - hz * 10;
-    maxSpeed = Math.max(6, cs + hyp(tx - v.pos.x, tz - v.pos.z) * 0.6);
-    if (d < 9) maxSpeed = Math.min(maxSpeed, cs);
-  } else { // 3+: line up on the rear quarter, then turn in (PIT)
-    const lead = clamp(d / 30, 0.2, 1), px = car.pos.x + car.vel.x * lead, pz = car.pos.z + car.vel.y * lead, sg = side >= 0 ? 1 : -1;
-    if (along < -8 || Math.abs(side) > 6) { tx = px - hx * 4 + hz * sg * 2.2; tz = pz - hz * 4 - hx * sg * 2.2; }
-    else { tx = px - hx * 1.5; tz = pz - hz * 1.5; }
+  // A pursuit the way deputies run one: units keep their places in a formation behind and beside the suspect and
+  // match speed instead of driving into the car. Only a flanking unit, lined up on the rear quarter at a sane speed,
+  // may try a PIT, one unit at a time with a pause between tries. Ramming is for the SED at five stars.
+  const t = now(), slot = v.slot ?? (v.slot = police.nextSlot++ % 4), lead = clamp(d / 30, 0.2, 1);
+  const px = car.pos.x + car.vel.x * lead, pz = car.pos.z + car.vel.y * lead;
+  const at = (back, lat) => [px - hx * back + hz * lat, pz - hz * back - hx * lat];
+  let tx, tz, maxSpeed;
+  if (v.pitUntil > t) { // turning in on the rear quarter
+    [tx, tz] = at(1.2, v.pitSide * 0.6); maxSpeed = cs + 2.5;
+  } else if (w >= 5 && v.sed) { // the SED drives through you
+    [tx, tz] = at(1.5, 0); maxSpeed = v.spec.vmax;
+  } else {
+    const flank = w >= 3 && (slot === 1 || slot === 2), sg = slot === 1 ? 1 : -1;
+    [tx, tz] = flank ? at(5, sg * 3.2) : at(slot === 3 ? 22 : 11, 0); // tail sits 11 m back, the fourth further
+    const gap = hyp(tx - v.pos.x, tz - v.pos.z);
+    maxSpeed = Math.max(6, cs + Math.min(9, gap * 0.5)); // close the gap, never charge it
+    if (d < 7) maxSpeed = Math.min(maxSpeed, cs - 1.5); // too close: ease off
+    if (flank && t > police.pitT && cs > 8 && cs < 32 && along > -6 && along < -1 && Math.abs(Math.abs(side) - 3) < 1.5 &&
+        Math.abs(v.vel.length() - cs) < 4) {
+      police.pitT = t + rand(9, 14); v.pitUntil = t + 1.1; v.pitSide = Math.sign(side) || 1;
+      radio(pick(['Lining up for the PIT.', 'Going for the PIT, stand by.', 'PIT, PIT, PIT!']));
+    }
   }
   if (d > 70) driveTo(v, tx, tz, dt, { maxSpeed }); else steerTo(v, tx, tz, dt, { maxSpeed });
 }
@@ -463,7 +481,7 @@ function engaged(p, dt) {
     p.shootCd = rand(0.8, 1.4) * (p.sed ? 0.7 : 1);
     const ramp = clamp((t - p.engageT) / 6, 0.3, 1), acc = p.firstShot ? 0 : (0.28 + 0.035 * w + (p.sed ? 0.12 : 0)) * ramp;
     p.firstShot = false;
-    npcFire(p.pos.x + Math.sin(p.rotY) * 0.6, p.pos.y + 1.45, p.pos.z + Math.cos(p.rotY) * 0.6, acc, p.sed ? 10 : 8);
+    npcFire(p.pos.x + Math.sin(p.rotY) * 0.6, p.pos.y + 1.45, p.pos.z + Math.cos(p.rotY) * 0.6, acc, p.sed ? 8 : 6);
   }
   if (Math.random() < dt * 0.2) p.talk('cop', 'cop');
   return { speed, mode: 'aim' };
@@ -697,7 +715,7 @@ function updateRoadblock() {
   const s = rb.spike, car = ctx.player.inCar;
   if (s && car && !car.tiresBlown) {
     const rx = car.pos.x - s.x, rz = car.pos.z - s.z, along = rx * s.tx + rz * s.tz, lat = Math.abs(rx * -s.tz + rz * s.tx);
-    if (Math.abs(along) < 1.6 && lat < s.half + 0.6) blowTires(car);
+    if (Math.abs(along) < 1.6 && lat < s.half + 0.6 && !skill('getaway')) blowTires(car); // Getaway Driver
   }
 }
 function clearRoadblock(gentle) {
@@ -807,7 +825,7 @@ export function updatePolice(dt) {
       const c = police.lkp, R = SEARCH_R[police.wanted];
       let rate = !c || hyp(f.x - c.x, f.z - c.z) > R ? 1 : 0.4;
       if (police.suspect && (P.inCar || 'foot') !== police.suspect) rate *= 1.6; // different car than the one they're looking for
-      police.cool += dt * rate * (1 + 0.15 * skill('lowkey')); // Low Profile (src/progress.js)
+      police.cool += dt * rate * (1 + 0.15 * skill('lowkey')) * (P.inCar ? 1 + 0.1 * skill('evader') : 1); // Low Profile, Wheelman (src/progress.js)
       if (police.cool >= NEED[police.wanted]) loseWanted();
     }
     if (police.wanted > 0) dispatch(dt);
@@ -877,9 +895,10 @@ export function initPolice() {
   on('car:crash', ({ a, b, impact }) => {
     const pc = ctx.player.inCar; if (!pc || (a !== pc && b !== pc)) return;
     const o = a === pc ? b : a; if (!o) return;
-    if (o.isCop && o.ai && police.wanted >= 3 && impact > 3) { // contact behind the suspect's centre spins them out (PIT)
+    if (o.isCop && o.ai && o.pitUntil > now() && impact > 3) { // a unit's PIT try: contact behind the suspect's centre spins them out
       const rx = o.pos.x - pc.pos.x, rz = o.pos.z - pc.pos.z, along = rx * pc.fx + rz * pc.fz, side = rx * pc.fz - rz * pc.fx;
-      if (along < 0.5) { pc.rotY += Math.sign(side || 1) * clamp(impact * 0.05, 0.12, 0.45); pc.vel.multiplyScalar(0.85); }
+      if (along < 0.5) { const k = skill('getaway') ? 0.25 : 1; pc.rotY += Math.sign(side || 1) * clamp(impact * 0.05, 0.12, 0.45) * k; pc.vel.multiplyScalar(skill('getaway') ? 0.97 : 0.85); }
+      o.pitUntil = 0; // one nudge per try
     } else if (!o.isCop && (o.driver === 'ai' || o.parked) && impact > 4) police.recklessT = now();
   });
 }

@@ -35,23 +35,56 @@ var WEAPON_RULES = {
 var DPS_CAP = 1300, HEAL_EVERY = 20e3, REGEN_PER_S = 4, TP_EVERY = 15e3, MAX_SPEED = 220, ASSIST_MS = 10e3, RUIN_MS = 120e3;
 
 // ---------------------------------------------------------------- progression
-var SKILLS = [ // per rank; rank n costs n skill points; req = [skill, rank] needed first
-  { tree: 'drive', id: 'engine', name: 'Tuned Engine', desc: '+4% top speed and acceleration per rank', max: 5 },
-  { tree: 'drive', id: 'grip', name: 'Track Tires', desc: '+6% steering per rank', max: 3 },
-  { tree: 'drive', id: 'plating', name: 'Reinforced Frame', desc: 'Cars you drive take 8% less damage per rank', max: 5 },
-  { tree: 'drive', id: 'nitro', name: 'Nitrous', desc: 'Hold Shift while driving for a boost: 1 s of nitro per rank, refills over time', max: 3, req: ['engine', 2] },
-  { tree: 'drive', id: 'mechanic', name: 'Road Mechanic', desc: 'The car you drive slowly repairs itself', max: 3, req: ['plating', 2] },
-  { tree: 'combat', id: 'damage', name: 'Marksman', desc: '+4% weapon damage per rank', max: 5 },
-  { tree: 'combat', id: 'steady', name: 'Steady Hands', desc: '-10% bullet spread per rank', max: 3 },
-  { tree: 'combat', id: 'trigger', name: 'Quick Trigger', desc: '+5% fire rate per rank', max: 3, req: ['steady', 1] },
-  { tree: 'combat', id: 'mags', name: 'Deep Pockets', desc: '+15% ammo you can carry per rank', max: 3 },
-  { tree: 'combat', id: 'hunter', name: 'Bounty Hunter', desc: '+20% XP for player kills per rank', max: 3, req: ['damage', 3] },
-  { tree: 'survival', id: 'tough', name: 'Thick Skin', desc: 'Take 5% less damage per rank', max: 5 },
-  { tree: 'survival', id: 'regen', name: 'Second Wind', desc: 'Out of a fight you heal faster and further: +15 health and +50% speed per rank', max: 3 },
-  { tree: 'survival', id: 'runner', name: 'Cardio', desc: '+5% running speed per rank', max: 3 },
-  { tree: 'survival', id: 'lowkey', name: 'Low Profile', desc: 'Your wanted level cools down 15% faster per rank', max: 3, req: ['runner', 1] },
-  { tree: 'survival', id: 'comeback', name: 'Comeback', desc: 'Respawn with a damage shield: 1.5 s per rank', max: 3, req: ['tough', 2] },
+// Skill tree 2.0 (docs/skill-tree.md). Rank n costs n skill points. Every tree has rows: row 2 opens after ROW_NEED[2]
+// points spent in that tree, row 3 after ROW_NEED[3], the capstones after ROW_NEED[4]; each tree's two capstones
+// (cap: true) exclude each other. req = [skill, rank] needed first; hyb = [[tree, points], [tree, points]] for the
+// perks that need two trees. Skills bought before the rows existed stay bought.
+var ROW_NEED = [0, 0, 5, 12, 18];
+var SKILLS = [
+  { tree: 'drive', row: 1, id: 'engine', name: 'Tuned Engine', desc: '+4% top speed and acceleration per rank', max: 5 },
+  { tree: 'drive', row: 1, id: 'grip', name: 'Track Tires', desc: '+6% steering per rank', max: 3 },
+  { tree: 'drive', row: 1, id: 'plating', name: 'Reinforced Frame', desc: 'Cars you drive take 8% less damage per rank', max: 5 },
+  { tree: 'drive', row: 2, id: 'nitro', name: 'Nitrous', desc: 'Hold Shift while driving for a boost: 1 s of nitro per rank, refills over time', max: 3, req: ['engine', 2] },
+  { tree: 'drive', row: 2, id: 'mechanic', name: 'Road Mechanic', desc: 'The car you drive slowly repairs itself', max: 3, req: ['plating', 2] },
+  { tree: 'drive', row: 2, id: 'offroad', name: 'Off-Roader', desc: 'Brush slows you 25% less per rank, on foot and in a car', max: 3 },
+  { tree: 'drive', row: 3, id: 'evader', name: 'Wheelman', desc: 'In a car, the Sheriff loses you 10% faster per rank', max: 3 },
+  { tree: 'drive', row: 4, cap: true, id: 'getaway', name: 'Getaway Driver', desc: 'Capstone. Spike strips miss you, and a PIT barely turns your car', max: 1 },
+  { tree: 'drive', row: 4, cap: true, id: 'demolition', name: 'Demolition', desc: 'Capstone. Cars you ram take twice the damage, yours takes half', max: 1 },
+  { tree: 'combat', row: 1, id: 'damage', name: 'Marksman', desc: '+4% weapon damage per rank', max: 5 },
+  { tree: 'combat', row: 1, id: 'steady', name: 'Steady Hands', desc: '-10% bullet spread per rank', max: 3 },
+  { tree: 'combat', row: 1, id: 'mags', name: 'Deep Pockets', desc: '+15% ammo you can carry per rank', max: 3 },
+  { tree: 'combat', row: 2, id: 'trigger', name: 'Quick Trigger', desc: '+5% fire rate per rank', max: 3, req: ['steady', 1] },
+  { tree: 'combat', row: 2, id: 'driveby', name: 'Drive-By', desc: '-15% bullet spread from a car per rank', max: 3 },
+  { tree: 'combat', row: 3, id: 'hunter', name: 'Bounty Hunter', desc: '+20% XP for player kills per rank', max: 3, req: ['damage', 3] },
+  { tree: 'combat', row: 4, cap: true, id: 'deadeye', name: 'Dead Eye', desc: 'Capstone. +30% damage to NPCs while aiming and standing still', max: 1 },
+  { tree: 'combat', row: 4, cap: true, id: 'heavy', name: 'Heavy Gunner', desc: 'Capstone. Walk at full speed while aiming', max: 1 },
+  { tree: 'survival', row: 1, id: 'tough', name: 'Thick Skin', desc: 'Take 5% less damage per rank', max: 5 },
+  { tree: 'survival', row: 1, id: 'runner', name: 'Cardio', desc: '+5% running speed per rank', max: 3 },
+  { tree: 'survival', row: 1, id: 'regen', name: 'Second Wind', desc: 'Out of a fight you heal faster and further: +15 health and +50% speed per rank', max: 3 },
+  { tree: 'survival', row: 2, id: 'lowkey', name: 'Low Profile', desc: 'Your wanted level cools down 15% faster per rank', max: 3, req: ['runner', 1] },
+  { tree: 'survival', row: 2, id: 'comeback', name: 'Comeback', desc: 'Respawn with a damage shield: 1.5 s per rank', max: 3, req: ['tough', 2] },
+  { tree: 'survival', row: 3, id: 'scavenger', name: 'Scavenger', desc: '+20% ammo from pickups per rank', max: 3 },
+  { tree: 'survival', row: 4, cap: true, id: 'laststand', name: 'Last Stand', desc: 'Capstone. Once a life, a hit that would kill you leaves you at 1 health with a 3 s shield', max: 1 },
+  { tree: 'survival', row: 4, cap: true, id: 'ghost', name: 'Ghost', desc: 'Capstone. Crouching, deputies see you at half the distance', max: 1 },
+  { tree: 'hustle', row: 1, id: 'haggler', name: 'Haggler', desc: '4% of what you spend in shops comes back per rank', max: 5 },
+  { tree: 'hustle', row: 1, id: 'pickpocket', name: 'Sticky Fingers', desc: '+10% cash from pickups per rank', max: 3 },
+  { tree: 'hustle', row: 1, id: 'worker', name: 'Hard Worker', desc: '+10% courier job pay per rank', max: 3 },
+  { tree: 'hustle', row: 2, id: 'bigscore', name: 'Big Score', desc: '+10% from robberies, armored trucks and heists per rank', max: 3 },
+  { tree: 'hustle', row: 3, id: 'lawyer', name: 'Good Lawyer', desc: 'Hospital and jail bills 25% lower per rank', max: 3 },
+  { tree: 'hustle', row: 4, cap: true, id: 'kingpin', name: 'Kingpin', desc: 'Capstone. Heists pay 30% more', max: 1 },
+  { tree: 'hustle', row: 4, cap: true, id: 'taxfree', name: 'Tax Free', desc: 'Capstone. No hospital or jail bills at all', max: 1 },
+  { tree: 'crew', row: 1, id: 'leader', name: 'Leader', desc: 'One more companion (E) per rank', max: 2 },
+  { tree: 'crew', row: 1, id: 'bodyguard', name: 'Bodyguards', desc: 'Your companions take 15% less damage per rank', max: 3 },
+  { tree: 'crew', row: 2, id: 'getawayteam', name: 'Inside Man', desc: 'Heist vaults open 15% faster per rank', max: 3 },
+  { tree: 'crew', row: 3, id: 'crewcut', name: 'Crew Cut', desc: 'Heists pay +10% per companion with you, per rank', max: 2 },
+  { tree: 'crew', row: 4, cap: true, id: 'guardian', name: 'Guardian', desc: 'Capstone. Take 15% less damage with a companion within 15 m', max: 1 },
+  { tree: 'crew', row: 4, cap: true, id: 'mastermind', name: 'Mastermind', desc: 'Capstone. Heist alarms take twice as long to reach the Sheriff', max: 1 },
+  { tree: 'hybrid', id: 'outlaw', name: 'Outlaw', desc: 'Gunfighter 10 + Survivor 10. +15% damage to NPCs while wanted', max: 1, hyb: [['combat', 10], ['survival', 10]] },
+  { tree: 'hybrid', id: 'stunt', name: 'Stunt Driver', desc: 'Driver 10 + Survivor 10. You take half the damage while in a car', max: 1, hyb: [['drive', 10], ['survival', 10]] },
+  { tree: 'hybrid', id: 'crewheist', name: 'Heist Crew', desc: 'Hustler 10 + Crew 10. Heists pay another 15%', max: 1, hyb: [['hustle', 10], ['crew', 10]] },
+  { tree: 'hybrid', id: 'fixer', name: 'Fixer', desc: 'Hustler 10 + Driver 10. Losing the Sheriff pays $250 a star', max: 1, hyb: [['hustle', 10], ['drive', 10]] },
 ];
+function spentIn(p, tree) { var n = 0; SKILLS.forEach(function (x) { if (x.tree === tree) { var r = rank(p, x.id); n += r * (r + 1) / 2; } }); return n; }
 var TITLES = [[1, 'Rookie'], [5, 'Joyrider'], [10, 'Street Racer'], [15, 'Wheelman'], [20, 'Enforcer'], [30, 'Hitman'], [40, 'Kingpin'],
   [50, 'Legend of Poway'], [75, 'Untouchable'], [100, 'Poway Immortal']];
 var DAILY_POOL = [
@@ -146,7 +179,7 @@ function needUser(ctx) { if (!ctx.userId) throw Error('sign in first'); } // ser
 function rpcProfile(ctx, logger, nk, payload) {
   needUser(ctx);
   var cur = readProgress(nk, ctx.userId);
-  return JSON.stringify({ me: publicProgress(cur.value, ctx.username), skills: SKILLS, titles: TITLES });
+  return JSON.stringify({ me: publicProgress(cur.value, ctx.username), skills: SKILLS, rows: ROW_NEED, titles: TITLES });
 }
 function rpcSkillBuy(ctx, logger, nk, payload) {
   needUser(ctx);
@@ -155,6 +188,9 @@ function rpcSkillBuy(ctx, logger, nk, payload) {
   var r = updateProgress(nk, logger, ctx.userId, function (p) {
     var have = rank(p, id); if (have >= s.max) throw Error('already maxed');
     if (s.req && rank(p, s.req[0]) < s.req[1]) throw Error('needs ' + s.req[0] + ' ' + s.req[1]);
+    if (have === 0 && s.row > 1 && spentIn(p, s.tree) < ROW_NEED[s.row]) throw Error('needs ' + ROW_NEED[s.row] + ' points in this tree');
+    if (s.cap && SKILLS.some(function (x) { return x.cap && x.tree === s.tree && x.id !== id && rank(p, x.id) > 0; })) throw Error('you already have this tree\'s other capstone');
+    if (s.hyb && s.hyb.some(function (h) { return spentIn(p, h[0]) < h[1]; })) throw Error('needs ' + s.hyb.map(function (h) { return h[1] + ' points in ' + h[0]; }).join(' and '));
     var cost = have + 1; if (p.sp < cost) throw Error('not enough skill points');
     p.sp -= cost; p.skills[id] = have + 1;
   });

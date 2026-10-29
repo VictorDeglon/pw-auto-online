@@ -10,6 +10,7 @@
 //   5. MECHANIC: Automatically repairs player vehicle to 100% when stopped
 
 import { ctx } from './ctx.js';
+import { skill } from './progress.js';
 
 export const COMPANIONS = [];
 
@@ -95,8 +96,8 @@ export const SOCIAL = {
   },
 
   recruitCompanion(ped, role) {
-    if (COMPANIONS.length >= 3) {
-      if (ctx.notify) ctx.notify('Squad full (Max 3 active companions). Dismiss one first.', '#ef4444', 2500);
+    if (COMPANIONS.length >= 3 + skill('leader')) { // Leader (src/progress.js)
+      if (ctx.notify) ctx.notify(`Squad full (Max ${3 + skill('leader')} active companions). Dismiss one first.`, '#ef4444', 2500);
       return;
     }
 

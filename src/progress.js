@@ -10,7 +10,7 @@ import { ACCOUNT, PRO, NET, on as onNet } from './online/net.js';
 import { on as onBus } from './events.js';
 
 const CACHE_KEY = 'pw-auto-online-prog';
-export const PROG = { me: null, skills: [], titles: [], available: !!PRO, err: '' };
+export const PROG = { me: null, skills: [], rows: null, titles: [], available: !!PRO, err: '' };
 try { const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); if (c && c.me) Object.assign(PROG, { me: c.me, skills: c.skills || [], titles: c.titles || [] }); } catch (e) { }
 const subs = new Set();
 export function onProgress(cb) { subs.add(cb); return () => subs.delete(cb); }
@@ -19,7 +19,7 @@ export function skill(id) { return PROG.me && PROG.me.skills ? PROG.me.skills[id
 
 export async function refresh() {
   if (!PRO) return PROG;
-  try { const r = await PRO.profile(); PROG.me = r.me; PROG.skills = r.skills || PROG.skills; PROG.titles = r.titles || PROG.titles; PROG.err = ''; changed(); }
+  try { const r = await PRO.profile(); PROG.me = r.me; PROG.skills = r.skills || PROG.skills; PROG.rows = r.rows || PROG.rows; PROG.titles = r.titles || PROG.titles; PROG.err = ''; changed(); }
   catch (e) { PROG.err = e.message || String(e); }
   return PROG;
 }

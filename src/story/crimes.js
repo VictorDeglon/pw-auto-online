@@ -22,6 +22,8 @@ import { addInteract, removeInteract } from '../interact.js';
 import { police, crime, setWanted, witness, silence, addWatcher, sawIt } from '../police.js';
 import { isUnlocked } from './unlocks.js';
 import { driveTo } from '../drive.js';
+import { skill } from '../progress.js';
+import { initHeists, updateHeists, heistMarks } from './heists.js';
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -276,7 +278,7 @@ function stickup(sp) {
   ctx.say(c, pick(['Okay, okay! Take it!', 'Please, I have kids!', 'Don\'t shoot! It\'s all yours!']), 'mad');
   hold({ label: `The clerk is emptying the register…`, need: 3.6, at: sp, r: 4, cancel: () => !armed() ? 'put the gun away' : null,
     onStop: () => { release(c); }, onDone: () => {
-      s.robbed[sp.id] = today(); const n = randi(220, 680); cash(n, 'The register.');
+      s.robbed[sp.id] = today(); const n = Math.round(randi(220, 680) * (1 + 0.1 * skill('bigscore'))); cash(n, 'The register.'); // Big Score
       release(c); witness(c, 'robbery', 2, sp.x, sp.z); c.callT = 25; // the silent alarm: about half a minute
       crime('robbery', sp.x, sp.z, 2); done('stickup');
       ctx.notify('<b>Silent alarm.</b> About 30 seconds before the Sheriff knows. Or stop the clerk.', 'red', 5000);
@@ -512,7 +514,7 @@ function updateTruck(dt, f) {
     TRUCK.hit = true; v.ai = null; v.driver = null; v.vel.multiplyScalar(0.2);
     crime('heist', v.pos.x, v.pos.z, 3); setWanted(Math.max(3, police.wanted), 'The guards radioed it in. <b>Three stars.</b>', { seen: true, what: 'heist' });
     for (let i = 0; i < 2; i++) { const s = i ? 1 : -1, p = new ctx.Ped(v.pos.x + v.fz * s * 2, v.pos.z - v.fx * s * 2, { look: { kind: 'civ', skin: pick(['#e0ac85', '#8d5a3b', '#c68863']), shirt: '#4a5568', pants: '#2b3a55', hair: '#1a1a1a', hat: '#2b3a55' } }); p.anger = 100; p.state = 'fight'; p.timer = 30; p.personality = 'tough'; }
-    for (let i = 0; i < 3; i++) ctx.spawnPickup('cash', v.pos.x - v.fx * (v.spec.L / 2 + 1 + i * 0.8) + rand(-0.6, 0.6), v.pos.z - v.fz * (v.spec.L / 2 + 1 + i * 0.8) + rand(-0.6, 0.6), randi(700, 1300));
+    for (let i = 0; i < 3; i++) ctx.spawnPickup('cash', v.pos.x - v.fx * (v.spec.L / 2 + 1 + i * 0.8) + rand(-0.6, 0.6), v.pos.z - v.fz * (v.spec.L / 2 + 1 + i * 0.8) + rand(-0.6, 0.6), Math.round(randi(700, 1300) * (1 + 0.1 * skill('bigscore'))));
     ctx.notify('The back doors are open. <b>Grab the bags</b> and go.', 'green', 4000); done('heist');
     setTimeout(() => { if (TRUCK && TRUCK.v === v) TRUCK = null; v.keep = false; v.mission = false; }, 60000);
     return;
@@ -561,10 +563,11 @@ export function initCrimes() {
   document.head.appendChild(st);
   for (const id of ['crimehud', 'witnesses', 'crimejob']) { const el = document.createElement('div'); el.id = id; el.className = 'hud'; el.hidden = true; document.body.appendChild(el); }
   buildSpots(); setupPlaces();
+  ctx.holdE = hold; initHeists(SPOTS, S); // bank heists and robber crews (src/story/heists.js)
 }
 export function updateCrimes(dt) {
   if (!ready) return;
-  updateHold(dt); updateWitnesses(dt); updateCams(dt); updateRun(dt);
+  updateHold(dt); updateWitnesses(dt); updateCams(dt); updateRun(dt); updateHeists(dt);
   if (off()) { if (H) { H = null; hud(); } return; }
   updateMugging(dt); pocketIts(dt); carIts();
   t2 -= dt; if (t2 > 0) return; t2 = 0.5;
@@ -595,7 +598,7 @@ export function crimeMarks() {
   if (isUnlocked('crime:repo')) for (const t of S().repo.list) { const v = REPOCARS.get(t.id); out.push({ x: v ? v.pos.x : t.x, z: v ? v.pos.z : t.z, color: '#7cc0ff', letter: 'D', size: 6, edge: false, label: `Repo: ${t.tn} ${t.type}` }); }
   if (RUN) out.push({ x: RUN.x, z: RUN.z, color: '#ff9f43', size: 7, edge: true, label: 'Cooler drop' });
   if (TRUCK && !TRUCK.v.removed) out.push({ x: TRUCK.v.pos.x, z: TRUCK.v.pos.z, color: '#9aa5b1', size: 6, edge: true, label: 'Armored truck' });
-  return out;
+  return out.concat(heistMarks());
 }
 export function nearestCrimeSpot(kind) {
   const f = ctx.focusPos(); let best = null, bd = Infinity;

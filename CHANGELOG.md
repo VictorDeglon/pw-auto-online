@@ -8,6 +8,24 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## Unreleased
+
+- **Fairer Sheriff chases:** cruisers drive in a formation (one behind, two on your flanks, a fourth further back)
+  and match your speed instead of charging into your car. A PIT comes only from a flanking unit lined up on your rear
+  quarter at a sane speed, one unit at a time with 9 to 14 s between tries, and it is a single nudge. Only the SED
+  rams, at five stars. A deputy's contact does half damage to your car, and it no longer counts as you ramming them
+  (which used to add stars and let deputies shoot). Deputies' and passengers' rounds hit a little softer.
+- **Robbers:** now and then a crew of two hits a store near you and runs for a getaway car. Stop them (they shoot
+  back) for a reward and the cash they took; fighting them isn't a crime. Leave them and a deputy tails the car, PITs
+  it and arrests them.
+- **Bank heists:** case a bank (unarmed, hold E at the door), then go in loud (gun out: hostages, armed guards,
+  thermite, an alarm on a timer) or quiet (after 10 PM: guards walking a beat, a slow drill, 40% more if nobody ever
+  knew). Grab up to four bags (they slow you down) and get clear: the take pays once you've lost the Sheriff.
+- **Skill tree 2.0** ([docs/skill-tree.md](docs/skill-tree.md)): five trees (Driver, Gunfighter, Survivor, and new
+  Hustler and Crew) plus hybrid perks, 42 skills in all and far more than one character can buy. Rows open as you
+  spend points in a tree, and each tree ends in two capstones you choose between. The Career screen shows the trees
+  as tabs with their rows. The server enforces every rule.
+
 ## 0.7.2 (2026-10-28)
 
 - **Fewer freezes:** the plants, ground cover, grown trees and their impostors now build in small slices after the

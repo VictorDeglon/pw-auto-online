@@ -15,7 +15,11 @@ import { shownName, shownLine, onShownChange } from '../online/shown.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const TREES = [['drive', 'Driving'], ['combat', 'Combat'], ['survival', 'Survival']];
+const TREES = [['drive', 'Driver'], ['combat', 'Gunfighter'], ['survival', 'Survivor'], ['hustle', 'Hustler'], ['crew', 'Crew'], ['hybrid', 'Hybrid']];
+let skTab = 'drive';
+const ROWS = ['', 'Row 1', 'Row 2', 'Row 3', 'Capstone · pick one'];
+const spent = (m, tree) => PROG.skills.reduce((n, x) => x.tree === tree ? n + ((m.skills[x.id] | 0) * ((m.skills[x.id] | 0) + 1)) / 2 : n, 0);
+const treeName = t => (TREES.find(x => x[0] === t) || [t, t])[1];
 const BOARDS = [['kd', 'All-time K/D'], ['kills_week', 'Kills this week'], ['level', 'Level']];
 let H = null, board = 'kd', screenOpen = false;
 
@@ -88,7 +92,15 @@ function renderCareer() {
     ? `<p>Playing as <b>${esc(a.username)}</b>, a guest: your career is saved on this computer only.</p><div class="row"><button class="mbtn primary small" data-acct="register">Save my progress</button><button class="mbtn small" data-acct="signin">Sign in</button></div>`
     : `<p>Signed in as <b>${esc(a.username)}</b>. Your career, save and settings follow you to any computer.</p><div class="row"><button class="mbtn small" data-acct="signout">Sign out</button></div>`;
   const daily = m.daily.map(d => `<div class="ch${d.done ? ' done' : ''}"><div><b>${esc(d.name)}</b><small>${esc(d.desc)}</small></div><span>${d.done ? 'Done' : `${d.prog} / ${d.goal}`} · ${d.xp} XP</span><div class="bar"><i style="width:${Math.min(100, d.prog / d.goal * 100)}%"></i></div></div>`).join('');
-  const trees = TREES.map(([t, label]) => `<div class="tree"><h4>${label}</h4>${PROG.skills.filter(s => s.tree === t).map(s => node(s, m)).join('')}</div>`).join('');
+  // the trees as tabs; inside one, its rows top to bottom, each with what it takes to open (docs/skill-tree.md)
+  const have = TREES.filter(([t]) => PROG.skills.some(x => x.tree === t)); if (!have.some(x => x[0] === skTab)) skTab = (have[0] || ['drive'])[0];
+  const need = PROG.rows || [0, 0, 5, 12, 18], inTab = PROG.skills.filter(x => x.tree === skTab);
+  const tabs = have.map(([t, l]) => `<button data-skt="${t}"${t === skTab ? ' class="on"' : ''}>${l}${t !== 'hybrid' ? ` <small>${spent(m, t)}</small>` : ''}</button>`).join('');
+  const rows = skTab === 'hybrid' ? `<div class="skrow"><div class="skrowh">Perks that need two trees</div><div class="skgrid">${inTab.map(x => node(x, m)).join('')}</div></div>`
+    : [1, 2, 3, 4].map(r => { const list = inTab.filter(x => (x.row || 1) === r); if (!list.length) return '';
+      const open = spent(m, skTab) >= need[r];
+      return `<div class="skrow${open ? '' : ' shut'}${r === 4 ? ' cap' : ''}"><div class="skrowh">${ROWS[r]}${r > 1 ? ` <small>${open ? 'open' : `opens at ${need[r]} points in ${treeName(skTab)} (${spent(m, skTab)} so far)`}</small>` : ''}</div><div class="skgrid">${list.map(x => node(x, m)).join('')}</div></div>`; }).join('');
+  const trees = `<div class="tabs" id="sktabs">${tabs}</div>${rows}`;
   box.innerHTML = `
     <div class="cgrid">
       <div class="card who"><div class="eyebrow">${esc(m.title)}</div><h3>${esc(a.username || m.name)} <small>Level ${m.lvl}</small></h3>
@@ -99,19 +111,26 @@ function renderCareer() {
       <div class="card"><div class="tabs" id="lbtabs">${BOARDS.map(([k, l]) => `<button data-b="${k}"${k === board ? ' class="on"' : ''}>${l}</button>`).join('')}</div><div id="lbcareer" class="lb"></div></div>
     </div>
     <div class="skillhead"><h3>Skills <small>${m.sp} point${m.sp === 1 ? '' : 's'} to spend</small></h3><button class="mbtn small" id="skreset"${m.respecToday ? ' disabled' : ''}>${m.respecToday ? 'Reset used today' : 'Reset skills (free, once a day)'}</button></div>
-    <div class="trees">${trees}</div>
-    <p class="fine">Each level gives a skill point (two every tenth level). Rank n of a skill costs n points. Skills work online and offline.</p>`;
+    <div class="trees2">${trees}</div>
+    <p class="fine">Each level gives a skill point (two every tenth level). Rank n of a skill costs n points, and nobody can buy everything: pick a build. Rows open as you spend points in a tree; a tree\'s two capstones exclude each other. Skills work online and offline.</p>`;
   for (const b of box.querySelectorAll('[data-acct]')) b.onclick = () => openAccount(b.dataset.acct);
   for (const b of box.querySelectorAll('[data-sk]')) b.onclick = async () => { b.disabled = true; try { await buySkill(b.dataset.sk); if (H) H.skillsChanged && H.skillsChanged(); } catch (e) { H && H.notify(esc(e.message), 'red', 2500); } renderCareer(); };
   $('skreset').onclick = async () => { try { await resetSkills(); if (H) H.skillsChanged && H.skillsChanged(); } catch (e) { H && H.notify(esc(e.message), 'red', 2500); } renderCareer(); };
+  for (const b of box.querySelectorAll('[data-skt]')) b.onclick = () => { skTab = b.dataset.skt; renderCareer(); };
   for (const b of box.querySelectorAll('#lbtabs button')) b.onclick = () => { board = b.dataset.b; renderCareer(); loadBoard($('lbcareer'), board, 10); };
   loadBoard($('lbcareer'), board, 10, true);
 }
 function node(s, m) {
-  const r = m.skills[s.id] | 0, max = r >= s.max, cost = r + 1, locked = s.req && (m.skills[s.req[0]] | 0) < s.req[1];
+  const r = m.skills[s.id] | 0, max = r >= s.max, cost = r + 1, need = PROG.rows || [0, 0, 5, 12, 18];
   const reqName = s.req ? (PROG.skills.find(x => x.id === s.req[0]) || { name: s.req[0] }).name : '';
+  const other = s.cap && PROG.skills.find(x => x.cap && x.tree === s.tree && x.id !== s.id && (m.skills[x.id] | 0) > 0);
+  const why = r ? '' : s.req && (m.skills[s.req[0]] | 0) < s.req[1] ? `Needs ${esc(reqName)} ${s.req[1]}`
+    : (s.row || 1) > 1 && spent(m, s.tree) < need[s.row] ? `Row opens at ${need[s.row]} points`
+    : other ? `You took ${esc(other.name)}`
+    : s.hyb && s.hyb.some(h => spent(m, h[0]) < h[1]) ? 'Needs ' + s.hyb.map(h => `${h[1]} in ${treeName(h[0])}`).join(' + ') : '';
+  const locked = !!why;
   const pips = Array.from({ length: s.max }, (_, i) => `<i${i < r ? ' class="on"' : ''}></i>`).join('');
-  const btn = max ? '<span class="maxed">Maxed</span>' : locked ? `<span class="lock">Needs ${esc(reqName)} ${s.req[1]}</span>` : `<button class="mini" data-sk="${s.id}"${m.sp < cost ? ' disabled' : ''}>Rank ${r + 1} · ${cost} pt${cost > 1 ? 's' : ''}</button>`;
+  const btn = max ? '<span class="maxed">Maxed</span>' : locked ? `<span class="lock">${why}</span>` : `<button class="mini" data-sk="${s.id}"${m.sp < cost ? ' disabled' : ''}>Rank ${r + 1} · ${cost} pt${cost > 1 ? 's' : ''}</button>`;
   return `<div class="sk${locked ? ' locked' : ''}${r ? ' has' : ''}"><div class="t"><b>${esc(s.name)}</b><span class="pips">${pips}</span></div><small>${esc(s.desc)}</small>${btn}</div>`;
 }
 
