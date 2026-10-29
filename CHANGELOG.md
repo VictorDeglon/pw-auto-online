@@ -8,7 +8,7 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
-## Unreleased
+## 0.8.3 (2026-10-29)
 
 - **Fairer Sheriff chases:** cruisers drive in a formation (one behind, two on your flanks, a fourth further back)
   and match your speed instead of charging into your car. A PIT comes only from a flanking unit lined up on your rear
