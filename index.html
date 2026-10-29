@@ -3287,6 +3287,8 @@ const LINES = {
   greet: ['Morning!', 'Nice day, huh?', 'Love this town.', 'Hey, neighbor!', 'Have you tried the Hamburger Factory?', 'Heading up to Lake Poway later.', 'Go Titans!'],
   scared: ["Oh no, it's YOU.", 'Stay away from me!', "That's the one from the news!", 'Keep walking…'],
   nervous: ['Is that... a real gun?', 'Uh, maybe put that away, man.', 'Okay. Walking away now.', 'Not cool, dude.', 'This is a family neighborhood!'],
+  hands: ["Okay, okay! Don't shoot!", 'Take whatever you want!', 'Please, I have kids!', "I don't want any trouble!", 'Easy... easy...', "I'm not moving, I'm not moving!"],
+  robbed: ['Just take it and go!', "That's all I've got, I swear!", 'Here, here! Please!', 'Take it! Take it!'],
   honked: ['Move!', 'Get out of the road!', 'Come ON!'],
 };
 
@@ -4667,6 +4669,10 @@ addEventListener('keydown', e => {
   if (SALES && SALES.open) { if (e.code === 'KeyE' || e.code === 'Escape') SALES.close(); return; } // a car lot or the marina
   if (e.code === 'KeyF') toggleCar();
   if (e.code === 'KeyE') {
+    { // someone with their hands up in front of you: rob them
+      let vic = null, bd = 4.5; for (const p of peds) { if (p.state !== 'hands' || p.robbed) continue; const d = hyp(p.pos.x - player.pos.x, p.pos.z - player.pos.z); if (d < bd) { bd = d; vic = p; } }
+      if (vic && !player.inCar && player.weapon > 0) { robPed(vic); return; }
+    }
     if (!storySkip()) {
       if (!useInteract()) {
         const f = focusPos();
@@ -5878,13 +5884,16 @@ function updatePlayer(dt) {
     if (d < 0.75 && d > 1e-3) {
       p.pos.x = player.pos.x + dx / d * 0.75; p.pos.z = player.pos.z + dz / d * 0.75;
       if (speed > 2 && !p.isCop && (p.state === 'walk' || p.state === 'roam')) { p.anger += speed > 5 ? 40 : 25; p.talk('bump'); save.rep -= 0.5; if (p.anger > 90 && p.personality === 'tough') { p.state = 'fight'; p.timer = 12; p.talk('fight'); } }
+    } else if (d < 14 && player.weapon > 0 && !player.inCar && !p.isCop && p.state === 'walk' && p.agent && !p.nervousT) { // a drawn gun: turn round, walk away briskly
+      if ((dx * Math.sin(p.rotY) + dz * Math.cos(p.rotY)) < 0) { const e = edges[p.agent.e]; p.agent.dir = -p.agent.dir; p.agent.s = e.len - p.agent.s; p.agent.next = null; }
+      p.nervousT = 6; p.walkMul0 = p.walkMul0 || p.walkMul; p.walkMul = p.walkMul0 * 1.7; if (Math.random() < 0.5) p.talk('nervous');
     } else if (d < 4 && greetCd <= 0 && (p.state === 'walk' || p.state === 'roam') && !p.isCop && speed < 4) {
       greetCd = 8;
       // fear needs a reason: a gun in your hand makes people nervous; only someone who recognizes you from the
       // news (you're wanted, or infamous) actually runs
       const recognized = p.knowsYou && (police.wanted >= 2 || save.rep < -150);
       if (recognized) { p.talk('scared'); p.scare(player.pos.x, player.pos.z); }
-      else if (player.weapon > 0) { if (Math.random() < 0.5) p.talk('nervous'); }
+      else if (player.weapon > 0 && !player.inCar) { if (Math.random() < 0.5) p.talk('nervous'); }
       else if (save.rep >= -60 && Math.random() < 0.6) p.talk('greet', '');
     }
   }
@@ -5892,7 +5901,7 @@ function updatePlayer(dt) {
     camera.getWorldDirection(_v3);
     const h = hitscan(camera.position, _v3, 40, null);
     $('cross').classList.toggle('hot', !!h.ped);
-    if (h.ped && !h.ped.isCop && (h.ped.state === 'walk' || h.ped.state === 'roam')) { h.ped.scare(player.pos.x, player.pos.z, 'gun'); if (!h.ped.callT) { h.ped.callT = rand(3, 6); h.ped.pendingSev = 1; h.ped.pendingWhy = 'gunfire'; } }
+    if (h.ped && !h.ped.isCop && ['walk', 'roam', 'idle', 'group', 'hands'].includes(h.ped.state)) holdUp(h.ped, dt);
     if (h.ped && h.ped.isCop) aimedAtCop();
   } else $('cross').classList.remove('hot');
   const r = player.rig;
@@ -6537,6 +6546,24 @@ function copShot(x, y, z, acc, dmg) {
 }
 
 // ============================================================ updates: peds
+// held at gunpoint: most people freeze with their hands up (a tough one may run instead); everyone else who sees it
+// scatters and someone calls it in. While their hands are up, E takes their cash (robPed)
+function holdUp(p, dt) {
+  if (p.state !== 'hands') {
+    if (p.personality === 'tough' && Math.random() < 0.35) { p.scare(player.pos.x, player.pos.z, 'gun'); if (!p.callT) { p.callT = rand(3, 6); p.pendingSev = 1; p.pendingWhy = 'gunfire'; } return; }
+    p.state = 'hands'; p.agent = null; p.goal = null; p.handsT = 0; p.talk('hands');
+    let caller = false;
+    for (const o of peds) { if (o === p || o.isCop || o.removed || o.state === 'dead' || o.state === 'hands') continue; const d = hyp(o.pos.x - p.pos.x, o.pos.z - p.pos.z); if (d > 28) continue;
+      if (Math.random() < 0.7) o.scare(player.pos.x, player.pos.z, 'gun'); if (!caller && !o.callT && d > 6) { caller = true; o.callT = rand(3, 7); o.pendingSev = 2; o.pendingWhy = 'robbery'; } }
+  }
+  p.timer = 1.3; p.handsT += dt;
+}
+function robPed(p) {
+  const rich = p.rig && p.rig.avatar && /^Business/.test(p.rig.avatar), cash = Math.round(rand(12, 140) * (rich ? 2.2 : 1) * (hour > 20 || hour < 5 ? 1.3 : 1));
+  save.money += cash; sfx.cash(); notify(`You took <b>$${cash}</b>. Someone will have seen that.`, 'green', 3000); p.talk('robbed');
+  p.robbed = true; p.flee(player.pos.x, player.pos.z, 14); if (!p.callT) { p.callT = rand(4, 8); p.pendingSev = 2; p.pendingWhy = 'robbery'; }
+  save.rep -= 4; ACH.bump && ACH.bump('robberies');
+}
 function updatePeds(dt) {
   const f = focusPos();
   for (const p of peds.slice()) {
@@ -6544,6 +6571,7 @@ function updatePeds(dt) {
     const dP = hyp(p.pos.x - f.x, p.pos.z - f.z);
     if ((dP > 300 && !p.keep) || (p.state === 'dead' && (p.timer += dt) > 70)) { p.remove(); continue; }
     p.sayCd -= dt; let speed = 0, mode = null;
+    if (p.nervousT > 0) { p.nervousT -= dt; if (p.nervousT <= 0) { p.nervousT = 0; if (p.walkMul0) p.walkMul = p.walkMul0; } }
     if (p.callT > 0 && !p.isCop && p.state !== 'dead' && p.state !== 'down' && p.state !== 'fly' && p.state !== 'fight') {
       p.callT -= dt;
       if (p.callT <= 0) { p.state = 'call'; p.timer = rand(3.5, 5); p.talk('call'); p.setMarker(phoneMat); sfx.phone(volAt(p.pos.x, p.pos.z, 40)); }
@@ -6581,6 +6609,11 @@ function updatePeds(dt) {
         break;
       }
       case 'idle': p.timer -= dt; if (p.timer <= 0) p.state = p.home ? 'roam' : 'walk'; break;
+      case 'hands': { // at gunpoint: frozen, facing you, hands up; once the gun's off them they run
+        mode = 'hands'; p.rotY += wrapA(Math.atan2(player.pos.x - p.pos.x, player.pos.z - p.pos.z) - p.rotY) * Math.min(1, dt * 4);
+        p.timer -= dt; if (p.timer <= 0) { p.talk('flee'); p.flee(player.pos.x, player.pos.z, 12); if (!p.callT) { p.callT = rand(3, 6); p.pendingSev = 2; p.pendingWhy = 'robbery'; } }
+        break;
+      }
       case 'group': { // stand in a loose circle, face the middle, take turns talking (crowd life, below)
         const G = p.group; if (!G) { p.state = p.home ? 'roam' : 'walk'; break; }
         const dx = p.slot.x - p.pos.x, dz = p.slot.z - p.pos.z, d = Math.hypot(dx, dz);

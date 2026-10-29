@@ -202,6 +202,7 @@ export function animHuman(r, speed, dt, mode) {
   r.phone.visible = mode === 'phone';
   if (r.punch > 0) r.punch -= dt;
   if (r.ownAim) return; // the player's arms are posed by the game with the camera's aim
+  if (mode === 'hands') { handsUp(r); return; }
   if (mode === 'aim') holdWeapon(r, _t.set(Math.sin(r.g.rotation.y), 0, Math.cos(r.g.rotation.y)), { twoHand: true, grip: 0.12, dt });
   else if (r.gun.visible) holdWeapon(r, null, { dt });
 }
@@ -282,6 +283,17 @@ export function holdWeapon(r, dirW, o = {}) {
   r.g.getWorldQuaternion(_q2).invert(); _b.copy(_d).applyQuaternion(_q2);
   H.quaternion.setFromUnitVectors(_z, _b);
   r.recoil = Math.max(0, kick - (o.dt ?? 1 / 60) * 8); // decays in time, not per frame
+}
+
+// hands up: both wrists above the shoulders and a little out, elbows bent out to the sides (someone with a gun on them)
+export function handsUp(r) {
+  const B = bones(r); if (!B.ru || !B.rf || !B.rh || !B.lu || !B.lf || !B.lh) return;
+  r.g.updateMatrixWorld(true);
+  B.ru.getWorldPosition(_rs); B.lu.getWorldPosition(_ls); _lf.subVectors(_ls, _rs); _lf.y = 0; if (_lf.lengthSq() < 1e-6) _lf.set(1, 0, 0); _lf.normalize();
+  _d.set(Math.sin(r.g.rotation.y), 0, Math.cos(r.g.rotation.y));
+  const shake = Math.sin(performance.now() * 0.023) * 0.012; // trembling
+  _t.copy(_rs).addScaledVector(_up, 0.42 + shake).addScaledVector(_lf, -0.2).addScaledVector(_d, 0.06); _p1.copy(_lf).multiplyScalar(-1).addScaledVector(_up, -0.3); reach(B.ru, B.rf, B.rh, _t, _p1);
+  _t.copy(_ls).addScaledVector(_up, 0.42 - shake).addScaledVector(_lf, 0.2).addScaledVector(_d, 0.06); _p2.copy(_lf).addScaledVector(_up, -0.3); reach(B.lu, B.lf, B.lh, _t, _p2);
 }
 
 // ---- hurt bodies: limbs posed procedurally on top of the last clip frame (Rocketbox has no ragdoll or death clips).
