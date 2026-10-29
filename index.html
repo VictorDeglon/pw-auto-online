@@ -550,6 +550,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 <script type="module">
 import * as THREE from 'three';
 import { rollLightLoops } from './src/lightloops.js';
+import { BG, bgBudget } from './src/budget.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
@@ -1187,16 +1188,27 @@ async function loadAssets() {
 }
 
 // ============================================================ geometry builder
+// a growable Float32Array with the push and length of the plain array it replaced: the town's meshes are millions of
+// numbers, and plain arrays (grown a boxed number at a time, then copied into the GPU buffers) were most of a chunk's build
+class FBuf {
+  constructor() { this.a = new Float32Array(768); this.length = 0; }
+  push() {
+    const n = arguments.length, l = this.length;
+    if (l + n > this.a.length) { const b = new Float32Array(Math.max(this.a.length * 2, l + n)); b.set(this.a); this.a = b; }
+    const a = this.a; for (let i = 0; i < n; i++) a[l + i] = arguments[i]; this.length = l + n;
+  }
+  array() { return this.a.slice(0, this.length); }
+}
 class GB {
-  constructor(uv, fac) { this.p = []; this.n = []; this.c = []; this.uv = uv ? [] : null; this.f = fac ? [] : null; } // f: facade data per vertex (src/world/surfaces.js)
+  constructor(uv, fac) { this.p = new FBuf(); this.n = new FBuf(); this.c = new FBuf(); this.uv = uv ? new FBuf() : null; this.f = fac ? new FBuf() : null; } // f: facade data per vertex (src/world/surfaces.js)
   mesh(mat, shadow = true) {
     if (!this.p.length) return null;
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
-    if (this.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    if (this.f) g.setAttribute('fac', new THREE.Float32BufferAttribute(this.f, 4));
+    g.setAttribute('position', new THREE.BufferAttribute(this.p.array(), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.n.array(), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(this.c.array(), 3));
+    if (this.uv) g.setAttribute('uv', new THREE.BufferAttribute(this.uv.array(), 2));
+    if (this.f) g.setAttribute('fac', new THREE.BufferAttribute(this.f.array(), 4));
     g.computeBoundingSphere();
     const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix();
     this._mesh = m; this.p = this.n = this.c = this.uv = null; // buildings keep vertex ranges into this mesh (collapse)
@@ -2661,7 +2673,7 @@ async function plantNature() {
   } catch (e) { console.warn('[nature] boulders', e); }
   const V = NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
   const ctx = makeContext(D, w), F = createTreeFilter(D.trees, w), Q = Math.min(1, GRASS_Q), counts = NATURE.counts = {}; NATURE.filter = F.stats;
-  let tY = performance.now(); const breathe = async () => { if (performance.now() - tY > 6) { await tick(); tY = performance.now(); } };
+  let tY = performance.now(); const breathe = async () => { if (performance.now() - tY > BG.slice) { await tick(); tY = performance.now(); } }; // BG.slice: what the frames leave (src/budget.js)
   for (const _ of F.prepare()) await breathe();
   // ---- the tiles: trees by their detections, boulders, the houses' own planting (GARDEN)
   const TS = 500, tiles = new Map(), tileOf = (x, z) => { const i = Math.floor(x / TS), j = Math.floor(z / TS), k = i * 100000 + j; let t = tiles.get(k); if (!t) tiles.set(k, t = { i, j, trees: [], rocks: [], gardens: [], a: false, b: false }); return t; };
@@ -3199,8 +3211,9 @@ function* buildLazy(L) {
   L.phase = 'buildings'; for (const B of L.blds) { if (B.dead || B.gone) { B.drawn = false; continue; } buildingGeom(B, lc); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
   CHUNK_SINK = null;
   L.phase = 'meshes'; const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [] })) if (due()) yield;
-  L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
-  L.built = true; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
+  const old = L.meshes; L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
+  for (const m of old) { L.ch.group.remove(m); m.geometry.dispose(); } // a rebuild: the old meshes go only now
+  L.built = true; L.dirty = false; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
 }
 function dropLazy(L) {
   for (const m of L.meshes) { L.ch.group.remove(m); m.geometry.dispose(); }
@@ -3210,7 +3223,7 @@ let lazyT0 = 0; const lazyDue = () => performance.now() - lazyT0 > 3;
 function updateLazy(budget) { // every frame: run the nearest pending chunk build for a few ms
   const t0 = performance.now();
   while (performance.now() - t0 < budget) {
-    if (!lazyJob) { const L = lazyQueue.shift(); if (!L) return; if (L.built) continue; lazyJob = { L, it: buildLazy(L) }; }
+    if (!lazyJob) { const L = lazyQueue.shift(); if (!L) return; if (L.built && !L.dirty) continue; lazyJob = { L, it: buildLazy(L) }; }
     lazyT0 = performance.now(); const LJ = lazyJob.L;
     try { if (lazyJob.it.next().done) lazyJob = null; const dt = performance.now() - lazyT0; if (dt > 8) { (PROF.lazy || (PROF.lazy = [])).push(LJ.phase + ' ' + dt.toFixed(0)); if (PROF.lazy.length > 60) PROF.lazy.shift(); } }
     catch (e) { console.error('[lazy] a chunk failed to build', lazyJob.L.ch.cx, lazyJob.L.ch.cz, e); CHUNK_SINK = null; lazyJob.L.built = true; lazyJob = null; } // one bad chunk mustn't stall the streets
@@ -3222,8 +3235,8 @@ function planLazy(fx, fz, want = GFX.view + 200) {
   for (const ch of chunks.values()) {
     const L = ch.lazy; if (!L) continue;
     const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7);
-    if (L.built && (d > drop || L.dirty)) { if (lazyJob && lazyJob.L === L) lazyJob = null; dropLazy(L); }
-    if (!L.built && d < want && !(lazyJob && lazyJob.L === L)) add.push([d, L]);
+    if (L.built && d > drop) { if (lazyJob && lazyJob.L === L) lazyJob = null; dropLazy(L); }
+    if ((!L.built || L.dirty) && d < want && !(lazyJob && lazyJob.L === L)) add.push([d, L]); // a dirty one is rebuilt in place: its old meshes stay until the new ones are in
   }
   lazyQueue.length = 0; for (const [, L] of add.sort((a, b) => a[0] - b[0])) lazyQueue.push(L);
 }
@@ -3367,7 +3380,7 @@ function outerRoads(core) {
   o.carveAt = (x, z, d) => core.carveAt(x, z, d) || (OUTER.ready ? OUTER.carveAt(x, z, d) : 0);
   return o;
 }
-const OUTER = createOuter({
+const OUTER = createOuter({ budget: bgBudget,
   THREE, scene, M, ROAD_SCALE, roadWidth, exag, HBASE: () => HBASE, focus: () => focusPos(),
   view: () => GFX.view, lodNear: () => LOD_NEAR, shadowNear: () => SHADOW_NEAR, hurry: () => !!worldHold,
   inCorePhoto, coreTerrainAt, coreMeshAt, newChunk, meshChunk, meshChunkSteps, setSink: ch => { CHUNK_SINK = ch; },
@@ -7998,14 +8011,16 @@ function updateHud(dt) {
 
 // ============================================================ main loop
 let last = performance.now(), saveT = 10, sigT = 0, orbit = 0, repT = 0, visT = 0;
+let STREAM_MS = 0; // what this frame's streaming took (src/budget.js gives it what the rest of the frame leaves)
 function frame(now) {
-  requestAnimationFrame(frame); PROF.gap(now); PROF.start();
+  requestAnimationFrame(frame); PROF.gap(now); PROF.start(); const fT0 = performance.now(); STREAM_MS = 0;
   const rdt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // rAF time can be a hair behind performance.now() on the first frame: a negative step blew up the suspension
   tick(rdt);
   { // music: the theme on the main menu and the pause screen, the exploring songs on foot when nothing else is playing
     const menuUp = !$('menu').hidden || paused;
     MUSIC.theme(menuUp); MUSIC.explore(running && !menuUp && !player.inCar && !player.inPlane && !(police.wanted > 0) && !player.dead); MUSIC.update(rdt);
   }
+  if (worldReady) BG.frame(performance.now() - fT0, STREAM_MS);
   PROF.end();
 }
 const MUSIC = createMusic();
@@ -8043,7 +8058,7 @@ function tick(rdt) {
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
-  updateLazy(worldHold ? 30 : Math.max(0.5, (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5)); PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
+  { const tL = performance.now(); updateLazy(worldHold ? 30 : Math.max(0.5, Math.min(bgBudget(lazyQueue.length > 6 ? 6 : 4), (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5))); STREAM_MS += usedOut + performance.now() - tL; } PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
   PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
@@ -8073,11 +8088,13 @@ function tick(rdt) {
 
 // ============================================================ boot
 let worldReady = false;
+let ROOF_TEX_P = null; // the roof photos' download, started with the others (loadRoofPhotos)
 (async () => {
   progress('Reading the elevation map…');
   const timP = loadImage('assets/terrain.png');
   // the other downloads the world needs start now too, so they arrive while the elevation map and roads are processed.
   // The ground and roof photos, the close-up ground layers, the plants and the crowd come after the loading screen (loadLater).
+  ROOF_TEX_P = Promise.all(['assets/roofs0.jpg', 'assets/roofs1.jpg'].map(u => loadTex(u, true, false))); // the roof photos, applied before the first streets are built (after, every chunk had to be built again)
   const assetsP = Promise.all([loadAssets(), loadModels(),
     loadHumans({ pool: GFX.pool, player: SHELL.profile.skin, crowd: false }).catch(e => console.warn('[humans] not loaded, keeping the blocky people', e))]);
   assetsP.catch(() => {}); // awaited below; this only keeps an early failure from being reported as unhandled
@@ -8149,7 +8166,7 @@ let worldReady = false;
   initAirports(scene, THREE); GANG.init();
   GAMES.init(); // crew garages in Poway, and their worlds when you go in (src/games)
   restoreSave();
-  const sp0 = focusPos(); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
+  const sp0 = focusPos(); await loadRoofPhotos().catch(e => console.warn('[roofs]', e)); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Uploading textures…'); await uploadInSteps(scene.children, f => { DL.msg = `Uploading textures… ${Math.round(f * 100)}%`; showProgress(); });
@@ -8183,7 +8200,6 @@ async function loadLater() {
   await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
-  await step('roof photos', loadRoofPhotos);
   await step('power lines', loadPower);
   await step('harbor', loadHarbor);
   console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's');
@@ -8234,8 +8250,8 @@ async function loadGroundPhotos() {
   prepMapImages(); // the minimap and the big map draw the photo too
   groundTint();
 }
-async function loadRoofPhotos() {
-  const ts = await Promise.all(['assets/roofs0.jpg', 'assets/roofs1.jpg'].map(u => loadTex(u, true, false)));
+async function loadRoofPhotos() { // ROOF_TEX_P: started with the other downloads at the start of the load
+  const ts = await (ROOF_TEX_P || Promise.all(['assets/roofs0.jpg', 'assets/roofs1.jpg'].map(u => loadTex(u, true, false))));
   ts.forEach((t, i) => {
     if (!t) return; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.anisotropy = Math.min(8, MAXANISO);
     const old = TX.roofs[i]; TX.roofs[i] = t; M.roofPhoto[i].map = t; if (old && old.isDataTexture) old.dispose();

@@ -16,6 +16,7 @@
 //   const PW = createPower(THREE, scene, { data, heightAt, roads, sidewalks, buildings, onAsphalt, U })
 //   PW.supports: [{ id, x, z, kind, foot: [[dx, dz, r]...], str }]  (collision; str: speed in m/s that snaps it, 0 never)
 //   PW.update(camera, renderer, night)   PW.breakPole(id) -> a standalone copy of the pole to fall over
+import { BG } from '../budget.js';
 const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------- the atlas: one material for every structure
@@ -26,7 +27,7 @@ const MRV = { wood: [0.88, 0], arm: [0.82, 0], galv: [0.42, 0.85], rust: [0.72, 
 
 // work in slices of a few milliseconds, yielding to the game's frames between them: nothing here may freeze a frame
 const idle = () => new Promise(r => setTimeout(r, 0));
-function slicer(ms = 6) { let t = performance.now(); return async () => { if (performance.now() - t > ms) { await idle(); t = performance.now(); } }; }
+function slicer(ms) { let t = performance.now(); return async () => { if (performance.now() - t > (ms ?? BG.slice)) { await idle(); t = performance.now(); } }; } // BG.slice: what the frames leave (src/budget.js)
 
 function rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 

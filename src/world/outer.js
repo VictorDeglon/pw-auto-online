@@ -101,7 +101,7 @@ export function createOuter(E) {
       if (best) { best.job = buildTile(best); O.building = best; best.b0 = performance.now(); best.work = 0; }
     }
     // waiting behind "Loading the area" (fast travel): nearly the whole frame; standing where nothing's built yet: a bit more
-    const t0 = performance.now(), budget = E.hurry && E.hurry() ? HURRY : O.builtAt(f.x, f.z) ? BUDGET : URGENT;
+    const t0 = performance.now(), budget = E.hurry && E.hurry() ? HURRY : O.builtAt(f.x, f.z) ? (E.budget ? E.budget(BUDGET) : BUDGET) : URGENT; // E.budget: what the frame leaves (src/budget.js)
     if (O.preps.length) { // tile data: terrain, road surface, carving (nearest tiles first)
       O.preps.sort((a, b) => rectDist(a, f) - rectDist(b, f));
       while (O.preps.length && performance.now() - t0 < budget * 0.6) { const t = O.preps[0], s0 = stepT0 = performance.now(); const done = !O.tiles.has(t.k) || t.prep.next().done; slow('prep:' + (t.phase || ''), performance.now() - s0, t); if (done) { O.preps.shift(); t.prep = null; } }

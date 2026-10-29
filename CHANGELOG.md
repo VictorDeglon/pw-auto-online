@@ -8,6 +8,17 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.5 (2026-10-29)
+
+- **Smoother play:** the streaming (the outer county's tiles, the town's streets and buildings, the plants' tiles, the
+  brush and stones, texture uploads) now shares one budget per frame: what's left of a 60 fps frame after the game's
+  own work (`src/budget.js`). A heavy frame streams less instead of stuttering.
+- The town's meshes are written into growable typed arrays instead of plain arrays: building a chunk of streets and
+  houses costs about a third of what it did.
+- The roof photos download with everything else and are applied before the first streets are built. They used to
+  arrive after you started playing and make every chunk of town rebuild from scratch, with holes while it did.
+- A chunk that must be rebuilt (a wall knocked down, a building repaired) keeps showing until its new meshes are ready.
+
 ## 0.8.4 (2026-10-29)
 
 - **Online works again:** the 0.8.3 site went out without its game-server address (`nakama.json`), so every game fell

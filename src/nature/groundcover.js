@@ -17,13 +17,14 @@
 //    into the ground at the edge of the ring instead of dithering them away.
 // Beyond the brush radius, scatterShrubs() adds impostor shrubs (src/nature/vegetation.js) on wild land map-wide.
 import { HOLE_U, HOLE_GLSL } from './ground.js';
+import { BG } from '../budget.js';
 
 // ---------------------------------------------------------------- the cover map
 // opts: { bounds: [x0, z0, x1, z1], drawAerial(ctx), roads, buildings, houses, pools, areas, mpp }
 // long jobs work in slices of a few milliseconds and yield to the game's frames between them (one big block froze the
 // game for seconds right after it started)
 const idle = () => new Promise(r => setTimeout(r, 0));
-function slicer(ms = 6) { let t = performance.now(); return async () => { if (performance.now() - t > ms) { await idle(); t = performance.now(); } }; }
+function slicer(ms) { let t = performance.now(); return async () => { if (performance.now() - t > (ms ?? BG.slice)) { await idle(); t = performance.now(); } }; } // BG.slice: what the frames leave (src/budget.js)
 export async function buildCoverMap(THREE, opts) {
   const slice = slicer();
   const pad = 300, x0 = opts.bounds[0] - pad, z0 = opts.bounds[1] - pad, x1 = opts.bounds[2] + pad, z1 = opts.bounds[3] + pad;
