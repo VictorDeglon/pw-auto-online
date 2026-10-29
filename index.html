@@ -3399,7 +3399,7 @@ OUTER.onBuilt = t => outerSpots(t);
 // an outer tile's trees and brush, read off its photo (dark green canopy, olive-brown chaparral), never on a road or in a
 // building; trees are solid and can be knocked down, like the core's
 function plantTile(t, img) {
-  if (!NATURE.lib) return null;
+  if (!NATURE.lib || !NATURE.veg) return null; // the species are still arriving: OUTER.plantAll() plants it once they're in
   const N = 256, C = 2000 / N, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'); g.drawImage(img, 0, 0, N, N);
   const px = g.getImageData(0, 0, N, N).data, veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U), probe = { x: 0, z: 0 };
   const dens = new Map(); for (const b of t.blds) { const k = Math.floor(b[2][0] / 125) * 100000 + Math.floor(b[2][1] / 125); dens.set(k, (dens.get(k) || 0) + 1); }
@@ -3415,7 +3415,8 @@ function plantTile(t, img) {
     if (tree && nt < 5000) {
       const town = (dens.get(Math.floor(x / 125) * 100000 + Math.floor(z / 125)) || 0) >= 3, R = REGION_TREES[socalRegion(x, z, y)];
       let sp = pickW2(town ? R.town : R.wildTree); if (!NATURE.lib.species.has(sp)) sp = town ? 'olive' : 'oak';
-      const lib = NATURE.lib.species.get(sp), vi = Math.floor(Math.random() * lib.variants.length), V = lib.variants[vi], th = TREE_H[sp] || [6, 10];
+      const lib = NATURE.lib.species.get(sp); if (!lib || !lib.variants || !lib.variants.length) continue;
+      const vi = Math.floor(Math.random() * lib.variants.length), V = lib.variants[vi], th = TREE_H[sp] || [6, 10];
       const s2 = sp.startsWith('palm') ? rand(0.85, 1.15) : rand(th[0], th[1]) / Math.max(0.5, V.height), tint = [rand(0.85, 1.05), rand(0.9, 1.08), rand(0.85, 1)];
       if (!veg.add(sp, x, y, z, rand(0, TAU), s2, vi, tint)) continue;
       const ti = treeC.length / 2; treeC.push(x, z); gridAdd(x, z, x, z, 't', ti); kit.ti.push(ti);

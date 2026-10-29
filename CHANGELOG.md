@@ -16,6 +16,13 @@ update you ship**, and add an entry here at the same time:
 - **The same chase for everyone:** the cops after a wanted player (the cruisers on a call, sirens and all, and the
   deputies on foot) show up in every other player's game too. Hitting one of them, or taking their car, reaches the
   game that runs them.
+- **No more launch ramps outside Poway:** a road's height along its length was worked out once, sometimes before the
+  map tile next to it had loaded, from a fallback that is tens of metres off out there; side streets meeting it were
+  pulled up (or down) to match, in 70–180 m ramps a few car lengths long. Heights that depend on ground not loaded yet
+  are now redone once it arrives, the ground is re-carved under them before the tile is built, and nothing is pulled to
+  a guess.
+- Tiles of the outer world built while the trees were still loading crashed and were never built (holes in the map
+  after a quick fast travel). They now wait to be planted, and a planting that fails leaves the tile bare, not missing.
 
 ## 0.8.5 (2026-10-29)
 

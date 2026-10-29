@@ -14,6 +14,12 @@
 //                              up through the asphalt (markings fading up close, grass and slopes poking through).
 //   ... + band                 cut / fill slope back to the natural terrain
 // Which roads get a curb and sidewalk is decided from building density (rural north Poway has dirt shoulders).
+//
+// The terrain function may answer null where the ground isn't known yet (the outer world's tiles stream in: a road
+// reaching into a tile whose data hasn't arrived). A profile built then fills the gap from the nearest known ground
+// and is provisional: it's built again once more ground has arrived (opts.epoch() changes), as is any profile pinned
+// to it. Before this, such a profile kept whatever the fallback guessed (80 m off in places) for good, and every side
+// street pinned to it rose to meet it: ramps that threw cars into the air.
 
 const CELL = 4;      // raster cell (m); the raster only decides WHICH road a point belongs to, distances are exact
 export const CROWN = 0.02, CURB_H = 0.15, LIFT = 0.0, FLAT = 14, BENCH = 0; // a 2% crown sheds water to the gutters; a real 15 cm curb where the road has one; the walk and the bench behind it sit up at curb height
@@ -57,6 +63,7 @@ export class RoadSurface {
     const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => roads[a][2] - roads[b][2] || this.len[b] - this.len[a]);
     if (opts.defer) this.order = order; // the caller paints them (a few at a time: src/world/outer.js)
     else for (const i of order) this.paint(i);
+    this.epoch = opts.epoch || null; this.prov = []; this.hadProv = false; // provisional profiles: the epoch they were built in
     this._q = { road: -1, d: 0, cx: 0, cz: 0, tx: 0, tz: 0, s: 0 }; this._c = { x: 0, z: 0, t: 0 };
   }
   // a cell belongs to the road whose asphalt/walk it is on (the wider one at a crossing), else the nearest walk edge,
@@ -133,30 +140,42 @@ export class RoadSurface {
   surfaceAt(x, z, terrainAt) {
     const q = this.query(x, z); if (!q) return null;
     const w2 = this.roads[q.road][2] / 2, sw = this.sw[q.road];
-    const hc = this.profileAt(q.road, q.s, terrainAt) + LIFT;
+    const hc = this.profileAt(q.road, q.s, terrainAt) + LIFT; if (!(hc === hc)) return null; // a road whose ground hasn't arrived
     if (q.d <= w2) return hc - CROWN * q.d;
     const walk = hc - CROWN * w2 + (this.curb[q.road] ? CURB_H : 0);
     if (q.d <= w2 + sw) return walk;
     const bed = walk - BENCH;
     if (q.d <= w2 + sw + FLAT) return bed;
-    const t = Math.min(1, (q.d - w2 - sw - FLAT) / this.band), s = t * t * (3 - 2 * t);
-    return bed + (terrainAt(x, z) - bed) * s;
+    const t = Math.min(1, (q.d - w2 - sw - FLAT) / this.band), s = t * t * (3 - 2 * t), n = terrainAt(x, z);
+    return n === null || n === undefined ? bed : bed + (n - bed) * s;
   }
   // smoothed centre-line height at distance s along road ri (built on first use from the natural terrain)
   profileAt(ri, s, terrainAt) {
     let P = (this.prof || (this.prof = []))[ri];
+    if (P && this.prov[ri] !== undefined && this.prov[ri] !== this.epoch()) P = null; // built short of ground that may be here now
     if (!P) {
       const p = this.roads[ri][3], n = Math.max(2, Math.ceil(this.len[ri] / PSTEP) + 1), raw = new Float32Array(n);
+      let miss = 0;
       let k = 0, cum = 0, segL = Math.hypot(p[2] - p[0], p[3] - p[1]);
       for (let i = 0; i < n; i++) {
         const t = Math.min(i * PSTEP, this.len[ri]);
         while (t > cum + segL && k < p.length - 4) { cum += segL; k += 2; segL = Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1]); }
         const f = segL ? (t - cum) / segL : 0;
-        raw[i] = terrainAt(p[k] + (p[k + 2] - p[k]) * f, p[k + 1] + (p[k + 3] - p[k + 1]) * f);
+        const h = terrainAt(p[k] + (p[k + 2] - p[k]) * f, p[k + 1] + (p[k + 3] - p[k + 1]) * f);
+        if (h === null || h === undefined) { raw[i] = NaN; miss++; } else raw[i] = h;
+      }
+      const unk = this.unk || (this.unk = []); unk[ri] = undefined;
+      if (miss === n) { // none of its ground is here: no height at all (surfaceAt answers null, nothing pins to it)
+        this.prof[ri] = new Float32Array(n).fill(NaN); this.prov[ri] = this.epoch ? this.epoch() : undefined; this.hadProv = true; return NaN;
+      }
+      if (miss) { // some of it isn't here yet: carry the nearest known height across the gap (both ways)
+        const U = unk[ri] = new Uint8Array(n); for (let i = 0; i < n; i++) U[i] = raw[i] === raw[i] ? 0 : 1;
+        let last = NaN; for (let i = 0; i < n; i++) if (raw[i] === raw[i]) last = raw[i]; else raw[i] = last;
+        last = NaN; for (let i = n - 1; i >= 0; i--) if (raw[i] === raw[i]) last = raw[i]; else raw[i] = last;
       }
       P = new Float32Array(n); const R = Math.ceil(PSIGMA * 2 / PSTEP);
       for (let i = 0; i < n; i++) { let a = 0, w = 0; for (let j = -R; j <= R; j++) { const ii = Math.min(n - 1, Math.max(0, i + j)), g = Math.exp(-0.5 * (j * PSTEP / PSIGMA) ** 2); a += raw[ii] * g; w += g; } P[i] = a / w; }
-      this.prof[ri] = P;
+      this.prof[ri] = P; this.prov[ri] = miss && this.epoch ? this.epoch() : undefined; if (miss) this.hadProv = true;
       // junctions: each road was smoothed on its own, so where a side street meets a bigger road their heights
       // disagreed and the surface stepped (metres, on hills) where ownership switched. Pin each end to the height of
       // the road it runs into and taper the correction back along the street.
@@ -167,6 +186,8 @@ export class RoadSurface {
         const oj = q.road, dom = this.roads[oj][2] > this.roads[ri][2] || (this.roads[oj][2] === this.roads[ri][2] && oj < ri);
         if (!dom || q.d > this.roads[oj][2] / 2 + this.sw[oj] + 2) continue;
         const sj = q.s, target = this.profileAt(oj, sj, terrainAt), cur = end ? P[n - 1] : P[0], dh = target - cur;
+        if (this.prov[oj] !== undefined) { this.prov[ri] = this.prov[oj]; this.hadProv = true; } // pinned to a guess: build again with it
+        const U = this.unk[oj]; if (!(target === target) || (U && U[Math.min(U.length - 1, Math.round(sj / PSTEP))])) continue; // its ground there isn't here yet
         if (Math.abs(dh) < 0.01) continue;
         for (let i = 0; i < n; i++) { const dist = end ? (n - 1 - i) * PSTEP : i * PSTEP; if (dist > pinL) continue; const t = dist / pinL, w = 1 - t * t * (3 - 2 * t); P[i] += dh * w; }
       }

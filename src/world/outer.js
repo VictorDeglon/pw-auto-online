@@ -27,7 +27,7 @@ const due = () => performance.now() - stepT0 > STEP;
 
 export function createOuter(E) {
   const { THREE } = E;
-  const O = { ready: false, idx: null, tiles: new Map(), building: null, preps: [], stats: { built: 0, data: 0, edges: 0, buildings: 0 }, onBuilt: null };
+  const O = { ready: false, idx: null, tiles: new Map(), building: null, preps: [], stats: { built: 0, data: 0, edges: 0, buildings: 0 }, onBuilt: null, epoch: 0 }; // epoch: goes up as each tile's ground arrives
   let T = 2000, HN = 65, HC = 31.25, I0 = 0, J0 = 0, I1 = -1, J1 = -1;
   const key = (i, j) => i + '_' + j;
 
@@ -57,7 +57,9 @@ export function createOuter(E) {
   }
   O.terrainAt = (x, z) => { const t = tileOf(x, z); return t && t.hN ? gridAt(t, t.hN, x, z) : null; };
   O.meshAt = (x, z) => { const t = tileOf(x, z); return t && t.hM ? gridAt(t, t.hM, x, z) : null; };
-  const natural = (x, z) => { const h = O.terrainAt(x, z); return h !== null ? h : E.coreTerrainAt(x, z); };
+  // the natural ground for the road profiles: null where it's an outer tile whose data isn't here yet (the core's coarse
+  // fallback is tens of metres off out there; src/world/roadsurface.js makes such a profile provisional instead)
+  const natural = (x, z) => { const h = O.terrainAt(x, z); return h !== null ? h : E.inCorePhoto(x, z, 2) || !O.has(Math.floor(x / T), Math.floor(z / T)) ? E.coreTerrainAt(x, z) : null; };
   O.surfaceAt = (x, z) => { const t = tileOf(x, z); return t && t.rs ? t.rs.surfaceAt(x, z, natural) : null; };
   O.onRoad = (x, z, m = 0) => { const t = tileOf(x, z); return !!(t && t.rs && t.rs.onRoad(x, z, m)); };
   O.onAsphalt = (x, z, m = 0) => { const t = tileOf(x, z); return !!(t && t.rs && t.rs.onAsphalt(x, z, m)); };
@@ -154,7 +156,7 @@ export function createOuter(E) {
       const x = x0 + i * HC, z = z0 + j * HC, k = j * HN + i;
       hN[k] = E.inCorePhoto(x, z, 2) ? E.coreTerrainAt(x, z) : E.exag(d.h[k] * 0.1) - E.HBASE();
     }
-    t.hN = hN;
+    t.hN = hN; O.epoch++;
     // roads: own edges then context copies, in the core's road format [name, type, width, pts, mph]
     const roads = [];
     t.edges = (d.e || []).map(e => { const p = abs(e[6]), w = E.roadWidth ? E.roadWidth(e[2], e[3] * E.ROAD_SCALE, e[4]) : e[3] * E.ROAD_SCALE; roads.push([e[5], e[2], w, Array.from(p), e[7]]); return { a: e[0], b: e[1], t: e[2], w, ow: e[4], name: e[5] >= 0 ? d.names[e[5]] : '', p, mph: e[7], fl: e[8] }; });
@@ -165,13 +167,17 @@ export function createOuter(E) {
     yield;
     t.phase = 'paint';
     if (roads.length) { // the road surface, painted a few dozen roads at a time
-      const rs = new RoadSurface(roads, t.blds.map(b => [b[0], b[1], b[2]]), { defer: true });
+      const rs = new RoadSurface(roads, t.blds.map(b => [b[0], b[1], b[2]]), { defer: true, epoch: () => O.epoch });
       for (let k = 0; k < rs.order.length; k++) { rs.paint(rs.order[k]); if (due()) yield; }
       t.rs = rs;
     }
     yield;
-    // the ground mesh: natural terrain, pushed under the asphalt and walks (as the core's clampUnderRoads does)
-    t.phase = 'carve'; const hM = hN.slice();
+    yield* carve(t);
+    t.ready = true; O.stats.data++;
+  }
+  // the ground mesh: natural terrain, pushed under the asphalt and walks (as the core's clampUnderRoads does)
+  function* carve(t) {
+    const hN = t.hN, x0 = t.x0, z0 = t.z0; t.phase = 'carve'; const hM = hN.slice();
     if (t.rs) {
       for (let j = 0; j < HN; j++) {
         if (due()) yield;
@@ -188,11 +194,12 @@ export function createOuter(E) {
       }
     }
     for (let j = 0; j < HN; j++) for (let i = 0; i < HN; i++) { const x = x0 + i * HC, z = z0 + j * HC; if (E.inCorePhoto(x, z, -1)) { const c = E.coreMeshAt(x, z); hM[j * HN + i] = (c !== null ? c : hM[j * HN + i]) - 0.3; } }
-    t.hM = hM; t.ready = true; O.stats.data++;
+    t.hM = hM;
   }
 
   // ---------------------------------------------------------------- building a tile (a generator: a few ms a frame)
   function* buildTile(t) {
+    if (t.rs && t.rs.hadProv) { t.rs.prof = []; t.rs.prov = []; t.rs.hadProv = false; yield* carve(t); } // some road heights were guesses (a neighbour's ground hadn't come): now it has
     const d = t.d, g = new THREE.Group(), C = T / SUB; t.group = g; t.phase = 'terrain'; g.matrixAutoUpdate = false; // static: matrices once, not every frame
     const subs = []; for (let b = 0; b < SUB; b++) for (let a = 0; a < SUB; a++) { const cx = t.x0 + (a + 0.5) * C, cz = t.z0 + (b + 0.5) * C, sg = new THREE.Group(); sg.matrixAutoUpdate = false; g.add(sg); subs.push({ cx, cz, ch: E.newChunk(cx, cz), group: sg, near: null, sh: null }); }
     const ch = (x, z) => subs[Math.min(SUB - 1, Math.max(0, Math.floor((z - t.z0) / C))) * SUB + Math.min(SUB - 1, Math.max(0, Math.floor((x - t.x0) / C)))].ch; // the chunk sink: the piece under (x, z)
@@ -267,7 +274,9 @@ export function createOuter(E) {
     t.phase = '';
     if (O.onBuilt) O.onBuilt(t);
   }
-  function plant(t) { if (E.plantTiles && t.photo) { const s0 = performance.now(); t.trees = E.plantTiles(t, t.photo.image); slow('plant', performance.now() - s0); } }
+  function plant(t) { // a planting that fails leaves the tile bare; it mustn't stop the tile being built
+    if (E.plantTiles && t.photo) { const s0 = performance.now(); try { t.trees = E.plantTiles(t, t.photo.image); } catch (e) { console.warn('[outer] plant', t.k, e); t.trees = false; } slow('plant', performance.now() - s0); }
+  }
   O.plantAll = () => { for (const t of O.tiles.values()) if (t.built && !t.trees) plant(t); };
   O.vegNear = (dt, cam) => { for (const t of O.tiles.values()) { const V = t.trees && t.trees.veg; if (!V) continue; const L = V.last; L.t += dt; if (Math.hypot(cam.x - L.x, cam.z - L.z) > 6 || L.t > 2) { V.updateNear(cam.x, cam.z); L.x = cam.x; L.z = cam.z; L.t = 0; } } };
   O.seaLevel = () => E.seaLevel();
