@@ -5,7 +5,8 @@
 //    species are ONE draw call; the shader picks and blends the 4 nearest views and lights them with the scene's sun
 //    and sky, so 300k+ plants cost a few draws.
 //  - a near LOD mesh (~5-30k tris for trees, ~1-4k for shrubs) for the plants within `near` metres, with shadows and
-//    wind sway. Near meshes and impostors cross-fade with complementary dither, so there is no pop.
+//    wind sway. Near meshes and impostors cross-fade with complementary dither over a short band (3 m: with no TAA
+//    to resolve it, a wide band showed as a halftone fringe round the crowns).
 // Placement (assignPlants) turns the aerial tree detections into species: planted trees in town, chaparral and
 // sage scrub in the wild (Poway's hills are shrubland; oaks only along creek bottoms), plus succulents.
 
@@ -75,7 +76,7 @@ export function natureUniforms(THREE) {
   return {
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
     uSky: { value: new THREE.Color(0.5, 0.6, 0.7) }, uGround: { value: new THREE.Color(0.3, 0.28, 0.2) },
-    uTime: { value: 0 }, uWind: { value: 1 }, uWindBase: { value: 1 }, uGust: { value: 0.5 }, uNear: { value: 55 }, uBand: { value: 12 }, uFar: { value: 2400 },
+    uTime: { value: 0 }, uWind: { value: 1 }, uWindBase: { value: 1 }, uGust: { value: 0.5 }, uNear: { value: 55 }, uBand: { value: 3 }, uFar: { value: 2400 },
   };
 }
 
@@ -127,7 +128,7 @@ void main() {
 }`;
 const IMP_FS = /* glsl */`
 uniform sampler2D uAlb; uniform sampler2D uNrm;
-uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uGround; uniform float uTrans;
+uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSky; uniform vec3 uGround; uniform float uTrans, uPremul;
 varying vec2 vUv0; varying vec2 vUv1; varying vec2 vUv2; varying vec2 vUv3; varying vec4 vW;
 varying vec3 vTint; varying float vFade; varying vec3 vBr; varying vec3 vBu; varying vec3 vBf;
 #include <common>
@@ -135,6 +136,7 @@ varying vec3 vTint; varying float vFade; varying vec3 vBr; varying vec3 vBu; var
 void main() {
   if (${IGN} < 1.0 - vFade) discard;   // complement of the near mesh's dither
   vec4 a = texture2D(uAlb, vUv0) * vW.x + texture2D(uAlb, vUv1) * vW.y + texture2D(uAlb, vUv2) * vW.z + texture2D(uAlb, vUv3) * vW.w;
+  if (uPremul > .5) a.rgb /= max(a.a, .02); // baked premultiplied (src/nature/proctrees.js): the true leaf colour right to the edge, no dark rim against the sky
   float cov = clamp((a.a - 0.5) / max(fwidth(a.a), 1e-3) + 0.5, 0.0, 1.0);
   if (cov < 0.5) discard; // below this the fringe has no MSAA to soften it and reads as a dark halo
   vec3 nt = (texture2D(uNrm, vUv0).xyz * vW.x + texture2D(uNrm, vUv1).xyz * vW.y + texture2D(uNrm, vUv2).xyz * vW.z + texture2D(uNrm, vUv3).xyz * vW.w) * 2.0 - 1.0;
@@ -157,7 +159,7 @@ function impostorMaterial(THREE, sp, U) {
   });
   Object.assign(m.uniforms, U, sp.lods.some(l => l) ? {} : { uNear: { value: 0 }, uBand: { value: 1e-3 } }, {
     uAlb: { value: sp.alb }, uNrm: { value: sp.nrm }, uVar: { value: uVar }, uBlk: { value: uBlk },
-    uBlocks: { value: new THREE.Vector2(sp.blocks[0], sp.blocks[1]) }, uG: { value: sp.G }, uTrans: { value: sp.trans ?? 0.18 },
+    uBlocks: { value: new THREE.Vector2(sp.blocks[0], sp.blocks[1]) }, uG: { value: sp.G }, uTrans: { value: sp.trans ?? 0.18 }, uPremul: { value: sp.premul ? 1 : 0 },
   });
   return m;
 }
@@ -193,8 +195,9 @@ function patchNear(mat, U, sway, leaf) {
           vec2 tsz = vec2(textureSize(map, 0)); vec2 dx = dFdx(vMapUv * tsz), dy = dFdy(vMapUv * tsz);
           float mip = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy))));
           diffuseColor.a *= 1.0 + mip * 0.25;
-          if (diffuseColor.a < 0.5) discard;
-          diffuseColor.a = 1.0;
+          float cov = clamp((diffuseColor.a - 0.5) / max(fwidth(diffuseColor.a), 1e-3) + 0.5, 0.0, 1.0); // alpha to coverage: MSAA-smooth leaf edges
+          if (cov < 0.02) discard;
+          diffuseColor.a = cov;
         }`)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         { vec3 Ls = normalize((viewMatrix * vec4(uSunDir, 0.0)).xyz), V = normalize(vViewPosition);
@@ -266,7 +269,7 @@ export class Vegetation {
         const mats = lod.mats.map(m0 => {
           const leaf = !!m0.map && (m0.transparent || m0.alphaTest > 0); // the leaf cards (their texture has alpha)
           const m = m0.clone(); m.vertexColors = true; m.side = THREE.DoubleSide; m.roughness = leaf ? 0.75 : 0.92; m.metalness = 0;
-          m.transparent = false; m.alphaTest = leaf ? 0.5 : 0; m.depthWrite = true; m.envMapIntensity = 0.4; m.normalMap = null;
+          m.transparent = false; m.alphaTest = leaf ? 0.5 : 0; m.alphaToCoverage = leaf; m.depthWrite = true; m.envMapIntensity = 0.4; m.normalMap = null;
           patchNear(m, this.U, sp.sway ?? 0.012, leaf); return m;
         });
         const im = new THREE.InstancedMesh(lod.geo, mats, 64); im.count = 0; im.frustumCulled = false;

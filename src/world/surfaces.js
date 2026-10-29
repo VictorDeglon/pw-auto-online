@@ -20,7 +20,7 @@ export const STYLE = { house: 0, shop: 1, big: 2, office: 3, shed: 4, apartment:
 export const ROLE = { side: 0, front: 1, back: 2 };
 
 const SETS = ['asphalt', 'asphalt_old', 'concrete', 'concrete_stain', 'stucco', 'stucco_rough', 'tiltup', 'brick', 'siding',
-  'roof_clay', 'roof_tile', 'roof_flat', 'gravel', 'trail', 'wood'];
+  'roof_clay', 'roof_tile', 'roof_flat', 'gravel', 'trail', 'wood', 'dg'];
 export async function loadSurfaces(THREE, loadTex, base = 'assets/pbr/') {
   const T = {};
   await Promise.all([...SETS.flatMap(n => [['c', true], ['n', false], ['arm', false]].map(([k, srgb]) =>
@@ -193,6 +193,32 @@ const FACADE_FS = /* glsl */`
   diffuseColor.rgb *= 1.0 - fGlass; // glass has no diffuse: the room shows through as light, the sky as reflection
 }
 `;
+// Poway's dirt trails and road shoulders (ribbons whose uv.x runs 0..1 across): compacted decomposed granite down the
+// middle, two faint worn lines where feet and hooves and bike tyres go, loose sand and granite gravel toward the edges,
+// and ragged edges where it gives way to the weeds, not a ruler line.
+function pathMaterial(THREE, T, pathN) {
+  const m = new THREE.MeshStandardMaterial({ map: T.dg.c, normalMap: pathN, normalScale: new THREE.Vector2(0.9, 0.9), vertexColors: true, roughness: 1, alphaToCoverage: true,
+    polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uGravel = { value: T.trail.c };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vPW; varying vec2 vPU;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPW = (modelMatrix * vec4(position, 1.0)).xyz; vPU = uv;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vPW; varying vec2 vPU; uniform sampler2D uGravel;\n' + NOISE)
+      .replace('#include <map_fragment>', `
+        vec2 wp = vPW.xz; float n = sFbm(wp * 0.55), n2 = sVn(wp * 2.7);
+        float e = min(vPU.x, 1.0 - vPU.x) * 2.0 + (n - 0.5) * 0.5;                 // 0 at the ragged edge, ~1 down the middle
+        float loose = smoothstep(0.6, 0.12, e);
+        vec3 dg = texture2D(map, wp / 2.2).rgb, gv = texture2D(uGravel, wp / 1.5).rgb;
+        vec3 c = mix(dg * 1.06, gv * vec3(1.02, 0.97, 0.9), clamp(loose * 0.75 * (0.5 + n2), 0.0, 1.0));
+        float lines = exp(-pow((abs(vPU.x - 0.5) - 0.17) / 0.06, 2.0)) * (0.55 + 0.45 * sVn(wp * vec2(0.3, 0.3)));
+        c *= 1.0 - lines * 0.1; c = mix(c, c * vec3(1.06, 1.0, 0.9), 0.35 * (1.0 - n2));
+        diffuseColor.rgb *= c;
+        diffuseColor.a = clamp((e - 0.1) / max(fwidth(e), 1e-3) + 0.5, 0.0, 1.0); if (diffuseColor.a < 0.02) discard;`);
+  };
+  m.customProgramCacheKey = () => 'path1';
+  return m;
+}
 function facadeMaterial(THREE, set, U, o) {
   for (const k of ['c', 'n', 'arm']) if (set[k]) set[k].repeat.set(1 / o.tile, 1 / o.tile);
   const m = new THREE.MeshStandardMaterial({ map: set.c, normalMap: set.n, normalScale: new THREE.Vector2(o.bump ?? 0.8, o.bump ?? 0.8), roughnessMap: set.arm, aoMap: set.arm, aoMapIntensity: 0.6, vertexColors: true, roughness: 1, metalness: 0 });
@@ -211,7 +237,12 @@ function facadeMaterial(THREE, set, U, o) {
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         metalnessFactor = max(metalnessFactor, fMetal * max(fFrame, fDoor));`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        normal = normalize(mix(normal, nonPerturbedNormal, max(max(fGlass, fFrame), fDoor)));`)
+        normal = normalize(mix(normal, nonPerturbedNormal, max(max(fGlass, fFrame), fDoor)));
+        { // bullnose corners, as SoCal stucco has: the normal rolls round the last 7 cm of each wall end
+          float cu = vFuv.x, cl = vFac.x, ce = min(cu, cl - cu), k = (cl > 1.5 && ce >= 0.) ? 1. - smoothstep(0., .07, ce) : 0.; // real walls only (small boxes and non-facade quads carry other uvs)
+          if (k > 0.) { vec3 Nw2 = normalize(vWN); float ds = mod(floor(vFac.z / 32.), 2.) * 2. - 1.; vec3 Tw2 = ds * normalize(vec3(-Nw2.z, 0., Nw2.x) + 1e-5); vec3 ot = Tw2 * (cu < cl - cu ? -1. : 1.); // 'out' is reserved in GLSL 3
+            vec3 nv = normalize((viewMatrix * vec4(normalize(Nw2 + ot * k * 1.2), 0.)).xyz); normal = normalize(mix(normal, nv, k * .85)); }
+        }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         { float cv = clamp(dot(normalize(cameraPosition - vWPos), normalize(vWN)), 0.0, 1.0), F = 0.04 + 0.96 * pow(1.0 - cv, 5.0);
           totalEmissiveRadiance += fRoom * fGlass * (1.0 - F); }`);
@@ -375,8 +406,11 @@ export function createSurfaces(THREE, T) {
   };
   // country trails (decomposed granite), post-and-rail fences, clipped hedges; uv in metres
   const rep = (set, m) => { for (const k of ['c', 'n', 'arm']) if (set && set[k]) set[k].repeat.set(1 / m, 1 / m); };
-  rep(T.trail, 2.5); rep(T.wood, 1.6); rep(T.lawn, 0.9);
-  S.trail = new THREE.MeshStandardMaterial({ map: T.trail.c, normalMap: T.trail.n, roughnessMap: T.trail.arm, vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+  const pathN = T.dg.n.clone(); pathN.repeat.set(1, 1); pathN.wrapS = pathN.wrapT = THREE.RepeatWrapping; pathN.needsUpdate = true;
+  rep(T.trail, 2.5); rep(T.dg, 2.2); rep(T.wood, 1.6); rep(T.lawn, 0.9);
+  // planting beds and lake shores: decomposed granite (tinted to bark or river rock by the vertex colour)
+  S.trail = new THREE.MeshStandardMaterial({ map: T.dg.c, normalMap: T.dg.n, roughnessMap: T.dg.arm, vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+  S.path = pathMaterial(THREE, T, pathN);
   S.wood = new THREE.MeshStandardMaterial({ map: T.wood.c, normalMap: T.wood.n, roughnessMap: T.wood.arm, vertexColors: true, roughness: 1 });
   S.hedge = new THREE.MeshStandardMaterial({ map: T.lawn.c, normalMap: T.lawn.n, normalScale: new THREE.Vector2(1.5, 1.5), vertexColors: true, roughness: 0.95 });
   // what a roof material shows on average (linear), so a roof can be tinted to the colour of the real roof in the photo

@@ -1,0 +1,161 @@
+/* Sunset Western: the look of every menu, button, tab, option and cursor (STYLE.md has the why and the rules).
+   Loaded after the base styles in index.html and layered over them: same ids and classes, new skin.
+   Palette: saddle leather and weathered wood under a late sun. Type: Rye (woodtype display), Barlow Condensed (UI),
+   Anton for numbers that must read at a glance, Yellowtail for the script on the plate. */
+:root{
+  --ink:#150c09; --ink-2:#22140e; --wood:#3b2417; --wood-2:#5b3822; --wood-hi:#7a4d2c; --leather:#2a1710;
+  --paper:#f3e6cc; --paper-2:#e6d2ad; --dim:#bfa685; --dust:#c9a77a;
+  --gold:#f2a33a; --sun:#ffc64d; --rust:#c4552c; --blood:#c7362c; --cash:#9bd16e; --sage:#8fb7a3; --teal:#3f6f6a;
+  --brass:linear-gradient(180deg,#f7d58a 0%,#d9a441 45%,#a8742a 100%);
+  --western:'Rye','Anton',Impact,serif;
+  --display:'Anton',Impact,'Arial Narrow Bold',sans-serif;
+  --stitch:repeating-linear-gradient(90deg,rgba(243,230,204,.55) 0 7px,transparent 7px 12px);
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .55 0 0 0 0 .38 0 0 0 0 .22 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  --woodgrain:repeating-linear-gradient(178deg,rgba(255,220,170,.05) 0 2px,transparent 2px 7px,rgba(0,0,0,.08) 7px 8px,transparent 8px 13px);
+  --cur:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M3 2 L3 22 L8.5 17 L12.5 26 L16 24.4 L12 15.6 L19.5 15.6 Z' fill='%23f2a33a' stroke='%23150c09' stroke-width='1.8' stroke-linejoin='round'/%3E%3Cpath d='M5.2 6 L5.2 17.5 L8.6 14.4' fill='none' stroke='%23ffe3a3' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E") 3 2, default;
+  --cur-hand:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='30' viewBox='0 0 30 30'%3E%3Cg transform='translate(15 15)'%3E%3Cg fill='%23f2a33a' stroke='%23150c09' stroke-width='1.4'%3E%3Cpath d='M0-12 L2.2-3 L0 0 L-2.2-3 Z'/%3E%3Cpath d='M0-12 L2.2-3 L0 0 L-2.2-3 Z' transform='rotate(60)'/%3E%3Cpath d='M0-12 L2.2-3 L0 0 L-2.2-3 Z' transform='rotate(120)'/%3E%3Cpath d='M0-12 L2.2-3 L0 0 L-2.2-3 Z' transform='rotate(180)'/%3E%3Cpath d='M0-12 L2.2-3 L0 0 L-2.2-3 Z' transform='rotate(240)'/%3E%3Cpath d='M0-12 L2.2-3 L0 0 L-2.2-3 Z' transform='rotate(300)'/%3E%3C/g%3E%3Ccircle r='3.2' fill='%23ffe3a3' stroke='%23150c09' stroke-width='1.3'/%3E%3C/g%3E%3C/svg%3E") 15 15, pointer;
+  color-scheme:dark;
+}
+html,body{cursor:var(--cur)}
+button,a,label,input[type=checkbox],input[type=range],select,.srv,.wseg,[data-i],[role=button]{cursor:var(--cur-hand)!important}
+::selection{background:var(--gold);color:var(--ink)}
+*{scrollbar-width:thin;scrollbar-color:var(--wood-hi) transparent}
+
+/* ---------------------------------------------------------------- panels: saddle leather, stitched, brass corners */
+.screen,#pause>div,#travel .tv,#cheatsheet .cs,.modal-card,#garage>div:first-child,#dealer>div,#shop .shop,.panelw{
+  position:relative;background:var(--grain),radial-gradient(120% 90% at 20% 0%,#3a2015 0%,#24140d 55%,#170d09 100%)!important;
+  border:1px solid #0c0604!important;border-top:0!important;border-radius:6px;
+  box-shadow:0 1px 0 rgba(255,214,150,.12) inset,0 0 0 1px rgba(255,214,150,.06) inset,0 30px 70px rgba(0,0,0,.6),0 0 0 3px rgba(26,14,8,.85)!important;
+}
+.screen::before,#pause>div::before,#travel .tv::before,#cheatsheet .cs::before,.modal-card::before{
+  content:"";position:absolute;inset:7px;border-radius:4px;pointer-events:none;
+  background:var(--stitch) top/100% 1.5px no-repeat,var(--stitch) bottom/100% 1.5px no-repeat,
+    repeating-linear-gradient(180deg,rgba(243,230,204,.55) 0 7px,transparent 7px 12px) left/1.5px 100% no-repeat,
+    repeating-linear-gradient(180deg,rgba(243,230,204,.55) 0 7px,transparent 7px 12px) right/1.5px 100% no-repeat;opacity:.45}
+.screen::after,#pause>div::after{content:"";position:absolute;inset:-2px;pointer-events:none;border-radius:7px;
+  background:radial-gradient(circle at 10px 10px,#f7d58a 0 3px,#8a5a20 3.5px 4.5px,transparent 5px),radial-gradient(circle at calc(100% - 10px) 10px,#f7d58a 0 3px,#8a5a20 3.5px 4.5px,transparent 5px),
+    radial-gradient(circle at 10px calc(100% - 10px),#f7d58a 0 3px,#8a5a20 3.5px 4.5px,transparent 5px),radial-gradient(circle at calc(100% - 10px) calc(100% - 10px),#f7d58a 0 3px,#8a5a20 3.5px 4.5px,transparent 5px)}
+.screen header h2,.modal-card h2,#pause h2,#travel h2,#cheatsheet h3{font:400 40px/1.05 var(--western)!important;letter-spacing:.02em;color:var(--sun)!important;
+  text-shadow:0 2px 0 #4a1c0c,0 0 18px rgba(242,163,58,.25);text-transform:none}
+.screen header p,.fine{color:var(--dim)!important}
+.screen{animation:panelIn .5s cubic-bezier(.2,1,.3,1) both}
+@keyframes panelIn{from{opacity:0;transform:translateY(14px) scale(.985);filter:sepia(1) brightness(.6)}}
+
+/* ---------------------------------------------------------------- the menu backdrop: the sun going down behind you */
+#menu{background:linear-gradient(90deg,rgba(21,12,9,.96) 0%,rgba(21,12,9,.82) 36%,rgba(40,16,12,.35) 70%,rgba(60,22,14,.2) 100%)!important}
+#menu::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;
+  background:radial-gradient(60% 50% at 78% 92%,rgba(255,170,70,.28),transparent 70%),radial-gradient(120% 60% at 50% 120%,rgba(196,85,44,.35),transparent 70%)}
+#menu::after{content:"";position:fixed;inset:0;pointer-events:none;background:var(--grain);opacity:.35;mix-blend-mode:overlay}
+
+/* ---------------------------------------------------------------- buttons: weathered wood signs, brass nails */
+.mbtn{position:relative;font:400 24px/1 var(--western)!important;letter-spacing:.03em;text-transform:none!important;color:var(--paper)!important;
+  background:var(--woodgrain),linear-gradient(180deg,#6a4126 0%,#4a2b19 52%,#3a2114 100%)!important;
+  border:1px solid #140a06!important;border-radius:4px 7px 5px 6px;padding:14px 24px 12px 30px!important;
+  box-shadow:0 1px 0 rgba(255,215,160,.22) inset,0 -2px 0 rgba(0,0,0,.35) inset,0 6px 0 #1d100a,0 9px 16px rgba(0,0,0,.45);
+  text-shadow:0 2px 0 rgba(0,0,0,.55);transform-origin:50% -40%;transition:transform .18s cubic-bezier(.3,1.6,.4,1),box-shadow .18s,filter .18s}
+.mbtn::before{content:"";position:absolute;left:10px;top:50%;width:7px;height:7px;margin-top:-4px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffe7a8,#c48b2c 55%,#6b4314);box-shadow:0 1px 1px rgba(0,0,0,.6),calc(100% * 0 + 0px) 0 0 0 transparent}
+.mbtn small{font:600 14px/1.1 var(--ui)!important;letter-spacing:.05em;color:var(--dust)!important;text-shadow:none}
+.mbtn:hover,.mbtn.on{transform:rotate(-.6deg) translateX(5px)!important;filter:brightness(1.12) saturate(1.05);
+  box-shadow:0 1px 0 rgba(255,215,160,.3) inset,0 -2px 0 rgba(0,0,0,.35) inset,0 6px 0 #1d100a,0 12px 22px rgba(0,0,0,.5),0 0 22px rgba(242,163,58,.25)}
+.mbtn:active{transform:translateY(4px)!important;box-shadow:0 1px 0 rgba(255,215,160,.2) inset,0 2px 0 #1d100a,0 4px 10px rgba(0,0,0,.45)}
+.mbtn.primary{color:#2a1205!important;text-shadow:0 1px 0 rgba(255,240,200,.6);
+  background:linear-gradient(100deg,transparent 0 40%,rgba(255,255,255,.35) 50%,transparent 60%) -200% 0/250% 100% no-repeat,var(--brass)!important;
+  border-color:#5a3510!important;animation:brassShine 5s 1.2s ease-in-out infinite}
+.mbtn.primary small{color:#5a3010!important}
+.mbtn.primary::before{background:radial-gradient(circle at 35% 30%,#fff3cf,#7a4a14 60%,#3a2008)}
+@keyframes brassShine{0%,70%{background-position:-200% 0,0 0}90%,100%{background-position:200% 0,0 0}}
+.mbtn kbd,kbd{font:700 12px var(--ui)!important;background:rgba(21,12,9,.55)!important;color:var(--sun)!important;border:1px solid rgba(242,163,58,.35);border-radius:3px;padding:1px 6px}
+.mbtn::after{background:linear-gradient(110deg,transparent 35%,rgba(255,230,180,.16) 50%,transparent 65%)!important}
+
+/* ---------------------------------------------------------------- tabs, segments, chips: tooled leather */
+.tabs button,.seg button,.chips button{font:700 13px/1 var(--ui)!important;letter-spacing:.12em!important;text-transform:uppercase;
+  background:linear-gradient(180deg,#3a2216,#2a170f)!important;color:var(--dust)!important;border:1px solid #120a06!important;
+  box-shadow:0 1px 0 rgba(255,214,150,.12) inset;transition:all .16s;border-radius:3px}
+.tabs button:hover,.seg button:hover,.chips button:hover{color:var(--paper)!important;background:linear-gradient(180deg,#4a2c1b,#341d12)!important}
+.tabs button.on,.seg button.on,.chips button.on,.tabs button.sel,.seg button.sel{color:#2a1205!important;background:var(--brass)!important;border-color:#5a3510!important;
+  box-shadow:0 0 14px rgba(242,163,58,.35),0 1px 0 rgba(255,255,255,.4) inset;text-shadow:0 1px 0 rgba(255,240,200,.5)}
+#mnav button.on,#mnav .mbtn.on{filter:brightness(1.15)}
+
+/* ---------------------------------------------------------------- options: brass toggles, rope sliders */
+.check input[type=checkbox]{appearance:none;-webkit-appearance:none;width:40px;height:22px;border-radius:12px;flex:none;position:relative;margin:0;
+  background:linear-gradient(180deg,#1a0e09,#2c1910);border:1px solid #0c0604;box-shadow:inset 0 2px 4px rgba(0,0,0,.6);transition:background .2s}
+.check input[type=checkbox]::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#f3e6cc,#a38a6a 70%);
+  box-shadow:0 1px 3px rgba(0,0,0,.6);transition:transform .22s cubic-bezier(.3,1.5,.5,1),background .2s}
+.check input[type=checkbox]:checked{background:linear-gradient(180deg,#a8742a,#f2a33a)}
+.check input[type=checkbox]:checked::after{transform:translateX(18px);background:radial-gradient(circle at 35% 30%,#fff7df,#d9a441 70%)}
+input[type=range]{appearance:none;-webkit-appearance:none;height:6px;border-radius:3px;background:repeating-linear-gradient(45deg,#8a6236 0 3px,#6b4825 3px 6px);box-shadow:inset 0 1px 2px rgba(0,0,0,.6)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3cf,#d9a441 55%,#6b4314);border:1px solid #2a1205;box-shadow:0 2px 4px rgba(0,0,0,.6)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff3cf,#d9a441 55%,#6b4314);border:1px solid #2a1205}
+input[type=text],input:not([type]),select,textarea{background:#1a0e09!important;color:var(--paper)!important;border:1px solid #4a2c1b!important;border-radius:3px;font:600 16px var(--ui)}
+
+/* ---------------------------------------------------------------- server cards and lists: ledger paper */
+.srv{background:var(--grain),linear-gradient(170deg,#3b2417,#24150e)!important;border:1px solid #120a06!important;border-left:5px solid var(--acc,var(--gold))!important;border-radius:4px;
+  box-shadow:0 1px 0 rgba(255,214,150,.1) inset,0 8px 18px rgba(0,0,0,.4)}
+.srv:hover:not([disabled]){transform:translateY(-3px) rotate(-.3deg)!important;box-shadow:0 1px 0 rgba(255,214,150,.15) inset,0 14px 26px rgba(0,0,0,.5),0 0 18px rgba(242,163,58,.2)}
+.srv b{font:400 28px/1 var(--western)!important;text-transform:none!important}
+
+/* ---------------------------------------------------------------- HUD: brass and paper */
+.note{background:linear-gradient(180deg,#f3e6cc,#e2cca2)!important;color:#2a170d!important;text-shadow:none!important;border-left:0!important;border-radius:2px;
+  box-shadow:0 6px 14px rgba(0,0,0,.45);padding:9px 14px 9px 16px!important;font-weight:700!important;position:relative;
+  clip-path:polygon(0 0,100% 0,99% 22%,100% 46%,99.2% 70%,100% 100%,0 100%,.6% 74%,0 50%,.7% 26%)}
+.note::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--gold)}
+.note.red::before{background:var(--blood)} .note.green::before{background:#5a9a3a} .note.blue::before{background:#3b62c4}
+.note b{color:#7a2c0c} .note.news b{color:#7a2c0c}
+#minimap{border:4px solid transparent!important;background:var(--brass) border-box;box-shadow:0 0 0 2px #2a1205,0 8px 18px rgba(0,0,0,.5)!important}
+#money{color:var(--cash)!important;-webkit-text-stroke:1.5px #142a0a!important}
+#street b{font:400 30px/1.05 var(--western)!important;color:var(--paper)!important;text-shadow:0 2px 0 rgba(0,0,0,.7)}
+#street i{color:var(--sun)!important}
+#clock{font-family:var(--ui)!important;color:var(--paper-2)!important}
+#radio{color:var(--sun)!important}
+#big h1{font-family:var(--western)!important;-webkit-text-stroke:2px #1a0a05!important}
+#big.pass h1{color:var(--sun)!important}
+.bub{background:var(--paper)!important;color:#2a170d!important;font-weight:700} .bub::after{border-top-color:var(--paper)!important}
+#helpline kbd{background:rgba(42,23,13,.7)!important}
+
+/* ---------------------------------------------------------------- the pause card */
+#pause{background:linear-gradient(90deg,rgba(21,12,9,.92),rgba(21,12,9,.6) 50%,rgba(40,16,12,.25))!important}
+
+/* ---------------------------------------------------------------- loading screen: a sunset drive into Poway */
+#boot{background:#150c09!important}
+.boot-scene{position:absolute;inset:0;overflow:hidden}
+.boot-scene svg{position:absolute;inset:0;width:100%;height:100%}
+.boot-sky{display:none}
+.boot-rays{transform-origin:800px 610px;animation:rays 90s linear infinite}
+@keyframes rays{to{transform:rotate(360deg)}}
+.boot-far{animation:drift 60s ease-in-out infinite alternate} .boot-mid{animation:drift 40s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translateX(-30px)}}
+.boot-dash{stroke-dasharray:28 34;animation:dash 1.1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-62}}
+.boot-dust{position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(1.5px 1.5px at 12% 70%,rgba(255,220,160,.7),transparent),radial-gradient(1px 1px at 22% 62%,rgba(255,220,160,.6),transparent),
+  radial-gradient(1.2px 1.2px at 37% 75%,rgba(255,220,160,.6),transparent),radial-gradient(1.6px 1.6px at 58% 66%,rgba(255,220,160,.7),transparent),
+  radial-gradient(1px 1px at 71% 72%,rgba(255,220,160,.5),transparent),radial-gradient(1.4px 1.4px at 86% 64%,rgba(255,220,160,.6),transparent);
+  animation:dust 14s linear infinite;opacity:.8}
+@keyframes dust{from{transform:translate(0,0)}to{transform:translate(-120px,-40px)}}
+.boot-in{z-index:2;position:absolute!important;top:6vh;left:50%;transform:translateX(-50%);gap:16px!important} /* the title rides above the setting sun */
+#boot .boot-tip{position:fixed;left:50%;bottom:5vh;transform:translateX(-50%) rotate(-.6deg)}
+#boot .boot-go{position:fixed;left:0;right:0;margin:0 auto;bottom:16vh;width:max-content} /* centred without a transform: the button's hover swing uses transform */
+.boot-msg{font:600 18px/1.2 var(--ui)!important;color:var(--paper)!important;text-shadow:0 2px 4px rgba(0,0,0,.8)}
+.boot-tip{font:500 17px/1.45 var(--ui)!important;color:#2a170d!important;background:linear-gradient(180deg,#f3e6cc,#e3cda4);padding:10px 16px;border-radius:2px;max-width:58ch;
+  box-shadow:0 8px 20px rgba(0,0,0,.45);transform:rotate(-.6deg);text-shadow:none!important}
+.boot-tip:empty{display:none}
+.road{height:20px!important;background:linear-gradient(180deg,#3a2a1f,#22160f)!important;border:0!important;border-radius:3px;box-shadow:0 2px 0 #0e0805,0 0 0 1px #0e0805 inset;overflow:visible!important}
+.road::after{background:repeating-linear-gradient(90deg,#f2c35a 0 18px,transparent 18px 36px)!important;opacity:.7!important}
+.road-fill{background:linear-gradient(90deg,rgba(242,163,58,.08),rgba(242,163,58,.45))!important;border-radius:3px}
+.road-car{top:-13px!important;width:54px!important;height:24px!important;border-radius:0!important;box-shadow:none!important;background:none!important;
+  filter:drop-shadow(0 3px 2px rgba(0,0,0,.5));
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 108 48'%3E%3Cpath d='M4 34 C4 27 8 25 16 24 L30 22 C38 14 46 11 60 11 C72 11 80 15 88 22 L98 24 C103 25 105 28 105 33 L105 37 L4 37 Z' fill='%23150c09'/%3E%3Cpath d='M40 22 C46 15 52 14 60 14 L60 22 Z M64 14 C72 14 78 17 83 22 L64 22 Z' fill='%23f2a33a' opacity='.55'/%3E%3Ccircle cx='26' cy='37' r='8' fill='%23150c09'/%3E%3Ccircle cx='26' cy='37' r='3.5' fill='%23c9a77a'/%3E%3Ccircle cx='84' cy='37' r='8' fill='%23150c09'/%3E%3Ccircle cx='84' cy='37' r='3.5' fill='%23c9a77a'/%3E%3C/svg%3E") center/contain no-repeat!important}
+.road-car::before{content:"";position:absolute;right:100%;top:8px;width:60px;height:16px;background:radial-gradient(closest-side,rgba(201,167,122,.55),transparent);filter:blur(3px);animation:puff .6s ease-out infinite}
+@keyframes puff{50%{transform:scale(1.15,1.3) translateX(-6px);opacity:.7}}
+.ver-stamp{position:absolute;left:-34px;bottom:-20px;transform:rotate(-7deg);font:400 15px/1 var(--western);letter-spacing:.08em;color:#c7362c;
+  padding:6px 10px 5px;border:2.5px solid #c7362c;border-radius:3px;background:rgba(243,230,204,.85);text-shadow:none;opacity:.92;
+  -webkit-mask:var(--grain);mask:var(--grain);animation:stamp .5s 1s cubic-bezier(.2,1.6,.4,1) both;white-space:nowrap}
+.ver-stamp small{display:block;font:700 10px/1.2 var(--ui);letter-spacing:.2em;margin-top:2px}
+@keyframes stamp{from{transform:rotate(-7deg) scale(2.2);opacity:0}}
+.menu-ver{font:700 12px/1 var(--ui);letter-spacing:.18em;text-transform:uppercase;color:var(--dust);opacity:.8}
+
+/* ---------------------------------------------------------------- the licence plate keeps its look, warmed */
+.plate{box-shadow:0 0 0 3px #150c09,0 18px 40px rgba(0,0,0,.6),0 0 60px rgba(242,163,58,.18)!important}
+
+@media (prefers-reduced-motion:reduce){.boot-rays,.boot-far,.boot-mid,.boot-dash,.boot-dust,.mbtn.primary,.road-car::before{animation:none!important}}

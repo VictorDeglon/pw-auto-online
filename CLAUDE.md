@@ -12,3 +12,6 @@ README.md covers running, the emulators and the Firebase setup.
 - Online state: `src/online/net.js` (database), `src/online/remote.js` (other players as Peds), `database.rules.json`
   (who may write what). Change the rules and the client together, and test with two emulator clients.
 - `.gitattributes` enforces LF.
+- The look is written down in `STYLE.md` (grade, UI theme, palette, type, world rules): follow it, and change that
+  file before changing the look. Every shipped update bumps `src/version.js` and gets a `CHANGELOG.md` entry
+  (minor per day of updates, patch per deploy).

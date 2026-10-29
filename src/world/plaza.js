@@ -4,6 +4,7 @@
 // material), and a building that collapses takes its storefronts with it.
 //   const PLAZA = buildPlaza({ THREE, scene, BLD, POIS, heightAt, addInteract, notify, sfx })
 //   PLAZA.update(focus, night)   PLAZA.onCollapse(B)   PLAZA.center / PLAZA.R / PLAZA.stores
+import { parodyName } from './plazas/brands.js';
 export const PLAZA_CENTER = { x: -4300, z: -2350 }, PLAZA_R = 560;
 const AMC_AT = { x: -4110, z: -2763 }; // the tall 6,600 m2 box at the south end of the plaza
 const SHOP_TYPES = new Set(['shop', 'fast_food', 'restaurant', 'cafe', 'bank']);
@@ -142,7 +143,7 @@ export function buildPlaza(o) {
   for (const p of pois) {
     let best = null, bd = 32;
     for (const B of blds) { if (B === amc) continue; const nw = nearestWall(wallsOf.get(B), p.x, p.z); if (!nw) continue; const d = pip(p.x, p.z, B.flat) ? 0 : nw.d; if (d < bd) { bd = d; best = { B, nw }; } }
-    if (best) storefront(best.B, best.nw.w, best.nw.t, p.name, p.type);
+    if (best) storefront(best.B, best.nw.w, best.nw.t, parodyName(p.name), p.type); // chains as their parodies (./plazas/brands.js)
   }
   // ---- 3. buildings with no shop on the map still get a door and a "for lease" sign, so the plaza reads as shops
   for (const B of blds) {

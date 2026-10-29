@@ -27,6 +27,7 @@ export function createPost(THREE, renderer, camera, level = 2, opts = {}) {
   const U = {
     tCol: { value: null }, tDep: { value: null }, uRes: { value: new THREE.Vector2() }, uTime: { value: 0 },
     uNear: { value: camera.near }, uFar: { value: camera.far }, uExp: { value: 1 }, uInk: { value: 1 }, uFx: { value: 1 }, uNight: { value: 0 }, uDusk: { value: 0 }, uDbg: { value: 0 },
+    uSun: { value: new THREE.Vector3(0.5, 0.5, 0) }, uGrade: { value: 1 }, // sun on screen (uv, strength) for the light shafts; the colour grade's strength
   };
   const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }';
   const mat = new THREE.ShaderMaterial({
@@ -261,9 +262,10 @@ function realistic(THREE, renderer, U, O, VS) {
   const CU = {
     tCol: U.tCol, uRes: U.uRes, uTime: U.uTime, uNight: U.uNight, uDusk: U.uDusk, tBloom: { value: null }, tExp: { value: null }, tAO: { value: null },
     uBloom: { value: 0.05 }, uBloomN: { value: 1 / MIPS }, uExpK: { value: 1 }, uAO: { value: 0 }, uDbg: { value: 0 }, uAA: { value: 0 },
+    uSun: U.uSun, uGrade: U.uGrade,
   };
   const comp = sm(/* glsl */`
-    uniform sampler2D tCol, tBloom, tExp, tAO; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA;
+    uniform sampler2D tCol, tBloom, tExp, tAO; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA, uGrade; uniform vec3 uSun;
     vec3 srgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
     float lt(vec3 c) { return dot(c / (1. + c), vec3(.2126, .7152, .0722)); } // luma of a roughly tone-mapped colour
     float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime * 7.31) * 43758.5453); }
@@ -289,7 +291,14 @@ function realistic(THREE, renderer, U, O, VS) {
       col = max(col + (col - (cE + cW + cN + cS) * .25) * sharp, 0.);                    // light sharpening
       if (uAO > 0.) col *= mix(1., texture2D(tAO, vUv).r, uAO);
       col = mix(col, texture2D(tBloom, vUv).rgb * uBloomN, uBloom);                     // energy-preserving bloom
-      col *= exp2(texture2D(tExp, vec2(.5)).r) * uExpK;
+      float ex = exp2(texture2D(tExp, vec2(.5)).r) * uExpK;
+      col *= ex;
+      if (uSun.z > .001) { // light shafts: march toward the sun, gathering what's brighter than the exposed white (sky round
+        // the sun gets through, trees, roofs and hills block it), so rays stream past whatever stands in front of the sun
+        vec2 dl = (uSun.xy - vUv) * (1. / 28.); vec2 q = vUv; float dec = 1.; vec3 acc = vec3(0.);
+        for (int i = 0; i < 28; i++) { q += dl; vec3 sm = texture2D(tCol, clamp(q, 0., 1.)).rgb * ex; float b = max(dot(sm, vec3(.2126, .7152, .0722)) - 1.1, 0.); acc += min(sm, vec3(8.)) * b * dec; dec *= .955; }
+        col += acc * (uSun.z * .022) * vec3(1., .82, .58);
+      }
       col *= mix(vec3(1.), vec3(1.1, 1., .86), uDusk);                                   // golden-hour white balance
       vec3 t = filmic(col);
       float l = dot(t, vec3(.2126, .7152, .0722));
@@ -297,9 +306,21 @@ function realistic(THREE, renderer, U, O, VS) {
       // after dark the eye sees less colour and shifts blue (Purkinje); at golden hour the highlights warm a touch
       t = mix(t, vec3(l) * vec3(.86, .96, 1.18), uNight * .3 * (1. - smoothstep(.04, .35, l)));
       t *= mix(vec3(1.), vec3(1.05, 1., .93), uDusk * smoothstep(.15, .8, l));
+      if (uGrade > 0.) { // the Sunset Western grade (STYLE.md): sun-warm highlights, rich warm-brown shadows with a hint of
+        // teal, greens pushed to olive, a filmic S-curve; a crime drama shot in the desert at golden hour
+        vec3 g = t; float gl = dot(g, vec3(.2126, .7152, .0722));
+        g *= mix(vec3(.93, .99, 1.04), vec3(1.), smoothstep(.04, .3, gl));               // shadows: a little cool
+        g += vec3(.018, .009, -.002) * (1. - smoothstep(0., .25, gl));                     // lifted, warm-brown blacks
+        float warm = clamp((g.r - g.b) / max(gl, .05) * 2.5 + .5, 0., 1.);                 // by hue: warm things go amber, the sky stays blue (orange and teal, not mauve)
+        g *= mix(vec3(1.), mix(vec3(.97, 1.0, 1.03), vec3(1.07, 1.0, .86), warm), smoothstep(.35, .95, gl)); // amber highlights
+        float gr = max(0., g.g - max(g.r, g.b)); g.g -= gr * .35; g.r += gr * .12;          // greens to olive and dust
+        g = mix(g, g * g * (3. - 2. * g), .22);                                            // S-curve
+        g = mix(vec3(dot(g, vec3(.2126, .7152, .0722))), g, .94);                           // a touch of bleach
+        t = mix(t, max(g, 0.), uGrade);
+      }
       t = srgb(clamp(t, 0., 1.));
-      t *= 1. - .14 * smoothstep(.1, .62, r2 * 1.6);                                     // vignette
-      t += (h(vUv * uRes) - .5) * .022;                                                  // grain (and no banding)
+      t *= mix(vec3(1.), vec3(.66, .58, .5), (.14 + .1 * uGrade) * smoothstep(.1, .62, r2 * 1.6) / .4); // vignette, burnt at the edges
+      t += (h(vUv * uRes) - .5) * (.022 + .012 * uGrade);                                // grain (and no banding)
       gl_FragColor = vec4(t, 1.);
       if (uDbg > 0.) gl_FragColor = vec4(vec3(uAO > 0. ? texture2D(tAO, vUv).r : 1.), 1.); // the occlusion alone
     }`, CU);

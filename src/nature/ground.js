@@ -106,6 +106,43 @@ export function setGroundLand(ground, tex, rect) {
   for (const u of ground.users || []) { u.gLand.value = tex; u.gLandOn.value = 1; u.gLandR.value = rect; }
 }
 
+// Holes in the ground where the pools are: the terrain mesh's 4 m cells can't be cut round a 7 m pool, so the ground
+// (and the grass on it) skips its fragments inside each pool, looked up from a grid texture (RGBA8: two pool numbers
+// per 16 m cell) and a table of the pools' rectangles. The pool's coping and deck cover the cut's edge.
+//   setPoolHoles(pools, cell)   pools: [[x, z, w, d, angle]]
+export const HOLE_U = { gHoles: { value: null }, gHoleP: { value: null }, gHoleR: { value: [0, 0, 16, 0] }, gHoleOn: { value: 0 } };
+export const HOLE_GLSL = /* glsl */`
+uniform sampler2D gHoles, gHoleP; uniform vec4 gHoleR; uniform float gHoleOn;
+float poolHole(vec2 p, float m) { // m: extra margin (the grass also keeps off the deck)
+  if (gHoleOn < 0.5) return 0.0;
+  vec2 g = (p - gHoleR.xy) / gHoleR.z; if (g.x < 0.0 || g.y < 0.0 || g.x >= gHoleR.w || g.y >= gHoleR.w) return 0.0;
+  vec4 c = floor(texture2D(gHoles, (floor(g) + 0.5) / gHoleR.w) * 255.0 + 0.5);
+  for (int k = 0; k < 2; k++) {
+    float id = (k == 0 ? c.r * 256.0 + c.g : c.b * 256.0 + c.a) - 1.0; if (id < 0.0) continue;
+    int t = int(id) * 2; vec4 a = texelFetch(gHoleP, ivec2(t % 1024, t / 1024), 0), b = texelFetch(gHoleP, ivec2((t + 1) % 1024, (t + 1) / 1024), 0);
+    vec2 d = p - a.xy, l = vec2(d.x * b.x + d.y * b.y, -d.x * b.y + d.y * b.x);
+    if (abs(l.x) < a.z + m && abs(l.y) < a.w + m) return 1.0;
+  }
+  return 0.0;
+}`;
+export function setPoolHoles(THREE, pools, cell = 16, margin = 0.3) {
+  if (!pools.length) return;
+  let x0 = 1e9, z0 = 1e9; for (const p of pools) { x0 = Math.min(x0, p[0] - 40); z0 = Math.min(z0, p[1] - 40); }
+  const N = 1024, G = new Uint8Array(N * N * 4), P = new Float32Array(1024 * Math.ceil(pools.length * 2 / 1024) * 4);
+  pools.forEach(([x, z, w, d, a], i) => {
+    const c = Math.cos(a), s = Math.sin(a), hw = w / 2 + margin, hd = d / 2 + margin;
+    P.set([x, z, hw, hd, c, s, 0, 0], i * 8);
+    const ex = Math.abs(c) * hw + Math.abs(s) * hd + 1.8, ez = Math.abs(s) * hw + Math.abs(c) * hd + 1.8, id = i + 1; // + the deck, for the grass
+    for (let gz = Math.floor((z - ez - z0) / cell); gz <= Math.floor((z + ez - z0) / cell); gz++) for (let gx = Math.floor((x - ex - x0) / cell); gx <= Math.floor((x + ex - x0) / cell); gx++) {
+      if (gx < 0 || gz < 0 || gx >= N || gz >= N) continue; const o = (gz * N + gx) * 4;
+      if (!G[o] && !G[o + 1]) { G[o] = id >> 8; G[o + 1] = id & 255; } else if (!G[o + 2] && !G[o + 3]) { G[o + 2] = id >> 8; G[o + 3] = id & 255; }
+    }
+  });
+  const gt = new THREE.DataTexture(G, N, N, THREE.RGBAFormat, THREE.UnsignedByteType); gt.magFilter = gt.minFilter = THREE.NearestFilter; gt.generateMipmaps = false; gt.needsUpdate = true;
+  const pt = new THREE.DataTexture(P, 1024, P.length / 4096, THREE.RGBAFormat, THREE.FloatType); pt.magFilter = pt.minFilter = THREE.NearestFilter; pt.generateMipmaps = false; pt.needsUpdate = true;
+  HOLE_U.gHoles.value = gt; HOLE_U.gHoleP.value = pt; HOLE_U.gHoleR.value = [x0, z0, cell, N]; HOLE_U.gHoleOn.value = 1;
+}
+
 // onBeforeCompile patch for MeshStandardMaterial terrain. opts: { photoBias, procedural, edge: [x0, z0, x1, z1], edgeW }
 // edge: the photo's rectangle in world x/z, for the photo terrain (see setGroundTint)
 export function groundPatch(ground, opts = {}) {
@@ -115,7 +152,7 @@ export function groundPatch(ground, opts = {}) {
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
-    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] },
+    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U,
   };
   (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
@@ -124,8 +161,9 @@ export function groundPatch(ground, opts = {}) {
       .replace('#include <common>', '#include <common>\nvarying vec3 vWp; varying vec3 vWn;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz; vWn = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF;')
+      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF;\n' + HOLE_GLSL)
       .replace('#include <map_fragment>', /* glsl */`
+      if (poolHole(vWp.xz, 0.0) > 0.5) discard; // a pool here (setPoolHoles)
       #include <map_fragment>
       {
         vec3 Nw = normalize(vWn); float dd = length(vWp - cameraPosition);

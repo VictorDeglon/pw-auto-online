@@ -4,8 +4,11 @@
 // Planned once when the building registers (so the driveway and walk clear their ground before plants are placed);
 // drawn with the building's chunk.
 //   const Y = planYard(flat, roles, H, rnd)   H: { onRoad(x, z), inside(x, z) }   -> null or
-//     { fi, len, gar: { gx0, gw, side } | null, door, drive, walk (4-corner polys, metres-uv ready), fences: [[x0, z0, x1, z1]],
-//       ac: [x, z, rot], bins: [[x, z, rot, colour]], shrubs: [[x, z, scale]], tree: [x, z, species] | null }
+//     { fi, len, f: { ax, az, tx, tz, ox, oz } (the front wall: start, along, out), gar: { gx0, gw, side } | null, door,
+//       drive, walk (4-corner polys, metres-uv ready), stoop (the step at the door), beds: [poly] (planting beds along the
+//       front, edged with a mow curb), bed: 0 bark | 1 decomposed granite | 2 river rock, fences: [[x0, z0, x1, z1, gate?]],
+//       ac: [x, z, rot], bins: [[x, z, rot, colour]], shrubs: [[x, z, scale]], tree: [x, z, species] | null,
+//       mail: [x, z, rot, white?] | null (a mailbox on a post at the end of the drive) }
 export const BIN_COLORS = [0x1c1d1f, 0x1f4f9e, 0x2f6b34]; // trash, recycling, green waste
 
 export function planYard(flat, roles, H, rnd) {
@@ -17,7 +20,7 @@ export function planYard(flat, roles, H, rnd) {
   const ox = S > 0 ? tz : -tz, oz = S > 0 ? -tx : tx; // out of the house
   const pt = (u, d) => [ax + tx * u + ox * d, az + tz * u + oz * d];
   const clear = p => !H.inside(p[0], p[1]) && !H.onRoad(p[0], p[1]);
-  const Y = { fi, len: fl, gar: null, fences: [], bins: [], shrubs: [], tree: null };
+  const Y = { fi, len: fl, f: { ax, az, tx, tz, ox, oz }, gar: null, fences: [], bins: [], shrubs: [], tree: null, beds: [], bed: Math.floor(rnd() * 3), mail: null };
   if (fl > 8.5 && rnd() < 0.93) { const gw = fl > 16 ? 4.9 : 2.75, side = rnd() < 0.5 ? 1 : 0; Y.gar = { gw, side, gx0: side ? 0.9 : fl - 0.9 - gw }; }
   const G = Y.gar; Y.door = G ? (G.gx0 < 1 ? Math.min(G.gx0 + G.gw + 1.7, fl - 1.6) : Math.max(G.gx0 - 2.7, 0.6)) : fl * 0.5 - 0.48;
   // how far straight out from the wall at u the street is (0: none within reach, or something's in the way)
@@ -28,13 +31,20 @@ export function planYard(flat, roles, H, rnd) {
     if (toDrive) { const de = G.gx0 < 1 ? G.gx0 + G.gw + 0.35 : G.gx0 - 0.35, a = Math.min(uc, de), b = Math.max(uc, de); Y.walk = [pt(uc - 0.6, 0.02), pt(uc + 0.6, 0.02), pt(uc + 0.6, 2.2), pt(uc - 0.6, 2.2)]; Y.walk2 = [pt(a, 1.6), pt(b, 1.6), pt(b, 2.8), pt(a, 2.8)]; }
     else if (d > 1) Y.walk = [pt(uc - 0.6, 0.02), pt(uc + 0.6, 0.02), pt(uc + 0.6, d), pt(uc - 0.6, d)];
   }
+  // the step at the door, and planting beds along the front wall wherever the garage, the step and the walk aren't
+  Y.stoop = [pt(Y.door - 0.3, 0), pt(Y.door + 1.26, 0), pt(Y.door + 1.26, 1.3), pt(Y.door - 0.3, 1.3)];
+  { const cut = [[Y.door - 0.45, Y.door + 1.41]]; if (G) cut.push([G.gx0 - 0.45, G.gx0 + G.gw + 0.45]); cut.sort((a, b) => a[0] - b[0]);
+    let u = 0.15; const D = 1.15;
+    for (const [c0, c1] of [...cut, [fl - 0.15, 1e9]]) { if (c0 - u > 1.2 && clear(pt((u + c0) / 2, D)) && clear(pt(u, D)) && clear(pt(c0, D))) Y.beds.push([pt(u, 0), pt(c0, 0), pt(c0, D), pt(u, D)]); u = Math.max(u, c1); }
+  }
+  if (Y.drive && rnd() < 0.7) { const d = Math.hypot(Y.drive[3][0] - Y.drive[0][0], Y.drive[3][1] - Y.drive[0][1]), uM = G.gx0 < 1 ? G.gx0 + G.gw + 0.75 : G.gx0 - 0.75, p = pt(uM, d - 0.55); if (clear(p)) Y.mail = [p[0], p[1], Math.atan2(ox, oz), rnd() < 0.35]; }
   // side yards: a block wall with a gate from each front corner (set back 1.5 m) out to the neighbour, then back along
   // the property line
   for (const [u, dir] of [[0, -1], [fl, 1]]) {
     const s = pt(u, -1.5); let e = s, k = 0;
     for (k = 1; k <= 12; k++) { const q = [s[0] + tx * dir * k * 0.5, s[1] + tz * dir * k * 0.5]; if (!clear(q)) break; e = q; }
     if (k < 3) continue;
-    Y.fences.push([s[0], s[1], e[0], e[1]]);
+    Y.fences.push([s[0], s[1], e[0], e[1], 1]); // 1: the side gate is in this one, next to the house
     let b = e; for (k = 1; k <= 30; k++) { const q = [e[0] - ox * k * 0.5, e[1] - oz * k * 0.5]; if (!clear(q)) break; b = q; }
     if (k > 4) Y.fences.push([e[0], e[1], b[0], b[1]]);
   }
@@ -55,4 +65,4 @@ export function planYard(flat, roles, H, rnd) {
   return Y;
 }
 // a yard's paving and walls as polygons for clearing the ground (driveway, walks)
-export function yardPaving(Y) { return [Y.drive, Y.walk, Y.walk2].filter(Boolean).map(q => q.flat()); }
+export function yardPaving(Y) { return [Y.drive, Y.walk, Y.walk2, Y.stoop, ...Y.beds].filter(Boolean).map(q => q.flat()); }

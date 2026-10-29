@@ -38,6 +38,7 @@ import {
   galvanizedMetalMat,
   concreteCurbMat
 } from './fixtures.js';
+import { brandLogo, brandName } from './brands.js';
 
 export function buildMajorPlazas(ctx) {
   const { THREE, scene, player, heightAt, addInteract, notify, sfx } = ctx;
@@ -63,6 +64,7 @@ export function buildMajorPlazas(ctx) {
 
   // Helper to create illuminated brand storefront sign
   function createStoreSign(logoTex, width = 6.2, height = 1.6) {
+    if (logoTex && logoTex.userData && logoTex.userData.brandKey) logoTex = brandLogo(THREE, logoTex.userData.brandKey, width / height) || logoTex; // drawn to this sign's shape
     const signGroup = new THREE.Group();
     // Backing Tray
     const tray = new THREE.Mesh(new THREE.BoxGeometry(width + 0.2, height + 0.2, 0.18), darkBronzeFrameMat);
@@ -75,7 +77,7 @@ export function buildMajorPlazas(ctx) {
       roughness: 0.25
     });
     const face = new THREE.Mesh(new THREE.PlaneGeometry(width, height), signMat);
-    face.position.z = 0.1;
+    face.position.z = -0.1; face.rotation.y = Math.PI; // the storefronts face -z: the lit face goes on the street side of the tray
     signGroup.add(tray, face);
     return signGroup;
   }
@@ -185,7 +187,7 @@ export function buildMajorPlazas(ctx) {
         width: 2.8,
         height: 2.7,
         frameMat: darkBronzeFrameMat,
-        storeName: st.name
+        storeName: brandName(st.key) || st.name
       });
 
       // Interior Furnishings for each store bay
@@ -325,7 +327,7 @@ export function buildMajorPlazas(ctx) {
         width: 2.8,
         height: 2.7,
         frameMat: darkBronzeFrameMat,
-        storeName: st.name
+        storeName: brandName(st.key) || st.name
       });
     });
   }
@@ -429,7 +431,7 @@ export function buildMajorPlazas(ctx) {
         width: 3.0,
         height: 2.8,
         frameMat: darkBronzeFrameMat,
-        storeName: st.name
+        storeName: brandName(st.key) || st.name
       });
     });
   }
@@ -543,7 +545,7 @@ export function buildMajorPlazas(ctx) {
         width: 3.2,
         height: 2.9,
         frameMat: darkBronzeFrameMat,
-        storeName: st.name
+        storeName: brandName(st.key) || st.name
       });
     });
   }
@@ -578,7 +580,7 @@ export function buildMajorPlazas(ctx) {
       maxZ: cz + bD / 2 - 0.4,
       floorY,
       ceilY: floorY + bH,
-      name: 'Costco Wholesale & Tech Center'
+      name: 'Costko Wholesale & Tech Center'
     });
 
     // Floor & Ceiling
@@ -650,7 +652,7 @@ export function buildMajorPlazas(ctx) {
       width: 4.2,
       height: 3.4,
       frameMat: darkBronzeFrameMat,
-      storeName: 'Costco Wholesale'
+      storeName: 'Costko Wholesale'
     });
 
     // 2. Costco Tire Service Bays (Left Wing)

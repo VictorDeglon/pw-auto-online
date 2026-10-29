@@ -16,6 +16,7 @@
 //    anti-aliased alpha cut that keeps thin blades from vanishing with distance, and a fade that shrinks the clumps
 //    into the ground at the edge of the ring instead of dithering them away.
 // Beyond the brush radius, scatterShrubs() adds impostor shrubs (src/nature/vegetation.js) on wild land map-wide.
+import { HOLE_U, HOLE_GLSL } from './ground.js';
 
 // ---------------------------------------------------------------- the cover map
 // opts: { bounds: [x0, z0, x1, z1], drawAerial(ctx), roads, buildings, houses, pools, areas, mpp }
@@ -256,7 +257,7 @@ const VS_BODY = /* glsl */`
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
   float thin = uKind < 0.5 || uKind > 1.5 ? mix(1.0, 0.35, smoothstep(uR * 0.3, uR, dist)) : 1.0;
   vFade = 1.0 - smoothstep(uR * 0.6, uR, dist);
-  float keep = step(h3, dens * thin) * step(0.001, vFade);
+  float keep = step(h3, dens * thin) * step(0.001, vFade) * (1.0 - poolHole(wp, 1.6)); // nothing grows in a pool or on its deck
   float ang = h1 * 6.2831853, cs = cos(ang), sn = sin(ang);
   vec3 p = position;
   float sc;
@@ -281,7 +282,7 @@ const VS_BODY = /* glsl */`
   // colour: lawn green to golden dry grass; brush from dark chaparral to grey-green sage
   float t = clamp(position.y, 0.0, 1.0);
   if (uKind < 0.5) { // irrigated lawn: green, a little patchy
-    vec3 lawn = vec3(0.055, 0.12, 0.022), tired = vec3(0.11, 0.12, 0.045);
+    vec3 lawn = vec3(0.075, 0.145, 0.032), tired = vec3(0.13, 0.14, 0.055); // as light as the turf under it: blades, not dark tufts
     vGC = mix(lawn, tired, smoothstep(0.5, 0.9, gh(floor(wp * 0.25))) * 0.5) * (0.85 + 0.3 * h3);
   } else if (uKind > 1.5) { // wild grass: green in spring, gold through summer and fall
     vec3 gold = vec3(0.36, 0.27, 0.12), straw = vec3(0.45, 0.38, 0.22), olive = vec3(0.13, 0.14, 0.05);
@@ -296,9 +297,9 @@ const VS_BODY = /* glsl */`
 `;
 function patch(mat, U, kind) {
   mat.onBeforeCompile = sh => {
-    Object.assign(sh.uniforms, U); sh.uniforms.uKind = { value: kind };
+    Object.assign(sh.uniforms, U, HOLE_U); sh.uniforms.uKind = { value: kind };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\n' + VS_HEAD)
+      .replace('#include <common>', '#include <common>\n' + HOLE_GLSL + VS_HEAD)
       .replace('#include <beginnormal_vertex>', kind !== 1
         ? 'vec3 objectNormal = normalize(vec3(0.0, 1.0, 0.0) + 0.18 * normal);' // lit like the ground it grows from
         : 'vec3 objectNormal = normalize(vec3(position.x, position.y - 0.35, position.z) + vec3(0.0, 0.4, 0.0));')
@@ -315,7 +316,7 @@ function patch(mat, U, kind) {
           if (card.a * (1.0 + mip * 0.3) < 0.5) discard;
         }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb *= vGC * (uCardLum > 0.0 ? vec3(dot(card.rgb, vec3(0.299, 0.587, 0.114)) / uCardLum) : card.rgb * 2.0) * mix(${kind > 0.5 && kind < 1.5 ? '0.6, 1.1' : '0.55, 1.12'}, smoothstep(0.0, 0.8, vLeaf.y)); // the scan's light and shade, darker at the root`);
+        diffuseColor.rgb *= vGC * (uCardLum > 0.0 ? vec3(dot(card.rgb, vec3(0.299, 0.587, 0.114)) / uCardLum) : card.rgb * 2.0) * mix(${kind === 0 ? '0.86, 1.08' : kind > 0.5 && kind < 1.5 ? '0.6, 1.1' : '0.55, 1.12'}, smoothstep(0.0, 0.8, vLeaf.y)); // the scan's light and shade, darker at the root (a mown lawn hardly: its roots are in the thatch)`);
   };
   mat.customProgramCacheKey = () => 'groundcover3' + kind;
 }

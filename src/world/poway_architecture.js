@@ -30,6 +30,7 @@
  */
 import * as THREE from 'three';
 import { buildMajorPlazas } from './plazas/plaza_builder.js';
+import { brandLogo } from './plazas/brands.js';
 
 export function createPowayArchitecture(ctx) {
   const { THREE, scene, camera, player, heightAt, sfx, notify, addInteract, hour } = ctx;
@@ -56,91 +57,9 @@ export function createPowayArchitecture(ctx) {
   }
 
   // --- Brand Logos (Procedural Canvas Textures) ---
-  const targetLogoTex = getCanvasTexture('target_logo', (g, w, h) => {
-    g.fillStyle = '#cc0000';
-    g.fillRect(0, 0, w, h);
-    // Outer white ring
-    g.fillStyle = '#ffffff';
-    g.beginPath(); g.arc(w / 2, h / 2, w * 0.42, 0, Math.PI * 2); g.fill();
-    // Middle red ring
-    g.fillStyle = '#cc0000';
-    g.beginPath(); g.arc(w / 2, h / 2, w * 0.28, 0, Math.PI * 2); g.fill();
-    // Center white dot
-    g.fillStyle = '#ffffff';
-    g.beginPath(); g.arc(w / 2, h / 2, w * 0.14, 0, Math.PI * 2); g.fill();
-  });
-
-  const walmartLogoTex = getCanvasTexture('walmart_logo', (g, w, h) => {
-    g.fillStyle = '#0071dc'; // Walmart signature blue
-    g.fillRect(0, 0, w, h);
-    // Yellow 6-spark star
-    g.save();
-    g.translate(w / 2, h / 2);
-    g.fillStyle = '#ffc220';
-    for (let i = 0; i < 6; i++) {
-      g.beginPath();
-      g.roundRect ? g.roundRect(-14, -w * 0.44, 28, w * 0.28, 12) : g.rect(-14, -w * 0.44, 28, w * 0.28);
-      g.fill();
-      g.rotate(Math.PI / 3);
-    }
-    g.restore();
-  });
-
-  const costcoLogoTex = getCanvasTexture('costco_logo', (g, w, h) => {
-    g.fillStyle = '#ffffff';
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = '#e31837'; // Red
-    g.font = 'bold 120px "Arial Black", Impact, sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('Costco', w / 2, h * 0.38);
-
-    g.fillStyle = '#005baa'; // Blue
-    g.font = 'bold 54px Arial, sans-serif';
-    g.letterSpacing = '8px';
-    g.fillText('WHOLESALE', w / 2, h * 0.72);
-  }, 1024, 512);
-
-  const subwayLogoTex = getCanvasTexture('subway_logo', (g, w, h) => {
-    g.fillStyle = '#005a36'; // Subway green
-    g.fillRect(0, 0, w, h);
-    g.font = 'italic 900 130px "Arial Black", sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    // Green and yellow split text
-    g.fillStyle = '#ffffff';
-    g.fillText('SUB', w * 0.32, h / 2);
-    g.fillStyle = '#ffc220';
-    g.fillText('WAY', w * 0.68, h / 2);
-  }, 1024, 256);
-
-  const greatClipsLogoTex = getCanvasTexture('great_clips_logo', (g, w, h) => {
-    g.fillStyle = '#005ca9'; // Great Clips Blue
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = '#ffffff';
-    g.font = 'bold 96px "Arial Black", sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('Great Clips', w / 2, h * 0.45);
-    g.font = 'bold 36px Arial, sans-serif';
-    g.fillStyle = '#93c5fd';
-    g.fillText('IT\'S GONNA BE GREAT', w / 2, h * 0.78);
-  }, 1024, 256);
-
-  const starbucksLogoTex = getCanvasTexture('starbucks_logo', (g, w, h) => {
-    g.fillStyle = '#00704a'; // Starbucks Green
-    g.fillRect(0, 0, w, h);
-    // White ring
-    g.strokeStyle = '#ffffff';
-    g.lineWidth = 14;
-    g.beginPath(); g.arc(w / 2, h / 2, w * 0.42, 0, Math.PI * 2); g.stroke();
-    // Inner Siren Star
-    g.fillStyle = '#ffffff';
-    g.font = 'bold 160px sans-serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('★', w / 2, h / 2);
-  });
+  // the chains' marks, as parodies (./plazas/brands.js): drawn to the shape of what they go on
+  const targetLogoTex = brandLogo(THREE, 'target_mark', 1), walmartLogoTex = brandLogo(THREE, 'walmart_mark', 1), costcoLogoTex = brandLogo(THREE, 'costco', 2);
+  const subwayLogoTex = brandLogo(THREE, 'subway', 4), greatClipsLogoTex = brandLogo(THREE, 'great_clips', 4), starbucksLogoTex = brandLogo(THREE, 'starbucks', 1);
 
   // Base Physical Materials
   const concreteFloorMat = new THREE.MeshStandardMaterial({ color: 0x8e8d88, roughness: 0.4, metalness: 0.1 });
@@ -384,6 +303,7 @@ export function createPowayArchitecture(ctx) {
     });
     const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(16.0, 8.0), signMat);
     signMesh.position.set(0, bH - 1.8, -bD / 2 - 0.4);
+    signMesh.rotation.y = Math.PI; // a plane faces +z: turn it to the street (-z)
     bGroup.add(signMesh);
 
     // --- FURNISHED INTERIOR: Massive Pallet Rack Towers & Wholesale Staging ---
@@ -607,6 +527,7 @@ export function createPowayArchitecture(ctx) {
     });
     const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), logoMat);
     logoMesh.position.set(0, bH + 0.65, -bD / 2 - 0.1);
+    logoMesh.rotation.y = Math.PI; // a plane faces +z: turn it to the street (-z)
     bGroup.add(logoMesh);
 
     // --- FURNISHED INTERIOR ---
@@ -710,6 +631,7 @@ export function createPowayArchitecture(ctx) {
     });
     const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.35), signMat);
     signMesh.position.set(0, bH + 0.7, -bD / 2 - 0.1);
+    signMesh.rotation.y = Math.PI; // a plane faces +z: turn it to the street (-z)
     bGroup.add(signMesh);
 
     // --- FURNISHED INTERIOR: Styling Stations & Barber Chairs ---

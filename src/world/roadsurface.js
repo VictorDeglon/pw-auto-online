@@ -87,7 +87,7 @@ export class RoadSurface {
   _query(x, z, out) {
     const gx = Math.floor((x - this.x0) / CELL), gz = Math.floor((z - this.z0) / CELL);
     if (gx < 0 || gz < 0 || gx >= this.nx || gz >= this.nz) return null;
-    const ri = this.cells[gz * this.nx + gx] - 1; if (ri < 0) return null;
+    const ri = this.cells[gz * this.nx + gx] - 1; if (ri < 0 || !this.roads[ri]) return null; // (an outer tile's road list can change under its raster)
     const p = this.roads[ri][3], q = out || this._q, c = this._c; let best = 1e9, along = 0, cum = 0;
     for (let k = 0; k < p.length - 2; k += 2) {
       segClosest(x, z, p[k], p[k + 1], p[k + 2], p[k + 3], c);
@@ -127,7 +127,7 @@ export class RoadSurface {
     if (this.curb[ri]) return q.d > w2 - 0.5 && q.d <= w2 + sw + 0.5 ? { kind: 'walk', off: w2 + sw / 2 } : null;
     const ts = this.trailSide(ri); if (!ts) return null;
     const side = Math.sign((x - q.cx) * -q.tz + (z - q.cz) * q.tx); if (side !== ts) return null;
-    return q.d > w2 && q.d <= w2 + sw + 2.6 ? { kind: 'trail', off: w2 + sw + 1.05 } : null;
+    return q.d > w2 && q.d <= w2 + sw + 2.8 ? { kind: 'trail', off: w2 + sw + 1.4 } : null;
   }
   // height of the built surface at (x, z) given the natural terrain function; null when off any corridor
   surfaceAt(x, z, terrainAt) {

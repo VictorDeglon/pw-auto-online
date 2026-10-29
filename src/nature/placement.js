@@ -20,8 +20,10 @@ const TINT = {
   chapbig: [0.60, 0.66, 0.52], chap: [0.62, 0.67, 0.53], sage: [0.98, 0.95, 0.86], opuntia: [1, 1, 1], yucca: [1, 1, 1], agave: [1, 1, 1],
 };
 // max height (m) a species is allowed to reach when scaled to fit the photo canopy
-const MAXH = { oak: 13, olive: 8, scruboak: 6, slender: 15, jacaranda: 13, eucalyptus: 34, palm_fan: 24, palm_date: 13, pepper: 12, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
+const MAXH = { oak: 16, olive: 9, scruboak: 6, slender: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
 const MINS = { sage: 1.3, chap: 1.0 }; // the scans of these are small; never shrink them further
+// mature heights (m): a street tree here is usually full grown; the photo's canopy can understate it
+const MINH = { eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 9, scruboak: 3 };
 
 function pickW(rnd, table) { // [[name, weight], ...]
   let t = 0; for (const e of table) t += e[1];
@@ -86,6 +88,7 @@ export function assignPlants(D, filt, ctx, veg, seed = 1234) {
     const lib = veg.lib.species.get(sp), vi = Math.floor(rnd() * lib.variants.length), V = lib.variants[vi];
     let scale = TREE_SPECIES.has(sp) && sp.startsWith('palm') ? 0.8 + rnd() * 0.35 : (2 * r) / Math.max(0.3, V.width);
     scale = Math.min(scale, (MAXH[want] || MAXH[sp] || 12) / Math.max(0.3, V.height));
+    if (MINH[want] && TREE_SPECIES.has(want)) scale = Math.max(scale, (MINH[want] * (0.85 + rnd() * 0.5)) / Math.max(0.3, V.height));
     scale = Math.max(scale, MINS[sp] || 0.5) * (0.92 + rnd() * 0.16);
     const tint = TINT[want] || TINT[sp] || [1, 1, 1], b = 0.88 + rnd() * 0.24, h = rnd() * 0.08 - 0.04;
     const y = ctx.heightAt(x, z) - 0.08 * scale;

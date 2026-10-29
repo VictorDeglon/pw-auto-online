@@ -4,6 +4,7 @@
  * HVAC details, and authentic commercial brand logos.
  */
 import * as THREE from 'three';
+import { brandLogo } from './brands.js';
 
 const textureCache = new Map();
 
@@ -276,6 +277,7 @@ export function getHVACGrilleTex() {
 
 const LOGO_SCALE = 0.5; // store signs: 512 x 192 is plenty at 12 m wide, and a quarter of the upload
 export function getBrandLogoTex(storeKey) {
+  const parody = brandLogo(THREE, storeKey); if (parody) return parody; // ./brands.js: the parody of each chain
   switch (storeKey) {
     // --- PLAZA 1: POWAY TOWN CENTER / CREEKSIDE ---
     case 'habit_burger':

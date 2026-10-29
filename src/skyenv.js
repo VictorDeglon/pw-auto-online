@@ -9,21 +9,23 @@
 // would rival the sun. Its diffuse part has its own intensity (ENV.diffuse, like Unreal's sky light intensity) while
 // reflections keep the sky as bright as it looks: three's IBL irradiance is patched to multiply by it.
 //   const ENV = createSkyEnv(THREE, renderer, SKYFX, 128)   scene.environment = ENV.texture
-//   ENV.update(dt)   every frame (cheap unless it's refreshing)   ENV.diffuse = k
+//   ENV.update(dt)   every frame (cheap unless it's refreshing)   ENV.diffuse = k   ENV.sat = k
 export function createSkyEnv(THREE, renderer, SKYFX, size = 128) {
   const U = SKYFX.U;
   // Rough surfaces also lose most of their reflection to their own micro-shadowing (Unreal takes it from AO as
   // "specular occlusion"); without that a dry road or hillside seen at a low angle turns sky-coloured.
-  const DIFF = { value: 0.4 }, ROUGH = { value: 0.25 };
+  // Shade isn't lit by the open sky alone: light bounced off sunny walls, ground and trees mixes in, so the sky light in
+  // the shade is far less blue (or, at dusk, violet) than the sky itself. ENV.sat scales the diffuse part's colour.
+  const DIFF = { value: 0.4 }, ROUGH = { value: 0.25 }, SAT = { value: 0.5 };
   const C = THREE.ShaderChunk;
   C.envmap_physical_pars_fragment = C.envmap_physical_pars_fragment
-    .replace('#ifdef USE_ENVMAP', '#ifdef USE_ENVMAP\n\tuniform float envDiffuse, envRough;')
-    .replace('return PI * envMapColor.rgb * envMapIntensity;', 'return PI * envMapColor.rgb * envMapIntensity * envDiffuse;')
+    .replace('#ifdef USE_ENVMAP', '#ifdef USE_ENVMAP\n\tuniform float envDiffuse, envRough, envSat;')
+    .replace('return PI * envMapColor.rgb * envMapIntensity;', 'return PI * mix( vec3( dot( envMapColor.rgb, vec3( .2126, .7152, .0722 ) ) ), envMapColor.rgb, envSat ) * envMapIntensity * envDiffuse;')
     .replace('return envMapColor.rgb * envMapIntensity;', 'return envMapColor.rgb * envMapIntensity * mix( 1.0, envRough, roughness * roughness );');
   if (!C.envmap_physical_pars_fragment.includes('* envDiffuse;') || !C.envmap_physical_pars_fragment.includes('envRough, roughness')) console.warn('[skyenv] IBL patch did not apply');
   const base = THREE.Material.prototype.onBuild;
   THREE.Material.prototype.onBuild = function (object, parameters, r) {
-    if (parameters.uniforms) { parameters.uniforms.envDiffuse = DIFF; parameters.uniforms.envRough = ROUGH; }
+    if (parameters.uniforms) { parameters.uniforms.envDiffuse = DIFF; parameters.uniforms.envRough = ROUGH; parameters.uniforms.envSat = SAT; }
     return base.call(this, object, parameters, r);
   };
   const cubeRT = new THREE.WebGLCubeRenderTarget(size, { type: THREE.HalfFloatType, generateMipmaps: false });
@@ -69,7 +71,7 @@ export function createSkyEnv(THREE, renderer, SKYFX, size = 128) {
   let step = -1, since = 0;
   return {
     texture, target,
-    get diffuse() { return DIFF.value; }, set diffuse(k) { DIFF.value = k; }, U: { envDiffuse: DIFF, envRough: ROUGH },
+    get diffuse() { return DIFF.value; }, set diffuse(k) { DIFF.value = k; }, get sat() { return SAT.value; }, set sat(k) { SAT.value = k; }, U: { envDiffuse: DIFF, envRough: ROUGH, envSat: SAT },
     // ground: { near, far, haze } as THREE.Color (radiance of the ground below and toward the horizon, and the haze)
     setGround(near, far, haze) { GU.gNear.value.copy(near); GU.gFar.value.copy(far); GU.gHaze.value.copy(haze); },
     update(dt, force = false) {
