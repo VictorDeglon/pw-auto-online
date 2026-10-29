@@ -70,7 +70,10 @@ export async function loadHumans(opts = {}) {
   const free = a => !RESERVED.has(a.name) && !SWIM(a.name); // story / dealer skins and swimwear never join the random pools
   const police = all.filter(a => a.kind === 'police' && free(a)).map(a => a.name);
   const plain = all.filter(a => a.kind === 'business' && free(a)).map(a => a.name);
-  const civ = all.filter(a => a.kind !== 'police' && a.kind !== 'military' && a.name !== man.player && free(a)).map(a => a.name);
+  // the crowd is townspeople: everyday and business clothes. Uniforms (fire, medical, construction, pilots, chefs,
+  // security, delivery, gardeners) and athletes are roles, loaded when someone in that role is needed (pickAvatar)
+  const civ = all.filter(a => (a.kind === 'civilian' || a.kind === 'business') && a.name !== man.player && free(a)).map(a => a.name);
+  HUMANS.roles = {}; for (const a of all) if (!['civilian', 'business', 'police', 'military'].includes(a.kind) && free(a)) (HUMANS.roles[a.kind] || (HUMANS.roles[a.kind] = [])).push(a.name);
   HUMANS.swimAll = all.filter(a => SWIM(a.name)).map(a => a.name);
   for (let i = civ.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [civ[i], civ[j]] = [civ[j], civ[i]]; }
   const pools = { civ: civ.slice(0, poolSize), police };
@@ -142,6 +145,12 @@ export function loadSwim() { if (HUMANS.swimLoading || !HUMANS.swimAll) return; 
 export function pickAvatar(kind) {
   if (kind === 'player') return HUMANS.player;
   if (kind === 'swim') { const sw = HUMANS.pools.swim; if (sw.length) return sw[Math.floor(Math.random() * sw.length)]; kind = 'civ'; }
+  const role = HUMANS.roles && HUMANS.roles[kind];
+  if (role) { // a uniform: from those already loaded; the rest load in the background for next time
+    const have = role.filter(n => HUMANS.proto.has(n)); if (!role.asked) { role.asked = true; for (const n of role) ensureAvatar(n); }
+    if (have.length) return have[Math.floor(Math.random() * have.length)];
+    kind = 'civ';
+  }
   const pool = HUMANS.pools[kind] && HUMANS.pools[kind].length ? HUMANS.pools[kind] : HUMANS.pools.civ;
   return pool[Math.floor(Math.random() * pool.length)];
 }

@@ -188,8 +188,12 @@ export async function loadCards(THREE, base = 'assets/pbr/atlas/') {
   const lum = im => { const d = im.data; let s = 0, n = 0; const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; for (let i = 0; i < d.length; i += 4 * 7) if (d[i + 3] > 128) { s += 0.299 * lin(d[i]) + 0.587 * lin(d[i + 1]) + 0.114 * lin(d[i + 2]); n++; } return n ? s / n : 0.2; };
   const [lawn, oats, sheet] = await Promise.all([atlasImage(base, 'foliage001'), atlasImage(base, 'foliage004'), atlasImage(base, 'leafset013')]);
   const oatsTop = new ImageData(new Uint8ClampedArray(oats.data.buffer.slice(0, oats.width * (oats.height >> 1) * 4)), oats.width, oats.height >> 1); // the top row of seed heads
+  // wild grass: a clump of blades with oat heads standing out of it (the oats alone read as bare sticks)
+  const tall = (() => { const W = 1024, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d', { willReadFrequently: true });
+    const bl = imageCanvas(lawn), oc = imageCanvas(oatsTop); g.filter = 'saturate(0.55) sepia(0.35) brightness(0.95)'; g.drawImage(bl, 0, H * 0.18, W, H * 0.82); g.drawImage(bl, W * 0.12, H * 0.3, W * 0.8, H * 0.7); g.filter = 'none'; g.drawImage(oc, 0, 0, W, H);
+    return g.getImageData(0, 0, W, H); })();
   const brush = leafCard(imageCanvas(sheet), rng(23));
-  return { lawn: cardTex(THREE, lawn), oats: cardTex(THREE, oatsTop), brush: cardTex(THREE, brush), lum: [lum(lawn), lum(brush), lum(oatsTop)] };
+  return { lawn: cardTex(THREE, lawn), oats: cardTex(THREE, tall), brush: cardTex(THREE, brush), lum: [lum(lawn), lum(brush), lum(tall)] };
 }
 
 // ---------------------------------------------------------------- card textures, drawn once (no downloads)

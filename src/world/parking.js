@@ -52,6 +52,17 @@ export function createParking(H) {
       areas.forEach((a, i) => { if (a[0] === 2 && area(a[1]) > 250 && area(a[1]) < 60000) layout(a[1], i); });
       return stalls.length;
     },
+    // stalls outside the lots: driveways (home: full overnight, emptier through the workday; cars pull in from the
+    // street and back out) and curbside spaces (kerb: no comings and goings, they fill and empty out of sight).
+    // list: [{ x, z, rot, ax, az (where a car turns in from), entry ({ x, z, tx, tz } on the street, or null), home, kerb }]
+    addStalls(list) {
+      for (const o of list) {
+        const st = { i: stalls.length, x: o.x, z: o.z, rot: o.rot, ax: o.ax ?? o.x, az: o.az ?? o.z, home: !!o.home, kerb: !!o.kerb, car: null };
+        st.lot = { entry: o.entry || null, stalls: [st], cx: o.x, cz: o.z, home: st.home };
+        stalls.push(st); const k = gkey(o.x, o.z); (grid.get(k) || grid.set(k, []).get(k)).push(st);
+      }
+      return stalls.length;
+    },
     // ---- occupancy around the focus: parked cars appear in stalls as you come near, by time of day and how busy the area is
     _t: 0, _arr: 0,
     update(dt, f) {
@@ -66,7 +77,7 @@ export function createParking(H) {
       for (const st of near) {
         if (budget <= 0) break; if (st.car && !st.car.removed) continue;
         const d = Math.hypot(st.x - f.x, st.z - f.z); if (d < 45 || d > 240) continue; // nobody pops into view next to you
-        const want = day * H.busy(st.x, st.z), r = rng(st.i * 7919 + Math.floor(h))();
+        const want = st.home ? (h < 7 || h >= 20 ? 0.88 : h < 9 || h >= 17 ? 0.62 : 0.38) : st.kerb ? 0.3 + 0.2 * (h < 8 || h >= 18 ? 1 : 0) : day * H.busy(st.x, st.z), r = rng(st.i * 7919 + Math.floor(h))();
         if (r < want) { const v = H.spawnParked(st.x, st.z, st.rot, st); if (v) { st.car = v; v.stall = st; budget--; } }
       }
       // dynamic: now and then a car from traffic turns into a lot near you and parks, or a parked car leaves

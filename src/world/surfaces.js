@@ -20,11 +20,12 @@ export const STYLE = { house: 0, shop: 1, big: 2, office: 3, shed: 4, apartment:
 export const ROLE = { side: 0, front: 1, back: 2 };
 
 const SETS = ['asphalt', 'asphalt_old', 'concrete', 'concrete_stain', 'stucco', 'stucco_rough', 'tiltup', 'brick', 'siding',
-  'roof_clay', 'roof_tile', 'roof_flat', 'gravel'];
+  'roof_clay', 'roof_tile', 'roof_flat', 'gravel', 'trail', 'wood'];
 export async function loadSurfaces(THREE, loadTex, base = 'assets/pbr/') {
   const T = {};
-  await Promise.all(SETS.flatMap(n => [['c', true], ['n', false], ['arm', false]].map(([k, srgb]) =>
-    loadTex(`${base}${n}_${k}.webp`, srgb).then(t => { (T[n] || (T[n] = {}))[k] = t; }))));
+  await Promise.all([...SETS.flatMap(n => [['c', true], ['n', false], ['arm', false]].map(([k, srgb]) =>
+    loadTex(`${base}${n}_${k}.webp`, srgb).then(t => { (T[n] || (T[n] = {}))[k] = t; }))),
+    ...[['c', true], ['n', false]].map(([k, srgb]) => loadTex(`${base}lawn_${k}.webp`, srgb).then(t => { (T.lawn || (T.lawn = {}))[k] = t; }))]);
   return createSurfaces(THREE, T);
 }
 
@@ -345,6 +346,15 @@ function avgLum(t) {
     return Math.max(0.05, s / 256);
   } catch (e) { return 0.3; }
 }
+// the mean linear colour of a texture
+function avgColor(t) {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 16; const g = c.getContext('2d'); g.drawImage(t.image, 0, 0, 16, 16);
+    const d = g.getImageData(0, 0, 16, 16).data, lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const m = [0, 0, 0]; for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) m[k] += lin(d[i + k]);
+    return m.map(v => Math.max(0.02, v / 256));
+  } catch (e) { return [0.3, 0.2, 0.15]; }
+}
 export function createSurfaces(THREE, T) {
   const U = { uNight: { value: 0 }, uDayLum: { value: 1 } };
   const S = { U, T };
@@ -363,5 +373,14 @@ export function createSurfaces(THREE, T) {
     flat: roofMaterial(THREE, T.roof_flat, U, { tile: 3, desat: 0.6, depth: 0.01 }),
     gravel: roofMaterial(THREE, T.gravel, U, { tile: 2.5, desat: 0.3, depth: 0.015 }),
   };
+  // country trails (decomposed granite), post-and-rail fences, clipped hedges; uv in metres
+  const rep = (set, m) => { for (const k of ['c', 'n', 'arm']) if (set && set[k]) set[k].repeat.set(1 / m, 1 / m); };
+  rep(T.trail, 2.5); rep(T.wood, 1.6); rep(T.lawn, 0.9);
+  S.trail = new THREE.MeshStandardMaterial({ map: T.trail.c, normalMap: T.trail.n, roughnessMap: T.trail.arm, vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+  S.wood = new THREE.MeshStandardMaterial({ map: T.wood.c, normalMap: T.wood.n, roughnessMap: T.wood.arm, vertexColors: true, roughness: 1 });
+  S.hedge = new THREE.MeshStandardMaterial({ map: T.lawn.c, normalMap: T.lawn.n, normalScale: new THREE.Vector2(1.5, 1.5), vertexColors: true, roughness: 0.95 });
+  // what a roof material shows on average (linear), so a roof can be tinted to the colour of the real roof in the photo
+  const ct = avgColor(T.roof_tile.c), lt = (0.299 * ct[0] + 0.587 * ct[1] + 0.114 * ct[2]) * 1.15;
+  S.roofMean = { clay: avgColor(T.roof_clay.c), tile: [lt, lt, lt], shingle: [0.8, 0.8, 0.8] };
   return S;
 }

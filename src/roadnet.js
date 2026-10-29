@@ -16,6 +16,7 @@ export function lanesPerDir(e) {
 // Two-way roads: slack beyond the travel lanes is split between a centre gap (turn lane/median) and the shoulder.
 export function laneOffset(e, lane) {
   const n = lanesPerDir(e);
+  if (e.t === 4 && !e.ow && n === 1 && e.w >= 9.5) return 1.6; // a residential street: drive the middle, clear of the cars parked at the curb
   if (e.ow) { const lw = clamp(e.w / n, 2.8, 3.7); return (lane - (n - 1) / 2) * lw; }
   const lw = clamp(e.w / 2 / n, 2.8, 3.7), base = Math.max(0, e.w / 2 - n * lw) * 0.5;
   return base + (lane + 0.5) * lw;

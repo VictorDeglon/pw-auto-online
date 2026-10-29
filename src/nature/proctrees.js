@@ -29,7 +29,7 @@ function leafBlobs(cv) {
     let x0 = N, y0 = N, x1 = 0, y1 = 0, cnt = 0; const st = [s]; seen[s] = 1;
     while (st.length) { const q = st.pop(), x = q % N, y = (q / N) | 0; cnt++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue; const k = ny * N + nx; if (!seen[k] && d[k * 4 + 3] >= 128) { seen[k] = 1; st.push(k); } } }
-    if (cnt > 6) out.push([x0 / N * cv.width, y0 / N * cv.height, (x1 - x0 + 1) / N * cv.width, (y1 - y0 + 1) / N * cv.height]);
+    if (cnt > 6 && cnt < N * N * 0.25) out.push([x0 / N * cv.width, y0 / N * cv.height, (x1 - x0 + 1) / N * cv.width, (y1 - y0 + 1) / N * cv.height]); // (a sheet whose background reads as opaque is one huge blob: not a leaf)
   }
   return out;
 }
@@ -59,7 +59,7 @@ function twigCard(sheet, blobs, r, o = {}) {
     for (let k = 0; k < leaves / twigs; k++) {
       const [px, py, pa] = pts[Math.floor(r() * pts.length)], b = blobs[Math.floor(r() * blobs.length)], s = size * (0.75 + r() * 0.5) / Math.max(b[2], b[3]);
       g.save(); g.translate(px + (r() - 0.5) * 22, py + (r() - 0.5) * 22); g.rotate(pa + (r() - 0.5) * 2.2 + Math.PI / 2 + hang * 1.2);
-      g.filter = `brightness(${0.5 + r() * 0.35}) saturate(${0.55 + r() * 0.3}) hue-rotate(${-6 - r() * 8}deg)`; // SoCal leaves: olive, dusty, not lime
+      g.filter = `brightness(${(0.5 + r() * 0.35) * (o.dark || 1)}) saturate(${0.55 + r() * 0.3}) hue-rotate(${-6 - r() * 8}deg)`; // SoCal leaves: olive, dusty, not lime
       g.drawImage(sheet, b[0], b[1], b[2], b[3], -b[2] * s / 2, 0, b[2] * s, b[3] * s); g.restore();
       if (o.flowers && r() < o.flowers) { g.fillStyle = `hsl(${268 + r() * 16},${55 + r() * 20}%,${55 + r() * 15}%)`; for (let f = 0; f < 6; f++) { g.beginPath(); g.arc(px + (r() - 0.5) * 40, py + (r() - 0.5) * 40, 6 + r() * 6, 0, Math.PI * 2); g.fill(); } }
     }
@@ -229,11 +229,12 @@ function palm(B, r, o) {
 // ---------------------------------------------------------------- the species
 async function makeVariants(THREE, base) {
   const r0 = rng(77);
-  const [gum, pepper, jac, cyp] = await Promise.all(['leafset022', 'leafset013', 'leafset002', 'leafset001'].map(n => sheetImage(base, n)));
+  const [gum, pepper, jac] = await Promise.all(['leafset022', 'leafset013', 'leafset002'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
   const card = (sheet, o, seed) => texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o));
   const T = {
     gum: card(gum, { twigs: 7, leaves: 460, size: 42, hang: 0.6 }, 11), pepper: card(pepper, { twigs: 8, leaves: 700, size: 26, hang: 0.9 }, 12),
-    jac: card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring cyp: card(cyp, { twigs: 10, leaves: 800, size: 18 }, 14),
+    jac: card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring
+    cyp: card(cyp, { twigs: 12, leaves: 1100, size: 16, dark: 0.88 }, 14),
     fan: texFrom(THREE, palmFanLeaf(rng(15))), date: texFrom(THREE, palmPinnaLeaf(rng(16))), dead: texFrom(THREE, palmPinnaLeaf(rng(17), true)),
     barkGum: texFrom(THREE, barkCanvas('gum', rng(18)), true, true), bark: texFrom(THREE, barkCanvas('brown', rng(19)), true, true),
     barkFan: texFrom(THREE, barkCanvas('fan', rng(20)), true, true), barkDate: texFrom(THREE, barkCanvas('date', rng(21)), true, true),
@@ -265,6 +266,11 @@ function decodeDir(fx, fy) { const ax = (fx + 0.5) / G * 2 - 1, ay = (fy + 0.5) 
 
 export async function growTrees(THREE, renderer, base = 'assets/pbr/atlas/', opts = {}) {
   const S = await makeVariants(THREE, base);
+  return speciesFrom(THREE, renderer, S, opts);
+}
+// species records (vegetation library format) from { name: { trans, sway, list: [{ geo, mats }] } }, all baked into one
+// impostor atlas (src/nature/rocks.js uses it too)
+export function speciesFrom(THREE, renderer, S, opts = {}) {
   const all = []; for (const [name, sp] of Object.entries(S)) sp.list.forEach((v, i) => all.push({ name, i, ...v }));
   const cell = opts.cell || 112, cols = 4, rows = Math.ceil(all.length / cols), W = cols * G * cell, H = rows * G * cell;
   const rtA = new THREE.WebGLRenderTarget(W, H, { samples: 4, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
@@ -291,7 +297,7 @@ export async function growTrees(THREE, renderer, base = 'assets/pbr/atlas/', opt
   const prev = { rt: renderer.getRenderTarget(), auto: renderer.autoClear, col: renderer.getClearColor(new THREE.Color()), a: renderer.getClearAlpha(), tm: renderer.toneMapping, sh: renderer.shadowMap.enabled };
   renderer.autoClear = true; renderer.shadowMap.enabled = false;
   for (const m of meshesA) scene.add(m);
-  renderer.setRenderTarget(rtA); renderer.setClearColor(new THREE.Color(0.16, 0.2, 0.1), 0); renderer.clear(); renderer.render(scene, cam);
+  renderer.setRenderTarget(rtA); renderer.setClearColor(new THREE.Color(...(opts.clear || [0.16, 0.2, 0.1])), 0); renderer.clear(); renderer.render(scene, cam);
   for (const m of meshesA) scene.remove(m); for (const m of meshesN) scene.add(m);
   renderer.setRenderTarget(rtN); renderer.setClearColor(new THREE.Color(0.5, 0.5, 1), 0); renderer.clear(); renderer.render(scene, cam);
   renderer.setRenderTarget(prev.rt); renderer.autoClear = prev.auto; renderer.setClearColor(prev.col, prev.a); renderer.shadowMap.enabled = prev.sh;

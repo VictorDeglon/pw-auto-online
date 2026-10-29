@@ -155,6 +155,9 @@ export function groundPatch(ground, opts = {}) {
           }
           soft = mix(soft, proc, pW); photo = mix(photo, proc, pW);
         }
+        { // the photo's odd hues (teal, violet: pool covers, tarps, processing) become earth: blue never beats the red-green mean
+          float rg = (soft.r + soft.g) * 0.5; if (soft.b > rg * 0.92) { float k = clamp((soft.b - rg * 0.92) / max(soft.b, 1e-4) * 2.0, 0.0, 1.0); vec3 earth = vec3(rg * 1.08, rg, rg * 0.82); soft = mix(soft, earth, k); photo = mix(photo, earth * (dot(photo, vec3(0.333)) / max(dot(earth, vec3(0.333)), 1e-4)), k); }
+        }
         float lum = dot(soft, vec3(0.2126, 0.7152, 0.0722));
         float green = (soft.g - max(soft.r, soft.b)) / (lum + 0.02);
         float yellow = ((soft.r + soft.g) * 0.5 - soft.b) / (lum + 0.02);
@@ -195,6 +198,7 @@ export function groundPatch(ground, opts = {}) {
           float bs = b.x + b.y + b.z + b.w + br + 1e-4; b /= bs; br /= bs;
           // photo-tinted detail: layer texture divided by its mean colour keeps the photo's hue and adds structure
           vec3 tint = soft * (0.88 + 0.24 * macro);
+          tint *= mix(vec3(1.0), vec3(1.1, 1.02, 0.8), (1.0 - lawnZ) * (1.0 - xeri) * (1.0 - wRock)); // the wild: sun-baked, brown-green, never blue-grey
           tint = mix(tint, vec3(0.062, 0.115, 0.026) * (0.85 + 0.3 * macro), lawnZ * 0.8);      // a watered lawn, not the photo's grey
           tint = mix(tint, vec3(0.30, 0.22, 0.13) * (0.85 + 0.3 * macro), xeri * (1.0 - mulch) * 0.8); // decomposed granite
           vec3 dS = L0.rgb / gMean[0], dD = L1.rgb / gMean[1], dL = L2.rgb / gMean[2], dR = LR.rgb / gMean[4];

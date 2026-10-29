@@ -16,7 +16,7 @@
 // Which roads get a curb and sidewalk is decided from building density (rural north Poway has dirt shoulders).
 
 const CELL = 4;      // raster cell (m); the raster only decides WHICH road a point belongs to, distances are exact
-export const CROWN = 0, CURB_H = 0.15, LIFT = 0.0, FLAT = 14, BENCH = 0; // a real 15 cm curb where the road has one; the walk and the bench behind it sit up at curb height
+export const CROWN = 0.02, CURB_H = 0.15, LIFT = 0.0, FLAT = 14, BENCH = 0; // a 2% crown sheds water to the gutters; a real 15 cm curb where the road has one; the walk and the bench behind it sit up at curb height
 const PSTEP = 4, PSIGMA = 20; // long-profile sample spacing and smoothing (m): roads ride over the 12.8 m terrain facets
 
 function segClosest(px, pz, ax, az, bx, bz, out) {
@@ -107,6 +107,27 @@ export class RoadSurface {
   // on asphalt, sidewalk or shoulder
   onRoad(x, z, margin = 0) {
     const q = this.query(x, z); return !!q && q.d <= this.roads[q.road][2] / 2 + this.sw[q.road] + margin;
+  }
+  // behind a curbed sidewalk: the graded ground (the bench at walk height, then the slope back to the hills), which the
+  // coarse terrain mesh can't follow (it's held under the asphalt); null elsewhere
+  benchAt(x, z, terrainAt) {
+    const q = this.query(x, z); if (!q || !this.curb[q.road]) return null;
+    if (q.d <= this.roads[q.road][2] / 2 + this.sw[q.road]) return null;
+    return this.surfaceAt(x, z, terrainAt);
+  }
+  // Poway's multi-use trails: decomposed granite with a post-and-rail fence along one side of most country roads.
+  // +1: on the road's positive side (as ribbon offsets count), -1 the other, 0 none
+  trailSide(ri) {
+    const t = this.roads[ri][1]; if (this.curb[ri] || t < 1 || t > 4 || this.len[ri] < 60) return 0;
+    const h = Math.sin(ri * 12.9898 + 0.7) * 43758.5453, f = h - Math.floor(h); return f < 0.6 ? (f < 0.3 ? 1 : -1) : 0;
+  }
+  // what a person may walk on at (x, z) by a road: { kind: 'walk' | 'trail', off (from the centre line) } or null
+  walkAt(x, z) {
+    const q = this.query(x, z, {}); if (!q) return null; const ri = q.road, w2 = this.roads[ri][2] / 2, sw = this.sw[ri];
+    if (this.curb[ri]) return q.d > w2 - 0.5 && q.d <= w2 + sw + 0.5 ? { kind: 'walk', off: w2 + sw / 2 } : null;
+    const ts = this.trailSide(ri); if (!ts) return null;
+    const side = Math.sign((x - q.cx) * -q.tz + (z - q.cz) * q.tx); if (side !== ts) return null;
+    return q.d > w2 && q.d <= w2 + sw + 2.6 ? { kind: 'trail', off: w2 + sw + 1.05 } : null;
   }
   // height of the built surface at (x, z) given the natural terrain function; null when off any corridor
   surfaceAt(x, z, terrainAt) {
