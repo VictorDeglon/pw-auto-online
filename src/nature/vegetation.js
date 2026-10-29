@@ -26,7 +26,10 @@ export async function loadVegetation(THREE, gltfLoader, renderer, base = 'assets
   await Promise.all(Object.entries(man.species).map(async ([name, sp]) => {
     const [alb, nrm] = await Promise.all([tex(base + sp.atlas + '_alb.webp', true), tex(base + sp.atlas + '_nrm.webp', false)]);
     const rec = { name, ...sp, alb, nrm, lods: sp.variants.map(() => null), hasLod: sp.variants.some(v => v.lod) };
-    sp.variants.forEach((v, i) => { if (v.lod) gltfLoader.loadAsync(base + v.lod).then(g => { rec.lods[i] = mergeLod(THREE, g.scene); }).catch(() => { }); });
+    sp.variants.forEach((v, i) => { if (v.lod) gltfLoader.loadAsync(base + v.lod).then(g => {
+      const lod = mergeLod(THREE, g.scene); // its textures go up now, not in the frame that first draws it
+      if (lod) for (const m of lod.mats) if (m && m.map) try { renderer.initTexture(m.map); } catch (e) { }
+      rec.lods[i] = lod; }).catch(() => { }); });
     species.set(name, rec);
   }));
   return { THREE, species };

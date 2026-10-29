@@ -622,7 +622,7 @@ import { DEALER_SKINS, RESERVED } from './src/reserved.js';
 import { createWheel, ICONS as WICONS } from './src/ui/wheel.js';
 import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
 import * as MAPKIT from './src/ui/mapkit.js';
-import { setGroundTint, setGroundLand, setPoolHoles, TRACK_U } from './src/nature/ground.js';
+import { setGroundTint, setGroundLand, setPoolHoles, TRACK_U, SHORE_U } from './src/nature/ground.js';
 import { createTracks } from './src/world/tracks.js';
 import { updateBeacons } from './src/online/beacons.js';
 import { createOuter } from './src/world/outer.js';
@@ -2601,7 +2601,7 @@ async function loadModels() {
 // sight, inside a frame, the plants' shaders froze the game for a second and more just after it started
 async function showCompiled(objs) {
   const hid = objs.filter(o => o && o.visible); for (const o of hid) o.visible = false;
-  await compileInSteps(compileUnits(objs), null, 8);
+  await compileInSteps(compileUnits(objs), null, 8); await uploadInSteps(objs, null, 8);
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
   for (const o of hid) o.visible = true;
 }
@@ -2611,6 +2611,22 @@ async function showCompiled(objs) {
 function compileUnits(roots) { // pieces without lights in them (a light in a piece would be counted twice and build programs for the wrong light count)
   const out = [], visit = o => { if (!o || o.isLight) return; let lit = false; o.traverse(c => { if (c.isLight) lit = true; }); if (!lit) out.push(o); else for (const c of o.children) visit(c); };
   for (const o of roots) visit(o); return out;
+}
+// textures sent to the GPU one at a time with a frame in between (drawn for the first time, a whole scene's textures
+// went up inside one frame: three seconds on a fast PC)
+function texturesOf(roots) {
+  const out = new Set(), add = v => { if (v && v.isTexture) out.add(v); };
+  for (const r of roots) if (r) r.traverse(o => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of ms) { for (const k in m) add(m[k]); if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u) { add(u.value); if (Array.isArray(u.value)) u.value.forEach(add); } } });
+  return [...out];
+}
+async function uploadInSteps(roots, onStep, ms = 40) {
+  const list = texturesOf(roots); let t = performance.now();
+  for (let i = 0; i < list.length; i++) {
+    const tx = list[i]; if (tx.isRenderTargetTexture || (tx.image === undefined && !tx.isDataTexture)) continue;
+    try { renderer.initTexture(tx); } catch (e) { }
+    if (performance.now() - t > ms) { if (onStep) onStep(i / list.length); await new Promise(r => setTimeout(r, 0)); t = performance.now(); }
+  }
 }
 async function compileInSteps(units, onStep, ms = 60) {
   const gl = renderer.getContext(); let t = performance.now();
@@ -2790,7 +2806,12 @@ function paveBulb(e, curb, sw) {
 // Walls and fences along the streets, the way Poway's run: a tan split-face block wall with pilasters where back yards
 // meet a main road; a white three-rail ranch fence along the country roads of the horse-property north; and on a
 // country estate's long private drive, stone pillars with wrought-iron gates standing open.
-function buildEdgeWalls() {
+// run fn over a list in slices of a few tens of milliseconds, the loading bar moving in between
+async function sliced(list, fn, ms = 30) {
+  let t = performance.now();
+  for (let i = 0; i < list.length; i++) { fn(list[i], i); if (performance.now() - t > ms) { showProgress(); await new Promise(r => setTimeout(r, 0)); t = performance.now(); } }
+}
+async function buildEdgeWalls() { // async: the walls and fences of the whole map took seconds in one block
   if (!SURF || !ROADS) return;
   const HG = new Map(), hk = (gx, gz) => gx * 100000 + gz;
   for (const B of BLD) if (B.yard) { const k = hk(Math.floor(B.cx / 50), Math.floor(B.cz / 50)); let c = HG.get(k); if (!c) HG.set(k, c = []); c.push(B); }
@@ -2825,7 +2846,7 @@ function buildEdgeWalls() {
         polys[polys.length - 1].brk = { kind: 'wood', str: 2.5, ranges: [[ch.wood, r0, ch.wood.p.length / 3]], col: 0xefeee8 }; } }
     stats.ranch++; EDGE_SPOTS.ranch.push(run[0]);
   };
-  D.roads.forEach((r, ri) => {
+  await sliced(D.roads, (r, ri) => {
     const [, t, w, p] = r; if (t < 1 || t > 5) return;
     const curb = ROADS.curb[ri], sw = ROADS.sw[ri], ts = ROADS.trailSide ? ROADS.trailSide(ri) : 0;
     const kind = curb && t <= 3 ? 'wall' : !curb && t >= 3 ? 'ranch' : null; if (!kind) return;
@@ -2848,7 +2869,7 @@ function buildEdgeWalls() {
     }
   });
   // estates: a long private drive off a country road gets pillars and open gates 8 m in
-  D.roads.forEach((r, ri) => {
+  await sliced(D.roads, (r, ri) => {
     const [, t, w, p] = r; if (t !== 6 || p.length < 4) return; let L = 0; for (let k = 0; k + 3 < p.length; k += 2) L += Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1]); if (L < 30) return;
     for (const end of [0, 1]) {
       const n = p.length / 2, a = end ? n - 1 : 0, b = end ? n - 2 : 1, ex = p[a * 2], ez = p[a * 2 + 1]; let dx = p[b * 2] - ex, dz = p[b * 2 + 1] - ez; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl; // into the drive
@@ -2867,7 +2888,7 @@ function buildEdgeWalls() {
     }
   });
   // the trail fences (drawn with their chunks): a breakable span between each pair of posts, as trail() places them
-  D.roads.forEach((r, ri) => { const ts = ROADS.trailSide ? ROADS.trailSide(ri) : 0; if (!ts) return; const [, , w, p0] = r, p = densify(p0, 3), fo = ts * (w / 2 + ROADS.sw[ri] + 1.4) + ts * 1.5;
+  await sliced(D.roads, (r, ri) => { const ts = ROADS.trailSide ? ROADS.trailSide(ri) : 0; if (!ts) return; const [, , w, p0] = r, p = densify(p0, 3), fo = ts * (w / 2 + ROADS.sw[ri] + 1.4) + ts * 1.5;
     const posts = []; let along = 0, next = 0;
     for (let i = 0; i + 3 < p.length; i += 2) { const ax = p[i], az = p[i + 1], L = Math.hypot(p[i + 2] - ax, p[i + 3] - az); if (L < 0.01) continue; const tx = (p[i + 2] - ax) / L, tz = (p[i + 3] - az) / L;
       while (next <= along + L) { const s2 = next - along; posts.push([ax + tx * s2 - tz * fo, az + tz * s2 + tx * fo]); next += 2.8; } along += L; }
@@ -3080,14 +3101,14 @@ async function buildWorld() {
   launchBoats(); initPilot(); // every boat on the lakes can be taken (src/pilot.js)
   progress('Raising ' + D.buildings.length.toLocaleString() + ' mapped buildings…'); await tick();
   let count = 0;
-  for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true); if (++count % 2500 === 0) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); } } // PHS; drawn chunk by chunk near you (lazyOf)
+  let tB = performance.now(); for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true); ++count; if (performance.now() - tB > 40) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); tB = performance.now(); } } // PHS; drawn chunk by chunk near you (lazyOf)
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
   progress('Digging ' + (D.pools || []).length.toLocaleString() + ' pools…'); await tick();
   { const PL = (D.pools || []).filter(p => !PHS.phsSkip(p[0], p[1])); for (const p of PL) addPool(p); setPoolHoles(THREE, PL); } // PHS has its own; the ground is cut out where each pool is
   progress('Posting street signs…'); await tick();
-  buildSignAtlas(); buildEdgeWalls(); buildSigns(); buildMailboxes(); buildKitMeshes();
+  buildSignAtlas(); await buildEdgeWalls(); buildSigns(); buildMailboxes(); buildKitMeshes();
   // ---- parking lots: stalls painted in every mapped lot (src/world/parking.js)
   progress('Striping parking lots…'); await tick();
   { const _bp = { x: 0, z: 0 }; PARK = createParking({
@@ -3140,7 +3161,7 @@ async function buildWorld() {
     console.info('[trailers]', tspots.length, 'in the driveways');
   }
   // ---- chunk meshes
-  for (const ch of chunks.values()) { const grp = ch.group; grp.position.set(0, 0, 0); grp.matrixAutoUpdate = false; grp.updateMatrix(); scene.add(grp); meshChunk(ch, grp); }
+  progress('Meshing the town…'); await sliced([...chunks.values()], ch => { const grp = ch.group; grp.position.set(0, 0, 0); grp.matrixAutoUpdate = false; grp.updateMatrix(); scene.add(grp); meshChunk(ch, grp); });
   // ---- street lamps (a spot computed off one road can land on a crossing street's asphalt: drop those)
   if (ROADS) { let o = 0; for (let i = 0; i < lampSpots.length; i += 3) if (!ROADS.onAsphalt(lampSpots[i], lampSpots[i + 1], 1.2)) { lampSpots[o++] = lampSpots[i]; lampSpots[o++] = lampSpots[i + 1]; lampSpots[o++] = lampSpots[i + 2]; } lampSpots.length = o; }
   {
@@ -5016,6 +5037,7 @@ function updateWeather(dt) {
   }
   if (CASC) CASC.update(camera, ld);
   if (WATER) WATER.update(dt, camera, { sunDir: ld, sunCol: _wsc.copy(sun.color).multiplyScalar(sun.intensity), night: nightAmount, day, wind: 0.7 + weather.rain * 0.5 + weather.storm * 0.9 + weather.cloud * 0.2 });
+  if (WATER) { const O = WATER.ocean, R = SHORE_U.gShoreR.value; SHORE_U.gShore.value = O.U.uField.value; R[0] = O.U.uFC.value.x; R[1] = O.U.uFC.value.y; R[2] = O.U.uFS.value; R[3] = O.active ? 1 : 0; SHORE_U.gSea.value = O.U.uSea.value; } // the beaches' sand in the ground (src/nature/ground.js)
   renderer.toneMappingExposure = 0.95 + night * 0.6; // the eye adapts to the dark
   if (SKYENV || ATM) updateAtmos(dt, day, night, hor, top, ld);
   const lights = smooth(0.15, 0.6, night + weather.cloud * 0.25 * (weather.rain + weather.fog)); nightAmount = lights;
@@ -8130,6 +8152,7 @@ let worldReady = false;
   const sp0 = focusPos(); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
+  progress('Uploading textures…'); await uploadInSteps(scene.children, f => { DL.msg = `Uploading textures… ${Math.round(f * 100)}%`; showProgress(); });
   progress('Warming up the effects…'); await FX.warm(renderer, camera, POST.level > 0 ? AIM_RT : null); await NUKE_FX.warm(renderer, camera);
   progress('Preparing the shaders…'); await compileInSteps(compileUnits(scene.children), f => { DL.msg = `Preparing the shaders… ${Math.round(f * 100)}%`; showProgress(); }); // a piece at a time: the bar moves, nothing compiles in the first frame
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
@@ -8154,9 +8177,9 @@ function startCareer() {
 // ---- after the loading screen: what it no longer waits for, most visible first. A step that fails logs and the rest go on.
 async function loadLater() {
   const t0 = performance.now();
-  const step = async (name, f) => { const t = performance.now(); PROF.label = name; try { await f(); } catch (e) { console.warn('[later]', name, e); } PROF.label = ''; console.info('[later]', name, ((performance.now() - t) / 1000).toFixed(1) + 's'); };
+  const step = async (name, f) => { const t = performance.now(); PROF.label = name; try { await f(); await uploadInSteps(scene.children, null, 8); } catch (e) { console.warn('[later]', name, e); } PROF.label = ''; console.info('[later]', name, ((performance.now() - t) / 1000).toFixed(1) + 's'); }; // each step's new textures go up a few at a time, not inside a frame
   await step('ground photos', loadGroundPhotos);
-  await step('crowd', async () => { if (await loadCrowd()) upgradePeds(); });
+  await step('crowd', async () => { if (await loadCrowd()) { await warmCrowd(); upgradePeds(); } });
   await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
@@ -8249,6 +8272,12 @@ function parkMedevac() {
   }
 }
 // people who spawned as blocky stand-ins before the crowd's avatars arrived get their real bodies (busy ones keep theirs)
+// the crowd's shaders and textures, a piece at a time, before anyone wears the new bodies (all 44 avatars' first
+// frame held a fast PC for two and a half seconds)
+async function warmCrowd() {
+  const roots = [...HUMANS.proto.values()].map(p => p.root).filter(Boolean);
+  await compileInSteps(compileUnits(roots), null, 8); await uploadInSteps(roots, null, 8);
+}
 function upgradePeds() {
   for (const p of peds) if (!p.rig.human && ['walk', 'roam', 'idle', 'group', 'call'].includes(p.state)) reskin(p);
 }

@@ -11,10 +11,10 @@
 // Beyond ~250 m the plain photo is used. Outside the photo coverage ("outer hills") the same layers are driven by
 // procedural chaparral / grassland patches instead of the photo.
 
-export const GROUND_LAYERS = ['soil', 'dry', 'lawn', 'litter', 'rock'];
+export const GROUND_LAYERS = ['soil', 'dry', 'lawn', 'litter', 'rock', 'sand'];
 // linear mean colour of each layer (tools/nature/pack_ground.py), used to turn a layer into a photo-tinted detail
-const MEANS = { soil: [0.2968, 0.1629, 0.0735], dry: [0.0525, 0.0676, 0.0102], lawn: [0.1268, 0.1625, 0.0306], litter: [0.1539, 0.1129, 0.0738], rock: [0.4071, 0.3452, 0.2771] };
-const TILE = [2.6, 1.6, 1.4, 1.8, 3.4]; // metres per texture repeat
+const MEANS = { soil: [0.2968, 0.1629, 0.0735], dry: [0.0525, 0.0676, 0.0102], lawn: [0.1268, 0.1625, 0.0306], litter: [0.1539, 0.1129, 0.0738], rock: [0.4071, 0.3452, 0.2771], sand: [0.2993, 0.2221, 0.1269] };
+const TILE = [2.6, 1.6, 1.4, 1.8, 3.4, 2.4]; // metres per texture repeat
 
 async function loadArray(THREE, renderer, url, layers, srgb) {
   const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
@@ -63,9 +63,10 @@ export function setGround(ground, real) {
 // shared GLSL: noise + the layer sampler
 const COMMON = /* glsl */`
 uniform highp sampler2DArray gAlb; uniform highp sampler2DArray gNrm;
-uniform vec3 gMean[5]; uniform float gTile[5]; uniform float gPhotoBias; uniform float gNear; uniform float gFar; uniform float gProcedural; uniform float gDetail;
+uniform vec3 gMean[6]; uniform float gTile[6]; uniform float gPhotoBias; uniform float gNear; uniform float gFar; uniform float gProcedural; uniform float gDetail;
 uniform float gEdgeOn; uniform vec4 gEdge; uniform float gEdgeW; uniform sampler2D gTint; uniform float gTintOn;
 uniform sampler2D gLand; uniform float gLandOn; uniform vec4 gLandR;
+uniform sampler2D gShore; uniform vec4 gShoreR; uniform float gSea;
 varying vec3 vWp; varying vec3 vWn;
 float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -113,6 +114,9 @@ export function setGroundLand(ground, tex, rect) {
 export const HOLE_U = { gHoles: { value: null }, gHoleP: { value: null }, gHoleR: { value: [0, 0, 16, 0] }, gHoleOn: { value: 0 } };
 // tracks pressed into soft sand (src/world/tracks.js): a texture following the player, R the dent, G the sand pushed up
 // beside it; the ground darkens in the dents and takes their slopes
+// the beaches (src/world/water.js keeps them current): the ocean's field of signed distance to the waterline round
+// you (+ over the sea, - on land), its centre and size (x, z, size, on), and the sea level; sand lies where it says
+export const SHORE_U = { gShore: { value: null }, gShoreR: { value: [0, 0, 1, 0] }, gSea: { value: 0 } };
 export const TRACK_U = { gTrk: { value: null }, gTrkWin: { value: [0, 0, 1, 0] } };
 const TRACK_GLSL = /* glsl */`
 uniform sampler2D gTrk; uniform vec4 gTrkWin;
@@ -159,7 +163,7 @@ export function groundPatch(ground, opts = {}) {
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
-    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...TRACK_U,
+    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...TRACK_U, ...SHORE_U,
   };
   (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
@@ -168,7 +172,7 @@ export function groundPatch(ground, opts = {}) {
       .replace('#include <common>', '#include <common>\nvarying vec3 vWp; varying vec3 vWn;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz; vWn = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF;\n' + HOLE_GLSL + TRACK_GLSL)
+      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF; float gSandWet;\n' + HOLE_GLSL + TRACK_GLSL)
       .replace('#include <map_fragment>', /* glsl */`
       if (poolHole(vWp.xz, 0.0) > 0.5) discard; // a pool here (setPoolHoles)
       #include <map_fragment>
@@ -217,7 +221,17 @@ export function groundPatch(ground, opts = {}) {
                    * (1.0 - smoothstep(0.04, 0.1, green)) * (1.0 - wLawn) * (1.0 - wLit);
         float wSoil = max(0.0, 1.0 - wLawn - wLit - wDry);
         float wRock = max(steep, smoothstep(0.24, 0.36, lum) * (1.0 - smoothstep(0.08, 0.2, yellow)) * smoothstep(0.06, 0.2, 1.0 - Nw.y) * (1.0 - wLawn));
+        float wSand = 0.0, sdShore = 1e4; gSandWet = 0.0;
+        if (gShoreR.w > 0.5) { // the beach: low ground within ~60 m of the waterline, bright in the photo, not a rock face
+          vec2 suv = (vWp.xz - gShoreR.xy) / gShoreR.z + 0.5;
+          if (suv.x > 0.0 && suv.y > 0.0 && suv.x < 1.0 && suv.y < 1.0) {
+            float sd = texture2D(gShore, suv).r, above = vWp.y - gSea; sdShore = sd;
+            wSand = smoothstep(-95.0, -50.0, sd) * (1.0 - smoothstep(8.0, 15.0, above)) * smoothstep(0.035, 0.07, lum) * (1.0 - steep);
+          }
+        }
+        wRock *= 1.0 - wSand;
         vec4 w = vec4(wSoil, wDry, wLawn, wLit) * (1.0 - wRock);
+        w = mix(w, vec4(1.0, 0.0, 0.0, 0.0), wSand); // on the beach the soil layer is sand
         float lawnZ = 0.0, xeri = 0.0, mulch = 0.0;
         if (gLandOn > 0.5) { // tended ground: lawn yards, parks and fields; dry gardens of granite and mulch
           vec2 warp = vec2(gFbm(vWp.xz * 0.33) - 0.5, gFbm(vWp.xz * 0.33 + 7.3) - 0.5) * 2.4; // ragged, not ruled: lawns and gardens fray at their edges
@@ -234,7 +248,7 @@ export function groundPatch(ground, opts = {}) {
         if (gF > 0.002) {
           vec3 n0, n1, n2, n3, nR; vec4 L0 = vec4(0), L1 = vec4(0), L2 = vec4(0), L3 = vec4(0), LR = vec4(0);
           n0 = n1 = n2 = n3 = vec3(0, 0, 1); nR = Nw;
-          if (w.x > 0.01) L0 = gLayer(0, vWp.xz, n0);
+          if (w.x > 0.01) { L0 = wSand < 0.99 ? gLayer(0, vWp.xz, n0) : vec4(0); if (wSand > 0.01) { vec3 nS; vec4 S = gLayer(5, vWp.xz, nS); L0 = mix(L0, S, wSand); n0 = normalize(mix(n0, nS, wSand)); } }
           if (w.y > 0.01) L1 = gLayer(1, vWp.xz, n1);
           if (w.z > 0.01) L2 = gLayer(2, vWp.xz, n2);
           if (w.w > 0.01) L3 = gLayer(3, vWp.xz, n3);
@@ -250,7 +264,8 @@ export function groundPatch(ground, opts = {}) {
           float tired = smoothstep(0.45, 0.75, gFbm(vWp.xz * 0.09 + 11.0));
           tint = mix(tint, mix(vec3(0.062, 0.115, 0.026), vec3(0.11, 0.12, 0.045), tired * 0.6) * (0.85 + 0.3 * macro), lawnZ * 0.8); // a watered lawn, patchy in the heat
           tint = mix(tint, vec3(0.30, 0.22, 0.13) * (0.85 + 0.3 * macro), xeri * (1.0 - mulch) * 0.8); // decomposed granite
-          vec3 dS = L0.rgb / gMean[0], dD = L1.rgb / gMean[1], dL = L2.rgb / gMean[2], dR = LR.rgb / gMean[4];
+          tint = mix(tint, vec3(0.46, 0.36, 0.24) * (0.88 + 0.24 * macro), wSand * 0.55); // beach sand: warm tan whatever grey the far photo shows
+          vec3 dS = L0.rgb / mix(gMean[0], gMean[5], wSand), dD = L1.rgb / gMean[1], dL = L2.rgb / gMean[2], dR = LR.rgb / gMean[4];
           float lumD = dot(dD, vec3(0.2126, 0.7152, 0.0722)), lumL = dot(dL, vec3(0.2126, 0.7152, 0.0722));
           vec3 near = tint * (b.x * dS + b.y * mix(vec3(lumD), dD, 0.25) + b.z * mix(vec3(lumL), dL, 0.5) + br * mix(vec3(dot(dR, vec3(0.333))), dR, 0.4));
           // under canopy the photo shows treetops, not ground: use the litter's own colour, shaded by the photo
@@ -262,12 +277,20 @@ export function groundPatch(ground, opts = {}) {
           gNormalW = normalize(mix(Nw, normalize(nGround * (1.0 - br) + nR * br), gF));
         }
         diffuseColor.rgb = col;
+        if (wSand > 0.01 && gF > 0.002) { // the beach up close: lumps and wind ripples in the dry sand; dark, damp, glossy sand where the waves reach
+          vec2 p = vWp.xz; float wet = smoothstep(-14.0, -3.0, sdShore), e = 0.35;
+          #define SANDH(q) (gFbm((q) * 0.55) * 0.5 + gFbm((q) * 2.3) * 0.12 + 0.03 * sin(dot(q, vec2(5.1, 2.3)) + 3.0 * gNoise((q) * 0.7)) * (1.0 - wet))
+          float h0 = SANDH(p), hx = SANDH(p + vec2(e, 0.0)), hz = SANDH(p + vec2(0.0, e));
+          gNormalW = normalize(gNormalW + vec3(h0 - hx, 0.0, h0 - hz) / e * wSand * gF * (1.0 - wet * 0.7));
+          diffuseColor.rgb *= mix(1.0, 0.62, wet * wSand); gSandWet = wet * wSand;
+        }
         if (gTrkWin.w > 0.5) { // tracks in the sand: darker, damper sand in the dents, the slopes of ruts and berms in the normal
           vec2 tk = trkAt(vWp.xz); diffuseColor.rgb *= 1.0 - tk.r * 0.45 + tk.g * 0.1;
           float e = gTrkWin.z / 1024.0, h0 = trkH(vWp.xz), hx = trkH(vWp.xz + vec2(e, 0.0)), hz = trkH(vWp.xz + vec2(0.0, e));
           gNormalW = normalize(gNormalW + vec3(h0 - hx, 0.0, h0 - hz) / e);
         }
       }`)
-      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize((viewMatrix * vec4(gNormalW, 0.0)).xyz);');
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize((viewMatrix * vec4(gNormalW, 0.0)).xyz);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.3, gSandWet); // wet sand shines');
   };
 }

@@ -12,6 +12,7 @@ LAYERS = [  # name, colour, normal, height   (all CC0: Poly Haven / ambientCG)
     ('lawn',   'Grass004/Grass004_1K-JPG_Color.jpg', 'Grass004/Grass004_1K-JPG_NormalGL.jpg', 'Grass004/Grass004_1K-JPG_Displacement.jpg'),
     ('litter', 'Ground023/Ground023_1K-JPG_Color.jpg', 'Ground023/Ground023_1K-JPG_NormalGL.jpg', 'Ground023/Ground023_1K-JPG_Displacement.jpg'),
     ('rock',   'rock_boulder_dry/rock_boulder_dry_diff_1k.jpg', 'rock_boulder_dry/rock_boulder_dry_nor_gl_1k.jpg', 'rock_boulder_dry/rock_boulder_dry_disp_1k.jpg'),
+    ('sand',   'dense_sand/dense_sand_diff_1k.jpg', 'dense_sand/dense_sand_nor_gl_1k.jpg', 'dense_sand/dense_sand_disp_1k.jpg'),  # the beaches (Poly Haven dense_sand)
 ]
 S = 1024
 def load(p, mode): return np.asarray(Image.open(os.path.join(raw, p)).convert(mode).resize((S, S), Image.LANCZOS))

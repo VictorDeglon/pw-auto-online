@@ -18,6 +18,7 @@
 //   W.update(dt, camera, { sunDir, sunCol, night, day, wind })
 //   W.ocean.heightAt(x, z)          the sea surface (null where there's no sea near)
 import { surfboardGeometry, boardMaterial, surfShack, BOARD_COLORS } from './surf.js';
+import { createWrack } from './wrack.js';
 const NOISE = /* glsl */`
 float wH21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 vec2 wH22(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
@@ -236,6 +237,7 @@ function createOcean(THREE, scene, WU, normals, seaLevel, groundAt, free) {
     O.retry -= 1;
     if (far || (!O.wet && O.retry <= 0)) { build(Math.round(cam.position.x / CELL) * CELL, Math.round(cam.position.z / CELL) * CELL); O.retry = 300; }
     O.active = O.wet && cam.position.y - sea < 900;
+    if (O.active) beach.update(t, O.waveAt); // the swash moves what lies at the water's edge
     mesh.visible = O.active;
     if (O.active) { const sx = Math.round(cam.position.x / 8) * 8, sz = Math.round(cam.position.z / 8) * 8; mesh.position.set(sx, sea, sz); mesh.updateMatrixWorld(); }
   };
@@ -278,6 +280,7 @@ function createBeach(THREE, scene, groundAt, free) {
   for (const m of [um, up, tw, sb]) { m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; grp.add(m); }
   const CANOPY = [0xe8473c, 0x2f7fd1, 0xf4c430, 0x3aa876, 0xf28c28, 0xffffff, 0x7b3fa0], TOWEL = [0xe94f64, 0x2ba3c7, 0xf7d046, 0xff8c42, 0x5b4fd1, 0x2ecc71, 0xf0f0f0], BOARD = BOARD_COLORS;
   const shacks = [0, 1, 2, 3].map(i => { const s = surfShack(THREE, i); s.visible = false; grp.add(s); return s; }); // surf rental stands, near some of the towers
+  const wrack = createWrack(THREE, grp); // kelp, cobbles, shells and driftwood along the tide line (src/world/wrack.js)
   const towers = []; let rr = 1; const rnd = () => (rr = (rr * 16807) % 2147483647) / 2147483647;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(1, 1, 1), yA = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
   return {
@@ -285,6 +288,10 @@ function createBeach(THREE, scene, groundAt, free) {
     place(cx, cz, N, CELL, F, sea) {
       for (const t of towers) grp.remove(t); towers.length = 0; um.count = up.count = tw.count = sb.count = 0; for (const s of shacks) s.visible = false; rr = Math.floor(Math.abs(cx * 7 + cz * 13)) % 2147483646 + 1;
       const at = (i, j) => F[j * N + i], spots = [];
+      { const fieldAt = (x, z) => { const fx = (x - cx) / CELL + N / 2 - 0.5, fz = (z - cz) / CELL + N / 2 - 0.5; if (fx < 0 || fz < 0 || fx >= N - 1 || fz >= N - 1) return 2000;
+          const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, w = fz - j, k = j * N + i; return (F[k] * (1 - u) + F[k + 1] * u) * (1 - w) + (F[k + N] * (1 - u) + F[k + N + 1] * u) * w; };
+        const band = []; for (let j = 1; j < N - 2; j++) for (let i = 1; i < N - 2; i++) { const f = at(i, j); if (f > -46 && f < 10) band.push(cx + (i - N / 2) * CELL, cz + (j - N / 2) * CELL); } // the tide band: cell corners
+        wrack.place(fieldAt, groundAt, sea, band, CELL, rr); }
       for (let j = 2; j < N - 2; j++) for (let i = 2; i < N - 2; i++) { const s = at(i, j); if (s > -46 && s < -14) spots.push([i, j, s]); }
       if (!spots.length) return;
       const xz = (i, j) => [cx + (i + 0.5 - N / 2) * CELL, cz + (j + 0.5 - N / 2) * CELL];
@@ -316,6 +323,7 @@ function createBeach(THREE, scene, groundAt, free) {
       for (const m of [um, up, tw, sb]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
     },
     get towers() { return towers; },
+    update(t, waveAt) { wrack.update(t, waveAt); },
   };
 }
 

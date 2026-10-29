@@ -8,6 +8,19 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.4 (2026-10-29)
+
+- **Online works again:** the 0.8.3 site went out without its game-server address (`nakama.json`), so every game fell
+  back to playing alone over Firebase. It's back, and a deploy now refuses to go out without it.
+- **The last loading stalls, gone or split up:** the map's ranch fences and block walls, turning every chunk into meshes,
+  laying out the parking lots, and raising the buildings all run in short slices with the loading bar moving. Textures go
+  to the graphics card a few at a time on the loading screen and after each later step (drawn for the first time they
+  went up inside one frame), and the crowd's shaders and textures are ready before anyone wears the new bodies.
+- **Beaches:** real sand (Poly Haven dense sand, CC0) instead of the gravel layer, warm tan whatever the far photo shows,
+  with lumps and wind ripples, and a dark, damp, glossy band where the waves reach. Along the tide line: tangles of kelp,
+  cobbles and chips of rock, shells and bleached driftwood, heaped in drifts at the high-water mark; what lies at the
+  water's edge slides up and down with each wave (`src/world/wrack.js`).
+
 ## 0.8.3 (2026-10-29)
 
 - **Fairer Sheriff chases:** cruisers drive in a formation (one behind, two on your flanks, a fourth further back)
