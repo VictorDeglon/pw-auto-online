@@ -31,7 +31,11 @@ function pickW(rnd, table) { // [[name, weight], ...]
   return table[table.length - 1][0];
 }
 
+const CONTEXTS = new WeakMap(); // one per world description: the valley map and the building grid take a second to build
 export function makeContext(D, w) {
+  let c = CONTEXTS.get(w); if (!c) CONTEXTS.set(w, c = buildContext(D, w)); return c;
+}
+function buildContext(D, w) {
   // built-up density: building centroids on a 50 m grid, summed over 150 m boxes
   const BG = 50, bg = new Map();
   for (const b of D.buildings) { const p = b[2]; let x = 0, z = 0; const n = p.length / 2; for (let i = 0; i < n; i++) { x += p[i * 2]; z += p[i * 2 + 1]; } const k = Math.floor(x / n / BG) * 100000 + Math.floor(z / n / BG); bg.set(k, (bg.get(k) || 0) + 1); }
