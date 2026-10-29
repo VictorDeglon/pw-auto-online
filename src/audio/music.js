@@ -2,7 +2,8 @@
 // index.html (STATIONS).
 //   theme    'Descent into Luxury', looped on the main menu (after the loading screen) and the pause screen
 //   explore  'Sunset Freeway' and 'California Twilight', on foot, taking turns, with quiet spells between them
-// Plain <audio> elements (they stream; the songs are a few MB each), faded by hand.
+// Plain <audio> elements (they stream: no song is ever decoded whole into memory), faded by hand; the exploring songs
+// take turns in one element, so the page never holds more than the theme and one song.
 //   const M = createMusic()   M.theme(on)   M.explore(on)   M.update(dt)   M.volume = 0..1
 export const OWN = {
   theme: { title: 'Descent into Luxury', file: 'assets/music/Descent_into_Luxury.m4a' },
@@ -27,7 +28,9 @@ export function createMusic() {
     if (E.on && !T.want) {
       if (!E.el || E.el.ended || (E.el.paused && E.want === 0 && E.level <= 0.001)) {
         E.restT -= dt;
-        if (E.restT <= 0) { const t = OWN.explore[E.i++ % OWN.explore.length]; if (E.el) E.el.pause(); E.el = mk(t.file, false); E.el.addEventListener('ended', () => { E.want = 0; E.restT = 40 + Math.random() * 50; }); play(E.el); E.want = 1; }
+        if (E.restT <= 0) { const t = OWN.explore[E.i++ % OWN.explore.length];
+          if (!E.el) { E.el = mk(t.file, false); E.el.addEventListener('ended', () => { E.want = 0; E.restT = 40 + Math.random() * 50; }); } else { E.el.pause(); E.el.src = t.file; } // the next song in the same element: the last one's buffered media goes
+          play(E.el); E.want = 1; }
       }
     } else E.want = 0;
     if (E.el) { E.level += Math.max(-dt / 3, Math.min(dt / 4, E.want - E.level)); E.el.volume = Math.max(0, Math.min(1, E.level * E.peak * M.volume)); if (E.level <= 0.001 && !E.want && !E.el.paused) { E.el.pause(); if (!E.el.ended) E.restT = 12 + Math.random() * 20; } }

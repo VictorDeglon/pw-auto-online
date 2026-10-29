@@ -45,7 +45,14 @@ export function roadEdgeDist(w, x, z, out) {
   out[0] = best; out[1] = bt; return out;
 }
 
-export function filterTrees(trees, w) {
+export function filterTrees(trees, w) { const it = filterTreesSteps(trees, w); let r; while (!(r = it.next()).done); return r.value; }
+// the same a few milliseconds at a time between the game's frames (in one go it held the game for two seconds)
+export async function filterTreesAsync(trees, w, ms = 6) {
+  const it = filterTreesSteps(trees, w); let t = performance.now(), r;
+  while (!(r = it.next()).done) if (performance.now() - t > ms) { await new Promise(res => setTimeout(res, 0)); t = performance.now(); }
+  return r.value;
+}
+export function* filterTreesSteps(trees, w) {
   const n = trees.length / 4;
   const action = new Uint8Array(n), radius = new Float32Array(n);
   const stats = { total: n, sidewalk: 0, road: 0, building: 0, water: 0, parking: 0, pool: 0, field: 0, excluded: 0, duplicate: 0, capped: 0 };
@@ -59,6 +66,7 @@ export function filterTrees(trees, w) {
   const ex = (w.exclude || []).map(p => ({ p, bb: bbox(p) }));
   const rd = [0, 0];
   for (let i = 0; i < n; i++) {
+    if ((i & 1023) === 1023) yield;
     const x = trees[i * 4], z = trees[i * 4 + 1]; let r = trees[i * 4 + 3] || 3; radius[i] = r;
     // roads and sidewalks: types 1-5 have a 2.2 m sidewalk ribbon starting 0.1 m off the asphalt
     roadEdgeDist(w, x, z, rd);
@@ -99,6 +107,7 @@ export function filterTrees(trees, w) {
   const G = 8, grid = new Map();
   for (let i = 0; i < n; i++) if (action[i] === KEEP) { const k = Math.floor(trees[i * 4] / G) * 100000 + Math.floor(trees[i * 4 + 1] / G); (grid.get(k) || grid.set(k, []).get(k)).push(i); }
   for (let i = 0; i < n; i++) {
+    if ((i & 2047) === 2047) yield;
     if (action[i] !== KEEP) continue;
     const x = trees[i * 4], z = trees[i * 4 + 1], gx = Math.floor(x / G), gz = Math.floor(z / G);
     for (let a = -1; a <= 1 && action[i] === KEEP; a++) for (let b = -1; b <= 1; b++) {

@@ -8,6 +8,21 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.0: Smooth Ride (2026-10-29)
+
+- **Far fewer freezes on Windows.** Under Chrome on Windows (Direct3D) every new standard-material shader holds the
+  page for half a second or more, and a gaming PC measured over 90 s of them per load, some in one 137 s freeze.
+  - The loading screen compiled the screen-output versions of the shaders, but the game draws through its post
+    chain, so the versions it uses then compiled in the first frames. Compiles now aim at the same kind of target
+    as the frame, which also halves the number of shader programs (232 to under 100).
+  - The street lamps', headlights' and effect lights' lighting stays a real loop instead of twelve unrolled copies
+    in every material (`src/lightloops.js`): each shader compiles about 30% faster.
+  - Shaders compile a piece at a time with the loading bar moving, instead of all at once on a frozen screen.
+- **Faster start:** the loading screen builds only the streets and buildings within 800 m of you, in slices; the rest
+  of the view streams in as you play. The tree filter runs in slices, and the plants' valley map is built once
+  instead of four times.
+- **Music:** the exploring songs take turns in one audio element instead of a new one per song.
+
 ## 0.7.2 (2026-10-28)
 
 - **Fewer freezes:** the plants, ground cover, grown trees and their impostors now build in small slices after the

@@ -545,11 +545,12 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import { rollLightLoops } from './src/lightloops.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
 import { loadGround, groundPatch, groundStandIn, setGround } from './src/nature/ground.js';
-import { filterTrees } from './src/world/treeFilter.js';
+import { filterTreesAsync } from './src/world/treeFilter.js';
 import { RoadSurface } from './src/world/roadsurface.js';
 import { loadVegetation, Vegetation, natureUniforms } from './src/nature/vegetation.js';
 import { makeContext, assignPlants } from './src/nature/placement.js';
@@ -716,6 +717,7 @@ function repLabel() {
 
 // ============================================================ renderer
 const GFX = loadGfx(); // src/gfx.js: Potato .. Ultra, picked for this computer or in Settings
+rollLightLoops(THREE); // the lamps' and headlights' light loops stay loops (src/lightloops.js): Direct3D compiles a third faster
 const renderer = new THREE.WebGLRenderer({ antialias: GFX.aa, powerPreference: 'high-performance' });
 const scaleStep = makeScaler(GFX, r => renderer.setPixelRatio(r)); // dynamic resolution
 renderer.setSize(innerWidth, innerHeight);
@@ -753,6 +755,13 @@ const camera = new THREE.PerspectiveCamera(BASE_FOV, innerWidth / innerHeight, 0
 const POST_KEY = 'pw-auto-online-post';
 const postLevel = () => { try { const v = localStorage.getItem(POST_KEY); if (v !== null) return +v; } catch (e) { } return GFX.look ?? 2; };
 const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa ? GFX.msaa ?? 4 : 0, ao: !!GFX.ao });
+// Shaders are built for where they draw. With the post chain on, the scene renders into a linear target with no tone
+// mapping; a compile aimed at the screen builds sRGB, tone-mapped programs that nothing draws with, and the real ones
+// then still compile inside the first frames. On Windows (Direct3D) each standard-material program takes about half a
+// second, so every compile and warm-up draw aims at a target like the post chain's.
+const AIM_RT = new THREE.WebGLRenderTarget(1, 1);
+function aimed(f) { const prev = renderer.getRenderTarget(), swap = POST.level > 0 && !prev; if (swap) renderer.setRenderTarget(AIM_RT); try { return f(); } finally { if (swap) renderer.setRenderTarget(prev); } }
+{ const c = renderer.compile.bind(renderer), ca = renderer.compileAsync.bind(renderer); renderer.compile = (...a) => aimed(() => c(...a)); renderer.compileAsync = (...a) => aimed(() => ca(...a)); }
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
 const MAXANISO = renderer.capabilities.getMaxAnisotropy();
 
@@ -2586,8 +2595,25 @@ async function loadModels() {
 // sight, inside a frame, the plants' shaders froze the game for a second and more just after it started
 async function showCompiled(objs) {
   const hid = objs.filter(o => o && o.visible); for (const o of hid) o.visible = false;
+  await compileInSteps(compileUnits(objs), null, 8);
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
   for (const o of hid) o.visible = true;
+}
+// Shaders compiled a piece at a time, each new program waited for before the next piece, with a frame (or a step of the
+// loading bar) in between. Under Chrome on Windows (Direct3D) a new standard-material program holds the page for a few
+// hundred milliseconds whatever we do; all of them in one call froze it for half a minute.
+function compileUnits(roots) { // pieces without lights in them (a light in a piece would be counted twice and build programs for the wrong light count)
+  const out = [], visit = o => { if (!o || o.isLight) return; let lit = false; o.traverse(c => { if (c.isLight) lit = true; }); if (!lit) out.push(o); else for (const c of o.children) visit(c); };
+  for (const o of roots) visit(o); return out;
+}
+async function compileInSteps(units, onStep, ms = 60) {
+  const gl = renderer.getContext(); let t = performance.now();
+  for (let i = 0; i < units.length; i++) {
+    const n0 = renderer.info.programs.length;
+    try { renderer.compile(units[i], camera, scene); } catch (e) { continue; }
+    const P = renderer.info.programs; for (let k = n0; k < P.length; k++) gl.getProgramParameter(P[k].program, gl.LINK_STATUS);
+    if (performance.now() - t > ms) { if (onStep) onStep(i / units.length); await new Promise(r => setTimeout(r, 0)); t = performance.now(); }
+  }
 }
 const sceneSince = before => scene.children.filter(o => !before.has(o));
 async function plantNature() {
@@ -2602,7 +2628,7 @@ async function plantNature() {
     const NEAR = { shrub: 24, bush: 24, iceplant: 20, pebbles: 14, stone: 20, branches: 14 };
     const ph = await loadPHPlants(THREE, gltfLoader, renderer); for (const [k, sp] of ph) { sp.near = NEAR[k] ?? 20; NATURE.lib.species.set(k, sp); }
   } catch (e) { console.warn('[nature] scanned plants', e); }
-  const filt = filterTrees(D.trees, w); NATURE.filter = filt.stats;
+  const filt = await filterTreesAsync(D.trees, w); NATURE.filter = filt.stats;
   NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
   const placed = await assignPlants(D, filt, makeContext(D, w), NATURE.veg); NATURE.counts = placed.counts;
   try { // granite boulders and slabs where the aerial photo shows them, out of town (src/nature/rocks.js)
@@ -3129,8 +3155,8 @@ function updateLazy(budget) { // every frame: run the nearest pending chunk buil
   }
 }
 // which chunks are wanted (called with the chunk visibility pass, twice a second)
-function planLazy(fx, fz) {
-  const want = GFX.view + 200, drop = GFX.view + 1200, add = [];
+function planLazy(fx, fz, want = GFX.view + 200) {
+  const drop = GFX.view + 1200, add = [];
   for (const ch of chunks.values()) {
     const L = ch.lazy; if (!L) continue;
     const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7);
@@ -3139,7 +3165,12 @@ function planLazy(fx, fz) {
   }
   lazyQueue.length = 0; for (const [, L] of add.sort((a, b) => a[0] - b[0])) lazyQueue.push(L);
 }
-function buildLazyNear(x, z) { planLazy(x, z); while (lazyQueue.length || lazyJob) updateLazy(1e9); } // at load: everything in view, at once
+// at load: the streets and buildings round you, a slice at a time with the bar moving; the rest of the view streams in
+// as you play (all of it at once held the page for twenty seconds on a fast PC)
+async function buildLazyNear(x, z, r = Math.min(GFX.view + 200, 800)) {
+  planLazy(x, z, r); let t = performance.now();
+  while (lazyQueue.length || lazyJob) { updateLazy(40); if (performance.now() - t > 120) { showProgress(); await new Promise(res => setTimeout(res, 0)); t = performance.now(); } }
+}
 // far from Poway (out in the county), the core's town-wide meshes (300k plant impostors, every lamp and sign, the
 // signals, the grass) aren't drawn at all; its chunks already hide by distance (updateChunkVisibility)
 let CORE_LAMPS = null, coreFar = false, coreFarT = 0;
@@ -7937,7 +7968,7 @@ function tick(rdt) {
   timeScale = player.dead ? 0.35 : WHEEL.open && !online ? 0.2 : CH.slowmo ? 0.4 : 1; GRAV = CH.moon ? 7 : 21;
   const dt = rdt * timeScale; simTime += dt;
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
-  updateLazy(worldHold ? 30 : Math.max(0.5, 4 - usedOut * 0.5)); PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
+  updateLazy(worldHold ? 30 : Math.max(0.5, (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5)); PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
   PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
@@ -8043,11 +8074,12 @@ let worldReady = false;
   initAirports(scene, THREE); GANG.init();
   GAMES.init(); // crew garages in Poway, and their worlds when you go in (src/games)
   restoreSave();
-  const sp0 = focusPos(); progress('Building the streets around you…'); buildLazyNear(sp0.x, sp0.z);
+  const sp0 = focusPos(); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
-  progress('Warming up the effects…'); await FX.warm(renderer, camera); await NUKE_FX.warm(renderer, camera);
-  if (renderer.compileAsync) { progress('Preparing the shaders…'); await renderer.compileAsync(scene, camera).catch(() => { }); } // in parallel now, not all at once in the first frame
+  progress('Warming up the effects…'); await FX.warm(renderer, camera, POST.level > 0 ? AIM_RT : null); await NUKE_FX.warm(renderer, camera);
+  progress('Preparing the shaders…'); await compileInSteps(compileUnits(scene.children), f => { DL.msg = `Preparing the shaders… ${Math.round(f * 100)}%`; showProgress(); }); // a piece at a time: the bar moves, nothing compiles in the first frame
+  if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
   worldReady = true; DL.on = false; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
