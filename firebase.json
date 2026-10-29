@@ -5,7 +5,8 @@
     "ignore": ["firebase.json", "database.rules.json", "**/.*", "**/.*/**", "gha-creds-*.json", "nakama.local.json", "**/node_modules/**", "tools/**", "server/**", "docs/**", "*.md"],
     "headers": [
       { "source": "assets/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] },
-      { "source": "**/*.@(js|mjs)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+      { "source": "**/*.@(js|mjs)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "**", "headers": [{ "key": "Document-Policy", "value": "js-profiling" }] }
     ]
   },
   "emulators": {

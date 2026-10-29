@@ -26,7 +26,9 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   lawns, none in rain or at night.
 - **World palette:** stucco creams and tans, terracotta and concrete tile, grey sidewalks, mid-grey sun-bleached
   asphalt, golden wild oats, olive chaparral, tan decomposed granite, warm granite boulders. Wild ground is never
-  blue-grey (`src/nature/ground.js` warms it). Jacarandas are in leaf, not purple, except in late spring.
+  blue-grey (`src/nature/ground.js` warms it). Jacarandas are in leaf, not purple, except in late spring. Trees and
+  shrubs are scans where a good one exists (`assets/nature`, Poly Haven), grown in code where not (palms, gums,
+  peppers, live oaks, cypress).
 
 ## UI (`src/ui/western.css`)
 

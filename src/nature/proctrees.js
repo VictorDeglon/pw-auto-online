@@ -1,7 +1,8 @@
-// Trees grown in code for the species Poway is full of that the scanned set (oak, olive, scrub oak) doesn't cover:
+// Trees grown in code for the species Poway is full of that the scans (olive, scrub oak, jacaranda, a slender young tree,
+// laurel sumac) don't cover:
 // Mexican fan palms (tall, thin, with a skirt of dead fronds), Canary Island date palms (thick, diamond-patterned
-// trunks under a ball of arching fronds), blue gums (tall pale eucalyptus with drooping leaves), jacarandas (wide
-// umbrella crowns, in leaf), California pepper trees (weeping) and Italian cypress (columns).
+// trunks under a ball of arching fronds), blue gums (tall pale eucalyptus with drooping leaves), coast live oaks,
+// California pepper trees (weeping) and Italian cypress (columns). Jacarandas and small slender trees are scans.
 // Each variant is real geometry: tapered bark limbs, leaf cards built from scanned leaves (assets/pbr/atlas, ambientCG
 // CC0), palm fronds; leaf normals bend outward from the crown so a crown shades like a volume. At load every variant is
 // baked into the octahedral impostor atlas format of the scanned species (src/nature/vegetation.js: 8 x 8 views of
@@ -269,11 +270,10 @@ function palm(B, r, o) {
 // ---------------------------------------------------------------- the species
 async function makeVariants(THREE, base) {
   const r0 = rng(77);
-  const [gum, pepper, jac, oak] = await Promise.all(['leafset022', 'leafset013', 'leafset002', 'leafset024'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
+  const [gum, pepper, oak] = await Promise.all(['leafset022', 'leafset013', 'leafset024'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
   const card = async (sheet, o, seed) => { await idle(); return texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o)); };
   const T = {
     gum: await card(gum, { twigs: 7, leaves: 460, size: 42, hang: 0.6 }, 11), pepper: await card(pepper, { twigs: 8, leaves: 700, size: 26, hang: 0.9 }, 12),
-    jac: await card(jac, { twigs: 7, leaves: 650, size: 22 }, 13), // in leaf: they only flower (purple) for a few weeks in late spring
     cyp: await card(cyp, { twigs: 12, leaves: 1100, size: 16, dark: 0.88 }, 14),
     oak: await card(oak, { twigs: 9, leaves: 900, size: 17, dark: 0.82, hang: 0.15 }, 31), // coast live oak: small, glossy, dark leaves
     fan: texFrom(THREE, palmFanLeaf(rng(15))), date: texFrom(THREE, palmPinnaLeaf(rng(16))), dead: texFrom(THREE, palmPinnaLeaf(rng(17), true)), queen: texFrom(THREE, palmPinnaLeaf(rng(22), false, true)),
@@ -283,7 +283,7 @@ async function makeVariants(THREE, base) {
   const mats = (bark, leaf) => [new THREE.MeshStandardMaterial({ map: bark, roughness: 0.95 }), new THREE.MeshStandardMaterial({ map: leaf, alphaTest: 0.5, roughness: 0.75, side: THREE.DoubleSide })];
   const S = {
     palm_fan: { trans: 0.25, sway: 0.006, list: [] }, palm_date: { trans: 0.25, sway: 0.008, list: [] }, palm_queen: { trans: 0.3, sway: 0.012, list: [] }, eucalyptus: { trans: 0.2, sway: 0.01, list: [] },
-    jacaranda: { trans: 0.2, sway: 0.012, list: [] }, pepper: { trans: 0.25, sway: 0.016, list: [] }, slender: { trans: 0.15, sway: 0.008, list: [] },
+    pepper: { trans: 0.25, sway: 0.016, list: [] }, cypress: { trans: 0.15, sway: 0.008, list: [] }, // jacarandas and the small slender trees are scans now (assets/nature)
     oak: { trans: 0.15, sway: 0.008, list: [] },
   };
   const jobs = [], grow = (name, fn, bark, leaf) => jobs.push(() => { const B = new Builder(); fn(B); S[name].list.push({ geo: B.geometry(THREE), mats: mats(bark, leaf) }); });
@@ -296,9 +296,8 @@ async function makeVariants(THREE, base) {
   const QUEEN = [{ height: 9, lean: 0.06, fronds: 16 }, { height: 12, lean: 0.16, curve: 0.5, fronds: 13, frond: 1.1 }];
   QUEEN.forEach((f, i) => { const r = rng(250 + i); grow('palm_queen', B => palm(B, r, { kind: 'queen', r0: 0.2, r1: 0.17, ...f }), T.barkFan, T.queen); });
   for (let i = 0; i < 3; i++) { const r = rng(300 + i); grow('eucalyptus', B => broadleaf(B, r, { trunk: [6, 8, 5][i], radius: 0.42, depth: 3, kids: [3, 3, 2], spread: [0.55, 0.65, 0.7], ratio: [0.9, 0.7, 0.6], wiggle: 0.4, up: 0.22, droop: 0.35, cards: 11, card: 2.3, hang: 0.45, tall: 1.4 }), T.barkGum, T.gum); }
-  for (let i = 0; i < 2; i++) { const r = rng(400 + i); grow('jacaranda', B => broadleaf(B, r, { trunk: 2.6, radius: 0.3, depth: 3, kids: [4, 3, 2], spread: [0.85, 0.6, 0.55], ratio: [1.3, 0.62, 0.55], wiggle: 0.3, up: 0.06, droop: 0.15, cards: 7, card: 1.7, hang: 0.05 }), T.bark, T.jac); }
   for (let i = 0; i < 2; i++) { const r = rng(500 + i); grow('pepper', B => broadleaf(B, r, { trunk: 2.2, radius: 0.36, depth: 3, kids: [4, 3, 2], spread: [0.8, 0.7, 0.6], ratio: [1.1, 0.6, 0.55], wiggle: 0.45, up: 0.05, droop: 0.6, cards: 8, card: 1.8, hang: 0.85, tall: 1.6 }), T.bark, T.pepper); }
-  for (let i = 0; i < 2; i++) { const r = rng(600 + i); grow('slender', B => cypress(B, r, [11, 14][i]), T.bark, T.cyp); }
+  for (let i = 0; i < 2; i++) { const r = rng(600 + i); grow('cypress', B => cypress(B, r, [11, 14][i]), T.bark, T.cyp); }
   // coast live oak: a short, thick trunk splitting low into big sinuous limbs; a dense, rounded crown wider than it is tall
   for (let i = 0; i < 3; i++) { const r = rng(700 + i); grow('oak', B => broadleaf(B, r, { trunk: [1.8, 2.3, 1.5][i], radius: 0.55, depth: 3, kids: [4, 3, 3], spread: [1.0, 0.75, 0.65], ratio: [2.4, 0.62, 0.55], wiggle: 0.5, up: 0.04, droop: 0.25, cards: 11, card: 1.7, hang: 0.1, tall: 0.9 }), T.bark, T.oak); }
   for (const j of jobs) { await idle(); j(); } // one tree at a time between frames

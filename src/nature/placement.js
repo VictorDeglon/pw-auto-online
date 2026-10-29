@@ -11,19 +11,19 @@
 
 import { pointInPoly } from '../world/treeFilter.js';
 
-export const TREE_SPECIES = new Set(['oak', 'olive', 'scruboak', 'slender', 'jacaranda', 'eucalyptus', 'palm_fan', 'palm_date', 'palm_queen', 'pepper']);
-const FALLBACK = { eucalyptus: 'slender', palm_fan: 'slender', palm_date: 'olive', palm_queen: 'palm_fan', opuntia: 'sage', yucca: 'sage', agave: 'sage', scruboak: 'chapbig', chapbig: 'chap', chap: 'sage', sage: 'scruboak' }; // the scrub oak scan stands in for chaparral and sage until those are baked
+export const TREE_SPECIES = new Set(['oak', 'olive', 'scruboak', 'slender', 'cypress', 'jacaranda', 'eucalyptus', 'palm_fan', 'palm_date', 'palm_queen', 'pepper']);
+const FALLBACK = { cypress: 'slender', eucalyptus: 'slender', palm_fan: 'slender', palm_date: 'olive', palm_queen: 'palm_fan', opuntia: 'sage', yucca: 'sage', agave: 'sage', scruboak: 'chapbig', chapbig: 'chap', chap: 'sage', sage: 'scruboak' }; // the scrub oak scan stands in for chaparral and sage until those are baked
 // albedo tints: the scans are a touch greener than Poway in the dry season; chaparral reads dark olive, sage grey
 const TINT = {
-  oak: [0.74, 0.80, 0.66], olive: [0.96, 0.98, 0.92], scruboak: [0.72, 0.76, 0.62], slender: [0.86, 0.90, 0.80],
+  oak: [0.74, 0.80, 0.66], olive: [0.96, 0.98, 0.92], scruboak: [0.72, 0.76, 0.62], slender: [0.9, 0.92, 0.82], cypress: [0.86, 0.90, 0.80],
   jacaranda: [1, 1, 1], eucalyptus: [1, 1, 1], palm_fan: [1, 1, 1], palm_date: [1, 1, 1], palm_queen: [1, 1, 1], pepper: [1, 1, 1],
-  chapbig: [0.60, 0.66, 0.52], chap: [0.62, 0.67, 0.53], sage: [0.98, 0.95, 0.86], opuntia: [1, 1, 1], yucca: [1, 1, 1], agave: [1, 1, 1],
+  chapbig: [0.95, 1.0, 0.82], chap: [0.66, 0.71, 0.56], // the laurel sumac scan is dark already; the lemonade berry one bright sage: [0.98, 0.95, 0.86], opuntia: [1, 1, 1], yucca: [1, 1, 1], agave: [1, 1, 1],
 };
 // max height (m) a species is allowed to reach when scaled to fit the photo canopy
-const MAXH = { oak: 16, olive: 9, scruboak: 6, slender: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, palm_queen: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
+const MAXH = { oak: 16, olive: 9, scruboak: 6, slender: 12, cypress: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, palm_queen: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
 const MINS = { sage: 1.3, chap: 1.0 }; // the scans of these are small; never shrink them further
 // mature heights (m): a street tree here is usually full grown; the photo's canopy can understate it
-const MINH = { eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 9, scruboak: 3 };
+const MINH = { eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 7, cypress: 9, scruboak: 3 };
 
 function pickW(rnd, table) { // [[name, weight], ...]
   let t = 0; for (const e of table) t += e[1];
@@ -63,46 +63,52 @@ function buildContext(D, w) {
   return { built, valley, areaKind, heightAt: w.groundAt || w.heightAt, slopeAt: w.slopeAt, reject: w.reject };
 }
 
+// one detection i (radius r) to a plant: picks the species, size and tint and adds it to veg. rnd: random numbers for this
+// tree. Returns [species, instance index, is a tree] or null.
+export function plantOne(D, i, r, ctx, veg, rnd) {
+  const T = D.trees, x = T[i * 4], z = T[i * 4 + 1], kind = T[i * 4 + 2], sl = [0, 0];
+  if (ctx.reject && ctx.reject(x, z)) return null; // on a road, sidewalk or shoulder
+  const has = n => veg.lib.species.has(n);
+  const resolve = n => { let k = n, guard = 0; while (!has(k) && FALLBACK[k] && guard++ < 4) k = FALLBACK[k]; return has(k) ? k : null; };
+  const urban = ctx.built(x, z) >= 3, area = ctx.areaKind(x, z);
+  let sp;
+  if (area === 6) sp = pickW(rnd, [['eucalyptus', 6], ['oak', 3], ['scruboak', 1]]);              // groves (kind 2 is parking: nothing grows there)
+  else if (urban || area === 1 || area === 3) {                                                     // planted
+    if (kind === 3) sp = pickW(rnd, [['chap', 5], ['olive', 2], ['slender', 1], ['agave', 1]]);
+    else if (kind === 0) sp = pickW(rnd, [['olive', 18], ['jacaranda', 14], ['slender', 8], ['palm_fan', 18], ['pepper', 12], ['oak', 10], ['scruboak', 6], ['eucalyptus', 6], ['palm_date', 6], ['palm_queen', 7]]);
+    else sp = pickW(rnd, [['oak', 24], ['jacaranda', 16], ['eucalyptus', 26], ['pepper', 14], ['scruboak', 6], ['olive', 6], ['palm_fan', 8]]);
+  } else {                                                                                          // wild
+    const v = ctx.valley(x, z); ctx.slopeAt(x, z, sl); const steep = Math.hypot(sl[0], sl[1]);
+    if (v < -6 && steep < 0.35 && kind !== 3) sp = pickW(rnd, [['oak', 7], ['scruboak', 2], ['chapbig', 1]]);   // creek bottoms
+    else if (kind === 3) sp = pickW(rnd, [['chap', 40], ['sage', 34], ['chapbig', 14], ['opuntia', 8], ['yucca', 4]]);
+    else if (kind === 0) sp = pickW(rnd, [['chapbig', 55], ['chap', 30], ['scruboak', 12], ['oak', 3]]);
+    else sp = pickW(rnd, [['chapbig', 55], ['scruboak', 30], ['oak', 15]]);
+  }
+  const want = sp; sp = resolve(sp); if (!sp) return null; // shrubs drawn with a stand-in scan stay drive-through
+  const lib = veg.lib.species.get(sp), vi = Math.floor(rnd() * lib.variants.length), V = lib.variants[vi];
+  let scale = TREE_SPECIES.has(sp) && sp.startsWith('palm') ? 0.8 + rnd() * 0.35 : (2 * r) / Math.max(0.3, V.width);
+  scale = Math.min(scale, (MAXH[want] || MAXH[sp] || 12) / Math.max(0.3, V.height));
+  if (MINH[want] && TREE_SPECIES.has(want)) scale = Math.max(scale, (MINH[want] * (0.85 + rnd() * 0.5)) / Math.max(0.3, V.height));
+  scale = Math.max(scale, MINS[sp] || 0.5) * (0.92 + rnd() * 0.16);
+  const tint = TINT[want] || TINT[sp] || [1, 1, 1], b = 0.88 + rnd() * 0.24, h = rnd() * 0.08 - 0.04;
+  const y = ctx.heightAt(x, z) - 0.08 * scale;
+  const instIdx = veg.inst.get(sp) ? veg.inst.get(sp).x.length : 0;
+  veg.add(sp, x, y, z, rnd() * Math.PI * 2, scale, vi, [tint[0] * b * (1 + h), tint[1] * b, tint[2] * b * (1 - h)]);
+  return [sp, instIdx, TREE_SPECIES.has(want)];
+}
+// random numbers of one tree, the same whatever order the trees are planted in
+export function treeRandom(i, seed = 1234) { let s = (i * 2654435761 + seed) % 2147483647 || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+
 // returns { trees: [x, z, ...] for collision, counts }
 const idle = () => new Promise(r => setTimeout(r, 0));
 export async function assignPlants(D, filt, ctx, veg, seed = 1234) { // async: it yields to the game every few ms
-  let tY = performance.now();
-  let s = seed; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  const has = n => veg.lib.species.has(n);
-  const resolve = n => { let k = n, guard = 0; while (!has(k) && FALLBACK[k] && guard++ < 4) k = FALLBACK[k]; return has(k) ? k : null; };
-  const counts = {}, trees = [], refs = [], sl = [0, 0];
-  const T = D.trees, n = T.length / 4;
+  let tY = performance.now(); const counts = {}, trees = [], refs = [], n = D.trees.length / 4;
   for (let i = 0; i < n; i++) {
     if ((i & 511) === 0 && performance.now() - tY > 6) { await idle(); tY = performance.now(); }
     if (filt.action[i]) continue;
-    const x = T[i * 4], z = T[i * 4 + 1], kind = T[i * 4 + 2], r = filt.radius[i];
-    if (ctx.reject && ctx.reject(x, z)) continue; // on a road, sidewalk or shoulder
-    const urban = ctx.built(x, z) >= 3, area = ctx.areaKind(x, z);
-    let sp;
-    if (area === 6) sp = pickW(rnd, [['eucalyptus', 6], ['oak', 3], ['scruboak', 1]]);              // groves (kind 2 is parking: nothing grows there)
-    else if (urban || area === 1 || area === 3) {                                                     // planted
-      if (kind === 3) sp = pickW(rnd, [['chap', 5], ['olive', 2], ['slender', 1], ['agave', 1]]);
-      else if (kind === 0) sp = pickW(rnd, [['olive', 18], ['jacaranda', 14], ['slender', 8], ['palm_fan', 18], ['pepper', 12], ['oak', 10], ['scruboak', 6], ['eucalyptus', 6], ['palm_date', 6], ['palm_queen', 7]]);
-      else sp = pickW(rnd, [['oak', 24], ['jacaranda', 16], ['eucalyptus', 26], ['pepper', 14], ['scruboak', 6], ['olive', 6], ['palm_fan', 8]]);
-    } else {                                                                                          // wild
-      const v = ctx.valley(x, z); ctx.slopeAt(x, z, sl); const steep = Math.hypot(sl[0], sl[1]);
-      if (v < -6 && steep < 0.35 && kind !== 3) sp = pickW(rnd, [['oak', 7], ['scruboak', 2], ['chapbig', 1]]);   // creek bottoms
-      else if (kind === 3) sp = pickW(rnd, [['chap', 40], ['sage', 34], ['chapbig', 14], ['opuntia', 8], ['yucca', 4]]);
-      else if (kind === 0) sp = pickW(rnd, [['chapbig', 55], ['chap', 30], ['scruboak', 12], ['oak', 3]]);
-      else sp = pickW(rnd, [['chapbig', 55], ['scruboak', 30], ['oak', 15]]);
-    }
-    const want = sp; sp = resolve(sp); if (!sp) continue; // shrubs drawn with a stand-in scan stay drive-through
-    const lib = veg.lib.species.get(sp), vi = Math.floor(rnd() * lib.variants.length), V = lib.variants[vi];
-    let scale = TREE_SPECIES.has(sp) && sp.startsWith('palm') ? 0.8 + rnd() * 0.35 : (2 * r) / Math.max(0.3, V.width);
-    scale = Math.min(scale, (MAXH[want] || MAXH[sp] || 12) / Math.max(0.3, V.height));
-    if (MINH[want] && TREE_SPECIES.has(want)) scale = Math.max(scale, (MINH[want] * (0.85 + rnd() * 0.5)) / Math.max(0.3, V.height));
-    scale = Math.max(scale, MINS[sp] || 0.5) * (0.92 + rnd() * 0.16);
-    const tint = TINT[want] || TINT[sp] || [1, 1, 1], b = 0.88 + rnd() * 0.24, h = rnd() * 0.08 - 0.04;
-    const y = ctx.heightAt(x, z) - 0.08 * scale;
-    const instIdx = veg.inst.get(sp) ? veg.inst.get(sp).x.length : 0;
-    veg.add(sp, x, y, z, rnd() * Math.PI * 2, scale, vi, [tint[0] * b * (1 + h), tint[1] * b, tint[2] * b * (1 - h)]);
-    counts[sp] = (counts[sp] || 0) + 1;
-    if (TREE_SPECIES.has(want)) { trees.push(x, z); refs.push([sp, instIdx]); }
+    const got = plantOne(D, i, filt.radius[i], ctx, veg, treeRandom(i, seed)); if (!got) continue;
+    counts[got[0]] = (counts[got[0]] || 0) + 1;
+    if (got[2]) { trees.push(D.trees[i * 4], D.trees[i * 4 + 1]); refs.push([got[0], got[1]]); }
   }
   return { trees, refs, counts };
 }

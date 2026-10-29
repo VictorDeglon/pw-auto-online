@@ -1,4 +1,5 @@
 <meta charset="utf-8">
+<script>if (/[?&]jsprof\b/.test(location.search)) try { window.__P = new Profiler({ sampleInterval: 10, maxBufferSize: 1000000 }); } catch (e) { console.warn(e); }</script>
 <title>Poway Automobile Online</title>
 <meta name="description" content="Poway Automobile Online: free-roam driving and mayhem in a real-scale Poway, CA, in your browser. Five online servers.">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -553,10 +554,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
 import { loadGround, groundPatch, groundStandIn, setGround } from './src/nature/ground.js';
-import { filterTreesAsync } from './src/world/treeFilter.js';
+import { createTreeFilter } from './src/world/treeFilter.js';
 import { RoadSurface } from './src/world/roadsurface.js';
 import { loadVegetation, Vegetation, natureUniforms } from './src/nature/vegetation.js';
-import { makeContext, assignPlants } from './src/nature/placement.js';
+import { makeContext, plantOne, treeRandom } from './src/nature/placement.js';
 import { buildCoverMap, GroundCover, scatterShrubs, scatterOnCover, loadCards } from './src/nature/groundcover.js';
 import { loadPHPlants, grassCard } from './src/nature/phplants.js';
 import { growTrees } from './src/nature/proctrees.js';
@@ -739,7 +740,7 @@ const PROF = { t0: 0, t: 0, m: [], slow: [], gaps: [], tasks: [], n: 0, long: 0,
   },
   gap(now) { const g = now - this.lastNow; if (this.lastNow && g > 120) { this.gaps.push({ at: +(now / 1000).toFixed(1), ms: Math.round(g) }); if (this.gaps.length > 80) this.gaps.shift(); } this.lastNow = now; },
 };
-try { new PerformanceObserver(l => { for (const e of l.getEntries()) { PROF.tasks.push({ at: +(e.startTime / 1000).toFixed(1), ms: Math.round(e.duration), label: PROF.label }); if (PROF.tasks.length > 120) PROF.tasks.shift(); } }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
+try { new PerformanceObserver(l => { for (const e of l.getEntries()) { if (e.duration > 1000) { let where = PROF.label; try { where = where || (worldReady ? 'play' : 'loading: ' + DL.msg); } catch (x) { } console.warn('[freeze]', Math.round(e.duration) + 'ms at', (e.startTime / 1000).toFixed(1) + 's', where); } PROF.tasks.push({ at: +(e.startTime / 1000).toFixed(1), ms: Math.round(e.duration), label: PROF.label }); if (PROF.tasks.length > 120) PROF.tasks.shift(); } }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
 renderer.debug.checkShaderErrors = /[?&]debug\b/.test(location.search); // reading shader logs back stalls every compile; ?debug turns it on
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1017,8 +1018,10 @@ function showProgress() {
   SHELL.bootProgress(0.02 + 0.6 * DL.shown, DL.total ? `${DL.msg} ${Math.min(99, Math.floor(DL.shown * 100))}% · ${mb(DL.done)} of ${mb(DL.total)} MB` : DL.msg);
 }
 const progTimer = setInterval(() => { if (DL.on) showProgress(); else clearInterval(progTimer); }, 250); // streams move between progress() calls
+const BOOT_T = { t: performance.now(), msg: 'Starting' }; // the loading screen's steps, timed in the console ([boot])
 function progress(msg) {
   if (!DL.on) return;
+  { const base = String(msg).replace(/[\d,.]+%?/g, '#'), now = performance.now(); if (base !== BOOT_T.base) { console.info('[boot]', BOOT_T.msg, ((now - BOOT_T.t) / 1000).toFixed(1) + 's'); Object.assign(BOOT_T, { t: now, msg, base }); } }
   if (loadState.total && loadState.done >= loadState.total && !/Loading|Reading/.test(msg)) buildN++;
   DL.msg = msg; showProgress();
 }
@@ -1720,7 +1723,7 @@ const REGION_WALLS = {
 };
 const REGION_ROOFS = { coast: ['#6e6f72', '#56585b', '#8a8a86', '#9a948a', '#b5583a'].map(c => hex(c)), urban: ROOF_SHINGLE, valley: ROOF_CLAY, back: ['#6b4e3d', '#5b5048', '#8a7a6a', '#a0522d'].map(c => hex(c)) };
 const REGION_TREES = {
-  coast: { town: [['palm_fan', 30], ['palm_date', 10], ['palm_queen', 12], ['slender', 14], ['eucalyptus', 12], ['pepper', 10], ['olive', 8]], wild: [['scruboak', 1]], wildTree: [['eucalyptus', 4], ['slender', 3], ['oak', 2]] },
+  coast: { town: [['palm_fan', 30], ['palm_date', 10], ['palm_queen', 12], ['cypress', 14], ['eucalyptus', 12], ['pepper', 10], ['olive', 8]], wild: [['scruboak', 1]], wildTree: [['eucalyptus', 4], ['cypress', 3], ['oak', 2]] },
   urban: { town: [['palm_fan', 26], ['jacaranda', 22], ['palm_date', 12], ['palm_queen', 10], ['pepper', 14], ['olive', 10], ['eucalyptus', 6]], wild: [['scruboak', 1]], wildTree: [['eucalyptus', 4], ['oak', 3]] },
   valley: { town: [['pepper', 16], ['jacaranda', 14], ['olive', 14], ['palm_fan', 16], ['eucalyptus', 12], ['oak', 10], ['palm_date', 5], ['palm_queen', 6]], wild: [['scruboak', 1]], wildTree: [['oak', 6], ['eucalyptus', 4]] },
   back: { town: [['oak', 30], ['pepper', 12], ['eucalyptus', 10], ['olive', 8]], wild: [['scruboak', 1]], wildTree: [['oak', 10], ['eucalyptus', 1]] },
@@ -2619,6 +2622,10 @@ async function compileInSteps(units, onStep, ms = 60) {
   }
 }
 const sceneSince = before => scene.children.filter(o => !before.has(o));
+// The map is planted in 500 m tiles, nearest first: the trees, rocks and yard plants of the tiles round you, then the
+// cover map, then their brush and stones; the step ends there and the rest of the map fills in outward in the
+// background, a tile at a time between frames (all of it in one go took minutes and held the game). Each tile's plants
+// go to the GPU as they're done (Vegetation.flush), and every tile comes out the same in whatever order it's planted.
 async function plantNature() {
   if (!NATURE.lib || NATURE.veg) return;
   const tick = () => new Promise(r => setTimeout(r, 0));
@@ -2631,81 +2638,102 @@ async function plantNature() {
     const NEAR = { shrub: 24, bush: 24, iceplant: 20, pebbles: 14, stone: 20, branches: 14 };
     const ph = await loadPHPlants(THREE, gltfLoader, renderer); for (const [k, sp] of ph) { sp.near = NEAR[k] ?? 20; NATURE.lib.species.set(k, sp); }
   } catch (e) { console.warn('[nature] scanned plants', e); }
-  const filt = await filterTreesAsync(D.trees, w); NATURE.filter = filt.stats;
-  NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
-  const placed = await assignPlants(D, filt, makeContext(D, w), NATURE.veg); NATURE.counts = placed.counts;
+  let rockList = [];
   try { // granite boulders and slabs where the aerial photo shows them, out of town (src/nature/rocks.js)
     const [rocks, list] = await Promise.all([loadRocks(THREE, gltfLoader, renderer), loadBoulders()]);
-    for (const [k, sp] of rocks) NATURE.lib.species.set(k, sp);
-    const lib = NATURE.lib.species.get('boulder'), ctx2 = makeContext(D, w), rr = mulberry(4401); let n = 0;
-    if (lib) for (const [lat, lon, size, conf] of list) {
-      if (conf < 0.7 || size < 2) continue;
-      const p = ll(lat, lon); if (!p || !inCorePhoto(p.x, p.z)) continue;
-      if (ctx2.built(p.x, p.z) >= 2 || offLimits(p.x, p.z, 2) || ROAD_FIT.inside(p.x, p.z)) continue;
-      const vi = Math.floor(rr() * lib.variants.length), V = lib.variants[vi], wdt = size * (0.7 + rr() * 0.35), sc = wdt / Math.max(0.3, V.width);
-      const y = groundAt(p.x, p.z), sink = V.height * sc * (0.18 + rr() * 0.15), b = 0.8 + rr() * 0.22;
-      if (!NATURE.veg.add('boulder', p.x, y - sink, p.z, rr() * Math.PI * 2, sc, vi, [b * 1.0, b * 0.95, b * 0.86])) continue;
-      if (wdt >= 2.5) { const r = wdt * 0.38, P = []; for (let k = 0; k < 6; k++) P.push(p.x + Math.cos(k * Math.PI / 3) * r, p.z + Math.sin(k * Math.PI / 3) * r); addPoly(P, y - 1, y - sink + V.height * sc * 0.9); }
-      n++;
-    }
-    console.info('[nature] boulders', n);
-    // granite stones along the trails: cobbles kicked to the edges, the odd one in the path
-    if (lib && ROADS) { let ns = 0;
-      D.roads.forEach((r, ri) => { const ts = ROADS.trailSide(ri); if (!ts || ns > 16000) return; const [, , w, p0] = r, sw = ROADS.sw[ri], off = ts * (w / 2 + sw + 1.4);
-        let acc = 0; for (let k = 0; k + 3 < p0.length; k += 2) { const ax = p0[k], az = p0[k + 1], bx = p0[k + 2], bz = p0[k + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue; const tx = (bx - ax) / L, tz = (bz - az) / L;
-          for (let s2 = (3 - acc % 3); s2 < L; s2 += 2.2) { if (rr() > 0.42) continue; const side = rr() < 0.5 ? -1 : 1, edge = rr() < 0.88, o = off + (edge ? side * (1.15 + rr() * 0.5) : (rr() - 0.5) * 1.6);
-            const x = ax + tx * s2 - tz * o, z = az + tz * s2 + tx * o; if (offLimits(x, z, 0.2) && !edge) continue;
-            const vi = Math.floor(rr() * lib.variants.length), V = lib.variants[vi], wdt = edge ? 0.14 + rr() * rr() * 0.55 : 0.07 + rr() * 0.1, sc = wdt / Math.max(0.3, V.width), b = 0.82 + rr() * 0.2;
-            if (NATURE.veg.add('boulder', x, groundAt(x, z) - V.height * sc * 0.35, z, rr() * Math.PI * 2, sc, vi, [b * 1.02, b * 0.95, b * 0.85])) ns++; }
-          acc += L; } });
-      console.info('[nature] trail stones', ns); }
+    for (const [k, sp] of rocks) NATURE.lib.species.set(k, sp); rockList = list;
   } catch (e) { console.warn('[nature] boulders', e); }
-  { // the houses' own planting: foundation shrubs and a front-yard tree each (src/world/yards.js)
-    const rr = mulberry(9917);
-    for (const [want, x, z, s] of GARDEN) {
-      const want2 = want === 'scruboak' && NATURE.lib.species.has('shrub') ? 'shrub' : want; // foundation shrubs: the scanned garden ones
-      const sp = NATURE.lib.species.has(want2) ? want2 : 'olive', lib = NATURE.lib.species.get(sp); if (!lib) continue;
-      const vi = Math.floor(rr() * lib.variants.length), V = lib.variants[vi], idx = NATURE.veg.inst.get(sp) ? NATURE.veg.inst.get(sp).x.length : 0;
-      const scale = s && sp === 'shrub' ? (0.7 + rr() * 0.75) / Math.max(0.2, V.height) : s || (sp.startsWith('palm') ? 0.8 + rr() * 0.4 : (7 + rr() * 6) / Math.max(0.5, V.height)); // a front-yard tree is a mature one: 7-13 m
-      const tint = sp === 'scruboak' ? [0.78 + rr() * 0.1, 0.86, 0.66] : sp === 'shrub' ? [0.95 + rr() * 0.1, 1.0, 0.9] : [1, 1, 1];
-      if (!NATURE.veg.add(sp, x, groundAt(x, z) - 0.05, z, rr() * Math.PI * 2, scale, vi, tint)) continue;
-      if (!s) { placed.trees.push(x, z); placed.refs.push([sp, idx]); }
+  const V = NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
+  const ctx = makeContext(D, w), F = createTreeFilter(D.trees, w), Q = Math.min(1, GRASS_Q), counts = NATURE.counts = {}; NATURE.filter = F.stats;
+  let tY = performance.now(); const breathe = async () => { if (performance.now() - tY > 6) { await tick(); tY = performance.now(); } };
+  for (const _ of F.prepare()) await breathe();
+  // ---- the tiles: trees by their detections, boulders, the houses' own planting (GARDEN)
+  const TS = 500, tiles = new Map(), tileOf = (x, z) => { const i = Math.floor(x / TS), j = Math.floor(z / TS), k = i * 100000 + j; let t = tiles.get(k); if (!t) tiles.set(k, t = { i, j, trees: [], rocks: [], gardens: [], a: false, b: false }); return t; };
+  for (let i = 0, n = D.trees.length / 4; i < n; i++) { tileOf(D.trees[i * 4], D.trees[i * 4 + 1]).trees.push(i); if ((i & 16383) === 0) await breathe(); }
+  for (let i = Math.floor(D.bounds[0] / TS); i <= Math.floor(D.bounds[2] / TS); i++) for (let j = Math.floor(D.bounds[1] / TS); j <= Math.floor(D.bounds[3] / TS); j++) tileOf(i * TS + 1, j * TS + 1);
+  const rockLib = NATURE.lib.species.get('boulder');
+  if (rockLib) for (const [lat, lon, size, conf] of rockList) { if (conf < 0.7 || size < 2) continue; const p = ll(lat, lon); if (p && inCorePhoto(p.x, p.z)) tileOf(p.x, p.z).rocks.push([p.x, p.z, size]); }
+  for (const g of GARDEN) tileOf(g[1], g[2]).gardens.push(g);
+  const seedOf = (t, k) => (((t.i * 73856093) ^ (t.j * 19349663) ^ (k * 83492791)) >>> 0) % 2147483646 + 1;
+  const plantA = async t => { // trees, boulders and yard plants
+    t.a = true; const col = []; // [x, z, species, instance] of the trees, for collision
+    for (const i of t.trees) {
+      await breathe(); if (!F.keep(i)) continue;
+      const got = plantOne(D, i, F.radius[i], ctx, V, treeRandom(i)); if (!got) continue;
+      counts[got[0]] = (counts[got[0]] || 0) + 1; if (got[2]) col.push(D.trees[i * 4], D.trees[i * 4 + 1], got[0], got[1]);
     }
+    if (rockLib && t.rocks.length) { const rr = mulberry(seedOf(t, 1));
+      for (const [x, z, size] of t.rocks) {
+        if (ctx.built(x, z) >= 2 || offLimits(x, z, 2) || ROAD_FIT.inside(x, z)) continue;
+        const vi = Math.floor(rr() * rockLib.variants.length), RV = rockLib.variants[vi], wdt = size * (0.7 + rr() * 0.35), sc = wdt / Math.max(0.3, RV.width);
+        const y = groundAt(x, z), sink = RV.height * sc * (0.18 + rr() * 0.15), b = 0.8 + rr() * 0.22;
+        if (!V.add('boulder', x, y - sink, z, rr() * Math.PI * 2, sc, vi, [b * 1.0, b * 0.95, b * 0.86])) continue;
+        if (wdt >= 2.5) { const r = wdt * 0.38, P = []; for (let k = 0; k < 6; k++) P.push(x + Math.cos(k * Math.PI / 3) * r, z + Math.sin(k * Math.PI / 3) * r); addPoly(P, y - 1, y - sink + RV.height * sc * 0.9); }
+        counts.boulder = (counts.boulder || 0) + 1;
+      } }
+    if (t.gardens.length) { const rr = mulberry(seedOf(t, 2)); // foundation shrubs and a front-yard tree each (src/world/yards.js)
+      for (const [want, x, z, s] of t.gardens) {
+        const want2 = want === 'scruboak' && NATURE.lib.species.has('shrub') ? 'shrub' : want; // foundation shrubs: the scanned garden ones
+        const sp = NATURE.lib.species.has(want2) ? want2 : 'olive', lib = NATURE.lib.species.get(sp); if (!lib) continue;
+        const vi = Math.floor(rr() * lib.variants.length), GV = lib.variants[vi], idx = V.inst.get(sp) ? V.inst.get(sp).x.length : 0;
+        const scale = s && sp === 'shrub' ? (0.7 + rr() * 0.75) / Math.max(0.2, GV.height) : s || (sp.startsWith('palm') ? 0.8 + rr() * 0.4 : (7 + rr() * 6) / Math.max(0.5, GV.height)); // a front-yard tree is a mature one: 7-13 m
+        const tint = sp === 'scruboak' ? [0.78 + rr() * 0.1, 0.86, 0.66] : sp === 'shrub' ? [0.95 + rr() * 0.1, 1.0, 0.9] : [1, 1, 1];
+        if (!V.add(sp, x, groundAt(x, z) - 0.05, z, rr() * Math.PI * 2, scale, vi, tint)) continue;
+        if (!s) col.push(x, z, sp, idx);
+      } }
+    for (let k = 0; k < col.length; k += 4) { const ti = treeC.length / 2; treeC.push(col[k], col[k + 1]); gridAdd(col[k], col[k + 1], col[k], col[k + 1], 't', ti); addProp({ kind: 'tree', x: col[k], z: col[k + 1], ti, veg: [col[k + 2], col[k + 3]], alive: true }); }
+  };
+  // ---- brush, bushes, pebbles, stones and dead branches over the cover map (the photo's brush and bare dirt)
+  const caps = { scruboak: 220000 * Q, bush: 200000 * Q, pebbles: 140000 * Q, stone: 60000 * Q, branches: 20000 * Q }, sc = NATURE.scatter = { scruboak: 0, bush: 0, pebbles: 0, stone: 0, branches: 0 };
+  const wild = (x, z) => offLimits(x, z, 2) || ctx.built(x, z) >= 2, bare = c => { const g = c[0] / 255, b = c[1] / 255, t = c[3] / 255; return (1 - g) * (1 - b * 0.8) * (1 - t * 0.7); };
+  const plantB = async t => {
+    t.b = true; const C = NATURE.cover, b = [t.i * TS, t.j * TS, (t.i + 1) * TS, (t.j + 1) * TS];
+    sc.scruboak += await scatterShrubs(C, V, groundAt, 'scruboak', b, { cap: caps.scruboak - sc.scruboak, seed: seedOf(t, 3), reject: (x, z) => offLimits(x, z, 3) });
+    // the chaparral's understorey: buckwheat- and sage-like bushes among the scrub oak, thick where the photo's brush is
+    sc.bush += await scatterOnCover(C, V, groundAt, 'bush', b, { step: 6, cap: caps.bush - sc.bush, seed: seedOf(t, 4), size: [0.5, 1.9], sink: 0.1, reject: wild, clumped: true,
+      want: c => { const br = c[1] / 255, tl = c[3] / 255; return br > 0.12 ? Math.min(0.9, br * 0.7 + tl * 0.15) : tl > 0.4 ? 0.12 : 0; }, tint: (br, dry) => [0.92 * br * (1 + dry * 0.25), 0.9 * br, 0.74 * br * (1 - dry * 0.2)] });
+    // bare ground isn't bare: granite pebbles and stones on the dirt out of town
+    sc.pebbles += await scatterOnCover(C, V, groundAt, 'pebbles', b, { step: 6, cap: caps.pebbles - sc.pebbles, seed: seedOf(t, 5), size: [0.9, 2.2], byWidth: true, sink: 0.25, reject: wild, want: c => Math.max(0, bare(c) - 0.35) * 0.9 });
+    sc.stone += await scatterOnCover(C, V, groundAt, 'stone', b, { step: 9, cap: caps.stone - sc.stone, seed: seedOf(t, 6), size: [0.15, 0.7], sink: 0.3, reject: wild, want: c => Math.max(0, bare(c) - 0.2) * 0.5 + (c[1] / 255) * 0.08,
+      tint: br => [br * 1.0, br * 0.94, br * 0.86] });
+    sc.branches += await scatterOnCover(C, V, groundAt, 'branches', b, { step: 14, cap: caps.branches - sc.branches, seed: seedOf(t, 7), size: [1.2, 2.4], byWidth: true, sink: 0.05, reject: wild, want: c => (c[1] / 255) * 0.18 });
+  };
+  const show = async () => { const added = V.flush(true); if (added.length) await showCompiled(added.map(m => (m.visible = true, m))); };
+  const byDistance = () => { const f = focusPos(); return [...tiles.values()].map(t => [Math.hypot((t.i + 0.5) * TS - f.x, (t.j + 0.5) * TS - f.z), t]).sort((a, b) => a[0] - b[0]); };
+  const NEAR = 1100; // the tiles planted before the step ends
+  for (const [d, t] of byDistance()) { if (d > NEAR) break; await plantA(t); await show(); }
+  { // granite stones along the trails: cobbles kicked to the edges, the odd one in the path
+    const lib = rockLib, rr = mulberry(4402); let ns = 0;
+    if (lib && ROADS) D.roads.forEach((r, ri) => { const ts = ROADS.trailSide(ri); if (!ts || ns > 16000) return; const [, , wd, p0] = r, sw = ROADS.sw[ri], off = ts * (wd / 2 + sw + 1.4);
+      let acc = 0; for (let k = 0; k + 3 < p0.length; k += 2) { const ax = p0[k], az = p0[k + 1], bx = p0[k + 2], bz = p0[k + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue; const tx = (bx - ax) / L, tz = (bz - az) / L;
+        for (let s2 = (3 - acc % 3); s2 < L; s2 += 2.2) { if (rr() > 0.42) continue; const side = rr() < 0.5 ? -1 : 1, edge = rr() < 0.88, o = off + (edge ? side * (1.15 + rr() * 0.5) : (rr() - 0.5) * 1.6);
+          const x = ax + tx * s2 - tz * o, z = az + tz * s2 + tx * o; if (offLimits(x, z, 0.2) && !edge) continue;
+          const vi = Math.floor(rr() * lib.variants.length), RV = lib.variants[vi], wdt = edge ? 0.14 + rr() * rr() * 0.55 : 0.07 + rr() * 0.1, s3 = wdt / Math.max(0.3, RV.width), b = 0.82 + rr() * 0.2;
+          if (V.add('boulder', x, groundAt(x, z) - RV.height * s3 * 0.35, z, rr() * Math.PI * 2, s3, vi, [b * 1.02, b * 0.95, b * 0.85])) ns++; }
+        acc += L; } });
+    NATURE.trailStones = ns; await show();
   }
-  for (let i = 0; i < placed.trees.length; i += 2) { const ti = treeC.length / 2; treeC.push(placed.trees[i], placed.trees[i + 1]); gridAdd(placed.trees[i], placed.trees[i + 1], placed.trees[i], placed.trees[i + 1], 't', ti); addProp({ kind: 'tree', x: placed.trees[i], z: placed.trees[i + 1], ti, veg: placed.refs[i / 2], alive: true }); }
   if (GRASS_Q > 0) {
     await tick();
-    const drawPhoto = ctx => { // every aerial ground tile at its place in game coordinates
+    const drawPhoto = c2 => { // every aerial ground tile at its place in game coordinates
       if (!AER.ground) return;
       for (let j = 0; j < AER.ground.gny; j++) for (let i = 0; i < AER.ground.gnx; i++) {
         const t = M.terrain[j * AER.ground.gnx + i]; if (!t || isHold(t.map)) continue; // a tile still loading
         const a = aerInv(i * 4096, j * 4096, [0, 0]), b = aerInv((i + 1) * 4096, (j + 1) * 4096, [0, 0]);
-        ctx.drawImage(t.map.image, a[0], a[1], b[0] - a[0], b[1] - a[1]);
+        c2.drawImage(t.map.image, a[0], a[1], b[0] - a[0], b[1] - a[1]);
       }
     };
     try {
       NATURE.cover = await buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas, exclude: [...(window.GTP_NATURE_EXCLUDE || []), ...PLANT_CLEAR] });
-      NATURE.shrubs = await scatterShrubs(NATURE.cover, NATURE.veg, groundAt, 'scruboak', D.bounds, { cap: Math.round(220000 * Math.min(1, GRASS_Q)), reject: (x, z) => offLimits(x, z, 3) });
-      // the chaparral's understorey: buckwheat- and sage-like bushes among the scrub oak, thick where the photo's brush is
-      const ctxB = makeContext(D, w), Q = Math.min(1, GRASS_Q), wild = (x, z) => offLimits(x, z, 2) || ctxB.built(x, z) >= 2;
-      NATURE.bushes = await scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'bush', D.bounds, { step: 6, cap: Math.round(200000 * Q), seed: 77, size: [0.5, 1.9], sink: 0.1, reject: wild, clumped: true,
-        want: c => { const b = c[1] / 255, t = c[3] / 255; return b > 0.12 ? Math.min(0.9, b * 0.7 + t * 0.15) : t > 0.4 ? 0.12 : 0; }, tint: (br, dry) => [0.92 * br * (1 + dry * 0.25), 0.9 * br, 0.74 * br * (1 - dry * 0.2)] });
-      // bare ground isn't bare: granite pebbles and stones on the dirt out of town
-      const bare = c => { const g = c[0] / 255, b = c[1] / 255, t = c[3] / 255; return (1 - g) * (1 - b * 0.8) * (1 - t * 0.7); };
-      NATURE.pebbles = await scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'pebbles', D.bounds, { step: 6, cap: Math.round(140000 * Q), seed: 31, size: [0.9, 2.2], byWidth: true, sink: 0.25, reject: wild, want: c => Math.max(0, bare(c) - 0.35) * 0.9 });
-      NATURE.stones = await scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'stone', D.bounds, { step: 9, cap: Math.round(60000 * Q), seed: 53, size: [0.15, 0.7], sink: 0.3, reject: wild, want: c => Math.max(0, bare(c) - 0.2) * 0.5 + (c[1] / 255) * 0.08,
-        tint: br => [br * 1.0, br * 0.94, br * 0.86] });
-      NATURE.branches = await scatterOnCover(NATURE.cover, NATURE.veg, groundAt, 'branches', D.bounds, { step: 14, cap: Math.round(20000 * Q), seed: 61, size: [1.2, 2.4], byWidth: true, sink: 0.05, reject: wild, want: c => (c[1] / 255) * 0.18 });
+      for (const [d, t] of byDistance()) { if (d > NEAR) break; await plantB(t); await show(); }
       // ice plant on the freeway banks
       if (NATURE.lib.species.has('iceplant')) { const rr2 = mulberry(808); let ni = 0;
         for (const r of D.roads) { if (r[1] !== 0) continue; const p = r[3]; for (let k = 0; k + 3 < p.length; k += 2) { const ax = p[k], az = p[k + 1], L = Math.hypot(p[k + 2] - ax, p[k + 3] - az); if (L < 1) continue; const tx = (p[k + 2] - ax) / L, tz = (p[k + 3] - az) / L;
           for (let s2 = 0; s2 < L; s2 += 2.6) for (const sg of [-1, 1]) { const o = sg * (r[2] / 2 + 4.5 + rr2() * 10), x = ax + tx * s2 - tz * o, z = az + tz * s2 + tx * o; if (offLimits(x, z, 1) || rr2() < 0.25) continue;
-            const lib = NATURE.lib.species.get('iceplant'), V = lib.variants[0], sc = (1.6 + rr2() * 1.4) / Math.max(0.2, V.width); if (NATURE.veg.add('iceplant', x, groundAt(x, z) - 0.05, z, rr2() * TAU, sc, 0, [0.9 + rr2() * 0.15, 0.95, 0.85])) ni++; } } }
-        NATURE.iceplant = ni; }
-      console.info('[nature] bushes', NATURE.bushes, 'pebbles', NATURE.pebbles, 'stones', NATURE.stones, 'branches', NATURE.branches, 'ice plant', NATURE.iceplant);
+            const lib = NATURE.lib.species.get('iceplant'), IV = lib.variants[0], s3 = (1.6 + rr2() * 1.4) / Math.max(0.2, IV.width); if (V.add('iceplant', x, groundAt(x, z) - 0.05, z, rr2() * TAU, s3, 0, [0.9 + rr2() * 0.15, 0.95, 0.85])) ni++; } } }
+        NATURE.iceplant = ni; await show(); }
     } catch (e) { console.error('[nature] cover map', e); }
   }
-  await NATURE.veg.buildAsync(); await showCompiled(NATURE.veg.added.map(m => (m.visible = true, m)));
   if (NATURE.cover) {
     const tallCard = await grassCard(THREE, gltfLoader, renderer, 'grass_medium_01').catch(() => null); // a scanned wild grass clump (Poly Haven CC0)
     const cards = await loadCards(THREE, undefined, { tall: tallCard }).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
@@ -2714,11 +2742,21 @@ async function plantNature() {
     const gcNew = sceneSince(before); for (const m of gcNew) m.visible = false; await showCompiled(gcNew.map(m => (m.visible = true, m)));
     const C = NATURE.cover; setGroundLand(TX.ground, C.landTex, [C.x0, C.z0, C.sx, C.sz]); // lawns and dry gardens in the ground itself
     // wildlife round you (src/nature/fauna.js): hawks, ravens, rabbits, ground squirrels and their burrows, coyotes at night
-    const ctx3 = makeContext(D, w);
     NATURE.fauna = createFauna({ THREE, scene, groundAt, onRoad: (x, z) => !!ROADS && ROADS.onRoad(x, z, 1), focus: () => focusPos(), hour: () => hour,
-      cover: (x, z) => { const c = C.at(x, z); return c ? [c[0] / 255, c[1] / 255, c[2] / 255, c[3] / 255] : null; }, built: (x, z) => Math.min(1, ctx3.built(x, z) / 6) });
+      cover: (x, z) => { const c = C.at(x, z); return c ? [c[0] / 255, c[1] / 255, c[2] / 255, c[3] / 255] : null; }, built: (x, z) => Math.min(1, ctx.built(x, z) / 6) });
   }
-  console.info('[nature] trees', filt.stats, placed.counts, 'extra shrubs', NATURE.shrubs, 'ground cover instances', NATURE.gc ? NATURE.gc.instances : 0);
+  // the rest of the map, outward from wherever you are now, while you play
+  NATURE.streaming = (async () => {
+    const t0 = performance.now(); let n = 0;
+    for (;;) {
+      const next = byDistance().find(([, t]) => !t.a || (NATURE.cover && !t.b)); if (!next) break;
+      const t = next[1];
+      try { if (!t.a) await plantA(t); if (NATURE.cover && !t.b) await plantB(t); await show(); } catch (e) { console.warn('[nature] tile', t.i, t.j, e); t.a = t.b = true; }
+      if (++n % 4 === 0) await tick();
+    }
+    console.info('[nature] map planted in', ((performance.now() - t0) / 1000).toFixed(1) + 's:', counts, 'scatter', sc, 'trees filtered', F.stats, 'ground cover instances', NATURE.gc ? NATURE.gc.instances : 0);
+  })();
+  console.info('[nature] the tiles round you are planted; the rest of the map streams in');
 }
 
 // asphalt, walks, gutters and markings for one road (p: densified centre line); in the chunk at its middle
@@ -3063,7 +3101,7 @@ async function buildWorld() {
     toRail: v => { const ne = nearestEdge(v.pos.x, v.pos.z, 40, e => e.t <= 5); v.driver = 'ai'; v.parked = false; if (ne) { v.agent = agentFromNearest(ne, v.fx, v.fz); v.mode = 'rail'; v.speed = 4; v.tid = 0; } else { v.mode = 'free'; v.resume = 2; } },
     vehicles: () => vehicles, settle: (v, dt) => settleRail(v, dt), hour: () => hour, busy: (x, z) => busyAt(x, z),
     cap: { potato: 10, low: 18, medium: 30, high: 42, ultra: 56 }[GFX.id] || 30,
-  }); const n = PARK.build(D.areas); console.info('[parking]', PARK.lots.length, 'lots,', n, 'stalls');
+  }); const n = await PARK.buildAsync(D.areas); console.info('[parking]', PARK.lots.length, 'lots,', n, 'stalls');
     // driveways: one or two cars nose-in at the garage, arriving from and leaving to the street (src/world/yards.js)
     const extra = [], ends = [], tspots = [], tr = mulberry(6060);
     // trailers backed into the driveways (src/world/trailers.js): a boat, a travel trailer, a utility trailer, out in the
@@ -8095,6 +8133,7 @@ let worldReady = false;
   progress('Warming up the effects…'); await FX.warm(renderer, camera, POST.level > 0 ? AIM_RT : null); await NUKE_FX.warm(renderer, camera);
   progress('Preparing the shaders…'); await compileInSteps(compileUnits(scene.children), f => { DL.msg = `Preparing the shaders… ${Math.round(f * 100)}%`; showProgress(); }); // a piece at a time: the bar moves, nothing compiles in the first frame
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
+  console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
   worldReady = true; DL.on = false; last = performance.now();
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;

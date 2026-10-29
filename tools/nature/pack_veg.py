@@ -6,7 +6,10 @@
 import json, os, shutil, subprocess, sys, math
 import numpy as np
 from PIL import Image
-from scipy import ndimage
+try:
+    from scipy import ndimage
+except ImportError:  # numpy-only fallback below
+    ndimage = None
 
 SPECIES = {  # species -> variant bake names (in atlas block order)
     'oak': ['oak'], 'olive': ['olive'], 'scruboak': ['scruboak'], 'slender': ['slender'], 'jacaranda': ['jacaranda'],
@@ -31,9 +34,30 @@ def pad(rgb, alpha, G):
             sl = (slice(j * c, (j + 1) * c), slice(i * c, (i + 1) * c))
             a = alpha[sl] > 8
             if not a.any() or a.all(): continue
-            _, (iy, ix) = ndimage.distance_transform_edt(~a, return_indices=True)
-            res[sl] = rgb[sl][iy, ix]
+            if ndimage is not None:
+                _, (iy, ix) = ndimage.distance_transform_edt(~a, return_indices=True)
+                res[sl] = rgb[sl][iy, ix]
+            else:
+                res[sl] = grow(rgb[sl], a)
     return res
+
+def shift(x, dy, dx):
+    """x moved by (dy, dx), zeros where nothing moved in"""
+    out = np.zeros_like(x); H, W = x.shape[:2]
+    out[max(dy, 0):H + min(dy, 0), max(dx, 0):W + min(dx, 0)] = x[max(-dy, 0):H + min(-dy, 0), max(-dx, 0):W + min(-dx, 0)]
+    return out
+
+def grow(rgb, filled):
+    """without scipy: opaque colour spread outward ring by ring (the mean of the filled neighbours), close to nearest fill"""
+    img = rgb.astype(np.float32); filled = filled.copy()
+    while not filled.all():
+        acc = np.zeros_like(img); cnt = np.zeros(filled.shape, np.float32)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            f = shift(filled, dy, dx); acc += shift(img, dy, dx) * f[..., None]; cnt += f
+        new = ~filled & (cnt > 0)
+        if not new.any(): break
+        img[new] = acc[new] / cnt[new][:, None]; filled |= new
+    return img.astype(np.uint8)
 
 def webp(arr, path, q, mode):
     tmp = path + '.png'; Image.fromarray(arr, mode).save(tmp)
