@@ -52,10 +52,9 @@ export async function filterTreesAsync(trees, w, ms = 6) {
   while (!(r = it.next()).done) if (performance.now() - t > ms) { await new Promise(res => setTimeout(res, 0)); t = performance.now(); }
   return r.value;
 }
-export function* filterTreesSteps(trees, w) {
-  const n = trees.length / 4;
-  const action = new Uint8Array(n), radius = new Float32Array(n);
-  const stats = { total: n, sidewalk: 0, road: 0, building: 0, water: 0, parking: 0, pool: 0, field: 0, excluded: 0, duplicate: 0, capped: 0 };
+// a tree's own tests (roads and sidewalks, buildings, pools, water, parking and playing fields, excluded places):
+// treeTests(trees, w, radius, stats) -> test(i) -> KEEP or DROP; it sets radius[i] (capped where a canopy overhangs a road)
+function treeTests(trees, w, radius, stats) {
   // pools: rectangles [x, z, w, d, rot] binned on a 40 m grid
   const poolBins = new Map(), PB = 40;
   (w.pools || []).forEach((p, i) => {
@@ -65,44 +64,45 @@ export function* filterTreesSteps(trees, w) {
   });
   const ex = (w.exclude || []).map(p => ({ p, bb: bbox(p) }));
   const rd = [0, 0];
-  for (let i = 0; i < n; i++) {
-    if ((i & 1023) === 1023) yield;
+  return i => {
     const x = trees[i * 4], z = trees[i * 4 + 1]; let r = trees[i * 4 + 3] || 3; radius[i] = r;
     // roads and sidewalks: types 1-5 have a 2.2 m sidewalk ribbon starting 0.1 m off the asphalt
     roadEdgeDist(w, x, z, rd);
     const margin = rd[1] >= 1 && rd[1] <= 5 ? 3.5 : 2; // nothing growing in or over the road
-    if (rd[0] < margin) { action[i] = DROP; if (rd[0] < 0) stats.road++; else stats.sidewalk++; continue; }
+    if (rd[0] < margin) { if (rd[0] < 0) stats.road++; else stats.sidewalk++; return DROP; }
     if (r > rd[0] + 2) { radius[i] = Math.max(1.2, rd[0] + 2); stats.capped++; }
     // buildings (collision polygons)
     const c = w.cgrid.get(w.ckey(Math.floor(x / w.CELL), Math.floor(z / w.CELL)));
-    let hit = false;
     if (c) for (const bi of c.b) {
       const P = w.polys[bi];
       if (x < P.minx - 1 || x > P.maxx + 1 || z < P.minz - 1 || z > P.maxz + 1) continue;
-      if (pointInPoly(x, z, P.p) || polyEdgeDist(x, z, P.p) < 0.8) { hit = true; break; }
+      if (pointInPoly(x, z, P.p) || polyEdgeDist(x, z, P.p) < 0.8) { stats.building++; return DROP; }
     }
-    if (hit) { action[i] = DROP; stats.building++; continue; }
     // pools (+0.7 m coping)
     const pb = poolBins.get(Math.floor(x / PB) * 100000 + Math.floor(z / PB));
     if (pb) for (const pi of pb) {
       const p = w.pools[pi], cs = Math.cos(-p[4]), sn = Math.sin(-p[4]), dx = x - p[0], dz = z - p[1];
       const u = dx * cs - dz * sn, v = dx * sn + dz * cs;
-      if (Math.abs(u) < p[2] / 2 + 0.7 && Math.abs(v) < p[3] / 2 + 0.7) { hit = true; break; }
+      if (Math.abs(u) < p[2] / 2 + 0.7 && Math.abs(v) < p[3] / 2 + 0.7) { stats.pool++; return DROP; }
     }
-    if (hit) { action[i] = DROP; stats.pool++; continue; }
     // water, and the interior of playing fields / golf (edge rows within 4 m are real)
     const ab = w.areaBins.get(w.ckey(Math.floor(x / w.AB), Math.floor(z / w.AB)));
     if (ab) for (const ai of ab.a) {
       const A = w.areas[ai]; if (A.k !== 0 && A.k !== 2 && A.k !== 3) continue;
       if (!pointInPoly(x, z, A.p)) continue;
-      if (A.k === 0) { hit = true; stats.water++; break; }
-      if (A.k === 2) { hit = true; stats.parking++; break; } // nothing grows in a parking lot
-      if (polyEdgeDist(x, z, A.p) > 4) { hit = true; stats.field++; break; }
+      if (A.k === 0) { stats.water++; return DROP; }
+      if (A.k === 2) { stats.parking++; return DROP; } // nothing grows in a parking lot
+      if (polyEdgeDist(x, z, A.p) > 4) { stats.field++; return DROP; }
     }
-    if (hit) { action[i] = DROP; continue; }
-    for (const e of ex) if (x >= e.bb[0] && x <= e.bb[2] && z >= e.bb[1] && z <= e.bb[3] && pointInPoly(x, z, e.p)) { hit = true; break; }
-    if (hit) { action[i] = DROP; stats.excluded++; continue; }
-  }
+    for (const e of ex) if (x >= e.bb[0] && x <= e.bb[2] && z >= e.bb[1] && z <= e.bb[3] && pointInPoly(x, z, e.p)) { stats.excluded++; return DROP; }
+    return KEEP;
+  };
+}
+const newStats = n => ({ total: n, sidewalk: 0, road: 0, building: 0, water: 0, parking: 0, pool: 0, field: 0, excluded: 0, duplicate: 0, capped: 0 });
+export function* filterTreesSteps(trees, w) {
+  const n = trees.length / 4;
+  const action = new Uint8Array(n), radius = new Float32Array(n), stats = newStats(n), test = treeTests(trees, w, radius, stats);
+  for (let i = 0; i < n; i++) { if ((i & 1023) === 1023) yield; action[i] = test(i); }
   // spacing: two trunks closer than 0.6 * (r1 + r2) -> keep the larger canopy
   const G = 8, grid = new Map();
   for (let i = 0; i < n; i++) if (action[i] === KEEP) { const k = Math.floor(trees[i * 4] / G) * 100000 + Math.floor(trees[i * 4 + 1] / G); (grid.get(k) || grid.set(k, []).get(k)).push(i); }
@@ -122,4 +122,28 @@ export function* filterTreesSteps(trees, w) {
   }
   stats.kept = action.reduce((s, a) => s + (a === KEEP), 0);
   return { action, radius, stats };
+}
+// Planting a tile at a time (index.html plantNature): keep(i) runs a tree's own tests once and the spacing rule against
+// its neighbours. Here the spacing rule doesn't depend on the order the trees come in (a tree goes when a bigger
+// neighbour that passes its own tests stands too close), so a tile comes out the same whichever tile is planted first.
+//   const F = createTreeFilter(trees, w); for (const _ of F.prepare()) ...;  F.keep(i) -> bool;  F.radius, F.stats
+export function createTreeFilter(trees, w) {
+  const n = trees.length / 4, state = new Uint8Array(n), radius = new Float32Array(n), stats = newStats(n), test = treeTests(trees, w, radius, stats);
+  const G = 8, grid = new Map(), own = i => { if (!state[i]) state[i] = test(i) === KEEP ? 1 : 2; return state[i] === 1; };
+  return {
+    radius, stats,
+    *prepare() { for (let i = 0; i < n; i++) { if ((i & 8191) === 8191) yield; const k = Math.floor(trees[i * 4] / G) * 100000 + Math.floor(trees[i * 4 + 1] / G); (grid.get(k) || grid.set(k, []).get(k)).push(i); } },
+    keep(i) {
+      if (!own(i)) return false;
+      const x = trees[i * 4], z = trees[i * 4 + 1], gx = Math.floor(x / G), gz = Math.floor(z / G);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const cell = grid.get((gx + a) * 100000 + gz + b); if (!cell) continue;
+        for (const j of cell) {
+          if (j === i || !own(j)) continue;
+          if (Math.hypot(trees[j * 4] - x, trees[j * 4 + 1] - z) < 0.6 * (radius[i] + radius[j]) && (radius[j] > radius[i] || (radius[j] === radius[i] && j < i))) { stats.duplicate++; return false; }
+        }
+      }
+      stats.kept = (stats.kept || 0) + 1; return true;
+    },
+  };
 }

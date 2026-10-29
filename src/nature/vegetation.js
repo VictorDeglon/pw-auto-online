@@ -21,10 +21,13 @@ export async function loadVegetation(THREE, gltfLoader, renderer, base = 'assets
     t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; return t;
   });
   const species = new Map();
+  // the impostor atlases first (they draw every plant); the near meshes arrive in the background, and a species shows
+  // them from the moment they're in (Vegetation picks them up)
   await Promise.all(Object.entries(man.species).map(async ([name, sp]) => {
     const [alb, nrm] = await Promise.all([tex(base + sp.atlas + '_alb.webp', true), tex(base + sp.atlas + '_nrm.webp', false)]);
-    const lods = await Promise.all(sp.variants.map(v => v.lod ? gltfLoader.loadAsync(base + v.lod).then(g => mergeLod(THREE, g.scene)).catch(() => null) : null));
-    species.set(name, { name, ...sp, alb, nrm, lods });
+    const rec = { name, ...sp, alb, nrm, lods: sp.variants.map(() => null), hasLod: sp.variants.some(v => v.lod) };
+    sp.variants.forEach((v, i) => { if (v.lod) gltfLoader.loadAsync(base + v.lod).then(g => { rec.lods[i] = mergeLod(THREE, g.scene); }).catch(() => { }); });
+    species.set(name, rec);
   }));
   return { THREE, species };
 }
@@ -157,7 +160,7 @@ function impostorMaterial(THREE, sp, U) {
     vertexShader: IMP_VS, fragmentShader: IMP_FS, fog: true, alphaToCoverage: true,
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]),
   });
-  Object.assign(m.uniforms, U, sp.lods.some(l => l) ? (sp.near != null ? { uNear: { value: sp.near } } : {}) : { uNear: { value: 0 }, uBand: { value: 1e-3 } }, { // sp.near: small plants swap to their impostor sooner
+  Object.assign(m.uniforms, U, sp.hasLod || sp.lods.some(l => l) ? (sp.near != null ? { uNear: { value: sp.near } } : {}) : { uNear: { value: 0 }, uBand: { value: 1e-3 } }, { // sp.near: small plants swap to their impostor sooner
     uAlb: { value: sp.alb }, uNrm: { value: sp.nrm }, uVar: { value: uVar }, uBlk: { value: uBlk },
     uBlocks: { value: new THREE.Vector2(sp.blocks[0], sp.blocks[1]) }, uG: { value: sp.G }, uTrans: { value: sp.trans ?? 0.18 }, uPremul: { value: sp.premul ? 1 : 0 },
   });
@@ -169,16 +172,18 @@ function impostorMaterial(THREE, sp, U) {
 // the distance, and two-sided foliage: sunlight coming through the leaves when they're backlit or you look toward the
 // sun through the crown.
 function patchNear(mat, U, sway, leaf) {
+  const SW = { value: sway };
   mat.onBeforeCompile = sh => {
     for (const k of ['uNear', 'uBand', 'uTime', 'uWind', 'uSunDir', 'uSunCol']) sh.uniforms[k] = U[k];
+    sh.uniforms.uSway = SW; // a uniform, not a constant: every species shares the same two programs (each one costs half a second to compile on Windows)
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uNear, uBand, uTime, uWind; varying float vNearFade;')
+      .replace('#include <common>', '#include <common>\nuniform float uNear, uBand, uTime, uWind, uSway; varying float vNearFade;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         #ifdef USE_INSTANCING
           vec3 ipos = vec3(instanceMatrix[3]);
           vNearFade = 1.0 - smoothstep(uNear, uNear + uBand, distance(ipos, cameraPosition));
           float hgt = max(transformed.y, 0.0), ph = dot(ipos.xz, vec2(0.13, 0.17));
-          float sw = uWind * ${sway.toFixed(4)} * hgt * hgt / (1.0 + hgt);
+          float sw = uWind * uSway * hgt * hgt / (1.0 + hgt);
           transformed.x += sin(uTime * 1.3 + ph + transformed.y * 0.4) * sw;
           transformed.z += cos(uTime * 1.1 + ph * 1.3 + transformed.x * 0.4) * sw * 0.7;
           ${leaf ? 'transformed += objectNormal * sin(uTime * 6.3 + dot(transformed, vec3(3.1, 1.7, 2.3)) + ph) * 0.025 * uWind * min(hgt, 1.0);' : ''}
@@ -205,7 +210,7 @@ function patchNear(mat, U, sway, leaf) {
           reflectedLight.directDiffuse += diffuseColor.rgb * uSunCol * (back * 0.22 + thru * 0.5) * vec3(1.0, 1.06, 0.62) * RECIPROCAL_PI; }`);
     sh.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => 'nearveg2' + sway + (leaf ? 'leaf' : '');
+  mat.customProgramCacheKey = () => 'nearveg3' + (leaf ? 'leaf' : '');
 }
 
 // ---------------------------------------------------------------- the renderer
@@ -230,7 +235,7 @@ export class Vegetation {
     const a = this.inst.get(species); if (!a || a.s[i] === 0) return null;
     const sp = this.lib.species.get(species), V = sp.variants[a.v[i]] || sp.variants[0], out = { h: V.height * a.s[i], w: V.width * a.s[i] };
     a.s[i] = 0;
-    const m = this.meshes && this.meshes.get(species); if (m) { const at = m.geometry.attributes.iSV; at.array[i * 2] = 0; at.needsUpdate = true; }
+    const m = this.meshes && this.meshes.get(species); if (m) { const at = m.geometry.attributes.iSV; at.array[i * 2] = 0; at.addUpdateRange(i * 2, 1); at.needsUpdate = true; }
     this.last.t = 1e9; // re-gather the near meshes next frame
     return out;
   }
@@ -246,50 +251,71 @@ export class Vegetation {
     return one;
   }
   count() { let n = 0; for (const a of this.inst.values()) n += a.x.length; return n; }
-  build() { const it = this._build(); while (!it.next().done); }
-  // the same, a few milliseconds at a time between the game's frames; the new meshes stay hidden until it's done (then
-  // compile them off the frame: renderer.compileAsync) so nothing half-built shows
-  async buildAsync(ms = 6) { const it = this._build(true); let t = performance.now(); while (!it.next().done) if (performance.now() - t > ms) { await new Promise(r => setTimeout(r, 0)); t = performance.now(); } }
-  *_build(hide) {
-    const { THREE } = this; const quad = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]);
-    let si = 0; const order = []; this.added = [];
+  build() { this.flush(); }
+  async buildAsync() { this.flush(true); }
+  // Upload what add() has put in since the last flush: plants come in a tile at a time (index.html plantNature), each
+  // tile's instances appended to its species' buffers and sent to the GPU as a range, so the trees round you show
+  // while the rest of the map is still being planted. hide: new meshes start hidden (shown once their shaders are in).
+  // this.added: the meshes this flush created.
+  flush(hide) {
+    const { THREE } = this; this.added = []; this.order = this.order || []; this.meshes = this.meshes || new Map(); this.done = this.done || new Map();
     for (const [name, a] of this.inst) {
-      yield;
-      const sp = this.lib.species.get(name), n = a.x.length; order.push(name);
-      const g = new THREE.InstancedBufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(quad, 3)); g.setIndex([0, 1, 2, 0, 2, 3]);
-      const P = new Float32Array(n * 4), SV = new Float32Array(n * 2), T = new Float32Array(a.t);
-      for (let i = 0; i < n; i++) { P[i * 4] = a.x[i]; P[i * 4 + 1] = a.y[i]; P[i * 4 + 2] = a.z[i]; P[i * 4 + 3] = a.rot[i]; SV[i * 2] = a.s[i]; SV[i * 2 + 1] = a.v[i]; if ((i & 16383) === 16383) yield; }
-      g.setAttribute('iPos', new THREE.InstancedBufferAttribute(P, 4)); g.setAttribute('iSV', new THREE.InstancedBufferAttribute(SV, 2));
-      g.setAttribute('iTint', new THREE.InstancedBufferAttribute(T, 3)); g.instanceCount = n;
-      const mesh = new THREE.Mesh(g, impostorMaterial(THREE, sp, this.U)); mesh.frustumCulled = false; mesh.renderOrder = 1;
-      (this.meshes || (this.meshes = new Map())).set(name, mesh);
-      mesh.name = 'impostors:' + name; if (hide) mesh.visible = false; this.scene.add(mesh); this.added.push(mesh);
+      const n = a.x.length, done = this.done.get(name) || 0; if (n === done) continue;
+      let mesh = this.meshes.get(name), si = this.order.indexOf(name);
+      if (!mesh) {
+        si = this.order.length; this.order.push(name);
+        const g = this._geometry(Math.max(512, Math.ceil(n * 1.25)));
+        mesh = new THREE.Mesh(g, impostorMaterial(THREE, this.lib.species.get(name), this.U)); mesh.frustumCulled = false; mesh.renderOrder = 1;
+        mesh.name = 'impostors:' + name; if (hide) mesh.visible = false; this.scene.add(mesh); this.added.push(mesh); this.meshes.set(name, mesh);
+      } else if (n > mesh.geometry.attributes.iPos.count) { // grow: a bigger buffer, the old one dropped
+        const old = mesh.geometry, g = this._geometry(Math.ceil(n * 1.5));
+        for (const k of ['iPos', 'iSV', 'iTint']) g.attributes[k].array.set(old.attributes[k].array.subarray(0, done * g.attributes[k].itemSize));
+        mesh.geometry = g; old.dispose();
+      }
+      const g = mesh.geometry, P = g.attributes.iPos, SV = g.attributes.iSV, T = g.attributes.iTint;
+      for (let i = done; i < n; i++) {
+        P.array[i * 4] = a.x[i]; P.array[i * 4 + 1] = a.y[i]; P.array[i * 4 + 2] = a.z[i]; P.array[i * 4 + 3] = a.rot[i];
+        SV.array[i * 2] = a.s[i]; SV.array[i * 2 + 1] = a.v[i]; T.array[i * 3] = a.t[i * 3]; T.array[i * 3 + 1] = a.t[i * 3 + 1]; T.array[i * 3 + 2] = a.t[i * 3 + 2];
+      }
+      if (done) { P.addUpdateRange(done * 4, (n - done) * 4); SV.addUpdateRange(done * 2, (n - done) * 2); T.addUpdateRange(done * 3, (n - done) * 3); }
+      P.needsUpdate = SV.needsUpdate = T.needsUpdate = true; g.instanceCount = n; this.done.set(name, n);
       // spatial grid for the near-LOD gather
       const C = this.opts.cell;
-      for (let i = 0; i < n; i++) { const k = Math.floor(a.x[i] / C) * 100000 + Math.floor(a.z[i] / C); let c = this.grid.get(k); if (!c) this.grid.set(k, c = []); c.push(si, i); if ((i & 16383) === 16383) yield; }
-      // near meshes, one InstancedMesh per variant with a LOD
-      sp.lods.forEach((lod, v) => {
-        if (!lod) return;
-        const mats = lod.mats.map(m0 => {
-          const leaf = !!m0.map && (m0.transparent || m0.alphaTest > 0); // the leaf cards (their texture has alpha)
-          const m = m0.clone(); m.vertexColors = true; m.side = THREE.DoubleSide; m.roughness = leaf ? 0.75 : 0.92; m.metalness = 0;
-          m.transparent = false; m.alphaTest = leaf ? 0.5 : 0; m.alphaToCoverage = leaf; m.depthWrite = true; m.envMapIntensity = 0.4; m.normalMap = null;
-          patchNear(m, sp.near != null ? { ...this.U, uNear: { value: sp.near } } : this.U, sp.sway ?? 0.012, leaf); return m;
-        });
-        const im = new THREE.InstancedMesh(lod.geo, mats, 64); im.count = 0; im.frustumCulled = false;
-        im.castShadow = this.opts.nearShadows; im.receiveShadow = true; im.name = `near:${name}/${v}`;
-        im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(64 * 3), 3);
-        if (hide) im.visible = false; this.scene.add(im); this.near.set(`${si}/${v}`, im); this.added.push(im);
-      });
-      si++;
+      for (let i = done; i < n; i++) { const k = Math.floor(a.x[i] / C) * 100000 + Math.floor(a.z[i] / C); let c = this.grid.get(k); if (!c) this.grid.set(k, c = []); c.push(si, i); }
+      this._ensureNear(si, name, hide);
     }
-    this.order = order;
+    this.last.t = 1e9; // gather the near meshes again next frame
+    return this.added;
+  }
+  _geometry(cap) {
+    const { THREE } = this, g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3)); g.setIndex([0, 1, 2, 0, 2, 3]);
+    g.setAttribute('iPos', new THREE.InstancedBufferAttribute(new Float32Array(cap * 4), 4)); g.setAttribute('iSV', new THREE.InstancedBufferAttribute(new Float32Array(cap * 2), 2));
+    g.setAttribute('iTint', new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3)); g.instanceCount = 0; return g;
+  }
+  // near meshes, one InstancedMesh per variant whose LOD has loaded (they load in the background: loadVegetation)
+  _ensureNear(si, name, hide) {
+    const { THREE } = this, sp = this.lib.species.get(name);
+    sp.lods.forEach((lod, v) => {
+      const key = `${si}/${v}`; if (!lod || this.near.has(key)) return;
+      const mats = lod.mats.map(m0 => {
+        const leaf = !!m0.map && (m0.transparent || m0.alphaTest > 0); // the leaf cards (their texture has alpha)
+        const m = m0.clone(); m.vertexColors = true; m.side = THREE.DoubleSide; m.roughness = leaf ? 0.75 : 0.92; m.metalness = 0;
+        m.transparent = false; m.alphaTest = leaf ? 0.5 : 0; m.alphaToCoverage = leaf; m.depthWrite = true; m.envMapIntensity = 0.4; m.normalMap = null;
+        m.aoMap = m.roughnessMap = m.metalnessMap = m.emissiveMap = null; // the AO is in the vertex colours; with only a colour map every species shares one leaf and one wood program
+        patchNear(m, sp.near != null ? { ...this.U, uNear: { value: sp.near } } : this.U, sp.sway ?? 0.012, leaf); return m;
+      });
+      const im = new THREE.InstancedMesh(lod.geo, mats, 64); im.count = 0; im.frustumCulled = false;
+      im.castShadow = this.opts.nearShadows; im.receiveShadow = true; im.name = `near:${name}/${v}`;
+      im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(64 * 3), 3);
+      if (hide) im.visible = false; this.scene.add(im); this.near.set(key, im); if (this.added) this.added.push(im);
+    });
   }
   // gather plants within the near radius into the near InstancedMeshes (cheap; runs when the camera moved)
   updateNear(cx, cz) {
     const { THREE } = this, R = this.U.uNear.value + this.U.uBand.value + 2, C = this.opts.cell, R2 = R * R;
     if (!this.order) return; // not built yet
+    if (this.order.some(n => this.lib.species.get(n).lods.some((l, v) => l && !this.near.has(`${this.order.indexOf(n)}/${v}`)))) this.order.forEach((n, si) => this._ensureNear(si, n));
     const r2 = this.order.map(n => { const sp = this.lib.species.get(n); return sp && sp.near != null ? (sp.near + this.U.uBand.value + 2) ** 2 : R2; });
     const lists = new Map();
     for (let gx = Math.floor((cx - R) / C); gx <= Math.floor((cx + R) / C); gx++)

@@ -1,14 +1,17 @@
-# Near tree meshes
+# Near tree and shrub meshes
 
-`oak.glb`, `olive.glb` and `scruboak.glb` are the close-up versions of the three tree species whose impostors are in
-`../imp/`. They are built from the same Poly Haven models, all **CC0 1.0** (public domain, https://polyhaven.com/license):
+The close-up versions of the scanned plants whose impostors are in `../imp/`. All are built from Poly Haven models,
+**CC0 1.0** (public domain, https://polyhaven.com/license):
 
-| File | Poly Haven model |
-| --- | --- |
-| `oak.glb` | Island Tree 02 (https://polyhaven.com/a/island_tree_02) |
-| `olive.glb` | Island Tree 01 (https://polyhaven.com/a/island_tree_01) |
-| `scruboak.glb` | Island Tree 03 (https://polyhaven.com/a/island_tree_03) |
+| Files | Species in the game | Poly Haven model |
+| --- | --- | --- |
+| `olive.glb` | olive | Island Tree 01 (https://polyhaven.com/a/island_tree_01) |
+| `scruboak.glb` | scrub oak | Island Tree 03 (https://polyhaven.com/a/island_tree_03) |
+| `jacaranda.glb` | jacaranda | Jacaranda Tree (https://polyhaven.com/a/jacaranda_tree) |
+| `slender.glb` | slender young street tree | Tree Small 02 (https://polyhaven.com/a/tree_small_02) |
+| `chap_a.glb` … `chap_d.glb` | chaparral shrubs | Searsia Lucida (https://polyhaven.com/a/searsia_lucida) |
+| `chapbig_large.glb`, `chapbig_medium.glb`, `chapbig_small.glb` | big chaparral | Searsia Burchellii (https://polyhaven.com/a/searsia_burchellii) |
 
-Built with `tools/nature/build_lod.py` in Blender (leaf_keep 3600 / 3600 / 3000, wood 3500 / 3500 / 2600 triangles,
-leaf scale cap 1.9), then slimmed with gltf-transform: normal maps dropped, vertex data quantized
-(KHR_mesh_quantization), about 0.6 MB each.
+Built with `tools/nature/bake_all.sh` in Blender (`build_lod.py`: trees 6000-9000 leaves and 4000-6000 wood triangles,
+shrubs 1600-2500 leaves), then slimmed with `tools/nature/slim_glb.py` (16-bit positions with KHR_mesh_quantization,
+byte normals and colours, normal maps dropped). The coast live oak is grown in code (`src/nature/proctrees.js`).

@@ -8,6 +8,18 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.2 (2026-10-29)
+
+- **No more waiting on the whole map:** the plants are planted in 500 m tiles, nearest first. The trees, rocks, yard
+  plants, brush and stones round you are in within seconds of the loading screen, and the rest of the map fills in
+  outward while you play, a tile at a time between frames (the old way placed all 1.2 million plants before showing
+  any, and held the game while it did). Each tile comes out the same whichever is planted first.
+- **Better trees** (Poly Haven scans, CC0, baked in Blender into impostors and near meshes): jacarandas, slender young
+  street trees, and two chaparral shrubs (laurel-sumac and lemonade-berry-like) on the wild hills; sharper olives
+  and scrub oaks up close. The grown Italian cypress keeps the coast's windbreaks. The near meshes load in the
+  background, and every species' close-up leaves now share one shader (they were two each).
+- Parking lots stripe in slices during the loading screen.
+
 ## 0.8.1 (2026-10-29)
 
 - **Finding the last freezes:** the loading screen times each of its steps in the console (`[boot]`), and any freeze

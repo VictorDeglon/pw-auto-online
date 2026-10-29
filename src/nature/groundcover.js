@@ -404,7 +404,7 @@ export function clump(x, z) { const n = vnoise(x / 38, z / 38) * 0.6 + vnoise(x 
 export async function scatterShrubs(cover, veg, heightAt, species, bounds, opts = {}) {
   const slice = slicer(); let it = 0;
   const lib = veg.lib.species.get(species); if (!lib) return 0;
-  const step = opts.step ?? 13, cap = opts.cap ?? 220000; const r = rng(4242); let n = 0;
+  const step = opts.step ?? 13, cap = opts.cap ?? 220000; const r = rng(opts.seed ?? 4242); let n = 0; // seed: one per tile when planting a tile at a time
   const V = lib.variants[0], baseH = Math.max(0.3, V.height);
   for (let z = bounds[1]; z < bounds[3] && n < cap; z += step) for (let x = bounds[0]; x < bounds[2] && n < cap; x += step) {
     if ((++it & 1023) === 0) await slice();

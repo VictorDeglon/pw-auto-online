@@ -52,6 +52,15 @@ export function createParking(H) {
       areas.forEach((a, i) => { if (a[0] === 2 && area(a[1]) > 250 && area(a[1]) < 60000) layout(a[1], i); });
       return stalls.length;
     },
+    // the same, a few milliseconds at a time between frames (the 15,000 stalls held a fast PC for three seconds)
+    async buildAsync(areas, ms = 8) {
+      let t = performance.now();
+      for (let i = 0; i < areas.length; i++) {
+        const a = areas[i]; if (a[0] === 2 && area(a[1]) > 250 && area(a[1]) < 60000) layout(a[1], i);
+        if (performance.now() - t > ms) { await new Promise(r => setTimeout(r, 0)); t = performance.now(); }
+      }
+      return stalls.length;
+    },
     // stalls outside the lots: driveways (home: full overnight, emptier through the workday; cars pull in from the
     // street and back out) and curbside spaces (kerb: no comings and goings, they fill and empty out of sight).
     // list: [{ x, z, rot, ax, az (where a car turns in from), entry ({ x, z, tx, tz } on the street, or null), home, kerb }]
