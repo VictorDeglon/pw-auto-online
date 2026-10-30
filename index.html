@@ -5529,6 +5529,7 @@ let mouseDown = false, rightDown = false, locked = false, running = false, pause
 const cam = { yaw: Math.PI, pitch: 0.28, dist: 6.5, lastMouse: -10 };
 addEventListener('keydown', e => {
   if (!running || SHELL.isChatOpen() || !$('menu').hidden || !$('namebox').hidden) return;
+  if (!paused) CHEAT.key(e); // the cheat sheet's phrase typed straight on the keyboard (src/ui/cheats.js)
   if (!paused && !mapOpen && !garageOpen && !travelOpen && !CHEAT.open) {
     if (e.code === 'Enter' && !WHEEL.open) { e.preventDefault(); keys.clear(); SHELL.openChat(); return; } // offline too: the chat box takes cheat codes
     if (e.code === 'KeyL' && online) { SHELL.showPlayers(true); return; }

@@ -8,6 +8,12 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.8 (2026-10-29)
+
+- **Cheat sheet:** it opens by typing its new phrase straight on the keyboard while you play, chat closed, one letter
+  after another (each within a second and a half of the last). Typing it in the chat box still works; the old phrase
+  no longer does. The cheat codes themselves are unchanged.
+
 ## 0.8.7 (2026-10-29)
 
 - **Roads, rebuilt:** about a fifth wider than life (they felt cramped at true size). Every town street has a curb, a
