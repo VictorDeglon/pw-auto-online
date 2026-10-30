@@ -4,7 +4,7 @@
 // through junctions and pick a turn at random. Five times a second each player gets the cars within 560 m: new ones with
 // their look, moving ones as numbers, gone ones by id. A player's hit stops a car (and can wreck it); a player who takes a
 // car gets it for their own game and it leaves the traffic. deploy.sh joins roads.js + traffic.js + index.js into one module.
-var TR = { PER: 14, MAX: 110, NEAR: 140, FAR: 520, DROP: 700, SEND: 560, EVERY: 2, HITS_PER_S: 12 };
+var TR = { PER: 20, MAX: 150, NEAR: 140, FAR: 520, DROP: 700, SEND: 560, EVERY: 2, HITS_PER_S: 12 };
 var TR_SPEED = [29, 20, 17, 14, 11, 7]; // m/s by road type (index.html SPEED_T)
 var TR_TYPES = ['sedan', 'sedan', 'sedan', 'suv', 'suv', 'pickup', 'van', 'sports', 'bus']; // the client gets the index
 var TRG = null;

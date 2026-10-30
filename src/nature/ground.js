@@ -8,7 +8,7 @@
 //   lawn   irrigated turf (ambientCG Grass004)                     bright green yards, parks, fairways
 //   litter leaf litter in shade (ambientCG Ground023)              under oaks and chaparral (photo shows canopy)
 //   rock   weathered granite (Poly Haven rock_boulder_dry)         steep slopes and bright outcrops, triplanar
-// Beyond ~250 m the plain photo is used. Outside the photo coverage ("outer hills") the same layers are driven by
+// Beyond ~500 m the plain photo is used. Outside the photo coverage ("outer hills") the same layers are driven by
 // procedural chaparral / grassland patches instead of the photo.
 
 export const GROUND_LAYERS = ['soil', 'dry', 'lawn', 'litter', 'rock', 'sand'];
@@ -72,15 +72,24 @@ float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)
 float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }
 float gFbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * gNoise(p); p = p * 2.03 + 17.1; a *= 0.5; } return v; }
-// planar sample on the ground plane; a second, rotated sample at 3.7x scale hides tiling
+// planar sample on the ground plane; a second, rotated sample at 3.7x scale hides tiling. Further out the fine sample
+// averages away to a flat colour, so the coarse one's relief is laid over it (its light and shade, and its normal),
+// growing with distance: the ground keeps its clumps, stones and ruts out to the edge of the detail range.
 vec4 gLayer(int k, vec2 xz, out vec3 nTS) {
   vec2 uv = vec2(xz.x, -xz.y) / gTile[k];
   vec2 uv2 = mat2(0.8, -0.6, 0.6, 0.8) * uv * 0.27 + 0.31;
   vec4 a = texture(gAlb, vec3(uv, float(k))), b = texture(gAlb, vec3(uv2, float(k)));
   float m = smoothstep(0.35, 0.65, gNoise(xz * 0.11 + float(k) * 7.3));
   vec3 na = texture(gNrm, vec3(uv, float(k))).xyz * 2.0 - 1.0, nb = texture(gNrm, vec3(uv2, float(k))).xyz * 2.0 - 1.0;
-  nTS = normalize(mix(na, nb, m));
-  return mix(a, b, m);
+  vec4 c = mix(a, b, m); vec3 n = mix(na, nb, m);
+  float far = smoothstep(12.0, 60.0, length(vWp - cameraPosition));
+  if (far > 0.0) { // the coarse sample's relief over the averaged-out fine one
+    float lb = dot(b.rgb, vec3(0.2126, 0.7152, 0.0722)) / max(dot(gMean[k], vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+    c.rgb *= mix(1.0, clamp(lb, 0.55, 1.6), far * (1.0 - m) * 0.85);
+    n = mix(n, nb, far * 0.6);
+  }
+  nTS = normalize(vec3(n.xy * 1.35, n.z)); // a little deeper than the scans: the ground reads as relief, not paint
+  return c;
 }
 // triplanar granite for slopes; returns colour+height, world-space normal in nW
 vec4 gRock(vec3 p, vec3 N, out vec3 nW) {
@@ -160,7 +169,7 @@ export function groundPatch(ground, opts = {}) {
   const uniforms = {
     gAlb: { value: ground.alb }, gNrm: { value: ground.nrm },
     gMean: { value: GROUND_LAYERS.flatMap(k => MEANS[k]) },
-    gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 70 }, gFar: { value: opts.far ?? 260 },
+    gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 140 }, gFar: { value: opts.far ?? 520 }, // detail out to here: nearer, the photo's smear showed past the first street
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
     gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...TRACK_U, ...SHORE_U,

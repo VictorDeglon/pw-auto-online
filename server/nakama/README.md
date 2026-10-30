@@ -29,12 +29,12 @@ What the server decides, so a modified browser can't fake it (in `index.js`, plu
   other players and no kills or deaths count; finishing a race against others and Hide & Seek rounds pay XP.
 - **Streaks and bounties:** announced at 3, 5 and every 5 after; at 5 the player has a bounty worth 1.5x XP.
 - **Traffic:** the room runs the street traffic (`traffic.js`, on the road graph in `roads.js`), so every player sees
-  the same cars in the same places. It keeps about 14 cars around each player (140–520 m out, dropped past 700 m, at
-  most 110 per room) and sends each player the cars within 560 m five times a second. Browsers only draw them
+  the same cars in the same places. It keeps about 20 cars around each player (140–520 m out, dropped past 700 m, at
+  most 150 per room) and sends each player the cars within 560 m five times a second. Browsers only draw them
   (`src/online/traffic.js`). A hit slows or wrecks a car for everyone; getting in takes it out of the room's traffic.
   `roads.js` is generated: `node tools/traffic/build-roads.mjs` after `poway-data.js` changes.
-- **People:** the room walks the people on the sidewalks and trails (`peds.js`, on the same road graph): about 22
-  round each player (40–170 m out, dropped past 240 m, at most 170 per room), strolling, pausing, and running from
+- **People:** the room walks the people on the sidewalks and trails (`peds.js`, on the same road graph): about 32
+  round each player (40–170 m out, dropped past 240 m, at most 240 per room), strolling, pausing, and running from
   gunshots and explosions. Each player gets the people within 200 m five times a second; browsers draw them
   (`src/online/peds.js`) and spawn none of their own. A hit is checked (range, at most 15 a second) and the room
   decides who dies, so everyone sees the same body.

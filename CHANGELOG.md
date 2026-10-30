@@ -8,6 +8,26 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.8.7 (2026-10-29)
+
+- **Roads, rebuilt:** about a fifth wider than life (they felt cramped at true size). Every town street has a curb, a
+  concrete gutter and a sidewalk, downtown and the business parks included (they were treated as country roads).
+  Corners are rounded with real curb returns, the sidewalk carried round them, instead of sidewalks running across the
+  junction. Every town junction has crosswalks, side streets have a stop line and a STOP sign, mid-block crossings have
+  pedestrian crossing signs, and lines stop short of the junction. Divided roads have raised medians, concrete or
+  planted, and freeways a concrete barrier you can't drive through. Country roads have edge lines. Driveways are
+  concrete, with the sidewalk running across them.
+- **No more ground through the road:** on hillsides the ground came up through the asphalt (a metre in places beside
+  split-level roads), and the graded verge behind a sidewalk could climb over the next road down. Both fixed.
+- **Ground up close:** the detailed ground textures load first, a second after you start (they used to wait for the
+  trees, a minute or more of blurry ground), keep their relief further out, and reach twice as far.
+- **Busier streets:** cars parked along the curbs wherever a street has room for them, the same ones each time you
+  come back; about 40% more people and traffic on every graphics setting (the online room's too, once the server is
+  updated).
+- **Driving:** your speed in mph and your elevation in feet next to the street name.
+- **HUD:** no more overlaps on smaller windows: the corner blocks scale together, the job, waypoint and radio lines sit
+  in their own columns. On the loading screen the Enter button no longer sits on the logo.
+
 ## 0.8.6 (2026-10-29)
 
 - **One town for everyone online:** the game server now walks the people on the sidewalks, the way it already drove the

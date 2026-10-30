@@ -3141,7 +3141,10 @@ function* paveRoadSteps(t, w, p, rd) {
   if (SURF && !curb && t >= 1 && t <= 5 && w >= 5) for (const sg of [1, -1]) for (const q of sideP(sg)) ribbon(ch.path, q, sw + 0.4, sg * (w / 2 + sw / 2 + 0.1), 0.035, [0.9, 0.84, 0.76], sw + 0.4);
   // the asphalt in two halves: the crown along the middle sheds rain to the gutters (src/world/roadsurface.js CROWN)
   const rc = t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1];
-  yield; if (w >= 6) { ribbon(ch.road, pA, w / 2, w / 4, ROAD_TOP, rc, 7); yield; ribbon(ch.road, pA, w / 2, -w / 4, ROAD_TOP, rc, 7); } else ribbon(ch.road, pA, w, 0, ROAD_TOP, rc, 7);
+  if (t === 6 && Lp < 70) { // a house's driveway: concrete, laid under the street's walk and gutter so they run across its mouth
+    yield; ribbon(ch.side, pA, w, 0, 0.05, [0.8, 0.79, 0.76], 3);
+  } else { yield; const lift = t === 6 ? 0.05 : ROAD_TOP; // (service drives and lots under the street they join)
+    if (w >= 6) { ribbon(ch.road, pA, w / 2, w / 4, lift, rc, 7); yield; ribbon(ch.road, pA, w / 2, -w / 4, lift, rc, 7); } else ribbon(ch.road, pA, w, 0, lift, rc, 7); }
   yield;
   // markings from the same lane layout traffic drives by (src/roadnet.js laneOffset): a centre gap of 2.8 m or more is
   // a two-way left-turn lane (as on Espola Road), a 1.2 m+ shoulder is a bike lane, dividers sit between real lanes
@@ -5401,11 +5404,7 @@ function spawnTraffic(px, pz, rmin, rmax, any) {
   }
   if (!ne) return;
   const e = edges[ne.e];
-  if (e.t >= 4 && Math.random() < 0.25 && vehicles.filter(v => v.parked && !v.stall).length < 14) {
-    const side = Math.random() < 0.5 ? 1 : -1, o = (e.w / 2 - 0.3) * side;
-    const v = new Vehicle(pick(['sedan', 'suv', 'pickup', 'sedan', 'van']), ne.x - ne.tz * o, ne.z + ne.tx * o, Math.atan2(ne.tx * side, ne.tz * side));
-    v.parked = true; v.mode = 'free'; surfRack(v); settleCar(v); return;
-  }
+  // (cars parked at the curb: updateCurbParking)
   { const Zb = zoneHere(ne.x, ne.z), k = Zb ? Zb.kind : 'suburb', pb = k === 'beach' ? 0.3 : k === 'downtown' ? 0.35 : 0.05; // bikes and rental scooters on the sidewalk
     if (e.t >= 3 && Math.random() < pb && vehicles.filter(v => v.parked && TWO.has(v.type)).length < 10) {
       const side = Math.random() < 0.5 ? 1 : -1, o = (e.w / 2 + 1.1) * side, type = k === 'downtown' || k === 'beach' ? pick(['escooter', 'escooter', 'bike', 'scooter']) : pick(['bike', 'bike', 'scooter']);
@@ -7779,7 +7778,42 @@ function updateCrowd(dt) {
 }
 
 // ============================================================ police manager
+// Cars parked along the curbs round you: every street with room for a parking lane (a residential street, or a bigger
+// one whose travel lanes leave 2 m at the curb) has its spots every 6.4 m along each side, clear of the junctions and
+// the driveways; whether a spot is taken is fixed by the spot (so the same cars are there when you come back) and by
+// the place (busiest downtown and at the beach, few out in the country). Spots fill within PARK_R and empty past
+// PARK_DROP; a car that's been hit, moved or taken is left alone, and once it's gone the spot fills again.
+const curbCars = new Map(); let curbT = 0;
+const PARK_R = 160, PARK_DROP = 240, CURB_P = { downtown: 0.62, beach: 0.55, working: 0.5, suburb: 0.36, comfy: 0.3, rich: 0.22, rural: 0.08 };
+function updateCurbParking(dt) {
+  if ((curbT -= dt) > 0) return; curbT = 0.5;
+  if (GAMES.inside || WORLD.following) return;
+  const f = focusPos(), cap = GFX.parked || 40;
+  for (const [k, v] of curbCars) { // let go of the far ones (unless someone's been at them)
+    if (v.removed) { curbCars.delete(k); continue; }
+    if (hyp(v.pos.x - f.x, v.pos.z - f.z) > PARK_DROP) { if (v.parked && !v.mine && !v.dead && v !== player.inCar && hyp(v.pos.x - v.spot[0], v.pos.z - v.spot[1]) < 1.5) v.remove(); curbCars.delete(k); }
+  }
+  if (curbCars.size >= cap) return;
+  const r = Math.ceil(PARK_R / EG), gx = Math.floor(f.x / EG), gz = Math.floor(f.z / EG), seen = new Set(), o = { x: 0, z: 0, tx: 0, tz: 0 }; let made = 0;
+  for (let ix = -r; ix <= r && made < 6; ix++) for (let iz = -r; iz <= r && made < 6; iz++) {
+    for (const ei of egrid.get(ckey(gx + ix, gz + iz)) || []) {
+      if (seen.has(ei)) continue; seen.add(ei); const e = edges[ei]; if (e.t < 1 || e.t > 5 || e.len < 34 || e.inI) continue;
+      const n = lanesPerDir(e), room = e.w / 2 - (e.ow ? laneOffset(e, n - 1) + 1.5 : laneOffset(e, n - 1) + 1.6); if (room < 2.05 && !(e.t >= 4 && n === 1 && e.w >= 9)) continue;
+      const Z = zoneHere(e.pts[0], e.pts[1]), p = CURB_P[Z ? Z.kind : 'suburb'] ?? 0.35;
+      for (let s = 14, slot = 0; s < e.len - 14; s += 6.4, slot++) for (const side of [1, -1]) {
+        const key = ei * 4096 + slot * 2 + (side > 0 ? 1 : 0); if (curbCars.has(key)) continue;
+        const h = Math.sin(key * 12.9898 + 78.233) * 43758.5453; if (h - Math.floor(h) > p) continue;
+        edgePos(e, s, o); const off = (e.w / 2 - 1.15) * side, x = o.x - o.tz * off, z = o.z + o.tx * off; // side 1: right of +t (src/roadnet.js)
+        if (hyp(x - f.x, z - f.z) > PARK_R || hyp(x - f.x, z - f.z) < 30 && inView(x, z)) continue; // not popping in under your nose
+        if (nearestEdge(x, z, 4.5, q => q.t === 6) || nearSignal(x, z, 26)) continue; // a driveway's mouth, a signalled corner
+        const fw = e.ow ? 1 : side, v = new Vehicle(pickCar(Z), x, z, Math.atan2(o.tx * fw, o.tz * fw)); v.parked = true; v.mode = 'free'; v.spot = [x, z]; surfRack(v); settleCar(v); // facing the way that side's traffic runs
+        curbCars.set(key, v); if (++made >= 6 || curbCars.size >= cap) return;
+      }
+    }
+  }
+}
 function updatePopulation(dt) {
+  updateCurbParking(dt);
   trafficT -= dt; if (trafficT > 0) return; trafficT = 0.25;
   if (GAMES.inside) return; // the crew-garage worlds have their own crowds and traffic (src/games)
   if (WORLD.following) return; // the leader's people and cars are shown instead (src/online/world.js)
@@ -8413,11 +8447,11 @@ function startCareer() {
 async function loadLater() {
   const t0 = performance.now();
   const step = async (name, f) => { const t = performance.now(); PROF.label = name; try { await f(); await uploadInSteps(scene.children, null, 8); } catch (e) { console.warn('[later]', name, e); } PROF.label = ''; console.info('[later]', name, ((performance.now() - t) / 1000).toFixed(1) + 's'); }; // each step's new textures go up a few at a time, not inside a frame
+  await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer))); // first: until they're in, every patch of ground near you is the blurred photo
   await step('ground photos', loadGroundPhotos);
   await step('crowd', async () => { if (await loadCrowd()) { await warmCrowd(); upgradePeds(); } });
   await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
-  await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer)));
   await step('power lines', loadPower);
   await step('harbor', loadHarbor);
   console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's');
@@ -8555,7 +8589,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { curb: { cars: curbCars, update: dt => updateCurbParking(dt) }, prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';

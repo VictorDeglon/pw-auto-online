@@ -6,7 +6,7 @@
 // can kill one: the room keeps the body a while and every game sees it fall. Five times a second each player gets the
 // people within 200 m: new ones with their look, moving ones as numbers, gone ones by id.
 // deploy.sh joins roads.js + traffic.js + peds.js + index.js into one module.
-var PD = { PER: 22, MAX: 170, NEAR: 40, FAR: 170, DROP: 240, SEND: 200, EVERY: 2, LOOKS: 64, HITS_PER_S: 15, BODY_S: 30 };
+var PD = { PER: 32, MAX: 240, NEAR: 40, FAR: 170, DROP: 240, SEND: 200, EVERY: 2, LOOKS: 64, HITS_PER_S: 15, BODY_S: 30 };
 function pdWalkable(e) { return e.t >= 1 && e.t <= 6; }
 function pdOff(e) { return e.t === 6 ? 0.6 : e.w / 2 + 1.3; } // the middle of the sidewalk (index.html: a 2.2 m ribbon 0.1 m off the asphalt)
 function pdPose(p) {
