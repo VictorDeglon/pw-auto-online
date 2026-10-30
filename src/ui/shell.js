@@ -4,11 +4,13 @@
 //   startOffline()          free roam
 //   startOnline(sid, name)  after the name was claimed: drop into the world as that player
 //   toMenu()                back from the pause menu to the main menu (leaves the server)
-//   wear(skin)              swap the player's avatar (resolves when loaded)
+//   wear(skin)              swap the player's avatar and look (resolves when loaded)
+//   closet                  { money(), spend(n) -> bool, ach(id) -> bool, level(), wardrobe() -> { owned, look }, persist() }
 //   gfx, setVoices(on), voices(), sens(), setSens(v)
 import { NET, initNet, watchServers, ping, join, leave, sendChat, on as onNet, serverName, validName, explain } from '../online/net.js';
 import { SERVERS, MAX_PLAYERS } from '../online/config.js';
-import { HUMANS, skinList, skinLabel, skinRole, ensureAvatar, makeHuman, animHuman } from '../humans.js';
+import { HUMANS, skinList, skinLabel, skinRole, ensureAvatar, makeHuman, animHuman, splitSkin } from '../humans.js';
+import { ITEMS, SLOTS, PALETTES, HEIGHTS, BUILDS, AVATAR_UNLOCK, decodeLook, joinSkin, lockOf, fits, dress as dressRig } from '../wardrobe.js';
 import { CATEGORIES } from '../people.js';
 import { ACHIEVEMENTS, renderAchievements, achievementCount, bump as achBump } from './achievements.js';
 import { PRESETS, ORDER, saveGfx } from '../gfx.js';
@@ -129,29 +131,92 @@ async function submitName(e) {
   H.startOnline(sid, actualName);
 }
 
-// ---------------------------------------------------------------- character (skin selector) with a turntable preview
-let cv = null, cr = null, cscene = null, ccam = null, crig = null, craf = 0, sel = '', csex = '', ccat = '', clast = 0;
+// ---------------------------------------------------------------- character: who you are and what you wear, with a turntable preview
+// The look being edited is `ed` (an avatar plus src/wardrobe.js's look); it shows on the turntable as you try things
+// on, locked or not, and the button below says what it takes to wear it: nothing, money, or something to earn first.
+// What you own lives in the save (H.closet.wardrobe().owned: "hat:cowboy", "skin:Fire_Male_01"), what you wear in your
+// profile's skin ("Male_Adult_18~a21…"), and the cloud save carries both.
+let cv = null, cr = null, cscene = null, ccam = null, crig = null, craf = 0, csex = '', ccat = '', clast = 0, ctab = 'person', cdrag = null, cspin = 0;
+let ed = null; // { avatar, L }
+const worn = () => profile.skin || HUMANS.player || '';
+const C = () => ({ owned: id => !!H.closet.wardrobe().owned[id], ach: id => H.closet.ach(id), level: () => H.closet.level() });
+const avatarKind = n => { const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n); return a ? a.kind : 'civilian'; };
+const avatarLock = n => lockOf(AVATAR_UNLOCK[avatarKind(n)], 'skin:' + n, C());
+const itemLock = (slot, i) => { const it = ITEMS[slot][i]; return it && it.id !== 'none' ? lockOf(it, slot + ':' + it.id, C()) : null; };
+const achName = id => { const a = ACHIEVEMENTS.find(x => x.id === id); return a ? a.name : id; };
+const needText = k => !k ? '' : k.price ? `$${k.price.toLocaleString()}` : k.need === 'ach' ? `Earn “${achName(k.id)}”` : `Career level ${k.lvl}`;
+// the edited look as this person can wear it: someone in a hood or a helmet keeps it (the hat you picked waits for
+// someone bare-headed), the same for glasses over a mask or a visor
+function fitted() { const L = JSON.parse(JSON.stringify(ed.L)); for (const [slot] of SLOTS) if (!fits(ed.avatar, slot)) L[slot] = [0, 0]; return L; }
+const edSkin = () => joinSkin(ed.avatar, fitted());
+function lockList() { // everything in the edited look that isn't yours yet: [{ id, lock }]
+  const out = [], a = avatarLock(ed.avatar), L = fitted(); if (a) out.push({ id: 'skin:' + ed.avatar, lock: a });
+  for (const [slot] of SLOTS) { const k = itemLock(slot, L[slot][0]); if (k) out.push({ id: slot + ':' + ITEMS[slot][L[slot][0]].id, lock: k }); }
+  return out;
+}
 function openChar() {
   const list = $('charitems');
   if (!HUMANS.manifest) { list.textContent = 'People are still loading…'; setTimeout(() => { if (screen === 'character') openChar(); }, 800); return; }
-  sel = profile.skin || HUMANS.player || ''; renderSkins(); preview(sel);
+  if (!ed) { keepWorn(); const s = splitSkin(worn()); ed = { avatar: s.avatar || HUMANS.player, L: decodeLook(s.look) }; }
+  for (const b of $('chartabs').children) b.onclick = () => { ctab = b.dataset.t; renderTab(); };
+  renderTab(); preview();
+}
+function renderTab() {
+  for (const b of $('chartabs').children) b.classList.toggle('on', b.dataset.t === ctab);
+  $('cpane-person').hidden = ctab !== 'person'; $('cpane-wear').hidden = !ITEMS[ctab]; $('cpane-body').hidden = ctab !== 'body';
+  if (ctab === 'person') renderSkins(); else if (ITEMS[ctab]) renderItems(); else renderBody();
+}
+function itemButton(label, sub, on, lock, click) {
+  const b = document.createElement('button'); b.textContent = label;
+  const r = document.createElement('small'); r.textContent = sub; b.append(r);
+  if (on) b.classList.add('sel'); if (lock) b.classList.add(lock.price ? 'buy' : 'locked'); b.onclick = click; return b;
 }
 function renderSkins() {
-  const q = $('charq').value.trim().toLowerCase(), list = $('charitems'); list.textContent = '';
+  if (!ed) return; const q = $('charq').value.trim().toLowerCase(), list = $('charitems'); list.textContent = '';
   for (const s of skinList()) {
     if (csex && s.sex !== csex) continue;
     if (ccat && s.category !== ccat) continue;
     if (q && !(s.label + ' ' + s.role).toLowerCase().includes(q)) continue;
-    const b = document.createElement('button'); b.textContent = s.label; b.dataset.n = s.name;
-    const r = document.createElement('small'); r.textContent = s.role; b.append(r);
-    if (s.name === sel) b.classList.add('sel'); if (s.name === (profile.skin || HUMANS.player)) b.classList.add('worn');
-    b.onclick = () => { sel = s.name; for (const x of list.children) x.classList.toggle('sel', x.dataset.n === sel); preview(sel); };
-    list.append(b);
+    const k = avatarLock(s.name), b = itemButton(s.label, k ? needText(k) : s.role, s.name === ed.avatar, k, () => { ed.avatar = s.name; renderSkins(); preview(); });
+    b.dataset.n = s.name; if (s.name === splitSkin(worn()).avatar) b.classList.add('worn'); list.append(b);
   }
 }
-async function preview(name) {
-  $('charname').textContent = name ? skinLabel(name) : ''; $('charrole').textContent = name ? skinRole(name) : '';
-  $('wearbtn').disabled = !name || name === (profile.skin || HUMANS.player);
+function renderItems() {
+  const slot = ctab, list = $('wearitems'), cur = ed.L[slot], sw = $('swatches'); list.textContent = ''; sw.textContent = '';
+  if (!fits(ed.avatar, slot)) {
+    const p = document.createElement('p'); p.className = 'fine';
+    p.textContent = slot === 'hat' ? `${skinLabel(ed.avatar)} keeps their own headwear. Pick someone bare-headed to wear a hat.` : `${skinLabel(ed.avatar)} already has something over their eyes.`;
+    list.append(p); return;
+  }
+  ITEMS[slot].forEach((it, i) => {
+    const k = itemLock(slot, i), owned = it.id !== 'none' && !k && (it.price || it.ach || it.lvl);
+    list.append(itemButton(it.name, k ? needText(k) : it.id === 'none' ? '' : owned ? 'Yours' : 'Free', i === cur[0], k, () => { ed.L[slot] = [i, i === cur[0] ? cur[1] : 0]; renderItems(); preview(); }));
+  });
+  const it = ITEMS[slot][cur[0]];
+  if (it && it.id !== 'none') (PALETTES[it.pal] || []).forEach(([name, hex], ci) => {
+    const b = document.createElement('button'); b.title = name; b.style.background = hex; if (ci === cur[1]) b.classList.add('on');
+    b.onclick = () => { ed.L[slot] = [cur[0], ci]; renderItems(); preview(); }; sw.append(b);
+  });
+}
+const talls = new Map(); // how tall each person stands as made (metres, hair included)
+function tallness(n) { const P = HUMANS.proto.get(n); if (!P) return 1.75; if (!talls.has(n)) talls.set(n, new H.THREE.Box3().setFromObject(P.root).max.y); return talls.get(n); }
+function renderBody() {
+  const h = $('charh'), b = $('charb');
+  h.max = HEIGHTS.length - 1; h.value = ed.L.h; b.max = BUILDS.length - 1; b.value = ed.L.b;
+  const label = () => { $('charhv').textContent = `${Math.round(100 * tallness(ed.avatar) * HEIGHTS[ed.L.h])} cm`; $('charbv').textContent = ['Slight', 'Lean', 'Average', 'Sturdy', 'Broad', 'Heavyset'][ed.L.b] || ''; };
+  h.oninput = () => { ed.L.h = +h.value; label(); preview(); }; b.oninput = () => { ed.L.b = +b.value; label(); preview(); }; label();
+}
+// the button under the turntable: what wearing this look takes
+function charButton() {
+  const btn = $('wearbtn'), locks = lockList(), cost = locks.reduce((s, x) => s + (x.lock.price || 0), 0), earn = locks.find(x => !x.lock.price);
+  $('charcash').textContent = `$${Math.max(0, H.closet.money()).toLocaleString()}`;
+  if (earn) { btn.textContent = `Locked: ${needText(earn.lock)}`; btn.disabled = true; return; }
+  if (cost) { btn.textContent = `Buy for $${cost.toLocaleString()}`; btn.disabled = H.closet.money() < cost; return; }
+  const skin = edSkin(); btn.textContent = skin === worn() ? 'Wearing this' : 'Wear this'; btn.disabled = skin === worn();
+}
+async function preview() {
+  const name = ed.avatar, skin = edSkin();
+  $('charname').textContent = name ? skinLabel(name) : ''; $('charrole').textContent = name ? skinRole(name) : ''; charButton();
   if (!name || !HUMANS.ready) return;
   const THREE = H.THREE;
   if (!cr) {
@@ -160,23 +225,37 @@ async function preview(name) {
     cscene.add(new THREE.HemisphereLight(0xdfe8ff, 0x3a2a1a, 1.4)); const d = new THREE.DirectionalLight(0xffe2c4, 2.2); d.position.set(2, 3, 3); cscene.add(d);
     const r = new THREE.DirectionalLight(0xff7a2f, 1.2); r.position.set(-2, 1.5, -2); cscene.add(r);
     const floor = new THREE.Mesh(new THREE.CircleGeometry(0.8, 40), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })); floor.rotation.x = -Math.PI / 2; cscene.add(floor);
+    cv.onpointerdown = e => { cdrag = { x: e.clientX, spin: cspin }; cv.setPointerCapture(e.pointerId); }; // drag to turn them round
+    cv.onpointermove = e => { if (cdrag) cspin = cdrag.spin + (e.clientX - cdrag.x) * 0.012; };
+    cv.onpointerup = cv.onpointercancel = () => { cdrag = null; };
   }
-  const ok = await ensureAvatar(name); if (!ok || sel !== name || screen !== 'character') return;
-  const nr = makeHuman(name); if (!nr) return;
+  if (crig && crig.name === name) { dressRig(THREE, crig, HUMANS.proto.get(name).root, splitSkin(skin).look); return; } // same person: just change what they wear
+  const ok = await ensureAvatar(name); if (!ok || ed.avatar !== name || screen !== 'character') return;
+  const nr = makeHuman(skin); if (!nr) return;
   if (cr.compileAsync) await cr.compileAsync(nr.g, ccam, cscene).catch(() => { }); // compile off the frame, then swap
-  if (sel !== name || screen !== 'character') return;
+  if (ed.avatar !== name || screen !== 'character') return;
   if (crig) cscene.remove(crig.g); crig = nr; cscene.add(crig.g);
+  if (edSkin() !== skin) dressRig(THREE, crig, HUMANS.proto.get(name).root, splitSkin(edSkin()).look); // changed while it loaded
   // the preview runs at 30 fps and only resizes its canvas when the box changes (setSize every frame reallocates it)
   if (!craf) { clast = performance.now(); let cw = 0, ch = 0, acc = 0; const loop = t => { craf = requestAnimationFrame(loop); const dt = Math.min(0.1, (t - clast) / 1000); clast = t; acc += dt; if (acc < 1 / 30) return;
-    if (crig) { crig.g.rotation.y += acc * 0.6; animHuman(crig, 0, acc, null); } acc = 0;
+    if (!cdrag) cspin += acc * 0.6; if (crig) { crig.g.rotation.y = cspin; animHuman(crig, 0, acc, null); } acc = 0;
     const w = cv.clientWidth || 360, h = cv.clientHeight || 460; if (w !== cw || h !== ch) { cw = w; ch = h; cr.setSize(w, h, false); } cr.render(cscene, ccam); }; craf = requestAnimationFrame(loop); }
 }
 function closeChar() { if (craf) cancelAnimationFrame(craf); craf = 0; }
 export function previewOpen() { return craf !== 0 && screen === 'character'; }
 async function wear() {
-  if (!sel) return; $('wearbtn').disabled = true;
-  const ok = await H.wear(sel); if (!ok) { $('wearbtn').disabled = false; return; }
-  profile.skin = sel; saveProfile(); renderSkins(); $('skinsub').textContent = skinLabel(sel);
+  const locks = lockList(); if (locks.some(x => !x.lock.price)) return;
+  const cost = locks.reduce((s, x) => s + x.lock.price, 0);
+  if (cost) { if (!H.closet.spend(cost)) return; const W = H.closet.wardrobe(); for (const x of locks) W.owned[x.id] = Date.now(); H.closet.persist(); }
+  const skin = edSkin(); $('wearbtn').disabled = true;
+  const ok = await H.wear(skin); if (!ok) { charButton(); return; }
+  profile.skin = skin; saveProfile(); H.closet.wardrobe().look = skin; H.closet.persist();
+  renderTab(); charButton(); $('skinsub').textContent = skinLabel(skin);
+}
+// what you wore before the wardrobe came in stays yours, uniform or not
+function keepWorn() {
+  const w = splitSkin(worn()).avatar; if (!w || !H || !H.closet) return;
+  if (AVATAR_UNLOCK[avatarKind(w)]) { const W = H.closet.wardrobe(); if (!W.owned['skin:' + w]) { W.owned['skin:' + w] = Date.now(); H.closet.persist(); } }
 }
 
 // ---------------------------------------------------------------- settings

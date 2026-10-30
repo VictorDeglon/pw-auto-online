@@ -12,6 +12,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
 import { person, nameAll } from './people.js';
+import { splitSkin, dress } from './wardrobe.js'; // a skin can carry a look: "Male_Adult_18~a2104…" (src/wardrobe.js)
+export { splitSkin };
 
 const BASE = 'assets/humans/';
 import { RESERVED, SWIM } from './reserved.js';
@@ -78,7 +80,8 @@ export async function loadHumans(opts = {}) {
   for (let i = civ.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [civ[i], civ[j]] = [civ[j], civ[i]]; }
   const pools = { civ: civ.slice(0, poolSize), police };
   pools.plain = plain.filter(n => pools.civ.includes(n)).concat(plain.slice(0, 2));
-  const me = opts.player && all.some(a => a.name === opts.player) && !RESERVED.has(opts.player) ? opts.player : man.player; // the skin the player picked (never a reserved one)
+  const pick = splitSkin(opts.player).avatar; HUMANS.playerLook = splitSkin(opts.player).look;
+  const me = pick && all.some(a => a.name === pick) && !RESERVED.has(pick) ? pick : man.player; // the skin the player picked (never a reserved one)
   const want = [...new Set([me, ...pools.civ, ...police, ...pools.plain])];
   // opts.crowd === false: only the player's avatar now; loadCrowd() fetches everyone else after the loading screen,
   // and until then buildRig() falls back to the blocky people
@@ -116,6 +119,7 @@ export async function loadCrowd() {
 // load one more avatar on demand (a skin someone picked); resolves true when makeHuman(name) will work
 const pending = new Map();
 export function ensureAvatar(name) {
+  name = splitSkin(name).avatar;
   if (HUMANS.proto.has(name)) return Promise.resolve(true);
   if (!HUMANS.manifest || !HUMANS.manifest.avatars.some(a => a.name === name)) return Promise.resolve(false);
   if (pending.has(name)) return pending.get(name);
@@ -131,13 +135,13 @@ export function skinList() {
   return HUMANS.manifest.avatars.filter(a => !RESERVED.has(a.name)).map(a => { const p = person(a); return { name: a.name, sex: a.sex, kind: a.kind, label: p.full, role: p.role, category: p.category }; });
 }
 export function skinLabel(n) {
-  const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n);
+  n = splitSkin(n).avatar; const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n);
   if (!a) return String(n).replace(/_/g, ' ');
   nameAll(HUMANS.manifest.avatars); const p = person(a); return p.full;
 }
-export function skinRole(n) { const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n); return a ? person(a).role : ''; }
+export function skinRole(n) { n = splitSkin(n).avatar; const a = HUMANS.manifest && HUMANS.manifest.avatars.find(x => x.name === n); return a ? person(a).role : ''; }
 // make the player wear this avatar from now on (it must be loaded)
-export function setPlayerAvatar(name) { if (HUMANS.proto.has(name) && !RESERVED.has(name)) HUMANS.player = name; }
+export function setPlayerAvatar(name) { const { avatar, look } = splitSkin(name); if (HUMANS.proto.has(avatar) && !RESERVED.has(avatar)) { HUMANS.player = avatar; HUMANS.playerLook = look; } }
 // swimwear avatars load on demand the first time you're somewhere they belong
 export function loadSwim() { if (HUMANS.swimLoading || !HUMANS.swimAll) return; HUMANS.swimLoading = true; for (const n of HUMANS.swimAll) ensureAvatar(n).then(ok => { if (ok && !HUMANS.pools.swim.includes(n)) HUMANS.pools.swim.push(n); }); }
 
@@ -156,7 +160,8 @@ export function pickAvatar(kind) {
 }
 
 // gun / phone: meshes to put in the right hand (the caller's existing prop meshes)
-export function makeHuman(name, props = {}) {
+export function makeHuman(skin, props = {}) {
+  const { avatar: name, look } = splitSkin(skin);
   const P = HUMANS.proto.get(name); if (!P) return null;
   const inst = skClone(P.root), g = new THREE.Group(), body = new THREE.Group(); body.add(inst); g.add(body);
   const hand = inst.getObjectByName('Bip01_R_Hand'), armR = new THREE.Group();
@@ -167,6 +172,7 @@ export function makeHuman(name, props = {}) {
   const holder = new THREE.Group(); holder.add(r.gun); r.gun.position.set(0, 0, 0.08); r.gun.rotation.set(0, 0, 0); g.add(holder); r.gun = holder; // placed by holdWeapon
   r.phone.position.set(0.05, 0, 0.03); armR.add(r.phone);
   setAction(r, 'idle', 0); r.mixer.setTime(Math.random() * 3);
+  if (look) try { dress(THREE, r, P.root, look); } catch (e) { console.warn('[wardrobe]', e); } // hats, glasses, chains, bags; height and build
   return r;
 }
 

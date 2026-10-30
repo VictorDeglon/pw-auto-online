@@ -126,6 +126,20 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - Beach cruisers, step-through scooters and rental kick scooters; the rider is the player's own avatar, posed on the
   saddle with feet on the pedals and hands on the grips (`ride()` in `src/humans.js`), leaning into turns.
 
+## What people wear (`src/wardrobe.js`)
+
+- Hats, glasses, things round the neck and on the back are built in code at real size: matte cloth and felt, metal
+  that keeps its colour where there's no sky to mirror, no logos. Colours come from small named palettes, muted except
+  safety colours and the lei.
+- Each is fitted to the person from their own mesh and moves with them: a hat on the skull (over the hair, not a bun),
+  glasses just clear of the brows, chains and leis along the collar, straps over the shoulders and across the chest,
+  packs flat on the back.
+- Whoever already has something on their head or over their eyes (a hood, a keffiyeh or hijab, a uniform cap or
+  helmet, a mask, a visor, their own glasses) keeps it: no hat or glasses goes over it.
+- Height and build change a body by a few percent, never into a caricature.
+- Everyday things cost cash; the flashy and the job-related come with an achievement or a career level, and uniforms
+  with the work they stand for.
+
 ## Zones (`src/world/zones.js`)
 
 The county by money and character: rich (La Jolla, Del Mar, Rancho Santa Fe, Coronado, Fairbanks Ranch), comfortable

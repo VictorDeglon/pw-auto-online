@@ -266,6 +266,11 @@ input[type=search]:focus,#namein:focus,#chatin:focus{border-bottom-color:var(--g
 .charitems button small{display:block;font:600 11px/1.2 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-top:2px}
 .charitems button{font:600 15px/1.2 var(--ui);text-align:left;color:var(--paper);background:rgba(255,255,255,.04);border:1px solid transparent;padding:8px 10px;cursor:pointer}
 .charitems button:hover{background:rgba(255,255,255,.08)} .charitems button.sel{border-color:var(--gold);background:rgba(255,122,47,.12)} .charitems button.worn::after{content:" ●";color:var(--gold)}
+.cpane{display:flex;flex-direction:column;gap:10px;min-height:0}.charitems button.locked{opacity:.62}.charitems button.buy small{color:#9bd16e}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}.swatches button{width:30px;height:30px;border-radius:50%;border:2px solid rgba(0,0,0,.5);box-shadow:0 0 0 1px rgba(255,255,255,.18);cursor:pointer;padding:0}.swatches button.on{box-shadow:0 0 0 3px var(--gold)}
+.slide{display:grid;grid-template-columns:80px 1fr 90px;align-items:center;gap:12px;font:600 15px var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}.slide b{color:var(--paper);font-weight:600;text-transform:none}
+.charcash{font:600 14px var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}.charcash b{font:400 20px var(--display);color:#9bd16e;letter-spacing:.02em;margin-left:6px}
+#charcv{touch-action:none;cursor:grab}
 /* settings */
 .presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .preset{display:flex;flex-direction:column;gap:6px;text-align:left;padding:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);color:var(--paper);cursor:pointer;font:inherit}
@@ -440,13 +445,21 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
   </section>
 
   <section class="screen" id="scr-character" hidden>
-    <header><h2>Character</h2><p>Pick who you play as. Other players see this look online.</p></header>
+    <header><h2>Character</h2><p>Who you play as and what you wear. Other players see this look online. Drag to turn them round.</p></header>
     <div class="charwrap">
-      <div class="charview"><canvas id="charcv" width="360" height="460"></canvas><div class="charname" id="charname"></div><div class="charrole" id="charrole"></div><button class="mbtn primary small" id="wearbtn">Wear this</button></div>
+      <div class="charview"><canvas id="charcv" width="360" height="460"></canvas><div class="charname" id="charname"></div><div class="charrole" id="charrole"></div><button class="mbtn primary small" id="wearbtn">Wear this</button><div class="charcash">Cash <b id="charcash"></b></div></div>
       <div class="charlist">
+        <div class="tabs" id="chartabs"><button data-t="person" class="on">Person</button><button data-t="hat">Hats</button><button data-t="glasses">Glasses</button><button data-t="neck">Neck</button><button data-t="back">Back</button><button data-t="body">Body</button></div>
+        <div class="cpane" id="cpane-person">
         <div class="chartools"><input id="charq" type="search" placeholder="Search names or jobs" autocomplete="off"><div class="seg" id="charsex"><button data-s="" class="on">All</button><button data-s="m">Men</button><button data-s="f">Women</button></div></div>
         <div class="chips" id="charcat"></div>
         <div class="charitems" id="charitems"></div>
+        </div>
+        <div class="cpane" id="cpane-wear" hidden><div class="charitems" id="wearitems"></div><div class="swatches" id="swatches"></div><p class="fine">Things to buy are paid from your cash. The rest come with an achievement or, online, your career level.</p></div>
+        <div class="cpane" id="cpane-body" hidden>
+          <label class="slide">Height <input type="range" id="charh" min="0" max="6" step="1"> <b id="charhv"></b></label>
+          <label class="slide">Build <input type="range" id="charb" min="0" max="5" step="1"> <b id="charbv"></b></label>
+        </div>
       </div>
     </div>
   </section>
@@ -579,14 +592,14 @@ import { lanesPerDir, laneOffset, arrivalDir, canArrive, buildIntersections } fr
 import { createSignals } from './src/signals.js';
 import { ctx } from './src/ctx.js';
 import * as bus from './src/events.js';
-import { skill, carArmor, carRepairPerS, nitroSeconds } from './src/progress.js';
+import { skill, carArmor, carRepairPerS, nitroSeconds, PROG } from './src/progress.js';
 import { initCareer, renderHud as careerHud, fetchBoard } from './src/ui/career.js';
 import { createBillboards } from './src/world/billboards.js';
 import { clock } from './src/clock.js';
 import { police, crime, setWanted, reportCall, updatePolice, resetPolice, copPedAI, rammedCop, aimedAtCop, drawPoliceMap, initPolice } from './src/police.js';
 import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
-import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, loadSwim, ragdoll, freeHuman, plantFeet, ride } from './src/humans.js';
+import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, splitSkin, loadSwim, ragdoll, freeHuman, plantFeet, ride } from './src/humans.js';
 import { buildTwoWheeler, TWO_COLORS } from './src/twowheel.js';
 import { loadGfx, makeScaler } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
@@ -4083,7 +4096,9 @@ const HAIR = ['#2a1d14', '#4b3020', '#8c6a3c', '#c9a46b', '#1a1a1a', '#9a9a9a'];
 function buildRig(o) {
   if (HUMANS.ready && o.human !== false) { // Rocketbox people (src/humans.js); the blocky rig below is the fallback
     const gun = new THREE.Mesh(pedGeo.gun, lam('#1a1a1a')), phone = new THREE.Mesh(pedGeo.phone, lam('#111'));
-    const an = (o.avatar && HUMANS.proto.has(o.avatar) && o.avatar) || pickAvatar(o.kind || 'civ'), r = makeHuman(an, { gun, phone });
+    const sp = splitSkin(o.avatar), an = (sp.avatar && HUMANS.proto.has(sp.avatar) && sp.avatar) || pickAvatar(o.kind || 'civ');
+    const look = sp.avatar === an ? sp.look : o.kind === 'player' && an === HUMANS.player ? HUMANS.playerLook || '' : ''; // what they wear over it (src/wardrobe.js)
+    const r = makeHuman(look ? `${an}~${look}` : an, { gun, phone });
     if (r) { r.avatar = an; gun.visible = !!o.gun; phone.visible = false; return r; }
   }
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
@@ -8723,6 +8738,8 @@ initWorld({
 SHELL.initShell({
   THREE, gfx: GFX, ready: () => worldReady, state: () => netState(),
   startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin, cheat: t => CHEAT.handle(t),
+  closet: { money: () => save.money, spend: n => { if (save.money < n) return false; save.money -= n; persist(); sfx.cash && sfx.cash(); return true; }, // the wardrobe (src/wardrobe.js)
+    ach: id => !!(save.ach && save.ach[id]), level: () => (PROG.me && PROG.me.lvl) || 0, wardrobe: () => save.wardrobe || (save.wardrobe = { owned: {}, look: '' }), persist },
   voices: () => voices, setVoices: on => { voices = on; persist(); },
   look: () => POST.level, setLook: n => { POST.setLevel(n); try { localStorage.setItem(POST_KEY, String(n)); } catch (e) { } },
   sens: () => SENS, setSens: v => { SENS = v; try { localStorage.setItem(INPUT_KEY, JSON.stringify({ sens: v })); } catch (e) { } },

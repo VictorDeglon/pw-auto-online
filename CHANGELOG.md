@@ -8,6 +8,23 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.0: Dressed Up (2026-10-30)
+
+- **Character editor:** the Character screen now dresses who you play as. Tabs for the person, hats (ball cap,
+  backwards cap, beanie, sun visor, bucket hat, fedora, cowboy hat, hard hat, open-face helmet, crown), glasses
+  (shades, round specs, aviators, sport wraps, gold aviators), the neck (bandana, headphones, chain, chain and
+  medallion, lei) and the back (backpack, sling bag, parachute pack, cash duffel), each in a choice of colours, plus
+  height and build sliders. Drag the preview to turn them round.
+- **Unlocks:** everyday things are bought with your cash; others come with an achievement (the hard hat, the helmet,
+  the crown, the sport wraps, the lei, the parachute pack, the duffel) or, online, a career level. Uniforms come with
+  the work they stand for (firefighters with Chain Reaction, pilots with Frequent Flyer, police at level 10, and so
+  on); athletes are bought. What you wore before stays yours. Purchases are saved and travel with your cloud save.
+- **Fitted to each person:** everything is measured against that person's own body and moves with it: hats on the
+  skull, glasses just in front of the eyes, chains and leis along the collar, straps over the shoulders and across the
+  chest. People who already wear something on their head or face (hoods, keffiyehs, uniform caps, helmets, masks)
+  keep it, and the editor says so.
+- **Online:** other players see your outfit, height and build, and see changes as you make them.
+
 ## 0.8.8 (2026-10-29)
 
 - **Cheat sheet:** it opens by typing its new phrase straight on the keyboard while you play, chat closed, one letter
