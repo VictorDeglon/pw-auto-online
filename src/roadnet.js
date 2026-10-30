@@ -9,7 +9,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 // Travel lanes in one direction of an edge. Widths in the data include shoulders/bike lanes, so be conservative.
 export function lanesPerDir(e) {
   if (e.ow) return e.w >= 18 ? 3 : e.w >= 11 ? 2 : 1;
-  return e.w >= 21 ? 3 : e.w >= 15 ? 2 : 1;
+  return e.w >= 25 ? 3 : e.w >= 15 ? 2 : 1; // index.html paveRoadSteps draws the same lanes
 }
 
 // Lateral offset (metres, + = right of travel) of the centre of `lane` for traffic on edge e.

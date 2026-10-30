@@ -39,7 +39,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(-
 #stars.blink span.on{animation:blink .5s steps(2) infinite}
 @keyframes blink{50%{color:rgba(255,255,255,.25)}}
 #rep{font:600 15px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
-#radio{margin-top:10px;font:600 15px/1.3 var(--ui);color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
+#radio{margin:0 0 10px;font:600 15px/1.3 var(--ui);color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
 #radio.tune{animation:tuneIn .5s ease-out} @keyframes tuneIn{0%{opacity:0;filter:blur(4px);transform:translateX(12px)}40%{opacity:1;filter:blur(0)}}
 #radio small{display:block;color:var(--paper);text-transform:none;letter-spacing:.02em;font-weight:500}
 #mapwrap{left:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));width:210px}
@@ -48,8 +48,19 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(-
 #hp{height:9px;flex:1;background:rgba(0,0,0,.6);border:1px solid rgba(0,0,0,.8)}
 #hpf{height:100%;width:100%;background:var(--cash);transition:width .2s}
 #street{right:20px;bottom:calc(22px + env(safe-area-inset-bottom,0px));text-align:right}
+/* corner blocks scale down together on smaller windows (--hs, set from the window size), so the right column, the
+   radio and street at the bottom right, the notes and the minimap never run into each other; the job, waypoint and
+   mission lines are part of the right column, under the stars, instead of fixed offsets that the column ran over */
+#topright,#mapwrap,#street,#feed,#helpline{zoom:var(--hs,1)}
+#topright>#job,#topright>#wpinfo,#topright>#mstat{position:static;margin-top:8px}
 #street b{display:block;font:400 30px/1.05 var(--display);letter-spacing:.02em;color:var(--paper)}
 #street i{display:block;font:600 17px/1.2 var(--ui);font-style:normal;color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
+/* the dash, in a vehicle: speed at a glance (Anton), the elevation beside it */
+#dash{display:flex;align-items:baseline;justify-content:flex-end;gap:5px;margin-bottom:6px}
+#dash[hidden]{display:none}
+#dmph{font:400 46px/1 var(--display);color:var(--paper);-webkit-text-stroke:1.5px var(--ink);paint-order:stroke fill;font-variant-numeric:tabular-nums;min-width:2.1ch;text-align:right}
+#dash small{font:700 16px/1 var(--ui);color:var(--sun);letter-spacing:.1em;text-transform:uppercase}
+#dash em{font:600 15px/1 var(--ui);font-style:normal;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;margin-left:12px;padding-left:12px;border-left:1px solid rgba(243,230,204,.25)}
 #feed{top:calc(16px + env(safe-area-inset-top,0px));left:18px;width:min(380px,80vw);display:flex;flex-direction:column;gap:6px}
 .note{background:rgba(14,16,19,.82);border-left:4px solid var(--gold);padding:8px 12px;font:600 17px/1.25 var(--ui);letter-spacing:.02em;text-shadow:none;animation:slide .25s ease-out}
 .note.red{border-color:var(--blood)} .note.green{border-color:var(--cash)} .note.blue{border-color:var(--siren-b)} .note.news{border-color:var(--paper);font-weight:500}
@@ -150,11 +161,11 @@ body.scoped #cross{opacity:.5}
 #prompt{left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font:600 18px/1 var(--ui);letter-spacing:.04em;background:rgba(14,16,19,.86);padding:9px 14px 8px;border-left:4px solid var(--gold);text-shadow:none;white-space:nowrap}
 #prompt kbd{font:700 15px var(--ui);color:var(--ink);background:var(--gold);padding:1px 7px;border-radius:2px;margin-right:8px}
 #prompt b{color:var(--gold);font-weight:700}
-#subs{left:50%;bottom:calc(98px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(820px,88vw);text-align:center;font:600 23px/1.3 var(--ui);color:var(--paper);text-wrap:balance}
+#subs{left:50%;bottom:calc(98px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:clamp(min(260px,92vw),calc(100vw - 2 * (250px * var(--hs,1) + 24px)),820px);text-align:center;font:600 23px/1.3 var(--ui);color:var(--paper);text-wrap:balance}
 #subs b{font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-right:10px}
 #subs small{font:700 12px/1 var(--ui);letter-spacing:.24em;color:var(--dim);vertical-align:3px;margin-right:8px}
 #subs.vm{font-style:italic;color:#f6e3b4}
-#objective{left:50%;bottom:calc(60px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:min(820px,88vw);text-align:center;font:600 21px/1.3 var(--ui);color:var(--paper)}
+#objective{left:50%;bottom:calc(60px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);width:clamp(min(260px,92vw),calc(100vw - 2 * (250px * var(--hs,1) + 24px)),820px);text-align:center;font:600 21px/1.3 var(--ui);color:var(--paper)}
 #helpline:not([hidden]) ~ #objective{bottom:calc(104px + env(safe-area-inset-bottom,0px))} /* above the key hints, not over them */
 #helpline:not([hidden]) ~ #subs{bottom:calc(144px + env(safe-area-inset-bottom,0px))}
 #objective em{font-style:normal;color:var(--gold)}
@@ -345,17 +356,16 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
   <div id="evade" hidden><i></i></div>
   <div id="rep">Regular Resident</div>
   <div id="prog" hidden></div>
-  <div id="radio" hidden></div>
+  <div id="job" class="hud" hidden></div>
+  <div id="wpinfo" class="hud" hidden></div>
+  <div id="mstat" class="hud" hidden></div>
 </div>
-<div id="job" class="hud" hidden></div>
-<div id="wpinfo" class="hud" hidden></div>
-<div id="mstat" class="hud" hidden></div>
 <div id="mapwrap" class="hud" hidden>
   <canvas id="minimap" width="210" height="210"></canvas>
   <div id="bars"><div id="hp"><div id="hplag"></div><div id="hpf"></div></div></div>
 </div>
 <div id="helpline" class="hud" hidden><kbd>F</kbd> car · <kbd>E</kbd> talk / use · <kbd>Tab</kbd> weapons · <kbd>Q</kbd> radio (in car) · <kbd>J</kbd> courier job · <kbd>M</kbd> map · <kbd>H</kbd> horn · <kbd>K</kbd> fast travel · <kbd>N</kbd> call your car · <kbd>wheel</kbd> weapons · <kbd>G</kbd> detonate · <kbd>Y</kbd> weather · <kbd>T</kbd> +1 hour · <kbd>P</kbd> pause</div>
-<div id="street" class="hud" hidden><b id="streetname">Poway Road</b><i id="areaname">Poway</i></div>
+<div id="street" class="hud" hidden><div id="radio" hidden></div><div id="dash" hidden><span id="dmph">0</span><small>mph</small><em id="delev"></em></div><b id="streetname">Poway Road</b><i id="areaname">Poway</i></div>
 <div id="big" class="hud" hidden><h1 id="bigt"></h1><p id="bigs"></p></div>
 <div id="subs" class="hud" hidden></div>
 <div id="objective" class="hud" hidden></div>
@@ -768,7 +778,9 @@ const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa ? G
 const AIM_RT = new THREE.WebGLRenderTarget(1, 1);
 function aimed(f) { const prev = renderer.getRenderTarget(), swap = POST.level > 0 && !prev; if (swap) renderer.setRenderTarget(AIM_RT); try { return f(); } finally { if (swap) renderer.setRenderTarget(prev); } }
 { const c = renderer.compile.bind(renderer), ca = renderer.compileAsync.bind(renderer); renderer.compile = (...a) => aimed(() => c(...a)); renderer.compileAsync = (...a) => aimed(() => ca(...a)); }
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+const fitHud = () => document.documentElement.style.setProperty('--hs', Math.max(0.6, Math.min(1, innerWidth / 1440, innerHeight / 860)).toFixed(3)); // the corner HUD's scale (#topright, #street, ...)
+fitHud();
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); fitHud(); });
 const MAXANISO = renderer.capabilities.getMaxAnisotropy();
 
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x8a7b5a, 0.9); scene.add(hemi);
@@ -822,6 +834,7 @@ let HG = null, HGW = 0, HGH = 0, HBASE = 0; // heights relative to HBASE (so the
 const _tmpA = [0, 0], _tmpB = [0, 0];
 const RELIEF = 1.12; let HMEAN = 0; // terrain relief exaggeration (1 = true to the DEM)
 function exag(raw) { return HMEAN + (raw - HMEAN) * RELIEF; }
+function realElev(y) { return HMEAN + (y + HBASE - HMEAN) / RELIEF; } // a game height back to metres above the sea (the dash's elevation)
 function buildHeightGrid() {
   HGW = Math.floor(AER.W / CELLPX) + 1; HGH = Math.floor(AER.H / CELLPX) + 1;
   HG = new Float32Array(HGW * HGH);
@@ -897,6 +910,26 @@ function builtAt(x, z) {
 // lowest road surface (minus 0.3 m) found anywhere in the cells around it: then every triangle with road in it is
 // under that road at every point. (Junctions on slopes were the bad case: a vertex up a climbing side street tilted
 // the main road's triangles up through it.) grid: nx * ny heights; at(i, j, out) -> world [x, z]; cell: metres
+// The ground mesh takes the road-shaped height at its corners, but its cells are 4-12.8 m across: where the built
+// surface steps inside one (a divided road on a hillside with its carriageways at different heights, a road cut into a
+// slope) the ground between the corners came up through the asphalt, a metre or more. Each cell with road in it is
+// checked at (S + 1)^2 points; where the ground would stand above the built surface, the corners of the triangle there
+// come down by just what that point needs, shared by how much each corner counts at it (least change; never up).
+function fitUnderRoads(grid, nx, ny, at, cell, S) {
+  if (!ROADS) return 0; const P = [0, 0], reach = cell * 0.72 + 0.3, pts = []; // [k, fx, fy, target] for every on-road point
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    at(i + 0.5, j + 0.5, P); const q = ROADS.query(P[0], P[1]); if (!q) continue;
+    if (q.d - ROADS.roads[q.road][2] / 2 - ROADS.sw[q.road] > reach) continue;
+    for (let b = 0; b <= S; b++) for (let a = 0; a <= S; a++) { at(i + a / S, j + b / S, P); if (ROADS.onRoad(P[0], P[1], 0.2)) pts.push(j * nx + i, a / S, b / S, builtAt(P[0], P[1]) - 0.04); }
+  }
+  let n = 0;
+  for (let pass = 0; pass < 3; pass++) for (let s = 0; s < pts.length; s += 4) {
+    const k = pts[s], fx = pts[s + 1], fy = pts[s + 2], e = tri3(grid[k], grid[k + 1], grid[k + nx], grid[k + nx + 1], fx, fy) - pts[s + 3]; if (e <= 0.005) continue;
+    const [v1, v2, w0, w1, w2] = fx > fy ? [k + 1, k + nx + 1, 1 - fx, fx - fy, fy] : [k + nx, k + nx + 1, 1 - fy, fy - fx, fx], ww = w0 * w0 + w1 * w1 + w2 * w2 || 1;
+    grid[k] -= e * w0 / ww; grid[v1] -= e * w1 / ww; grid[v2] -= e * w2 / ww; n++;
+  }
+  return n;
+}
 function clampUnderRoads(grid, nx, ny, at, cell) {
   if (!ROADS) return 0;
   const cmin = new Float32Array((nx - 1) * (ny - 1)).fill(Infinity), P = [0, 0], S = 4, reach = cell * 0.72 + 0.3;
@@ -1568,7 +1601,7 @@ function junctionRules(n, stops) {
     if (ax * bx + az * bz < -0.82) thru = [top[i], top[j]];
   }
   for (const e of arr) {
-    const k = stopKeys.has(key(e)) ? 'stop' : st.length ? 'free' : e.t > mt ? 'yield' : thru ? (thru.includes(e) ? 'free' : 'yield') : top.length <= 1 ? 'free' : 'yr';
+    const k = stopKeys.has(key(e)) ? 'stop' : st.length ? 'free' : e.t > mt ? 'stop' : thru ? (thru.includes(e) ? 'free' : 'stop') : top.length <= 1 ? 'free' : 'yr'; // a side street stops (junctionKit puts up its sign)
     ctlAt.set(key(e), { k, all: k === 'stop' && all, sd: stopD.get(key(e)) || 0 });
   }
 }
@@ -1820,8 +1853,10 @@ function apron(ch, p, off, sg) {
     if (i > 0) { const dx = p[i * 2] - p[i * 2 - 2], dz = p[i * 2 + 1] - p[i * 2 - 1], l = Math.hypot(dx, dz) || 1; tx += dx / l; tz += dz / l; }
     if (i < n - 1) { const dx = p[i * 2 + 2] - p[i * 2], dz = p[i * 2 + 3] - p[i * 2 + 1], l = Math.hypot(dx, dz) || 1; tx += dx / l; tz += dz / l; }
     const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl; const nx = -tz, nz = tx;
-    rows.push(APRON.map((d, k) => { const o = off + sg * d, x = p[i * 2] + nx * o, z = p[i * 2 + 1] + nz * o, m = meshAt(x, z), b = builtAt(x, z);
-      const y = k === 0 ? b + 0.055 : k === APRON.length - 1 ? (m ?? b) : Math.max(m ?? -1e9, b); return [x, y, z]; }));
+    let stop = null; // the apron ends where another road's asphalt starts: it used to climb over a road lower down (in a cut, across a median)
+    rows.push(APRON.map((d, k) => { if (stop) return stop; const o = off + sg * d, x = p[i * 2] + nx * o, z = p[i * 2 + 1] + nz * o;
+      if (k > 0 && ROADS.onAsphalt(x, z, 0.6)) { const o2 = off + sg * APRON[k - 1] + sg * 0.05, x2 = p[i * 2] + nx * o2, z2 = p[i * 2 + 1] + nz * o2; return (stop = [x2, builtAt(x2, z2) + 0.04, z2]); }
+      const m = meshAt(x, z), b = builtAt(x, z), y = k === 0 ? b + 0.055 : k === APRON.length - 1 ? (m ?? b) : Math.max(m ?? -1e9, b); return [x, y, z]; }));
   }
   for (let i = 0; i < n - 1; i++) for (let k = 0; k < APRON.length - 1; k++) {
     const a = rows[i][k], b = rows[i + 1][k], c = rows[i + 1][k + 1], d = rows[i][k + 1];
@@ -2400,6 +2435,7 @@ function buildSignAtlas() {
   plate(2550, '#f6f5f0', '#1e6b3a', [['2', 44, 52], ['HOUR', 84, 26], ['PARKING', 108, 22], ['8AM - 6PM', 140, 18, '#111'], ['EXCEPT', 162, 16, '#111'], ['SUNDAY', 180, 16, '#111']]); SIGN.twoHr = [2550, 0, 120, 200];
   plate(2680, '#f6f5f0', '#b51f1f', [['NO', 44, 30], ['STOPPING', 80, 24], ['ANY', 118, 24], ['TIME', 150, 24]]); SIGN.noStop = [2680, 0, 120, 200];
   plate(2810, '#f6f5f0', '#1f3fae', [['LOADING', 50, 22], ['ZONE', 78, 26], ['COMMERCIAL', 116, 16, '#111'], ['VEHICLES', 136, 16, '#111'], ['30 MIN', 166, 20, '#111']]); SIGN.loading = [2810, 0, 120, 200];
+  pedSign(g, 2950, 0); SIGN.ped = [2950, 0, 200, 200]; SIGN.pedArrow = [3160, 0, 120, 64]; // W11-2 and its W16-7P arrow plaque
   // house numbers stencilled on the curb (white panel, black digits), 128 x 32, from y = 3600, 32 per row
   SIGN.num = []; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (let i = 0; i < 256; i++) { const x = (i % 32) * 128, y = 3600 + Math.floor(i / 32) * 32, nn = 12000 + Math.floor(Math.abs(Math.sin(i * 91.7) * 1e4)) % 6000 + (i % 2);
@@ -2520,6 +2556,55 @@ function buildKitMeshes() {
   }
   console.info('[street kit]', kitSpots.hyd.length / 3, 'hydrants,', kitSpots.box.length / 3, 'pedestals');
 }
+// W11-2 pedestrian crossing: a yellow diamond with a walker (200 x 200 at x, y), its W16-7P down-left arrow plaque
+// (120 x 64 at ax, ay: beside it in the atlas)
+function pedSign(g, x, y, ax = x + 210, ay = y) {
+  g.save(); g.translate(x + 100, y + 100); g.rotate(Math.PI / 4); g.fillStyle = '#f2c500'; g.beginPath(); g.roundRect(-68, -68, 136, 136, 8); g.fill();
+  g.strokeStyle = '#111'; g.lineWidth = 5; g.beginPath(); g.roundRect(-61, -61, 122, 122, 6); g.stroke(); g.restore();
+  g.save(); g.translate(x + 100, y + 104); g.fillStyle = '#111'; g.strokeStyle = '#111'; g.lineCap = 'round'; g.lineWidth = 11;
+  g.beginPath(); g.arc(4, -50, 10, 0, TAU); g.fill();                                                   // head
+  g.beginPath(); g.moveTo(0, -36); g.lineTo(-6, 4); g.stroke();                                         // body
+  g.beginPath(); g.moveTo(-6, 4); g.lineTo(-24, 40); g.moveTo(-6, 4); g.lineTo(12, 22); g.lineTo(14, 44); g.stroke(); // legs, mid-stride
+  g.beginPath(); g.moveTo(-2, -28); g.lineTo(-22, -8); g.moveTo(-1, -28); g.lineTo(18, -12); g.lineTo(26, 0); g.stroke(); // arms
+  g.restore();
+  g.fillStyle = '#f2c500'; g.fillRect(ax + 2, ay + 2, 116, 60); g.strokeStyle = '#111'; g.lineWidth = 4; g.strokeRect(ax + 6, ay + 6, 108, 52);
+  g.save(); g.translate(ax + 60, ay + 32); g.rotate(Math.PI * 0.75); g.fillStyle = '#111'; g.fillRect(-4, -18, 8, 26); g.beginPath(); g.moveTo(-13, 6); g.lineTo(13, 6); g.lineTo(0, 20); g.fill(); g.restore();
+}
+// a mid-block crosswalk (not at a junction): a crossing sign on the right of each way in, at the crossing
+function midBlockSigns(x, z, filter) {
+  const ne = nearestEdge(x, z, 12, e => e.t >= 1 && e.t <= 5 && filter(e)); if (!ne) return [];
+  const e = edges[ne.e]; if (ne.d < 22 || ne.d > e.len - 22) return []; // at a junction: that's junctionKit's
+  const out = [];
+  for (const sg of e.ow ? [1] : [1, -1]) { // traffic along +t (sg 1) and against it: sign on its right, facing it
+    const hx = ne.tx * sg, hz = ne.tz * sg, rx = -hz, rz = hx, o = e.w / 2 + 1.0, px = ne.x + rx * o, pz = ne.z + rz * o;
+    if (signOk(px, pz)) out.push([px, pz, -hx, -hz]);
+  }
+  return out;
+}
+// is the road at (x, z) a town street (curb, gutter and sidewalk: src/world/roadsurface.js)?
+function curbAt(x, z) { const q = ROADS.query(x, z, {}); if (q) return !!ROADS.curb[q.road]; return !!(OUTER.ready && OUTER.curbAt && OUTER.curbAt(x, z)); }
+// a point d metres out along edge e from its node n, the direction pointing away from n
+function legAt(e, n, d, o) { if (e.a === n) edgePos(e, d, o); else { edgePos(e, e.len - d, o); o.tx = -o.tx; o.tz = -o.tz; } return o; }
+// A junction's markings (signalised ones paint their own: src/signals.js): in town a continental crosswalk across each
+// leg, in line with the crossing street's sidewalks (yellow near a school, as in California); on each leg that has to
+// stop (junctionRules) a stop line just short of the crosswalk, and a STOP sign on its right unless a mapped one stands
+// there (mapped(x, z)). The signs to put up go to stops as [x, z, facing x, facing z].
+function junctionKit(n, stops, mapped, crossed = () => false) {
+  const legs = nodeEdges[n].map(i => edges[i]).filter(e => e.a !== e.b && e.t >= 1 && e.t <= 5); if (legs.length < 3) return;
+  const cx = NX[n * 2], cz = NX[n * 2 + 1]; if (nearSignal(cx, cz, 32)) return;
+  const col = inSchoolZone(cx, cz) ? [0.96, 0.78, 0.08] : [0.93, 0.93, 0.9], WHT = [0.93, 0.93, 0.9], o = { x: 0, z: 0, tx: 0, tz: 0 };
+  for (const e of legs) {
+    if (e.w < 5.5) continue;
+    const hw = Math.max(...legs.filter(f => f !== e).map(f => f.w / 2)), d0 = hw + 1.2, CW = 3.0; if (e.len < d0 + CW + 3) continue;
+    legAt(e, n, d0 + CW / 2, o); const nx = -o.tz, nz = o.tx, town = curbAt(o.x + nx * (e.w / 2 + 1), o.z + nz * (e.w / 2 + 1)) || curbAt(o.x - nx * (e.w / 2 + 1), o.z - nz * (e.w / 2 + 1));
+    if (town && !crossed(o.x, o.z)) { const gb = chunkAt(o.x, o.z).line; for (let s = -e.w / 2 + 0.5; s <= e.w / 2 - 0.45; s += 1.2) bar(gb, o.x + nx * s, o.z + nz * s, o.tx, o.tz, CW, 0.6, 0.065, col); } // (unless a mapped crossing is painted here)
+    const c = ctlAt.get(e.i * 2 + (e.b === n ? 1 : 0)); if (!c || c.k !== 'stop' || !canArrive(e, n)) continue;
+    legAt(e, n, d0 + (town ? CW + 0.9 : 1.5), o); const rx = o.tz, rz = -o.tx; // right of the traffic coming in (it runs against t)
+    const sx = o.x + rx * (e.w / 2 + 1.1), sz = o.z + rz * (e.w / 2 + 1.1); if (mapped(sx, sz)) continue; // its own sign and line are up
+    const gb = chunkAt(o.x, o.z).line; if (e.ow) bar(gb, o.x, o.z, rx, rz, e.w - 0.6, 0.45, 0.066, WHT); else bar(gb, o.x + rx * e.w / 4, o.z + rz * e.w / 4, rx, rz, e.w / 2 - 0.5, 0.45, 0.066, WHT);
+    if (signOk(sx, sz)) stops.push([sx, sz, o.tx, o.tz]);
+  }
+}
 function buildSigns() {
   const stopR = [0, 0, 256, 256];
   for (const [x, z, heading, w] of (D.stops || [])) {
@@ -2532,6 +2617,14 @@ function buildSigns() {
     if (nearSignal(x, z, 30)) continue; // signalised intersections paint their own crosswalks (src/signals.js)
     const tx = Math.cos(ang), tz = Math.sin(ang), nx = -tz, nz = tx; const gb = chunkAt(x, z).line, col = inSchoolZone(x, z) ? [0.96, 0.78, 0.08] : [0.93, 0.93, 0.9];
     for (let s = -w / 2 + 0.5; s < w / 2 - 0.4; s += 1.1) bar(gb, x + nx * s, z + nz * s, tx, tz, 2.4, 0.55, 0.06, col);
+    for (const [px, pz, fx, fz] of midBlockSigns(x, z, e => !e.outer)) { const y = heightAt(px, pz); signQuad(px, y + 2.35, pz, fx, fz, 0.76, 0.76, SIGN.ped); signQuad(px, y + 1.8, pz, fx, fz, 0.46, 0.25, SIGN.pedArrow); signPoles.push(px, y, pz, 2.8); }
+  }
+  { // every other junction in town: crosswalks on each leg, and a stop line and STOP sign where a side street stops
+    const jStops = [], mapped = (x, z) => (D.stops || []).some(q => hyp(q[0] - x, q[1] - z) < 16);
+    const crossed = (x, z) => (D.crossings || []).some(q => hyp(q[0] - x, q[1] - z) < 9);
+    for (let n = 0; n < nodeCount; n++) junctionKit(n, jStops, mapped, crossed);
+    for (const [sx, sz, fx, fz] of jStops) { const y = heightAt(sx, sz); signQuad(sx, y + 2.0, sz, fx, fz, 0.75, 0.75, stopR); signPoles.push(sx, y, sz, 2.4); }
+    console.info('[junctions] stop signs added', jStops.length);
   }
   buildStreetKit();
   // street name blades at intersections where two or more named streets meet
@@ -2930,6 +3023,86 @@ function barricade(e) {
   const L = [x - rx * bw / 2, z - rz * bw / 2, x + rx * bw / 2, z + rz * bw / 2]; const nx2 = e.tx * 0.12, nz2 = e.tz * 0.12;
   addPoly([L[0] - nx2, L[1] - nz2, L[2] - nx2, L[3] - nz2, L[2] + nx2, L[3] + nz2, L[0] + nx2, L[1] + nz2], y - 0.3, y + 1.5);
 }
+function polyLen(p) { let L = 0; for (let i = 0; i + 3 < p.length; i += 2) L += Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]); return L; }
+// p without the stretches in cuts ([from, to] arclengths, any order or overlap): the pieces left, each a polyline
+function piecesOf(p, cuts) {
+  if (!cuts.length) return [p];
+  const L = polyLen(p), iv = cuts.map(c => [Math.max(0, c[0]), Math.min(L, c[1])]).filter(c => c[1] > c[0]).sort((a, b) => a[0] - b[0]), keep = []; let at = 0;
+  for (const [a, b] of iv) { if (a > at) keep.push([at, a]); at = Math.max(at, b); } if (at < L) keep.push([at, L]);
+  const out = [];
+  for (const [a, b] of keep) { if (b - a < 0.6) continue; const q = []; let acc = 0;
+    for (let i = 0; i + 3 < p.length; i += 2) { const ax = p[i], az = p[i + 1], bx = p[i + 2], bz = p[i + 3], l = Math.hypot(bx - ax, bz - az); if (l < 1e-6) continue;
+      const s0 = Math.max(a, acc), s1 = Math.min(b, acc + l); if (s1 > s0) { if (!q.length) q.push(ax + (bx - ax) * (s0 - acc) / l, az + (bz - az) * (s0 - acc) / l); q.push(ax + (bx - ax) * (s1 - acc) / l, az + (bz - az) * (s1 - acc) / l); }
+      acc += l; }
+    if (q.length >= 4) out.push(q); }
+  return out;
+}
+// a junction corner's curb return (src/world/roadsurface.js planJunctions): asphalt filling the old square corner up to
+// the return, the gutter and the curb round it, and in town the sidewalk carried round the corner
+function paveCorner(c) {
+  const ch = chunkAt(c.x, c.z), a0 = Math.atan2(c.ta[1] - c.cz, c.ta[0] - c.cx); let da = Math.atan2(c.tb[1] - c.cz, c.tb[0] - c.cx) - a0;
+  if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2; // the short way round: the side facing the junction
+  const N = Math.max(4, Math.ceil(Math.abs(da) * c.R / 1.2)), at = (k, r) => { const a = a0 + da * k / N; return [c.cx + Math.cos(a) * r, c.cz + Math.sin(a) * r]; };
+  for (let k = 0; k < N; k++) { const p0 = at(k, c.R), p1 = at(k + 1, c.R); groundTri(ch.road, c.qx, c.qz, p0[0], p0[1], p1[0], p1[1], ROAD_TOP, [1, 1, 1]); }
+  if (!c.town) return;
+  const ring = (gb, r0, r1, lift, col) => { for (let k = 0; k < N; k++) { const a = at(k, r0), b = at(k + 1, r0), d = at(k, r1), e = at(k + 1, r1); groundTri(gb, a[0], a[1], b[0], b[1], e[0], e[1], lift, col); groundTri(gb, a[0], a[1], e[0], e[1], d[0], d[1], lift, col); } };
+  ring(ch.side, c.R, c.R + 0.45, 0.062, [0.78, 0.77, 0.73]);                       // the gutter pan, on the road side
+  ring(ch.side, Math.max(0.3, c.R - c.sw + 0.06), c.R - 0.03, 0.065, [0.86, 0.85, 0.81]); // the walk
+  if (AER.ground) { // the ground inside the corner, from the walk's back edge down to the block's (as apron() does along a street)
+    const r0 = Math.max(0.3, c.R - c.sw + 0.04), rr = [r0, r0 * 0.55, 0.15], W = [1, 1, 1];
+    const pt = (k, r) => { const p = at(k, rr[r]), m = meshAt(p[0], p[1]), b = builtAt(p[0], p[1]); return [p[0], r === 0 ? b + 0.055 : r === 1 ? Math.max(m ?? -1e9, b) : (m ?? b), p[1]]; };
+    for (let k = 0; k < N; k++) for (let r = 0; r < 2; r++) {
+      const A = pt(k, r), B = pt(k + 1, r), C = pt(k + 1, r + 1), D = pt(k, r + 1), ua = groundUV(A[0], A[2]), ub = groundUV(B[0], B[2]), uc = groundUV(C[0], C[2]), ud = groundUV(D[0], D[2]);
+      if (ua[0] !== ub[0] || ua[0] !== uc[0] || ua[0] !== ud[0]) continue;
+      let gb = ch.apron.get(ua[0]); if (!gb) ch.apron.set(ua[0], gb = new GB(true));
+      tri(gb, A, B, C, W, W, W, [ua[1], ua[2]], [ub[1], ub[2]], [uc[1], uc[2]], 0, 1, 0); tri(gb, A, C, D, W, W, W, [ua[1], ua[2]], [uc[1], uc[2]], [ud[1], ud[2]], 0, 1, 0);
+    }
+  }
+  const col = hex(0xdcdad3);
+  for (let k = 0; k < N; k++) { // the curb face, from the gutter up to the walk
+    const a = at(k, c.R), b = at(k + 1, c.R), ai = at(k, c.R - 0.1), bi = at(k + 1, c.R - 0.1), ao = at(k, c.R + 0.1), bo = at(k + 1, c.R + 0.1);
+    const ta = drapeAt(ai[0], ai[1]) + 0.066, tb = drapeAt(bi[0], bi[1]) + 0.066, ba = Math.min(ta - 0.02, drapeAt(ao[0], ao[1]) + ROAD_TOP - 0.02), bb = Math.min(tb - 0.02, drapeAt(bo[0], bo[1]) + ROAD_TOP - 0.02);
+    const nx = (a[0] + b[0]) / 2 - c.cx, nz = (a[1] + b[1]) / 2 - c.cz; // outward: towards the road
+    tri(ch.side, [a[0], ba, a[1]], [b[0], bb, b[1]], [b[0], tb, b[1]], col, col, col, [0.05, 0], [0.05, 1], [0.2, 1], nx, 0, nz);
+    tri(ch.side, [a[0], ba, a[1]], [b[0], tb, b[1]], [a[0], ta, a[1]], col, col, col, [0.05, 0], [0.2, 1], [0.2, 0], nx, 0, nz);
+  }
+}
+// a median between two carriageways (src/world/roadsurface.js planMedians): in town raised behind a curb on each side,
+// concrete when it's narrow and planted when it's wide; a freeway's gets a concrete barrier down the middle (solid to
+// cars) on a paved strip, or on dirt when it's wide; out in the country plain dirt
+function paveMedian(m) {
+  const L = m.L, R = m.R, n = L.length / 2; if (n < 2) return;
+  const ch = chunkAt(L[(n >> 1) * 2], L[(n >> 1) * 2 + 1]), fwy = m.t === 0, narrow = Math.min(...m.gap) < 2.8;
+  const top = fwy ? (narrow || Math.max(...m.gap) < 6 ? ch.road : ch.path) : !m.town ? ch.path : narrow || !SURF ? ch.side : ch.hedge;
+  const col = top === ch.side ? [0.84, 0.83, 0.79] : top === ch.road ? [0.92, 0.92, 0.92] : [1, 1, 1], lift = top === ch.road ? ROAD_TOP : 0.064;
+  const ins = (k, chain, e) => { const o = chain === L ? R : L, dx = o[k * 2] - chain[k * 2], dz = o[k * 2 + 1] - chain[k * 2 + 1], l = Math.hypot(dx, dz) || 1; return [chain[k * 2] + dx / l * e, chain[k * 2 + 1] + dz / l * e]; };
+  const edge = m.town && !fwy ? 0.32 : 0; // the curbs' tops: a concrete band along each edge of a planted median
+  for (let k = 0; k < n - 1; k++) {
+    const a = ins(k, L, edge), b = ins(k + 1, L, edge), c = ins(k + 1, R, edge), d = ins(k, R, edge);
+    groundTri(top, a[0], a[1], b[0], b[1], c[0], c[1], lift, col); groundTri(top, a[0], a[1], c[0], c[1], d[0], d[1], lift, col);
+    if (edge) for (const [ch0, e0, e1] of [[L, 0, edge], [R, 0, edge]]) { const p0 = ins(k, ch0, e0), p1 = ins(k + 1, ch0, e0), p2 = ins(k + 1, ch0, e1), p3 = ins(k, ch0, e1); groundTri(ch.side, p0[0], p0[1], p1[0], p1[1], p2[0], p2[1], 0.066, [0.86, 0.85, 0.81]); groundTri(ch.side, p0[0], p0[1], p2[0], p2[1], p3[0], p3[1], 0.066, [0.86, 0.85, 0.81]); }
+  }
+  if (m.town && !fwy) { // the curb faces, from each carriageway's gutter up to the median's top
+    const cc = hex(0xdcdad3);
+    for (const chain of [L, R]) for (let k = 0; k < n - 1; k++) {
+      const a = [chain[k * 2], chain[k * 2 + 1]], b = [chain[k * 2 + 2], chain[k * 2 + 3]], ai = ins(k, chain, 0.1), bi = ins(k + 1, chain, 0.1), ao = ins(k, chain, -0.1), bo = ins(k + 1, chain, -0.1);
+      const ta = drapeAt(ai[0], ai[1]) + 0.066, tb = drapeAt(bi[0], bi[1]) + 0.066, ba = Math.min(ta - 0.02, drapeAt(ao[0], ao[1]) + ROAD_TOP - 0.02), bb = Math.min(tb - 0.02, drapeAt(bo[0], bo[1]) + ROAD_TOP - 0.02);
+      const nx = a[0] - ai[0], nz = a[1] - ai[1]; // outward: towards the carriageway
+      tri(ch.side, [a[0], ba, a[1]], [b[0], bb, b[1]], [b[0], tb, b[1]], cc, cc, cc, [0.05, 0], [0.05, 1], [0.2, 1], nx, 0, nz);
+      tri(ch.side, [a[0], ba, a[1]], [b[0], tb, b[1]], [a[0], ta, a[1]], cc, cc, cc, [0.05, 0], [0.2, 1], [0.2, 0], nx, 0, nz);
+    }
+  }
+  if (fwy && Math.max(...m.gap) < 14) { // a K-rail down the middle: 0.81 m tall, 0.6 m at the foot, 0.15 at the top
+    const cc = hex(0xc9c6bd), mid = k => [(L[k * 2] + R[k * 2]) / 2, (L[k * 2 + 1] + R[k * 2 + 1]) / 2], prof = [[-0.3, 0], [-0.2, 0.08], [-0.08, 0.81], [0.08, 0.81], [0.2, 0.08], [0.3, 0]];
+    for (let k = 0; k < n - 1; k++) {
+      const a = mid(k), b = mid(k + 1), dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz); if (l < 0.1) continue; const nx = -dz / l, nz = dx / l, ya = drapeAt(a[0], a[1]), yb = drapeAt(b[0], b[1]);
+      for (let f = 0; f + 1 < prof.length; f++) { const [o0, h0] = prof[f], [o1, h1] = prof[f + 1], fx = nx * (o0 + o1) / 2, fz = nz * (o0 + o1) / 2, up = f === 2 ? 1 : 0.3;
+        const p0 = [a[0] + nx * o0, ya + h0, a[1] + nz * o0], p1 = [b[0] + nx * o0, yb + h0, b[1] + nz * o0], p2 = [b[0] + nx * o1, yb + h1, b[1] + nz * o1], p3 = [a[0] + nx * o1, ya + h1, a[1] + nz * o1];
+        tri(ch.side, p0, p1, p2, cc, cc, cc, [0, 0], [l / 4, 0], [l / 4, 0.2], f === 2 ? 0 : fx, up, f === 2 ? 0 : fz); tri(ch.side, p0, p2, p3, cc, cc, cc, [0, 0], [l / 4, 0.2], [0, 0.2], f === 2 ? 0 : fx, up, f === 2 ? 0 : fz); }
+      addPoly([a[0] + nx * 0.3, a[1] + nz * 0.3, b[0] + nx * 0.3, b[1] + nz * 0.3, b[0] - nx * 0.3, b[1] - nz * 0.3, a[0] - nx * 0.3, a[1] - nz * 0.3], Math.min(ya, yb) - 0.2, Math.max(ya, yb) + 0.81);
+    }
+  }
+}
 function paveRoad(t, w, p, rd) { for (const _ of paveRoadSteps(t, w, p, rd)); }
 // the same in steps (the lazy chunk builder pauses between them: one long road paved in a single go hitched the drive)
 function* paveRoadSteps(t, w, p, rd) {
@@ -2941,22 +3114,31 @@ function* paveRoadSteps(t, w, p, rd) {
   const ch = chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1]);
   // the walk this road has (src/world/roadsurface.js decides from how built-up it is): a curb, a gutter pan and a
   // concrete sidewalk in town; a dirt shoulder out in the country
-  let sw = 2.2, curb = false, ri = -1;
-  if (t >= 1 && t <= 5 && ROADS && ROADS.query && n >= 2) {
+  let sw = 2.2, curb = false, ri = -1, RS = ROADS;
+  if (rd && rd.rs) { RS = rd.rs; ri = rd.ri; sw = RS.sw[ri]; curb = !!RS.curb[ri]; } // an outer tile's road: its own surface
+  else if (rd && rd.ri !== undefined && ROADS && ROADS.sw) { ri = rd.ri; sw = ROADS.sw[ri]; curb = !!ROADS.curb[ri]; }
+  else if (t >= 1 && t <= 5 && ROADS && ROADS.query && n >= 2) {
     const k = (n >> 1) - 1, ax = p[k * 2], az = p[k * 2 + 1], bx = p[k * 2 + 2], bz = p[k * 2 + 3], L = Math.hypot(bx - ax, bz - az) || 1;
     const q = ROADS.query((ax + bx) / 2 - (bz - az) / L * (w / 2 + 0.6), (az + bz) / 2 + (bx - ax) / L * (w / 2 + 0.6), {});
     if (q && ROADS.roads && Math.abs(ROADS.roads[q.road][2] - w) < 0.5) { sw = ROADS.sw[q.road]; curb = !!ROADS.curb[q.road]; ri = q.road; }
   }
+  // at junctions the walk, curb and gutter stop where the corner's curb return starts, and the lines a crosswalk short
+  // (src/world/roadsurface.js planJunctions; the returns themselves: paveCorner); a cul-de-sac's bulb trims them too
+  const J = ri >= 0 && RS.cuts ? RS.cuts[ri] : null, Lp = polyLen(p);
+  const ends2 = (a0, a1) => [...(a0 ? [[-1, a0]] : []), ...(a1 ? [[Lp - a1, Lp + 1]] : [])];
+  const sideP = sg => piecesOf(p, [...(J ? J[sg > 0 ? '1' : '-1'] : []), ...ends2(c0, c1)]);
   if (t >= 1 && t <= 5 && curb) for (const sg of [1, -1]) {
-    ribbon(ch.side, pS, sw - 0.06, sg * (w / 2 + 0.03 + (sw - 0.06) / 2), 0.065, [0.86, 0.85, 0.81], 1); curbFace(ch.side, pS, sg * (w / 2 + 0.02), sg);
-    apron(ch, pS, sg * (w / 2 + sw - 0.05), sg); // the graded ground behind the walk, up to walk height
+    for (const q of sideP(sg)) {
+      ribbon(ch.side, q, sw - 0.06, sg * (w / 2 + 0.03 + (sw - 0.06) / 2), 0.065, [0.86, 0.85, 0.81], 1); curbFace(ch.side, q, sg * (w / 2 + 0.02), sg);
+      apron(ch, q, sg * (w / 2 + sw - 0.05), sg); // the graded ground behind the walk, up to walk height
+    }
     yield;
   }
   // out in the country: Poway's multi-use trail along one side, decomposed granite behind a post-and-rail fence
-  const ts = ri >= 0 && ROADS.trailSide ? ROADS.trailSide(ri) : 0;
-  if (ts) { trail(ch, p, ts * (w / 2 + sw + 1.4), ts, ri); yield; }
+  const ts = ri >= 0 && RS.trailSide ? RS.trailSide(ri) : 0;
+  if (ts) { for (const q of sideP(ts)) trail(ch, q, ts * (w / 2 + sw + 1.4), ts, ri); yield; }
   // a country road's dirt shoulders: compacted gravel and sand from the asphalt's edge, not lawn
-  if (SURF && !curb && t >= 1 && t <= 5 && w >= 5) for (const sg of [1, -1]) ribbon(ch.path, pS, sw + 0.4, sg * (w / 2 + sw / 2 + 0.1), 0.035, [0.9, 0.84, 0.76], sw + 0.4);
+  if (SURF && !curb && t >= 1 && t <= 5 && w >= 5) for (const sg of [1, -1]) for (const q of sideP(sg)) ribbon(ch.path, q, sw + 0.4, sg * (w / 2 + sw / 2 + 0.1), 0.035, [0.9, 0.84, 0.76], sw + 0.4);
   // the asphalt in two halves: the crown along the middle sheds rain to the gutters (src/world/roadsurface.js CROWN)
   const rc = t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1];
   yield; if (w >= 6) { ribbon(ch.road, pA, w / 2, w / 4, ROAD_TOP, rc, 7); yield; ribbon(ch.road, pA, w / 2, -w / 4, ROAD_TOP, rc, 7); } else ribbon(ch.road, pA, w, 0, ROAD_TOP, rc, 7);
@@ -2964,16 +3146,18 @@ function* paveRoadSteps(t, w, p, rd) {
   // markings from the same lane layout traffic drives by (src/roadnet.js laneOffset): a centre gap of 2.8 m or more is
   // a two-way left-turn lane (as on Espola Road), a 1.2 m+ shoulder is a bike lane, dividers sit between real lanes
   const YEL = [0.85, 0.66, 0.12], WHT = [0.86, 0.86, 0.83];
+  const mids = piecesOf(p, [...(J ? J['0'] : []), ...ends2(c0 ? c0 + 3 : 0, c1 ? c1 + 3 : 0)]), dashesM = (...g) => { for (const q of mids) dashes(ch.line, q, ...g); };
   if (t <= 3 && w >= 9) {
-    const n = w >= 21 ? 3 : w >= 15 ? 2 : 1, lw = clamp(w / 2 / n, 2.8, 3.7), base = Math.max(0, w / 2 - n * lw) * 0.5, sh = w / 2 - base - n * lw;
+    const n = w >= 25 ? 3 : w >= 15 ? 2 : 1, lw = clamp(w / 2 / n, 2.8, 3.7), base = Math.max(0, w / 2 - n * lw) * 0.5, sh = w / 2 - base - n * lw;
     for (const sg of [1, -1]) {
-      if (base >= 1.4) { dashes(ch.line, pM, 0.14, sg * base, 0.08, YEL, 1, 0, 9); dashes(ch.line, pM, 0.12, sg * (base - 0.3), 0.08, YEL, 3, 6, 9); } // turn lane: solid outside, broken inside
-      else dashes(ch.line, pM, 0.16, sg * 0.14, 0.08, YEL, 1, 0, 9); // double yellow
-      for (let k = 1; k < n; k++) dashes(ch.line, pM, 0.12, sg * (base + k * lw), 0.08, WHT, 3, 6, 9);
-      if (sh >= 1.2) dashes(ch.line, pM, 0.15, sg * (w / 2 - sh + 0.1), 0.08, WHT, 1, 0, 9); // bike lane / shoulder line
+      if (base >= 1.4) { dashesM(0.14, sg * base, 0.08, YEL, 1, 0, 9); dashesM(0.12, sg * (base - 0.3), 0.08, YEL, 3, 6, 9); } // turn lane: solid outside, broken inside
+      else dashesM(0.16, sg * 0.14, 0.08, YEL, 1, 0, 9); // double yellow
+      for (let k = 1; k < n; k++) dashesM(0.12, sg * (base + k * lw), 0.08, WHT, 3, 6, 9);
+      if (sh >= 1.2) dashesM(0.15, sg * (w / 2 - sh + 0.1), 0.08, WHT, 1, 0, 9); // bike lane / shoulder line
+      else if (!curb) dashesM(0.12, sg * (w / 2 - 0.25), 0.08, WHT, 1, 0, 9); // a country road's edge line
       yield;
     }
-  } else if (t === 4 && w >= 11) dashes(ch.line, pM, 0.12, 0, 0.08, [0.8, 0.62, 0.15], 2.5, 5, 10); // the narrow neighbourhood streets have no centre line
+  } else if (t === 4 && w >= 11) dashesM(0.12, 0, 0.08, [0.8, 0.62, 0.15], 2.5, 5, 10); // the narrow neighbourhood streets have no centre line
   if (t >= 1 && t <= 5 && w >= 6) { // sewer manholes in the lanes every 90 m or so, water valve covers near the curb
     const n2 = p.length / 2; let acc = 0, next = 30 + (Math.abs(p[0] * 7.31 + p[1] * 3.17) % 50), nextV = 18 + (Math.abs(p[0] * 2.9 + p[1] * 5.3) % 40);
     for (let i = 0; i + 1 < n2; i++) { const ax = p[i * 2], az = p[i * 2 + 1], dx = p[i * 2 + 2] - ax, dz = p[i * 2 + 3] - az, L = Math.hypot(dx, dz); if (L < 0.01) continue; const tx = dx / L, tz = dz / L;
@@ -2985,7 +3169,7 @@ function* paveRoadSteps(t, w, p, rd) {
   }
   yield;
   if (t >= 1 && t <= 5 && w >= 6 && curb) { // concrete gutters along the curb, storm drains near each end of the block
-    ribbon(ch.side, pS, 0.45, w / 2 - 0.225, 0.062, [0.78, 0.77, 0.73], 1); yield; ribbon(ch.side, pS, 0.45, -(w / 2 - 0.225), 0.062, [0.78, 0.77, 0.73], 1);
+    for (const sg of [1, -1]) { for (const q of sideP(sg)) ribbon(ch.side, q, 0.45, sg * (w / 2 - 0.225), 0.062, [0.78, 0.77, 0.73], 1); yield; }
     const n2 = p.length / 2; if (n2 >= 2) for (const end of [0, 1]) {
       const i0 = end ? n2 - 1 : 0, i1 = end ? n2 - 2 : 1, dx = p[i1 * 2] - p[i0 * 2], dz = p[i1 * 2 + 1] - p[i0 * 2 + 1], L = Math.hypot(dx, dz); if (L < 14) continue;
       const tx = dx / L, tz = dz / L, sg = end ? -1 : 1, o = w / 2 - 0.3, x = p[i0 * 2] + tx * 12 - tz * o * sg, z = p[i0 * 2 + 1] + tz * 12 + tx * o * sg;
@@ -3024,6 +3208,7 @@ async function buildWorld() {
     const crv = ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1], 0.18) : 0;
     MESHG[J * HGW + I] = heightAt(_tmpA[0], _tmpA[1]) - (inZ[J * HGW + I] ? 0.35 : 0) - crv;
   }
+  { const t0 = performance.now(), n = fitUnderRoads(MESHG, HGW, HGH, (i, j, out) => aerInv(i * CELLPX, j * CELLPX, out), 12.8, 4); console.info('[terrain] cells lowered under roads', n, Math.round(performance.now() - t0), 'ms'); await tick(); }
   for (let cj = 0; cj < nchz; cj++) for (let ci = 0; ci < nchx; ci++) {
     const i0 = ci * cellsPer, j0 = cj * cellsPer, i1 = Math.min(HGW - 1, i0 + cellsPer), j1 = Math.min(HGH - 1, j0 + cellsPer);
     if (i1 <= i0 || j1 <= j0) continue;
@@ -3049,6 +3234,7 @@ async function buildWorld() {
       const crv = ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1], 0.18) : 0;
       ZMESH[j * ZMN + i] = heightAt(_tmpA[0], _tmpA[1]) - crv;
     }
+    { const t0 = performance.now(), n = fitUnderRoads(ZMESH, ZMN, ZMN, (i, j, out) => zoneInv(ZONE.core0 + i * ZCELL, ZONE.core0 + j * ZCELL, out), 4, 2); console.info('[terrain] zone cells lowered under roads', n, Math.round(performance.now() - t0), 'ms'); await tick(); }
     for (let tj = 0; tj < ZONE.tiles; tj++) for (let ti = 0; ti < ZONE.tiles; ti++) {
       const W = cells + 1, pos = new Float32Array(W * W * 3), uv = new Float32Array(W * W * 2), idx = [];
       for (let j = 0; j <= cells; j++) for (let i = 0; i <= cells; i++) {
@@ -3074,6 +3260,8 @@ async function buildWorld() {
   MESH_READY = true; // from here on, off-road ground heights come from the mesh just built
   // ---- roads
   progress('Paving ' + D.roads.length.toLocaleString() + ' streets…'); await tick();
+  for (const c of ROADS.corners || []) lazyOf(chunkAt(c.x, c.z)).corners.push(c); // each junction corner with the chunk it's in
+  for (const m of ROADS.medians || []) { const k = (m.L.length >> 2) * 2; lazyOf(chunkAt(m.L[k], m.L[k + 1])).medians.push(m); }
   D.roads.forEach((r, ri) => {
     const [ni, t, w, p0] = r; const p = densify(p0, 3), n = p.length / 2; // 3 m: short chords follow the crowned surface (src/world/roadsurface.js)
     lazyOf(chunkAt(p[(n >> 1) * 2], p[(n >> 1) * 2 + 1])).roads.push([t, w, p0, r]); // paved when its chunk is near
@@ -3203,12 +3391,14 @@ async function buildWorld() {
 let OUTER_HILLS = null; // the procedural ring around the photo: replaced by the outer tiles when they exist
 // ---- the core's streets and buildings, chunk by chunk: built within view (a few ms a frame), dropped far away. Their
 // collision, destruction records and the road surface exist from the start; only the drawn geometry comes and goes.
-function lazyOf(ch) { return ch.lazy || (ch.lazy = { ch, roads: [], blds: [], built: false, dirty: false, meshes: [], job: null }); }
+function lazyOf(ch) { return ch.lazy || (ch.lazy = { ch, roads: [], corners: [], medians: [], blds: [], built: false, dirty: false, meshes: [], job: null }); }
 const lazyQueue = []; let lazyJob = null;
 function* buildLazy(L) {
   const lc = newChunk(L.ch.cx, L.ch.cz), due = lazyDue;
   CHUNK_SINK = lc;
   L.phase = 'roads'; for (const [t, w, p0, rd] of L.roads) for (const _ of paveRoadSteps(t, w, densify(p0, 3), rd)) if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; }
+  for (const c of L.corners) paveCorner(c); // the junctions' curb returns (src/world/roadsurface.js planJunctions)
+  for (const m of L.medians) paveMedian(m);
   L.phase = 'buildings'; for (const B of L.blds) { if (B.dead || B.gone) { B.drawn = false; continue; } buildingGeom(B, lc); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
   CHUNK_SINK = null;
   L.phase = 'meshes'; const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [] })) if (due()) yield;
@@ -3347,19 +3537,39 @@ function* outerKit(t, d, kit, due) {
     bar(ch.line, ne.x + rx * e.w * 0.25, ne.z + rz * e.w * 0.25, rx, rz, e.ow ? e.w * 0.9 : e.w * 0.45, 0.5, 0.06, [0.92, 0.92, 0.9]);
     if (due()) yield;
   }
+  { // the junctions this tile holds: crosswalks, stop lines, and the side streets' STOP signs (junctionKit)
+    const mapped = (x, z) => (d.stop || []).some(q => hyp(x0 + q[0] * 0.1 - x, z0 + q[1] * 0.1 - z) < 16), ns = new Set();
+    for (const e of t.edges) for (const id of [e.a, e.b]) { const n = outerNodes.get(id); if (n === undefined) continue; const x = NX[n * 2], z = NX[n * 2 + 1]; if (x >= x0 && x < x0 + 2000 && z >= z0 && z < z0 + 2000) ns.add(n); }
+    const crossed = (x, z) => (d.cr || []).some(q => hyp(x0 + q[0] * 0.1 - x, z0 + q[1] * 0.1 - z) < 9);
+    for (const n of ns) { junctionKit(n, stopG, mapped, crossed); if (due()) yield; }
+  }
   if (stopG.length) {
     const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.04, 2.4, 6).translate(0, 1.2, 0), M.pole, stopG.length);
     const face = new THREE.InstancedMesh(new THREE.CircleGeometry(0.38, 8).rotateZ(Math.PI / 8).translate(0, 2.1, 0.05), stopSignMat(), stopG.length);
     stopG.forEach(([x, z, fx, fz], i) => { _kq.setFromAxisAngle(_ku, Math.atan2(fx, fz)); _km.compose(_kv.set(x, heightAt(x, z), z), _kq, _ks); post.setMatrixAt(i, _km); face.setMatrixAt(i, _km); const pr = { kind: 'sign', x, z, h: 2.4, i, inst: [post, face], alive: true }; addProp(pr); kit.props.push(pr); });
     for (const m of [post, face]) { m.computeBoundingSphere(); m.matrixAutoUpdate = false; kit.meshes.push(m); t.group.add(m); }
   }
-  // crosswalk stripes where OpenStreetMap has a crossing
+  // crosswalk stripes where OpenStreetMap has a crossing, and a crossing sign each way in when it's mid-block
+  const pedG = [];
   for (const q of d.cr || []) {
     const x = x0 + q[0] * 0.1, z = z0 + q[1] * 0.1, ne = nearestEdge(x, z, 12, e => e.outer && e.t <= 4); if (!ne) continue;
     const e = edges[ne.e], nx = -ne.tz, nz = ne.tx;
     for (let s = -e.w / 2 + 0.5; s < e.w / 2 - 0.4; s += 1.1) bar(ch.line, ne.x + nx * s, ne.z + nz * s, ne.tx, ne.tz, 2.4, 0.55, 0.06, [0.93, 0.93, 0.9]);
+    if (!nearSignal(x, z, 30)) pedG.push(...midBlockSigns(x, z, e => e.outer));
     if (due()) yield;
   }
+  if (pedG.length) {
+    const post = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.035, 0.04, 2.8, 6).translate(0, 1.4, 0), M.pole, pedG.length);
+    const face = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.8, 1.12).translate(0, 2.2, 0.05), pedSignMat(), pedG.length);
+    pedG.forEach(([x, z, fx, fz], i) => { _kq.setFromAxisAngle(_ku, Math.atan2(fx, fz)); _km.compose(_kv.set(x, heightAt(x, z), z), _kq, _ks); post.setMatrixAt(i, _km); face.setMatrixAt(i, _km); const pr = { kind: 'sign', x, z, h: 2.8, i, inst: [post, face], alive: true }; addProp(pr); kit.props.push(pr); });
+    for (const m of [post, face]) { m.computeBoundingSphere(); m.matrixAutoUpdate = false; kit.meshes.push(m); t.group.add(m); }
+  }
+}
+let _pedMat = null;
+function pedSignMat() { // the crossing sign over its arrow plaque, for the outer tiles' instanced signs
+  if (_pedMat) return _pedMat;
+  const t = canvasTex(200, 280, g => pedSign(g, 0, 0, 40, 210));
+  return (_pedMat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide }));
 }
 function dropOuterKit(kit) {
   for (const pr of kit.props) { pr.alive = false; const c = propGrid.get(pkey(pr.x, pr.z)); if (c) { const j = c.indexOf(pr); if (j >= 0) c.splice(j, 1); } }
@@ -3386,7 +3596,7 @@ const OUTER = createOuter({ budget: bgBudget,
   view: () => GFX.view, lodNear: () => LOD_NEAR, shadowNear: () => SHADOW_NEAR, hurry: () => !!worldHold,
   inCorePhoto, coreTerrainAt, coreMeshAt, newChunk, meshChunk, meshChunkSteps, setSink: ch => { CHUNK_SINK = ch; },
   holdPolys: list => { POLY_HOLD = list; }, releasePolys,
-  paveRoad: (t, w, p) => paveRoad(t, w, p), paveRoadSteps: (t, w, p) => paveRoadSteps(t, w, p),
+  paveRoad: (t, w, p, rd) => paveRoad(t, w, p, rd), paveRoadSteps: (t, w, p, rd) => paveRoadSteps(t, w, p, rd), paveCorner: c => paveCorner(c), paveMedian: m => paveMedian(m), // rd: { rs, ri } the tile's road surface
   mapRoad: e => { const bb = bbox(e.p); mapRoads.push({ t: e.t, w: e.w, p: e.p, name: e.name }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', mapRoads.length - 1); },
   addEdges: addOuterEdges, addBuilding, bldCount: () => BLD.length, polyCount: () => polys.length, dropPolys, dropBuildings,
   streetKit: outerKit, dropKit: dropOuterKit, plantTiles: plantTile, dropTrees,
@@ -8004,7 +8214,10 @@ function updateHud(dt) {
   $('hpf').style.width = clamp(player.health, 0, 100) + '%'; $('hpf').style.background = player.health < 30 ? 'var(--blood)' : 'var(--cash)';
   { const w = WEAPONS[player.weapon]; $('weapon').textContent = player.weapon ? `${w.name} ${player.arsenal[w.id] | 0}` : 'FISTS · Tab or scroll for weapons'; }
   $('cross').hidden = !(player.weapon > 0 && (player.aiming || player.inCar) || player.aiming);
+  { const v = player.inCar, d = $('dash'); if (!!v === d.hidden) d.hidden = !v; // the dash: speed every frame it changes, elevation with the rest
+    if (v) { const m = String(Math.round(Math.abs(v.speed || 0) * 2.237)); if (hudFx.mph !== m) { hudFx.mph = m; $('dmph').textContent = m; } } }
   hudT -= dt; if (hudT > 0) return; hudT = 0.4;
+  if (player.inCar) $('delev').textContent = `Elev ${Math.round(realElev(player.inCar.pos.y) * 3.281).toLocaleString('en-US')} ft`;
   const hh = Math.floor(hour), mn = Math.floor((hour - hh) * 60);
   $('clock').textContent = `${clock.label()} · ${(hh % 12) || 12}:${String(mn).padStart(2, '0')} ${hh < 12 ? 'AM' : 'PM'} · ${WEATHERS[weather.key].name}`;
   $('rep').textContent = repLabel();
@@ -8108,7 +8321,8 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   buildHeightGrid();
   progress('Grading the roads…'); await new Promise(r => setTimeout(r, 0));
   ROAD_ENDS = findRoadEnds(D.roads, D.buildings, D.bounds); for (const e of ROAD_ENDS) (D.roads[e.ri].ends || (D.roads[e.ri].ends = []))[e.end] = e; // cul-de-sacs and barricades (src/world/roadends.js)
-  ROADS = outerRoads(new RoadSurface([...D.roads, ...bulbRoads(ROAD_ENDS, D.roads)], D.buildings)); // the bulbs are road to drive, grade and keep clear
+  { const core = new RoadSurface([...D.roads, ...bulbRoads(ROAD_ENDS, D.roads)], D.buildings); // the bulbs are road to drive, grade and keep clear
+    console.info('[roads] junction corners', core.planJunctions()); ROADS = outerRoads(core); D.roads.forEach((r, i) => { r.ri = i; }); } // corners and walk cuts: src/world/roadsurface.js
   computeWalks();
   if (await OUTER.init()) addOuterLandmarks(); // the outer world's tile index (assets/world), when there is one
   progress('Loading textures and models…');

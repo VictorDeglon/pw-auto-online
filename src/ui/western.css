@@ -133,9 +133,11 @@ input[type=text],input:not([type]),select,textarea{background:#1a0e09!important;
   radial-gradient(1px 1px at 71% 72%,rgba(255,220,160,.5),transparent),radial-gradient(1.4px 1.4px at 86% 64%,rgba(255,220,160,.6),transparent);
   animation:dust 14s linear infinite;opacity:.8}
 @keyframes dust{from{transform:translate(0,0)}to{transform:translate(-120px,-40px)}}
-.boot-in{z-index:2;position:absolute!important;top:6vh;left:50%;transform:translateX(-50%);gap:16px!important} /* the title rides above the setting sun */
-#boot .boot-tip{position:fixed;left:50%;bottom:5vh;transform:translateX(-50%) rotate(-.6deg)}
-#boot .boot-go{position:fixed;left:0;right:0;margin:0 auto;bottom:16vh;width:max-content} /* centred without a transform: the button's hover swing uses transform */
+/* one column, the title riding above the setting sun at the top, the button and the tip pushed to the bottom. (They were
+   position:fixed inside this box while it had a transform, which pins them to the box, not the window: onto the plate.) */
+.boot-in{z-index:2;position:absolute!important;top:6vh;bottom:5vh;left:0;right:0;margin:0 auto;gap:16px!important}
+#boot .boot-go{order:5;margin-top:auto;width:max-content;flex:none} /* no transform here: the button's hover swing uses it */
+#boot .boot-tip{order:6;transform:rotate(-.6deg);flex:none}
 .boot-msg{font:600 18px/1.2 var(--ui)!important;color:var(--paper)!important;text-shadow:0 2px 4px rgba(0,0,0,.8)}
 .boot-tip{font:500 17px/1.45 var(--ui)!important;color:#2a170d!important;background:linear-gradient(180deg,#f3e6cc,#e3cda4);padding:10px 16px;border-radius:2px;max-width:58ch;
   box-shadow:0 8px 20px rgba(0,0,0,.45);transform:rotate(-.6deg);text-shadow:none!important}

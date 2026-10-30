@@ -64,6 +64,7 @@ export function createOuter(E) {
   O.onRoad = (x, z, m = 0) => { const t = tileOf(x, z); return !!(t && t.rs && t.rs.onRoad(x, z, m)); };
   O.onAsphalt = (x, z, m = 0) => { const t = tileOf(x, z); return !!(t && t.rs && t.rs.onAsphalt(x, z, m)); };
   O.carveAt = (x, z, d) => { const t = tileOf(x, z); return t && t.rs ? t.rs.carveAt(x, z, d) : 0; };
+  O.curbAt = (x, z) => { const t = tileOf(x, z); if (!t || !t.rs) return false; const q = t.rs.query(x, z, {}); return !!(q && t.rs.curb[q.road]); }; // a town street here?
   O.loadedAt = (x, z) => { const t = tileOf(x, z); return !!(t && t.ready); };
   O.streetAt = (x, z) => { // the named road you're on or next to, from the tile's road surface
     const t = tileOf(x, z); if (!t || !t.rs) return '';
@@ -169,7 +170,7 @@ export function createOuter(E) {
     if (roads.length) { // the road surface, painted a few dozen roads at a time
       const rs = new RoadSurface(roads, t.blds.map(b => [b[0], b[1], b[2]]), { defer: true, epoch: () => O.epoch });
       for (let k = 0; k < rs.order.length; k++) { rs.paint(rs.order[k]); if (due()) yield; }
-      t.rs = rs;
+      rs.planJunctions(); t.rs = rs; // curb returns at the corners, and where the walks stop
     }
     yield;
     yield* carve(t);
@@ -238,11 +239,16 @@ export function createOuter(E) {
     t.phase = 'roads'; on();
     let n = 0;
     for (const e of t.edges) {
-      if (E.paveRoadSteps) { for (const _ of E.paveRoadSteps(e.t, e.w, densify(e.p, 3), e.p)) if (due()) { off(); yield; on(); } } // a long road pauses part way
-      else E.paveRoad(e.t, e.w, densify(e.p, 3), e.p);
+      const rd = t.rs ? { rs: t.rs, ri: n } : null; // its walk, curb and junction cuts: the tile's road surface (own roads come first there)
+      if (E.paveRoadSteps) { for (const _ of E.paveRoadSteps(e.t, e.w, densify(e.p, 3), rd)) if (due()) { off(); yield; on(); } } // a long road pauses part way
+      else E.paveRoad(e.t, e.w, densify(e.p, 3), rd);
       E.mapRoad(e);
       n++; if (due()) { off(); yield; on(); }
     }
+    if (E.paveCorner && t.rs && t.rs.corners) for (const c of t.rs.corners) { // the curb returns of the junctions in this tile
+      if (c.x < t.x0 || c.x >= t.x0 + T || c.z < t.z0 || c.z >= t.z0 + T) continue; E.paveCorner(c); if (due()) { off(); yield; on(); } }
+    if (E.paveMedian && t.rs && t.rs.medians) for (const m of t.rs.medians) { // the medians whose middle is in this tile
+      const k = (m.L.length >> 2) * 2, x = m.L[k], z = m.L[k + 1]; if (x < t.x0 || x >= t.x0 + T || z < t.z0 || z >= t.z0 + T) continue; E.paveMedian(m); if (due()) { off(); yield; on(); } }
     off();
     t.phase = 'graph'; for (const _ of E.addEdges(t.edges.filter(e => e.t <= 6), t, due)) yield;
     O.stats.edges += t.edges.length;

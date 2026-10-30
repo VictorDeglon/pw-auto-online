@@ -40,12 +40,14 @@ export class RoadSurface {
     this.x0 = x0 - 40; this.z0 = z0 - 40;
     this.nx = Math.ceil((x1 + 40 - this.x0) / CELL); this.nz = Math.ceil((z1 + 40 - this.z0) / CELL);
     this.cells = new Uint16Array(this.nx * this.nz); // road index + 1, 0 = none
-    this.score = new Float32Array(this.nx * this.nz).fill(1e9); // distance past the owner's walk edge (<= 0: inside it)
+    this.score = new Float32Array(this.nx * this.nz).fill(1e9); // metres past the owner's asphalt edge (< 0: on it)
     // per road: sidewalk width (0 = dirt shoulder), curb flag
+    // how built-up a place is: building footprint area within ~150 m, in houses (250 m2 each). A count of buildings made
+    // downtown and the business parks (a few huge buildings a block) country roads, with dirt shoulders and trails.
     const BG = 50, bg = new Map();
     for (const b of buildings) {
-      const p = b[2], n = p.length / 2; let x = 0, z = 0; for (let i = 0; i < n; i++) { x += p[i * 2]; z += p[i * 2 + 1]; }
-      const k = Math.floor(x / n / BG) * 100000 + Math.floor(z / n / BG); bg.set(k, (bg.get(k) || 0) + 1);
+      const p = b[2], n = p.length / 2; let x = 0, z = 0, A = 0; for (let i = 0, j = n - 1; i < n; j = i++) { x += p[i * 2]; z += p[i * 2 + 1]; A += p[j * 2] * p[i * 2 + 1] - p[i * 2] * p[j * 2 + 1]; }
+      const k = Math.floor(x / n / BG) * 100000 + Math.floor(z / n / BG); bg.set(k, (bg.get(k) || 0) + Math.max(0.3, Math.abs(A) / 2 / 250));
     }
     const built = (x, z) => { const gx = Math.floor(x / BG), gz = Math.floor(z / BG); let s = 0; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) s += bg.get((gx + a) * 100000 + gz + b) || 0; return s; };
     const n = roads.length; this.sw = new Float32Array(n); this.curb = new Uint8Array(n); this.len = new Float32Array(n);
@@ -53,10 +55,10 @@ export class RoadSurface {
       const [, t, w, p] = roads[i]; let L = 0;
       for (let k = 0; k < p.length - 2; k += 2) L += Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1]);
       this.len[i] = L;
-      const mid = p.length >> 2; const dens = built(p[mid * 2], p[mid * 2 + 1]);
+      const m = p.length >> 1, mid = m >> 1, dens = Math.max(built(p[mid * 2], p[mid * 2 + 1]), built(p[0], p[1]), built(p[m * 2 - 2], p[m * 2 - 1])); // the busiest of its ends and middle
       if (t === 6) { this.sw[i] = 0.6; this.curb[i] = 0; }                                  // driveways / service: a hair of shoulder
       else if (t === 0) { this.sw[i] = 3.0; this.curb[i] = 0; }                             // highway: paved shoulder, no curb
-      else if (dens >= 4 || (t <= 2 && dens >= 2)) { this.sw[i] = t <= 2 ? 2.4 : 1.7; this.curb[i] = 1; } // town: curb + sidewalk
+      else if (dens >= 2.5 || (t <= 2 && dens >= 1.2)) { this.sw[i] = t <= 2 ? 3.0 : t === 3 ? 2.4 : 2.0; this.curb[i] = 1; } // town: curb, gutter, sidewalk
       else { this.sw[i] = t <= 3 ? 2.0 : 1.2; this.curb[i] = 0; }                           // rural: dirt shoulder
     }
     // paint corridors, narrow roads first so wider ones win the overlaps
@@ -66,10 +68,124 @@ export class RoadSurface {
     this.epoch = opts.epoch || null; this.prov = []; this.hadProv = false; // provisional profiles: the epoch they were built in
     this._q = { road: -1, d: 0, cx: 0, cz: 0, tx: 0, tz: 0, s: 0 }; this._c = { x: 0, z: 0, t: 0 };
   }
-  // a cell belongs to the road whose asphalt/walk it is on (the wider one at a crossing), else the nearest walk edge,
-  // so a long bench never swallows a parallel street
+  // ---------------------------------------------------------------- junctions
+  // Where streets meet (they share a point: OpenStreetMap ways end on each other's middles as often as at each other's
+  // ends), each corner between two neighbouring legs gets a curb return: a quarter circle of radius R tangent to both
+  // curb lines, centred in the block. Each street's walk, curb and gutter stop where the return starts (cuts[ri][+1|-1]:
+  // arclength intervals, sides as ribbon offsets count), its lines a crosswalk short of the junction (cuts[ri][0]), and
+  // the fillet between the old square corner and the return is asphalt (surfaceAt, onAsphalt). corners: what to draw.
+  planJunctions() {
+    const roads = this.roads, at = new Map(), key = (x, z) => Math.round(x * 2) + ',' + Math.round(z * 2), cum = [];
+    roads.forEach((r, i) => {
+      const t = r[1]; if (t < 1 || t > 5 || !r[3]) return; const p = r[3], n = p.length / 2, c = cum[i] = new Float32Array(n);
+      for (let k = 0; k < n; k++) { if (k) c[k] = c[k - 1] + Math.hypot(p[k * 2] - p[k * 2 - 2], p[k * 2 + 1] - p[k * 2 - 1]); const kk = key(p[k * 2], p[k * 2 + 1]); let l = at.get(kk); if (!l) at.set(kk, l = []); l.push([i, k]); }
+    });
+    const posAt = (i, s, o) => { const p = roads[i][3], c = cum[i], n = c.length; s = Math.max(0, Math.min(c[n - 1], s)); let k = 0; while (k < n - 2 && c[k + 1] < s) k++; const L = c[k + 1] - c[k] || 1e-3, f = (s - c[k]) / L; o[0] = p[k * 2] + (p[k * 2 + 2] - p[k * 2]) * f; o[1] = p[k * 2 + 1] + (p[k * 2 + 3] - p[k * 2 + 1]) * f; return o; };
+    const cuts = this.cuts = [], corners = this.corners = [], o = [0, 0];
+    const cut = (i, side, a, b) => { const c = cuts[i] || (cuts[i] = { '1': [], '-1': [], '0': [] }); c[side].push([a, b]); };
+    for (const inc of at.values()) {
+      if (inc.length < 2 || inc.every(q => q[0] === inc[0][0])) continue;
+      const [i0, k0] = inc[0], x = roads[i0][3][k0 * 2], z = roads[i0][3][k0 * 2 + 1], legs = [];
+      for (const [i, k] of inc) {
+        const s = cum[i][k], L = cum[i][cum[i].length - 1];
+        for (const sg of [-1, 1]) { // the way along the road from here: its direction over the first 6 m
+          if ((sg < 0 && s < 0.5) || (sg > 0 && s > L - 0.5)) continue;
+          posAt(i, s + sg * Math.min(6, sg < 0 ? s : L - s), o); const dx = o[0] - x, dz = o[1] - z, l = Math.hypot(dx, dz); if (l < 0.3) continue;
+          legs.push({ i, s, sg, dx: dx / l, dz: dz / l, w: roads[i][2], a: Math.atan2(dz, dx), L });
+        }
+      }
+      if (legs.length < 3) continue;
+      legs.sort((p, q) => p.a - q.a);
+      for (const A of legs) { // lines stop a crosswalk short of the other streets
+        let ow = 0; for (const B of legs) if (B.i !== A.i) ow = Math.max(ow, B.w); if (!ow) continue;
+        const d = ow / 2 + 4.6; cut(A.i, 0, A.sg > 0 ? A.s : A.s - d, A.sg > 0 ? A.s + d : A.s);
+      }
+      for (let a = 0; a < legs.length; a++) {
+        const A = legs[a], B = legs[(a + 1) % legs.length];
+        let th = B.a - A.a; if (th <= 0) th += Math.PI * 2; if (th > Math.PI * 0.92 || th < 0.25) continue; // a straight side of a through street, or a sliver
+        if (A.i === B.i && th > Math.PI * 0.75) continue; // one street bending a little through the junction
+        const town = this.curb[A.i] || this.curb[B.i], t = Math.min(roads[A.i][1], roads[B.i][1]);
+        const R = town ? (t <= 2 ? 7 : t === 3 ? 6 : 4.5) : 3, sn = Math.sin(th), dA = A.w / 2 + R, dB = B.w / 2 + R;
+        const cx = x + (dB * A.dx + dA * B.dx) / sn, cz = z + (dB * A.dz + dA * B.dz) / sn;
+        const sA = (cx - x) * A.dx + (cz - z) * A.dz, sB = (cx - x) * B.dx + (cz - z) * B.dz;
+        if (sA > 45 || sB > 45 || sA > A.L * 0.9 || sB > B.L * 0.9) continue; // too sharp an angle, or a stub
+        for (const [P, sP] of [[A, sA], [B, sB]]) { // the side of P's road (as ribbon offsets count) the corner is on
+          const tx = P.dx * P.sg, tz = P.dz * P.sg, side = (cx - x) * -tz + (cz - z) * tx > 0 ? '1' : '-1';
+          cut(P.i, side, P.sg > 0 ? P.s : P.s - sP, P.sg > 0 ? P.s + sP : P.s);
+        }
+        const q = 1 / sn, qx = x + (B.w / 2 * A.dx + A.w / 2 * B.dx) * q, qz = z + (B.w / 2 * A.dz + A.w / 2 * B.dz) * q; // where the two curb lines met
+        const ta = [x + A.dx * sA + (cx - x - A.dx * sA) * (A.w / 2) / dA, z + A.dz * sA + (cz - z - A.dz * sA) * (A.w / 2) / dA];
+        const tb = [x + B.dx * sB + (cx - x - B.dx * sB) * (B.w / 2) / dB, z + B.dz * sB + (cz - z - B.dz * sB) * (B.w / 2) / dB];
+        corners.push({ x, z, cx, cz, R, qx, qz, ta, tb, town: !!(this.curb[A.i] && this.curb[B.i]), sw: Math.min(this.sw[A.i], this.sw[B.i]), ra: A.i, rb: B.i });
+      }
+    }
+    this.planMedians(); // (its cuts are merged with the junctions')
+    for (const c of cuts) if (c) for (const k in c) { // merge each side's intervals
+      const l = c[k].sort((p, q) => p[0] - q[0]), out = []; for (const iv of l) { const last = out[out.length - 1]; if (last && iv[0] <= last[1]) last[1] = Math.max(last[1], iv[1]); else out.push(iv.slice()); } c[k] = out;
+    }
+    const grid = this._cg = new Map(); // the corners by 16 m cell, for the height and asphalt queries
+    corners.forEach((c, n) => { const xs = [c.qx, c.ta[0], c.tb[0]], zs = [c.qz, c.ta[1], c.tb[1]];
+      for (let gx = Math.floor(Math.min(...xs) / 16); gx <= Math.floor(Math.max(...xs) / 16); gx++) for (let gz = Math.floor(Math.min(...zs) / 16); gz <= Math.floor(Math.max(...zs) / 16); gz++) { const k = gx * 100003 + gz; let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(n); } });
+    return corners.length;
+  }
+  // ---------------------------------------------------------------- medians
+  // A divided road is two carriageways in the data (and a frontage road runs beside the main one). Where two big roads
+  // run side by side 0.6-18 m apart, the strip between them is a median: raised behind curbs in town (concrete when it's
+  // narrow, planted when it's wide), a concrete barrier down the middle of a freeway's. Each road's walk on that side is
+  // cut along it (cuts); medians: { L, R: edge chains [x, z, ...] along each carriageway's asphalt edge, gap: widths,
+  // t: the smaller road type, town }.
+  planMedians() {
+    const roads = this.roads, out = this.medians = [], cuts = this.cuts || (this.cuts = []), q = {};
+    const cut = (i, side, a, b) => { const c = cuts[i] || (cuts[i] = { '1': [], '-1': [], '0': [] }); c[side].push([Math.min(a, b), Math.max(a, b)]); };
+    const owner = (x, z) => { const gx = Math.floor((x - this.x0) / CELL), gz = Math.floor((z - this.z0) / CELL); return gx < 0 || gz < 0 || gx >= this.nx || gz >= this.nz ? -1 : this.cells[gz * this.nx + gx] - 1; };
+    for (let i = 0; i < roads.length; i++) {
+      const t = roads[i][1]; if (t < 0 || t > 3 || !roads[i][3]) continue;
+      const p = roads[i][3], w = roads[i][2], runs = new Map(); let acc = 0;
+      for (let k = 0; k + 3 < p.length; k += 2) {
+        const ax = p[k], az = p[k + 1], L = Math.hypot(p[k + 2] - ax, p[k + 3] - az); if (L < 0.01) continue; const tx = (p[k + 2] - ax) / L, tz = (p[k + 3] - az) / L, nx = -tz, nz = tx;
+        for (let s = (6 - acc % 6) % 6; s < L; s += 6) {
+          const x = ax + tx * s, z = az + tz * s;
+          for (const sg of [1, -1]) {
+            for (let d = 0.5; d <= 20; d += 1) {
+              const j = owner(x + nx * sg * (w / 2 + d), z + nz * sg * (w / 2 + d)); if (j < 0 || j === i) continue;
+              if (j < i || !roads[j] || roads[j][1] < 0 || roads[j][1] > 3) break; // (each pair once, from the lower index)
+              if (!this._query(x + nx * sg * (w / 2 + d), z + nz * sg * (w / 2 + d), q) || q.road !== j || Math.abs(q.tx * tx + q.tz * tz) < 0.9) break;
+              const gap = Math.hypot(q.cx - x, q.cz - z) - w / 2 - roads[j][2] / 2; if (gap < 0.6 || gap > 18) break;
+              const sj = (x - q.cx) * -q.tz + (z - q.cz) * q.tx > 0 ? 1 : -1, wj = roads[j][2] / 2; // the median's side of road j
+              const key = j * 2 + (sg > 0 ? 1 : 0); let r = runs.get(key); const at = acc + s;
+              if (!r || at - r.s1 > 7) { if (r) this._median(r, out, cut); runs.set(key, r = { i, j, sg, sj, s0: at, s1: at, j0: q.s, j1: q.s, L: [], R: [], gap: [] }); }
+              r.s1 = at; r.j1 = q.s; r.L.push(x + nx * sg * w / 2, z + nz * sg * w / 2); r.R.push(q.cx - q.tz * sj * wj, q.cz + q.tx * sj * wj); r.gap.push(gap);
+              break;
+            }
+          }
+        }
+        acc += L;
+      }
+      for (const r of runs.values()) this._median(r, out, cut);
+    }
+    return out.length;
+  }
+  _median(r, out, cut) {
+    if (r.s1 - r.s0 < 11) return; // a couple of samples: where two roads brush past each other
+    const t = Math.min(this.roads[r.i][1], this.roads[r.j][1]);
+    cut(r.i, r.sg > 0 ? '1' : '-1', r.s0 - 3, r.s1 + 3); cut(r.j, r.sj > 0 ? '1' : '-1', r.j0 - 3, r.j1 + 3); // no walks along it
+    out.push({ L: r.L, R: r.R, gap: r.gap, t, town: !!(this.curb[r.i] || this.curb[r.j]), i: r.i, j: r.j });
+  }
+  // in a corner's fillet: between where the curb lines used to meet and the curb return (asphalt now)
+  inFillet(x, z) {
+    const g = this._cg; if (!g) return false; const l = g.get(Math.floor(x / 16) * 100003 + Math.floor(z / 16)); if (!l) return false;
+    for (const n of l) {
+      const c = this.corners[n]; if ((x - c.cx) ** 2 + (z - c.cz) ** 2 <= c.R * c.R) continue;
+      const s1 = (c.ta[0] - c.qx) * (z - c.qz) - (c.ta[1] - c.qz) * (x - c.qx), s2 = (c.tb[0] - c.ta[0]) * (z - c.ta[1]) - (c.tb[1] - c.ta[1]) * (x - c.ta[0]), s3 = (c.qx - c.tb[0]) * (z - c.tb[1]) - (c.qz - c.tb[1]) * (x - c.tb[0]);
+      if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) return true;
+    }
+    return false;
+  }
+  // a cell belongs to the road whose asphalt it is on (the wider one at a crossing), else the one whose asphalt edge is
+  // nearest, so a long bench never swallows a parallel street and a wide walk never takes the asphalt of the carriageway
+  // beside it (score: metres past this road's asphalt edge, negative on it)
   paint(i) {
-    const p = this.roads[i][3], edge = this.roads[i][2] / 2 + this.sw[i], r = edge + FLAT + this.band + CELL;
+    const p = this.roads[i][3], w2 = this.roads[i][2] / 2, edge = w2 + this.sw[i], r = edge + FLAT + this.band + CELL;
     for (let k = 0; k < p.length - 2; k += 2) {
       const ax = p[k], az = p[k + 1], bx = p[k + 2], bz = p[k + 3];
       const gx0 = Math.max(0, Math.floor((Math.min(ax, bx) - r - this.x0) / CELL)), gx1 = Math.min(this.nx - 1, Math.floor((Math.max(ax, bx) + r - this.x0) / CELL));
@@ -79,8 +195,8 @@ export class RoadSurface {
         const x = this.x0 + (gx + 0.5) * CELL, z = this.z0 + (gz + 0.5) * CELL;
         segClosest(x, z, ax, az, bx, bz, c);
         const d = Math.hypot(c.x - x, c.z - z); if (d > r) continue;
-        const sc = Math.max(0, d - edge), o = gz * this.nx + gx;
-        if (sc < this.score[o] || (sc === 0 && this.score[o] === 0)) { this.score[o] = sc; this.cells[o] = i + 1; }
+        const sc = d - w2, o = gz * this.nx + gx;
+        if (sc < this.score[o] || (sc < 0 && this.score[o] < 0)) { this.score[o] = sc; this.cells[o] = i + 1; }
       }
     }
   }
@@ -109,7 +225,7 @@ export class RoadSurface {
   }
   // on (or within margin m of) driveable asphalt
   onAsphalt(x, z, margin = 0) {
-    const q = this.query(x, z); return !!q && q.d <= this.roads[q.road][2] / 2 + margin;
+    const q = this.query(x, z); return !!q && (q.d <= this.roads[q.road][2] / 2 + margin || this.inFillet(x, z));
   }
   // on asphalt, sidewalk or shoulder
   onRoad(x, z, margin = 0) {
@@ -142,6 +258,7 @@ export class RoadSurface {
     const w2 = this.roads[q.road][2] / 2, sw = this.sw[q.road];
     const hc = this.profileAt(q.road, q.s, terrainAt) + LIFT; if (!(hc === hc)) return null; // a road whose ground hasn't arrived
     if (q.d <= w2) return hc - CROWN * q.d;
+    if (q.d <= w2 + sw + 8 && this.inFillet(x, z)) return hc - CROWN * w2; // a corner rounded off: asphalt to the curb return
     const walk = hc - CROWN * w2 + (this.curb[q.road] ? CURB_H : 0);
     if (q.d <= w2 + sw) return walk;
     const bed = walk - BENCH;
