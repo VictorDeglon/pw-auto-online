@@ -158,6 +158,29 @@ const ARCH_ZONE = {
   rural: { house: [['ranch', 70], ['spanish', 15], ['tract', 15]], strip: [['metal', 50], ['canvas', 25], ['tile', 25]] },
 };
 const STRIP0 = [['tile', 42], ['metal', 30], ['canvas', 28]];
+// what the walls are clad in, by local look (houses, garages) or by type; layer names of src/world/wallarr.js
+const SKINS = {
+  tract: [['stucco', 40], ['stucco_sand', 35], ['stucco_fine', 25]],
+  spanish: [['stucco_lace', 45], ['stucco_sand', 30], ['plaster_smooth', 25]],
+  ranch: [['siding_board_batten', 30], ['stucco_sand', 30], ['siding_lap', 25], ['brick_painted', 15]],
+  modern: [['plaster_smooth', 55], ['stucco_fine', 30], ['concrete_smooth', 15]],
+  cottage: [['siding_lap', 55], ['siding_board_batten', 25], ['stucco_fine', 20]],
+  bungalow: [['stucco_aged', 45], ['stucco_sand', 30], ['siding_lap', 25]],
+};
+const SKIN_TYPE = {
+  shop: w => w === 2 ? [['brick', 50], ['brick_tan', 30], ['brick_painted', 20]] : [['stucco_rough', 40], ['stucco_sand', 30], ['cmu_painted', 20], ['plaster_smooth', 10]],
+  office: () => [['plaster_smooth', 40], ['concrete_smooth', 30], ['stucco_fine', 30]],
+  bigbox: () => [['tiltup', 60], ['concrete_panel', 25], ['cmu_split_face', 15]],
+  warehouse: () => [['tiltup', 40], ['metal_corrugated', 30], ['cmu_split_face', 30]],
+  civic: () => [['stucco_sand', 45], ['plaster_smooth', 30], ['cmu_split_face', 25]],
+  hall: () => [['stucco_lace', 40], ['stucco', 30], ['brick', 30]],
+  shed: () => [['siding_weathered', 40], ['metal_wall', 30], ['siding_board_batten', 30]],
+  apartment: (w, hs) => hs === 'spanish' ? SKINS.spanish : [['stucco_sand', 40], ['stucco', 30], ['siding_lap', 15], ['stucco_fine', 15]],
+  row: (w, hs) => hs === 'spanish' ? SKINS.spanish : [['stucco_sand', 40], ['stucco', 30], ['siding_lap', 15], ['stucco_fine', 15]],
+};
+SKIN_TYPE.strip = SKIN_TYPE.shop;
+// how often a street front gets a wainscot (the SoCal "stone on the front")
+const WAINS = { tract: 0.22, spanish: 0.1, ranch: 0.38, modern: 0.12, cottage: 0.05, bungalow: 0.06, strip: 0.3, shop: 0.15, civic: 0.2, row: 0.15, apartment: 0.1 };
 
 // ---------------------------------------------------------------- what it is
 const pickW = (r, list) => { let t = 0; for (const [, w] of list) t += w; let x = r() * t; for (const [k, w] of list) { x -= w; if (x <= 0) return k; } return list[0][0]; };
@@ -267,8 +290,12 @@ export function planBuilding(S, o) {
   // the walls: painted stucco on homes (in the local look's colours); rough stucco or brick on shops; tilt-up concrete
   // on big boxes and warehouses
   const wall = type === TYPE.shop || type === TYPE.strip ? (r() < (zone === 'downtown' ? 0.35 : 0.12) ? 2 : 1) : type === TYPE.office ? 1 : type === TYPE.bigbox || type === TYPE.warehouse ? (r() < 0.75 ? 3 : 1) : type === TYPE.civic ? (r() < 0.4 ? 3 : 1) : 0;
+  // the cladding (a layer of the wall array, src/world/wallarr.js) and, on some street fronts, a wainscot of stone or brick
+  const skin = pickW(r, SKIN_TYPE[type] ? SKIN_TYPE[type](wall, hs) : SKINS[hs]);
+  const wr = r(), wp = WAINS[type === TYPE.house || type === TYPE.garage ? hs : type] || 0;
+  const wains = wr < wp ? { h: 0.85 + r() * 0.35, skin: pickW(r, hs === 'spanish' ? [['stone_river_rock', 1]] : [['stone_ledgestone', 70], ['stone_river_rock', 20], ['brick_tan', 10]]) } : null;
   return {
-    type, style: FAC[type], floors, storey, wings, wall, area: A, look: hs, walls: wall === 0 ? HS.walls : null, kind, poi,
+    type, style: FAC[type], floors, storey, wings, wall, area: A, look: hs, walls: wall === 0 ? HS.walls : null, kind, poi, skin, wains,
     roof: { form, mat, pitch, over, parapet, eave, gables, col: o.roofCol >= 0 ? o.roofCol : -1 },
     awning, mansard, raised, cornice, bands, chimney, units, kit,
     seed: r(), r1: r(), r2: r(), r3: r(),

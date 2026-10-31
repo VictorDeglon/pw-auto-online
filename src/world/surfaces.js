@@ -236,24 +236,42 @@ function pathMaterial(THREE, T, pathN) {
   m.customProgramCacheKey = () => 'path1';
   return m;
 }
+// the wall-array variant (src/world/wallarr.js): the layer comes per vertex (aWL), with its own repeat, paint and detail
+const ARR_VS_HEAD = 'attribute float aWL; varying float vWL;', ARR_VS = 'vWL = aWL;';
+const ARR_FS_HEAD = /* glsl */`
+uniform highp sampler2DArray uWA, uWN; uniform float uWInv[64], uWMean[64], uWPaint[64]; varying float vWL;
+vec3 wPerturb(vec3 eye, vec3 N, vec3 mapN, vec2 uv, float fd) { // the tangent frame from screen-space derivatives of the uv
+  vec3 q0 = dFdx(eye), q1 = dFdy(eye); vec2 st0 = dFdx(uv), st1 = dFdy(uv);
+  vec3 q1p = cross(q1, N), q0p = cross(N, q0), T = q1p * st0.x + q0p * st1.x, B = q1p * st0.y + q0p * st1.y;
+  float det = max(dot(T, T), dot(B, B)), sc = det == 0.0 ? 0.0 : fd * inversesqrt(det);
+  return normalize(T * (mapN.x * sc) + B * (mapN.y * sc) + N * mapN.z);
+}`;
+const ARR_MAP = /* glsl */`
+  float wL = floor(vWL + 0.5); int wI = int(wL); vec2 wUv = vFuv * uWInv[wI];
+  vec4 wC = texture(uWA, vec3(wUv, wL)), wNR = texture(uWN, vec3(wUv, wL)); float wTl = dot(wC.rgb, vec3(0.2126, 0.7152, 0.0722));
+  diffuseColor.rgb *= mix(wC.rgb * clamp(0.32 / uWMean[wI], 1.0, 2.2), vec3(wTl / uWMean[wI]), uWPaint[wI]); // painted: its relief, the wall's colour; natural: its own, lifted to the town's brightness`;
 function facadeMaterial(THREE, set, U, o) {
-  for (const k of ['c', 'n', 'arm']) if (set[k]) set[k].repeat.set(1 / o.tile, 1 / o.tile);
-  const m = new THREE.MeshStandardMaterial({ map: set.c, normalMap: set.n, normalScale: new THREE.Vector2(o.bump ?? 0.8, o.bump ?? 0.8), roughnessMap: set.arm, aoMap: set.arm, aoMapIntensity: 0.6, vertexColors: true, roughness: 1, metalness: 0 });
+  const arr = o.arr; // a wall array: no maps of its own, every layer from WA
+  if (!arr) for (const k of ['c', 'n', 'arm']) if (set[k]) set[k].repeat.set(1 / o.tile, 1 / o.tile);
+  const m = arr ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 })
+    : new THREE.MeshStandardMaterial({ map: set.c, normalMap: set.n, normalScale: new THREE.Vector2(o.bump ?? 0.8, o.bump ?? 0.8), roughnessMap: set.arm, aoMap: set.arm, aoMapIntensity: 0.6, vertexColors: true, roughness: 1, metalness: 0 });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U, { uPaint: { value: o.paint ? 1 : 0 }, uMapLum: { value: o.lum || 0.55 } });
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + FACADE_VS_HEAD).replace('#include <begin_vertex>', '#include <begin_vertex>\n' + FACADE_VS);
+    if (arr) Object.assign(sh.uniforms, { uWA: { value: arr.A }, uWN: { value: arr.N }, uWInv: { value: arr.inv }, uWMean: { value: arr.mean }, uWPaint: { value: arr.paint } });
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + FACADE_VS_HEAD + (arr ? ARR_VS_HEAD : '')).replace('#include <begin_vertex>', '#include <begin_vertex>\n' + FACADE_VS + (arr ? ARR_VS : ''));
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + FACADE_FS_HEAD)
-      .replace('#include <map_fragment>', `#ifdef USE_MAP
+      .replace('#include <common>', '#include <common>\n' + FACADE_FS_HEAD + (arr ? ARR_FS_HEAD : ''))
+      .replace('#include <map_fragment>', arr ? ARR_MAP : `#ifdef USE_MAP
           vec4 texelColor = texture2D(map, vMapUv); float tl = dot(texelColor.rgb, vec3(0.299, 0.587, 0.114));
           diffuseColor.rgb *= mix(texelColor.rgb, vec3(tl / uMapLum), uPaint); // paint: the scan's relief, the house's colour
         #endif`)
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + FACADE_FS)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+      .replace('#include <aomap_fragment>', arr ? '{ float ambientOcclusion = mix(1.0, wNR.a, 0.6); reflectedLight.indirectDiffuse *= ambientOcclusion; }' : '#include <aomap_fragment>')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${arr ? '\n        roughnessFactor = wNR.b;' : ''}
         roughnessFactor = mix(roughnessFactor, 0.42, fFrame); roughnessFactor = mix(roughnessFactor, 0.5, fDoor); roughnessFactor = mix(roughnessFactor, 0.04, fGlass);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         metalnessFactor = max(metalnessFactor, fMetal * max(fFrame, fDoor));`)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      .replace('#include <normal_fragment_maps>', `${arr ? `{ vec3 wN = vec3(wNR.xy * 2. - 1., 0.); wN.y = -wN.y; wN.xy *= 0.9; wN.z = sqrt(max(1. - dot(wN.xy, wN.xy), 0.)); normal = wPerturb(-vViewPosition, normal, wN, wUv, faceDirection); }` : '#include <normal_fragment_maps>'}
         normal = normalize(mix(normal, nonPerturbedNormal, max(max(fGlass, fFrame), fDoor)));
         { // bullnose corners, as SoCal stucco has: the normal rolls round the last 7 cm of each wall end
           float cu = vFuv.x, cl = vFac.x, ce = min(cu, cl - cu), k = (cl > 1.5 && ce >= 0.) ? 1. - smoothstep(0., .07, ce) : 0.; // real walls only (small boxes and non-facade quads carry other uvs)
@@ -264,7 +282,7 @@ function facadeMaterial(THREE, set, U, o) {
         { float cv = clamp(dot(normalize(cameraPosition - vWPos), normalize(vWN)), 0.0, 1.0), F = 0.04 + 0.96 * pow(1.0 - cv, 5.0);
           totalEmissiveRadiance += fRoom * fGlass * (1.0 - F); }`);
   };
-  m.customProgramCacheKey = () => 'facade' + (o.paint ? 'p' : '');
+  m.customProgramCacheKey = () => 'facade' + (o.paint ? 'p' : '') + (arr ? 'A' : '');
   return m;
 }
 
@@ -403,6 +421,8 @@ function avgColor(t) {
     return m.map(v => Math.max(0.02, v / 256));
   } catch (e) { return [0.3, 0.2, 0.15]; }
 }
+// every wall in one material over the wall array (src/world/wallarr.js)
+export function wallArrayMaterial(THREE, S, WA) { return facadeMaterial(THREE, null, S.U, { arr: WA }); }
 export function createSurfaces(THREE, T) {
   const U = { uNight: { value: 0 }, uDayLum: { value: 1 } };
   const S = { U, T };

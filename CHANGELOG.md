@@ -8,6 +8,15 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.3 (2026-10-30)
+
+- **Real cladding on the buildings:** walls are clad in real materials chosen by the neighbourhood's look and the
+  building's type: smooth, sand, lace and aged stucco, plaster, lap siding, board-and-batten, shiplap, red, tan and
+  painted brick, painted and split-face block, tilt-up, concrete panels, corrugated metal. Some street fronts have a
+  stone or brick wainscot with a cap; trim is painted wood. The materials sit in one texture array
+  (`src/world/wallarr.js`: Poly Haven scans plus the generated library from `tools/matpack`), so every wall in a block
+  of town is one mesh: fewer draw calls than before (14-48 % fewer in the views tested).
+
 ## 0.9.2 (2026-10-30)
 
 - **The Velvet Javelina,** a cabaret lounge by the Carmel Mountain Plaza club strip and the first building you can walk

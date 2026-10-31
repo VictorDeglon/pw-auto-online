@@ -105,6 +105,13 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   rooftop units; a warehouse is plain, roll-up doors behind.
 - **Offices and civic buildings:** offices have ribbon windows, floor bands, a cornice and rooftop units. Civic buildings
   are low clay hips over deep eaves, or a school's flat roof over deep eaves along the walks; a hall has a steep gable.
+- **Cladding** (`src/world/wallarr.js`): walls are clad by the local look and the type, from one texture array of real
+  materials: smooth, sand-finish, lace and aged stucco, smooth plaster, lap siding, board-and-batten, shiplap, red, tan
+  and painted brick, painted and split-face block, tilt-up and smooth concrete, corrugated metal. Tracts are stucco;
+  Spanish houses lace stucco or plaster; ranch houses board-and-batten, lap siding, stucco or painted brick; beach
+  cottages siding; strip malls rough stucco, painted block or brick; big boxes and warehouses tilt-up, panels, block or
+  metal. Some street fronts carry a wainscot of ledgestone, river rock or tan brick about a metre high, capped. Trim is
+  painted wood. Natural materials (brick, stone, block, wood) keep their own colour with only a hint of the paint.
 - Canvas is sun-faded and deep (forest, oxblood, navy, sand, rust, charcoal, plum, khaki); canopies are painted metal
   (bronze, charcoal, white, brown). Awnings and canopies are only drawn near (with the sidewalks).
 
