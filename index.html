@@ -8721,6 +8721,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
   await warmShadows(scene.children, f => { DL.msg = `Preparing the shadows… ${Math.round(f * 100)}%`; showProgress(); });
   await warmVehicles();
+  await warmCrowd(); HUMANS.prepare = root => warmLoose([root]); // the avatars in so far, then every one fetched from now on (the crowd, a uniform, swimwear, another player's skin): its shaders before anyone wears it
   drawFrame(); // one frame behind the loading screen: the post chain's passes (src/post.js) build their programs here, not in the first frame you see
   keepAll();
   console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
@@ -8748,8 +8749,7 @@ async function loadLater() {
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer))); // first: until they're in, every patch of ground near you is the blurred photo
   await step('ground photos', loadGroundPhotos);
   await step('crowd', async () => {
-    if (await loadCrowd()) { await warmCrowd(); upgradePeds(); }
-    HUMANS.prepare = root => warmLoose([root]); // an avatar fetched later (a uniform, swimwear, another player's skin): its shaders before anyone wears it
+    if (await loadCrowd()) upgradePeds(); // each avatar's shaders were built as it came in (HUMANS.prepare)
   });
   await step('aircraft', async () => {
     const before = new Set(scene.children);
@@ -8848,8 +8848,8 @@ function parkMedevac() {
   }
 }
 // people who spawned as blocky stand-ins before the crowd's avatars arrived get their real bodies (busy ones keep theirs)
-// the crowd's shaders and textures, a piece at a time, before anyone wears the new bodies (all 44 avatars' first
-// frame held a fast PC for two and a half seconds)
+// the avatars in so far: their shaders and textures, a piece at a time, before anyone wears them (all 44 avatars' first
+// frame held a fast PC for two and a half seconds). The ones fetched later get the same, one by one (HUMANS.prepare)
 async function warmCrowd() {
   await warmLoose([...HUMANS.proto.values()].map(p => p.root)); // their shadows too: a skinned body's shadow has its own program
 }

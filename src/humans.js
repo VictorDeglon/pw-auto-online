@@ -113,13 +113,13 @@ async function loadAvatar(loader, n) {
 function fillPools(skip) {
   for (const k of ['civ', 'police', 'plain']) HUMANS.pools[k] = (HUMANS.crowd[k] || []).filter(n => HUMANS.proto.has(n) && n !== skip);
 }
-// the rest of the people (locals, deputies), after loadHumans({ crowd: false }); each joins its pool as it arrives.
-// Resolves to how many were fetched.
+// the rest of the people (locals, deputies), after loadHumans({ crowd: false }); each joins its pool as soon as it's
+// in and its shaders are built (ensureAvatar runs HUMANS.prepare first: someone who spawned wearing it before that
+// compiled its shaders inside a frame). Resolves to how many were fetched.
 export async function loadCrowd() {
   const list = HUMANS.later || []; HUMANS.later = [];
   if (!HUMANS.crowd || !list.length) return 0;
-  const loader = new GLTFLoader();
-  await Promise.all(list.map(n => loadAvatar(loader, n).then(() => fillPools(null))));
+  await Promise.all(list.map(n => ensureAvatar(n).then(() => fillPools(null))));
   console.info('[humans] crowd in:', HUMANS.proto.size, 'avatars');
   return list.length;
 }
