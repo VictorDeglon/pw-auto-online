@@ -706,6 +706,7 @@ import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, stor
 import * as MAPKIT from './src/ui/mapkit.js';
 import { setGroundTint, setGroundLand, setPoolHoles, setPadCuts, TRACK_U, SHORE_U } from './src/nature/ground.js';
 import { createPads, clipRect } from './src/world/pads.js';
+import { brandLogo } from './src/world/plazas/brands.js';
 import { createTracks } from './src/world/tracks.js';
 import { updateBeacons } from './src/online/beacons.js';
 import { createOuter } from './src/world/outer.js';
@@ -2107,16 +2108,22 @@ function wallFace(gb, ax, az, tx, tz, nx, nz, len, g, vb, vt, holes, wallC, W) {
 const STREET = e => e.t !== 0 && e.t !== 6;
 // the long wall with the most parking in front of it (samples 12-90 m out along it: a supercenter's lot can start past
 // its fire lane and the cart corrals), or -1
+// a big box's front: the long wall with the most mapped parking out in front of it, the nearest counting most; never a wall
+// another building stands against (a party wall); with no mapped lot round it, the one facing the most open ground
 function lotWall(flat, CX) {
-  const n = flat.length / 2; let S = 0, best = -1, bs = 0;
+  const n = flat.length / 2; let S = 0; const W = [];
   for (let i = 0; i < n; i++) { const j = (i + 1) % n; S += flat[i * 2] * flat[j * 2 + 1] - flat[j * 2] * flat[i * 2 + 1]; }
+  const other = (x, z) => ROAD_FIT.inside(x, z) && !pip(x, z, flat);
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n, ax = flat[i * 2], az = flat[i * 2 + 1], dx = flat[j * 2] - ax, dz = flat[j * 2 + 1] - az, len = Math.hypot(dx, dz); if (len < 20) continue;
-    const ox = (S > 0 ? dz : -dz) / len, oz = (S > 0 ? -dx : dx) / len; let hit = 0;
-    for (const t of [0.15, 0.35, 0.5, 0.65, 0.85]) for (const d of [12, 30, 60, 90]) if (CX.lot(ax + dx * t + ox * d, az + dz * t + oz * d)) hit++;
-    if (hit * len > bs) { bs = hit * len; best = i; }
+    const ox = (S > 0 ? dz : -dz) / len, oz = (S > 0 ? -dx : dx) / len; let hit = 0, shut = 0, open = 0;
+    for (const t of [0.15, 0.35, 0.5, 0.65, 0.85]) for (const [d, w] of [[12, 4], [30, 3], [60, 1.5], [90, 1]]) if (CX.lot(ax + dx * t + ox * d, az + dz * t + oz * d)) hit += w;
+    for (const t of [0.35, 0.5, 0.65]) { let d = 2, road = false; for (; d <= 60; d += 4) { const x = ax + dx * t + ox * d, z = az + dz * t + oz * d; if (other(x, z)) break; if (ROADS && ROADS.onRoad(x, z, 0)) { road = true; break; } } if (d <= 14 && !road) shut++; open += Math.min(d, 60); } // (a street ends the open ground too: a big box's doors open onto its lot, not the sidewalk)
+    W.push({ i, len, hit, shut: shut >= 2, open });
   }
-  return best;
+  const free = W.filter(w => !w.shut), pool = free.length ? free : W; let best = null;
+  for (const w of pool) { const sc = w.hit ? 1e6 + w.hit * Math.sqrt(w.len) : w.open * w.len; if (!best || sc > best.sc) best = { i: w.i, sc }; }
+  return best ? best.i : -1;
 }
 function wallRoles(flat, front = -1) { // front: a wall already known to be the front (a big box's, facing its lot)
   const n = flat.length / 2, roles = new Uint8Array(n), E = [];
@@ -2417,7 +2424,7 @@ function genBuilding(B, ch, F) {
         tri(gb, [ax, top + 0.05, az], [bx, top + 0.05, bz], [bx, lip, bz], cap, cap, cap, [0, 0], [L, 0], [L, 0.7], -ox, 0, -oz); tri(gb, [ax, top + 0.05, az], [bx, lip, bz], [ax, lip, az], cap, cap, cap, [0, 0], [L, 0.7], [0, 0.7], -ox, 0, -oz); }
       FAC = null;
       if (P.cornice) for (const q of cornice(fr, lip)) plain(ch.wall[matIdx], q, wallC.clone().multiplyScalar(1.05));
-      if (P.box) bigBoxGeom(slot, P, F, fr, roles, g, top, lip, wallCs, WA, arr);
+      if (P.box) { const signs = bigBoxGeom(slot, P, F, fr, roles, g, top, lip, wallCs, WA, arr); if (!B.signs && signs.length) B.signs = signs.map(boxSign).filter(Boolean); if (B.signs) for (const m of B.signs) m.visible = true; }
       else if (P.raised) { const rf = raisedFront(fr, roles, lip - 0.3, P.type === TYPE.bigbox ? 3.4 : 2.4, rr, P.type === TYPE.bigbox); if (rf) { // a taller false front, capped
         const f = rf.f, um = (rf.u0 + rf.u1) / 2, x = f.ax + f.tx * um + f.ox * 0.12, z = f.az + f.tz * um + f.oz * 0.12, hu = (rf.u1 - rf.u0) / 2;
         obox(ch.wall[matIdx], x, z, f.tx, f.tz, hu, 0.16, rf.y0, rf.y1, wallC); obox(ch.wall[matIdx], x + f.ox * 0.05, z + f.oz * 0.05, f.tx, f.tz, hu + 0.15, 0.26, rf.y1, rf.y1 + 0.3, wallC.clone().multiplyScalar(1.05)); } }
@@ -2453,7 +2460,7 @@ let BKIT = null; const KIT_REACH = { potato: 0, low: 170, medium: 250, high: 330
 // a big box's front (P.box): a tower over each entrance the facade shader paints, a glass vestibule out under the canopy,
 // pilasters on the panel joints, an accent band under the parapet (two on a warehouse club), on its street walls
 function bigBoxGeom(slot, P, F, fr, roles, g, top, lip, wallC, WA, arr) {
-  const B = P.box, L0 = slot.L, lay = n => { if (arr) slot.L = WA.id(n); }, sv = FAC;
+  const B = P.box, L0 = slot.L, lay = n => { if (arr) slot.L = WA.id(n); }, sv = FAC, signs = [], BR = B.brand;
   for (const f of fr) {
     const role = roles[f.i] || 0; if (f.len < 6 || role === 2) continue;
     const at = (u, d) => [f.ax + f.tx * u + f.ox * d, f.az + f.tz * u + f.oz * d];
@@ -2466,8 +2473,9 @@ function bigBoxGeom(slot, P, F, fr, roles, g, top, lip, wallC, WA, arr) {
     if (B.pilasters) { lay(B.club ? 'concrete_smooth' : 'stucco_fine'); for (let u = 7.6; u < f.len - 1; u += 7.6) { if (ents.some(e => Math.abs(u - e) < 10)) continue; const [x, z] = at(u, 0.2); obox(slot, x, z, f.tx, f.tz, 0.36, 0.2, g - 0.3, lip + 0.15, wallC.clone().multiplyScalar(0.95)); } }
     for (const e of ents) {
       // the tower: a raised block of wall over the entrance, capped
-      lay(B.club ? 'concrete_smooth' : 'stucco_fine'); const tw = B.club ? 13 : 9, rise = B.club ? 2.2 : 3.6, [tx0, tz0] = at(e, 0.3);
-      obox(slot, tx0, tz0, f.tx, f.tz, tw, 0.32, top - 1, lip + rise, wallC.clone().multiplyScalar(1.03)); obox(slot, tx0, tz0, f.tx, f.tz, tw + 0.25, 0.45, lip + rise, lip + rise + 0.3, wallC.clone().multiplyScalar(0.9));
+      lay(BR && BR.tower ? 'trim_paint' : B.club ? 'concrete_smooth' : 'stucco_fine'); const tw = B.club ? 13 : 9, rise = B.club ? 2.2 : 3.6, [tx0, tz0] = at(e, 0.3), tc = BR && BR.tower ? hex(BR.tower) : wallC.clone().multiplyScalar(1.03);
+      obox(slot, tx0, tz0, f.tx, f.tz, tw, 0.32, top - 1, lip + rise, tc); obox(slot, tx0, tz0, f.tx, f.tz, tw + 0.25, 0.45, lip + rise, lip + rise + 0.3, BR && BR.tower ? tc.clone().multiplyScalar(0.85) : wallC.clone().multiplyScalar(0.9));
+      if (BR && BR.sign) { const [sx, sz] = at(e, 0.66), h = Math.min(lip + rise - top + 0.4, (tw * 2 - 2) / 4.4); signs.push({ key: BR.sign, x: sx, z: sz, y: (top - 1 + lip + rise) / 2, ox: f.ox, oz: f.oz, w: h * 4.4, h }); } // the chain's sign on the tower
       if (!B.vestibule) continue;
       // the vestibule: glass on three sides (the storefront the shader paints), a slab roof
       lay(B.club ? 'concrete_smooth' : 'stucco_fine'); const D = 3.6, H = 4.4, hw = 5.5, vt = H + 0.3;
@@ -2477,7 +2485,14 @@ function bigBoxGeom(slot, P, F, fr, roles, g, top, lip, wallC, WA, arr) {
       FAC = sv; const [vx, vz] = at(e, D / 2); obox(slot, vx, vz, f.tx, f.tz, hw + 0.15, D / 2 + 0.15, g + H, g + vt, wallC.clone().multiplyScalar(0.92));
     }
   }
-  slot.L = L0; FAC = sv;
+  slot.L = L0; FAC = sv; return signs;
+}
+// a chain's sign on a big box's entrance tower (bigBoxGeom): its parody mark (src/world/plazas/brands.js) on a panel,
+// faintly lit; made once per store and kept, hidden while the store is down
+const SIGN_MATS = new Map();
+function boxSign(S) {
+  let mat = SIGN_MATS.get(S.key); if (!mat) { const t = brandLogo(THREE, S.key, 4.4); if (!t) return null; SIGN_MATS.set(S.key, mat = new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.22, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })); }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(S.w, S.h), mat); m.position.set(S.x, S.y, S.z); m.rotation.y = Math.atan2(S.ox, S.oz); m.matrixAutoUpdate = false; m.updateMatrix(); m.name = 'sign:' + S.key; scene.add(m); return m;
 }
 // the upper storey of a two-storey wing (split: { q: its rectangle in the roofWings frame Wg, hi: its wall top }): where
 // a footprint wall runs along the wing, the wall carries on up from lo; where the wing rises out of the single-storey
@@ -2785,7 +2800,7 @@ function busyAt(x, z) {
 }
 const REBUILD_S = 120; // a collapsed building stands back up two minutes later (online ruins expire on the same clock)
 function collapseBuilding(B, dirx, dirz, by, instant, lite) { // instant: already rubble when you arrived (online ruins); lite: no flying blocks (a nuke flattens dozens)
-  if (B.dead) return; B.dead = true; BLD_HURT.add(B); if (BKIT) BKIT.dirty(); polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
+  if (B.dead) return; B.dead = true; BLD_HURT.add(B); if (BKIT) BKIT.dirty(); polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B); if (B.signs) for (const m of B.signs) m.visible = false;
   B.repairAt = simTime + REBUILD_S; B.fall = { dirx, dirz };
   if (online && by !== 'net') { sendEvent('col', { i: B.i, dx: dirx, dz: dirz }); setRuin(B.i, B.cx, B.cz); }
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
