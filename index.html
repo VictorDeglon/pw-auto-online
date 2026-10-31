@@ -7977,6 +7977,7 @@ function updatePopulation(dt) {
   trafficT -= dt; if (trafficT > 0) return; trafficT = 0.25;
   if (GAMES.inside) return; // the crew-garage worlds have their own crowds and traffic (src/games)
   if (WORLD.following) return; // the leader's people and cars are shown instead (src/online/world.js)
+  if (CINE.active) return; // a cutscene cleared the road it plays on: nothing new drives into the shot
   const f = focusPos(); if (!HUMANS.swimLoading && HUMANS.ready && swimZone(f.x + 40, f.z) + swimZone(f.x - 40, f.z) + swimZone(f.x, f.z + 40) + swimZone(f.x, f.z - 40)) loadSwim();
   const hf = hour < 5 || hour >= 23 ? 0.45 : (hour >= 7 && hour < 9) || (hour >= 16 && hour < 18.5) ? 1.15 : 1;
   const wantCars = Math.round(TRAFFIC_N * hf * (1 - nightAmount * 0.25) * (0.75 + busyAt(f.x, f.z) * 1.1)), wantPeds = Math.round(GFX.peds * (1 - nightAmount * 0.5) * (1 - weather.rain * 0.45));
@@ -8786,7 +8787,7 @@ function startOffline() {
   const was = running; beginPlay(); $('pausesrv').textContent = 'FREE ROAM';
   if (was) return;
   if (hadSave && save.player) notify(`Welcome back to Poway. Progress restored: <b>$${Math.round(save.money).toLocaleString()}</b>, ${clock.label()}.`, 'green', 6000);
-  else notify(PHS.spawnPoint() ? 'Welcome to <b>Poway Automobile Online</b>. You start at Poway High; your car is at the curb. <b>J</b> for a courier job, <b>R</b> for the radio, <b>K</b> to fast travel.' : 'Welcome to <b>Poway Automobile Online</b>. Your gold car is parked at the curb.', 'green', 9000);
+  else notify(PHS.spawnPoint() ? 'Welcome to <b>Poway Automobile Online</b>. You start at Poway High. Your brother Tommy is waiting out front.' : 'Welcome to <b>Poway Automobile Online</b>. Your gold car is parked at the curb.', 'green', 9000);
   if (save.rep < -60) notify(`Locals remember you. Reputation: ${repLabel()}.`, 'red', 7000);
 }
 function startOnline(sid, name) {

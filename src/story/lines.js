@@ -1,5 +1,5 @@
 // The storylines. Four threads through the same town that keep running into each other: Espola Road (Tommy Reyes's
-// death and Garrett Vance's car ring), Sycamore Smoke (Nina Salas taking her uncle's canyon), Clean Money (Victoria
+// death and Jericho Vance's car ring), Sycamore Smoke (Nina Salas taking her uncle's canyon), Clean Money (Victoria
 // Lang buying Poway one lot at a time) and The Lake (Gunnery Sgt. Okoye's war on the lab above Lake Poway). Each one
 // starts small and ends with blood on the road. Vance's ledger ties them together: Sal Salas stores for him, Lang pays
 // him, and Ray Dwyer's precursors come through a Lang shell company.
@@ -9,7 +9,7 @@
 const isNight = h => h >= 20 || h < 5;
 
 export const LINES = {
-  reyes: { name: 'Espola Road', color: '#f0b23a', blurb: 'Tommy Reyes went off Espola Road at 2 AM. The report says accident. You were there.' },
+  reyes: { name: 'Espola Road', color: '#f0b23a', blurb: 'Tommy "Lightning" Reyes went off Espola Road at 2 AM. The report says accident. You were there. Now the Deacon says Tommy\'s debt is yours.' },
   nina: { name: 'Sycamore Smoke', color: '#ff9f43', blurb: 'Nina Salas keeps the books for her uncle\'s "feed store." She wants the canyon, and she needs a driver who doesn\'t ask.' },
   lang: { name: 'Clean Money', color: '#e1c16e', blurb: 'Victoria Lang builds Poway\'s tomorrow. Somebody has to clear the ground first.' },
   okoye: { name: 'The Lake', color: '#2ecc71', blurb: 'Something is cooking in the chaparral above Lake Poway, and it\'s poisoning the creek. A retired Marine wants it gone.' },
@@ -20,7 +20,7 @@ export const LINE_MISSIONS = [
   {
     id: 'a2-paper-trail', title: 'Paper Trail', giver: 'dee', at: 'deeGarage', type: 'main', line: 'reyes', needs: ['a1-personal-effects'],
     pitch: 'Tommy said he was taking proof. Vance keeps his books on paper.',
-    when: c => isNight(c.hour), whenText: 'Dee: "Not in daylight. Come back after 8 PM."',
+    when: c => isNight(c.hour), whenText: 'Doc: "Not in daylight. Come back after 8 PM."',
     reward: { money: 900, trust: { dee: 10 } },
     steps: [
       { do: 'talk', lines: [
@@ -35,7 +35,7 @@ export const LINE_MISSIONS = [
       { do: 'pickup', at: 'vance', dx: 18, dz: 12, label: 'Vance\'s ledger', text: 'Take the <em>ledger</em>.' },
       { do: 'heat', n: 2 },
       { do: 'loseCops', text: 'The alarm tripped. Lose the <em>Sheriff</em>.' },
-      { do: 'goto', to: 'deeGarage', r: 12, text: 'Bring the ledger to <em>Dee\'s Garage</em>.' },
+      { do: 'goto', to: 'deeGarage', r: 12, text: 'Bring the ledger to <em>Doc\'s Garage</em>.' },
       { do: 'talk', lines: [
         ['dee', 'Cars in, cars out, VINs, dollar amounts. He wrote down crimes in fountain pen.'],
         ['dee', '"S. Salas, canyon storage." "L. Development, site security, monthly." And...'],
@@ -58,7 +58,7 @@ export const LINE_MISSIONS = [
       ] },
       { do: 'carjack', as: 'coupe', type: 'sports', tint: 0x23406e, near: 'parkwayW', ahead: 60, to: 'ranch', protect: 'The coupe was destroyed.', text: 'Find the <em>blue coupe</em> on the Parkway and take it.' },
       { do: 'pursuers', as: 'chasers', n: 2, crew: 2, armed: true, shake: 280, shakeT: 9, text: 'Vance\'s <em>chase cars</em>. Shake them or wreck them.' },
-      { do: 'deliver', car: 'coupe', carName: 'coupe', to: 'deeGarage', r: 12, noHeat: true, minHealth: 40, wreckText: 'The coupe is totaled. The proof went with it.', text: 'Bring the coupe to <em>Dee\'s Garage</em>. Keep it in one piece.' },
+      { do: 'deliver', car: 'coupe', carName: 'coupe', to: 'deeGarage', r: 12, noHeat: true, minHealth: 40, wreckText: 'The coupe is totaled. The proof went with it.', text: 'Bring the coupe to <em>Doc\'s Garage</em>. Keep it in one piece.' },
       { do: 'unlock', key: 'parkway' },
       { do: 'talk', lines: [
         ['dee', 'Glovebox. A disposable camera. Tommy, you beautiful idiot.'],
@@ -143,7 +143,7 @@ export const LINE_MISSIONS = [
       { do: 'goto', to: 'home', r: 8, foot: true, text: 'Check on <em>Rosa</em>.' },
       { do: 'talk', lines: [
         ['rosa', 'Is it over?'],
-        ['marco', 'No, Ma. But it will be. Pack a bag. Dee has a cot at the shop.'],
+        ['marco', 'No, Ma. But it will be. Pack a bag. Doc has a cot at the shop.'],
         ['rosa', 'I buried one son this year. Look at me. I am not burying two.'],
       ] },
     ],
@@ -171,7 +171,7 @@ export const LINE_MISSIONS = [
   },
   {
     id: 'a2-woodson', title: 'Woodson', giver: 'dee', at: 'deeGarage', type: 'main', line: 'reyes', needs: ['a2-badge'],
-    pitch: 'Garrett Vance is waiting at the top of Mt Woodson.',
+    pitch: 'Jericho Vance is waiting at the top of Mt Woodson.',
     reward: { money: 6000, rep: 10, trust: { dee: 20, rosa: 10, walt: 10 } },
     steps: [
       { do: 'talk', lines: [
@@ -181,10 +181,10 @@ export const LINE_MISSIONS = [
       ] },
       { do: 'give', weapon: 'rifle', ammo: 240 },
       { do: 'goto', to: 'woodsonTop', r: 70, car: true, text: 'Drive to the top of <em>Mt Woodson</em>.' },
-      { do: 'kill', as: 'vance', who: 'vance', at: 'woodsonTop', guards: 7, armed: true, flee: 'car', car: 'sports', tint: 0x111111, to: 'espolaNorth', hp: 200, spook: 50, escape: 520, text: 'Kill <em>Garrett Vance</em>.' },
+      { do: 'kill', as: 'vance', who: 'vance', at: 'woodsonTop', guards: 7, armed: true, flee: 'car', car: 'sports', tint: 0x111111, to: 'espolaNorth', hp: 200, spook: 50, escape: 520, text: 'Kill <em>Jericho Vance</em>.' },
       { do: 'heat', n: 5 },
       { do: 'prop', as: 'ramp', at: 'woodsonRamp', road: true, len: 18, wid: 7, h: 5, keep: 'woodsonRamp' },
-      { do: 'jump', ramp: 'ramp', air: 1.6, text: 'The road down is blocked. <em>Hit Dee\'s ramp</em> and go off the mountain.' },
+      { do: 'jump', ramp: 'ramp', air: 1.6, text: 'The road down is blocked. <em>Hit Doc\'s ramp</em> and go off the mountain.' },
       { do: 'loseCops', text: 'You\'re alive. Now <em>lose them</em>.' },
       { do: 'unlock', key: 'woodson' },
       { do: 'goto', to: 'home', r: 10, text: 'Go <em>home</em>.' },
@@ -206,7 +206,7 @@ export const LINE_MISSIONS = [
     reward: { money: 600 },
     steps: [
       { do: 'talk', lines: [
-        ['nina', 'You\'re the Reyes kid. Dee says you can drive and keep your mouth shut. Half of that is rare.'],
+        ['nina', 'You\'re the Reyes kid. Doc says you can drive and keep your mouth shut. Half of that is rare.'],
         ['nina', 'My uncle Sal runs this place. Feed, tack, the occasional horse. And a lot of coolers that never get opened.'],
         ['nina', 'One\'s waiting at the Lake Poway gate. Ranger shift changes in two and a half minutes. Don\'t be the reason it doesn\'t.'],
       ] },
@@ -330,7 +330,7 @@ export const LINE_MISSIONS = [
         ['salas', 'A good driver takes a cooler from the lake. A florist van. A route book. A pilot. An armored van.'],
         ['salas', 'You know what I notice? None of it hurt the Coyotes as much as it hurt me.'],
         ['nina', 'Tío...'],
-        ['salas', 'Garrett Vance called me before he died, mija. He said the Reyes boy was working for you. For you.'],
+        ['salas', 'Jericho Vance called me before he died, mija. He said the Reyes boy was working for you. For you.'],
       ] },
       { do: 'turn', as: 'salas' },
       { do: 'thugs', as: 'family', at: 'canyonMouth', n: 6, spread: 20, aggro: 90, text: 'Dinner\'s over. <em>Survive</em>.' },
@@ -438,7 +438,7 @@ export const LINE_MISSIONS = [
     reward: { money: 700 },
     steps: [
       { do: 'talk', lines: [
-        ['lang', 'You\'re the driver Dee recommended? She said you were fast and unsentimental. I\'m paying for both.'],
+        ['lang', 'You\'re the driver Doc recommended? She said you were fast and unsentimental. I\'m paying for both.'],
         ['lang', 'Carmel Mountain Plaza. I\'m buying the back lot, and some people would prefer I didn\'t. Drive me there. Don\'t crash. My hair costs more than your car.'],
       ] },
       { do: 'spawnNpc', as: 'lang', who: 'lang', at: 'cityHall' },
@@ -468,7 +468,7 @@ export const LINE_MISSIONS = [
       { do: 'goto', to: 'cityHall', r: 14, text: 'Bring it to <em>Lang</em>.' },
       { do: 'talk', lines: [
         ['lang', 'Thank you. You\'ll notice I didn\'t ask what\'s on it in front of you.'],
-        ['lang', 'There\'s also a name on here I didn\'t expect. Garrett Vance\'s. Small town.'],
+        ['lang', 'There\'s also a name on here I didn\'t expect. Jericho Vance\'s. Small town.'],
       ] },
     ],
   },
@@ -567,11 +567,11 @@ export const LINE_MISSIONS = [
   },
   {
     id: 'l8-severance', title: 'Severance', giver: 'dee', at: 'deeGarage', type: 'main', line: 'lang', needs: ['l7-audit'],
-    pitch: 'Lang left a bomb at Dee\'s garage. Then she leaves town.',
+    pitch: 'Lang left a bomb at Doc\'s garage. Then she leaves town.',
     reward: { money: 9000, trust: { dee: 10 } },
     steps: [
       { do: 'phone', from: 'dee', lines: [['dee', 'Marco, there\'s a box under my lift. It\'s ticking. Why is it ticking?']] },
-      { do: 'timebomb', at: 'deeGarage', t: 100, text: 'Get to <em>Dee\'s Garage</em> and defuse the bomb.' },
+      { do: 'timebomb', at: 'deeGarage', t: 100, text: 'Get to <em>Doc\'s Garage</em> and defuse the bomb.' },
       { do: 'talk', lines: [
         ['dee', 'Okay. I\'m going to throw up and then I\'m going to want her dead. In that order.'],
         ['marco', 'Skip the first part.'],

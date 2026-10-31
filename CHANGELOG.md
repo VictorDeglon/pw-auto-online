@@ -8,6 +8,34 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.3 (2026-10-30)
+
+- **Act I, all the way to your first car.** A new game starts on foot, and the story is a run from Poway High to
+  Tommy's gold car that teaches the game as it goes. *Last Ride:* Tommy is waiting out front of the school on Espola
+  Road; a black car with its lights off puts him through the rail at the bend, and its men come back for the witness.
+  *Homecoming:* the memorial at Old Poway Park, where Jericho "the Deacon" Vance of the Iron Mountain Syndicate pulls up
+  in a black SUV and hands Marco his brother's $40,000 debt. *Collections* (a fistfight at the Rusty Spur), *Iron*
+  (bottles on a plank behind Poway Road Pawn), *Wheels* (your first stolen car) and *Impound:* Tommy's car out of the
+  Sheriff's lot at night, past two deputies, into Doc's garage, where the Dust Devils ride again. Offline, Tommy's car
+  no longer waits at the curb: it's the car you earn, and it stays in your garages.
+- **How to play, taught as you go** (`src/story/tips.js`): a card on the left with the key and what it does, shown when
+  a step needs it and gone once you've done it; the journal lists them all. After Impound, texts from the gang
+  introduce calling your car, the gun dealers, courier jobs and car lots, the journal and the banks. Objectives say how
+  far away they are.
+- **Three new cutscenes:** the crash, now out front of Poway High (it used to be at the lake), the memorial, and the
+  founding of the Dust Devils at Doc's Garage. No new traffic drives into a scene, and a scene waits for the garage menu
+  to close.
+- **Western names** for the cast: Tommy "Lightning" Reyes, Marco "the Espola Kid", Doc, Old Hickory, Sgt. "Two-Badge"
+  Kessler, La Gata, El Patrón, Buzzard, the Widow, Hoss, Gunny, Cookie and Sawbones; new in the gang, Boone
+  "Six-Shooter" Calloway and Jesse "Rattler" Ortiz, and the Deacon's undertaker, Cyrus Pike. The porch pirates are gone,
+  and the rail-yard taggers are Los Coyotes prospects.
+- **Outlaw avatars** (`assets/humans/outlaws.json`, CC BY 4.0 models from Sketchfab, credited there and in the README),
+  fitted by `tools/humans/fit_outlaw.py` (Blender) and animated with the Rocketbox clips, re-aimed onto each model's
+  own rest pose when it loads (`src/humans.js`); the fitter also stands up a model exported lying on its back. Seven of
+  them: a new player starts as a cowboy, and Tommy, the Deacon, El Patrón, Pike, Rattler and Boone each have their own.
+  The Deacon's men wear Pike's look or dark clothes. The character editor leaves their hats on.
+- Saves already past the opening get the four new missions marked done and Tommy's car in their garage.
+
 ## 0.9.2 (2026-10-30)
 
 - **The Velvet Javelina,** a cabaret lounge by the Carmel Mountain Plaza club strip and the first building you can walk

@@ -42,7 +42,7 @@ const KEY = [
   ['Crime', [
     ['Fence (buys what you steal)', icon('F', '#c792ea'), 'crime:fence'],
     ['Chop shop (stolen cars)', icon('C', '#ff7849'), 'crime:chop'],
-    ['Dee\'s repo list', icon('D', '#7cc0ff'), 'crime:repo'],
+    ['Doc\'s repo list', icon('D', '#7cc0ff'), 'crime:repo'],
     ['Cooler run pick-up', icon('N', '#ff9f43'), 'crime:runs'],
     ['Security camera', 'camera', 'crime:shoplift'],
   ]],
