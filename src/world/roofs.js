@@ -6,7 +6,8 @@
 //   pitchedRoof(flat, top, o) -> { roof: [tri], trim: [tri], gable: [tri] }   tri = [a, b, c, uva, uvb, uvc, hint]
 //   o: { pitch (rise per run), overhang (m), gables ('none' hips all round, 'main' gable ends on the main body, 'wings'
 //        on the wings only, 'all'; the old gable: true is 'main'), cell (raster size, m) }
-//   roof: the slopes; trim: fascia and soffits (white-painted wood); gable: the gable-end walls (wall material)
+//   roof: the slopes; trim: fascia and soffits (white-painted wood); gable: the gable-end walls (wall material);
+//   eaves: [a, b, [nx, nz] (out), overhang] the horizontal eave lines a gutter can hang on
 //   shedRoof(flat, top, o) -> the same, one slope per rectangle (o.flip: which long side is high)
 //   mansard(edges, yTop, depth, drop) -> { roof, under }: a tile skirt standing out from the given walls
 //   wings(flat, cell) -> { rects, ux, uz, vx, vz } (rects in the main-axis frame), the footprint as rectangles
@@ -59,7 +60,7 @@ function rasterRects(flat, cell) {
 }
 
 export function pitchedRoof(flat, top, o = {}) {
-  const pitch = o.pitch ?? 0.42, oh = o.overhang ?? 0.5, out = { roof: [], trim: [], gable: [] };
+  const pitch = o.pitch ?? 0.42, oh = o.overhang ?? 0.5, out = { roof: [], trim: [], gable: [], eaves: [] };
   const R = rasterRects(flat, o.cell || 0.5); if (!R || !R.rects.length) return null;
   const gables = o.gables || (o.gable ? 'main' : 'none');
   const { ux, uz, vx, vz } = R, W = (u, v, y) => [u * ux + v * vx, y, u * uz + v * vz];
@@ -84,6 +85,10 @@ export function pitchedRoof(flat, top, o = {}) {
     const gA = gm && !(along ? inOther(a0 + 0.3, (b0 + b1) / 2) : inOther((a0 + a1) / 2, b0 + 0.3));
     const gB = gm && !(along ? inOther(a1 - 0.3, (b0 + b1) / 2) : inOther((a0 + a1) / 2, b1 - 0.3));
     const slopeLen = Math.hypot(span / 2, rise);
+    // the eaves (gutters hang there): the long sides, and the ends that are hipped; not where they run into another rectangle
+    const eave = (pa, qa, pb, qb, nu, nv) => { const mu = (pa + pb) / 2 + nu * 0.5, mv2 = (qa + qb) / 2 + nv * 0.5; if (inOther(mu, mv2)) return; out.eaves.push([W(pa, qa, ey), W(pb, qb, ey), [nu * ux + nv * vx, nu * uz + nv * vz], oh]); };
+    if (along) { eave(A0, B0, A1, B0, 0, -1); eave(A1, B1, A0, B1, 0, 1); if (!gA) eave(A0, B1, A0, B0, -1, 0); if (!gB) eave(A1, B0, A1, B1, 1, 0); }
+    else { eave(A0, B1, A0, B0, -1, 0); eave(A1, B0, A1, B1, 1, 0); if (!gA) eave(A0, B0, A1, B0, 0, -1); if (!gB) eave(A1, B1, A0, B1, 0, 1); }
     if (along) {
       const mv = (B0 + B1) / 2, ra = gA ? A0 : Math.min(A0 + span / 2, (A0 + A1) / 2), rb = gB ? A1 : Math.max(A1 - span / 2, (A0 + A1) / 2);
       // the two long slopes
@@ -126,7 +131,7 @@ export function pitchedRoof(flat, top, o = {}) {
 // a mono-pitch roof: each rectangle slopes across its short side, high on one long side, with eaves all round; the
 // walls are filled up to the slope at the ends and along the high side
 export function shedRoof(flat, top, o = {}) {
-  const pitch = o.pitch ?? 0.2, oh = o.overhang ?? 0.3, out = { roof: [], trim: [], gable: [] };
+  const pitch = o.pitch ?? 0.2, oh = o.overhang ?? 0.3, out = { roof: [], trim: [], gable: [], eaves: [] };
   const R = rasterRects(flat, o.cell || 0.5); if (!R || !R.rects.length) return null;
   const { ux, uz, vx, vz } = R, quad = (list, a, b, c, d, ua, ub, uc, ud, hint) => { list.push([a, b, c, ua, ub, uc, hint], [a, c, d, ua, uc, ud, hint]); };
   for (const [a0, b0, a1, b1] of R.rects) {
@@ -137,6 +142,7 @@ export function shedRoof(flat, top, o = {}) {
     const S0 = s0 - oh, S1 = s1 + oh, T0 = t0 - oh, T1 = t1 + oh, L = Math.hypot(T1 - T0, y(T1) - y(T0));
     const up = along ? [vx, 0, vz] : [ux, 0, uz], hint = [-up[0] * dir * pitch, 1, -up[2] * dir * pitch];
     quad(out.roof, W(S0, T0, y(T0)), W(S1, T0, y(T0)), W(S1, T1, y(T1)), W(S0, T1, y(T1)), [S0, 0], [S1, 0], [S1, L], [S0, L], hint);
+    { const TL = dir > 0 ? T0 : T1; out.eaves.push([W(S0, TL, y(TL)), W(S1, TL, y(TL)), [-up[0] * dir, -up[2] * dir], oh]); } // the low eave
     // the walls under the slope: a triangle at each end, a strip along the high side
     const hi = dir > 0 ? t1 : t0, sn = along ? [ux, 0, uz] : [vx, 0, vz];
     for (const [s, sg] of [[s0, -1], [s1, 1]]) out.gable.push([W(s, t0, top - 0.02), W(s, t1, top - 0.02), W(s, hi, y(hi) - 0.04), [t0, 0], [t1, 0], [hi, y(hi) - top], [sn[0] * sg, 0, sn[2] * sg]]);

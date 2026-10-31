@@ -621,7 +621,7 @@ import { loadSurfaces, wallArrayMaterial, STYLE, ROLE } from './src/world/surfac
 import { createWallArray } from './src/world/wallarr.js';
 import { pitchedRoof, shedRoof, mansard, roofUnits } from './src/world/roofs.js';
 import { createBldKit } from './src/world/bldkit.js';
-import { shapeOf, planBuilding, contextIndex, WALLS as LOOK_WALLS, wallFrames, awnings, bands, cornice, raisedFront, chimney as chimneyOf, TYPE } from './src/world/bldgen.js';
+import { shapeOf, planBuilding, contextIndex, facadeKit, openings, WALLS as LOOK_WALLS, wallFrames, awnings, bands, cornice, raisedFront, chimney as chimneyOf, TYPE } from './src/world/bldgen.js';
 import { roadWidth, roadFitter } from './src/world/roadwidth.js';
 import { planYard, yardPaving, BIN_COLORS } from './src/world/yards.js';
 import { createWater } from './src/world/water.js';
@@ -1984,7 +1984,9 @@ function walls(ch, flat, base, top, wallC, matIdx, F) {
     if (ys > base + 0.05 && ys < top - 0.5 && gb.m) { // a wainscot on the street front: stone or brick to ys, capped, the cladding above
       const L0 = gb.L, wv = ys - g; gb.L = W.L;
       tri(gb, [ax, base, az], [bx, base, bz], [bx, ys, bz], W.c, W.c, W.c, [0, vb], [len, vb], [len, wv], ox, 0, oz); tri(gb, [ax, base, az], [bx, ys, bz], [ax, ys, az], W.c, W.c, W.c, [0, vb], [len, wv], [0, wv], ox, 0, oz);
-      const ul = Math.hypot(ox, oz) || 1; obox(gb, (ax + bx) / 2 + ox / ul * 0.035, (az + bz) / 2 + oz / ul * 0.035, dx / len, dz / len, len / 2 + 0.03, 0.05, ys - 0.02, ys + 0.05, W.c);
+      const ul = Math.hypot(ox, oz) || 1, tx = dx / len, tz = dz / len; // the cap, broken at the doors, garage doors and storefronts
+      const cut = openings({ style: F.style, role: 1, len, fH: vt, floors: F.floors, seed: (F.seed + i * 0.1371) % 1, gBit: i === F.fi && F.gar ? 1 : 0, gSide: F.gar ? F.gar.side : 0 }).filter(q => q.v0 < ys - g + 0.05).map(q => [q.u0 - 0.12, q.u1 + 0.12]).sort((p, q) => p[0] - q[0]);
+      let u = -0.03; for (const [c0, c1] of [...cut, [len + 0.03, len + 1]]) { if (c0 - u > 0.2) obox(gb, ax + tx * (u + c0) / 2 + ox / ul * 0.035, az + tz * (u + c0) / 2 + oz / ul * 0.035, tx, tz, (c0 - u) / 2, 0.05, ys - 0.02, ys + 0.05, W.c); u = Math.max(u, c1); }
       FAC = [len, vt, F.style + 8 * (F.roles[i] || 0) + 32 * (S > 0 ? 1 : 0) + 64 * Math.min(7, F.floors) + (i === F.fi && F.gar ? 512 + 1024 * F.gar.side : 0), (F.seed + i * 0.1371) % 1]; gb.L = L0;
       tri(gb, [ax, ys, az], [bx, ys, bz], [bx, top, bz], wallC, wallC, wallC, [0, wv], [len, wv], [len, vt], ox, 0, oz); tri(gb, [ax, ys, az], [bx, top, bz], [ax, top, az], wallC, wallC, wallC, [0, wv], [len, vt], [0, vt], ox, 0, oz);
     } else {
@@ -2195,6 +2197,10 @@ function genBuilding(B, ch, F) {
   if (arr) { slot.L = skinL; if (P.wains) F.wains = { h: P.wains.h, L: WA.id(P.wains.skin), c: hex(0xffffff).multiplyScalar(0.9 + P.r2 * 0.1) }; }
   const S = walls(ch, flat, base, wallTop, wallCs, matIdx, F), fr = wallFrames(flat), roles = F.roles, vt = wallTop - g, kit = [];
   F.wains = null;
+  // the real pieces round the openings the facade shader paints (laid out by the same rules: bldgen.js openings)
+  const FK = KIT_REACH || P.trim && P.trim.porch ? facadeKit(fr, roles, P, { g, fH: vt, floors: F.floors, style: F.style, seeds: fr.map((f, i) => (F.seed + i * 0.1371) % 1),
+    gBit: fr.map((f, i) => i === F.fi && F.gar ? 1 : 0), gSide: F.gar ? F.gar.side : 0, eaves: R && R.eaves, wallTop, wallHex: wallCs.getHex() }) : null;
+  if (FK && KIT_REACH) kit.push(...FK.items);
   const TRIM = TRIM_C[Math.floor(P.r2 * TRIM_C.length)], plain = (gb, q, c) => obox(gb, q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], c);
   if (R) {
     let gb = ch[ROOF_GB[mat]], rc = mat === 'clay' ? hex(0xffffff).multiplyScalar(0.82 + rr() * 0.22) : mat === 'tile' ? ROOF_TILE[Math.floor(rr() * ROOF_TILE.length)] : mat === 'metal' ? hex(0x9aa1a6).multiplyScalar(0.8 + rr() * 0.3) : ROOF_SHING[Math.floor(rr() * ROOF_SHING.length)];
@@ -2205,6 +2211,7 @@ function genBuilding(B, ch, F) {
       rc = new THREE.Color(...pc.map((v, k) => clamp(v * 1.1 / mean[k], 0.25, 1.9)));
     } else if (RF.col >= 0) rc = hex(RF.col); // a mapped roof:colour
     for (const t of R.roof) tri(gb, t[0], t[1], t[2], rc, rc, rc, t[3], t[4], t[5], t[6][0], t[6][1], t[6][2]);
+    if (FK && FK.porch) porchGeom(ch, FK.porch, gb, rc, TRIM, g, arr ? trimL : null);
     FAC = [1, 100, STYLE.shed, 0]; if (arr) slot0.L = trimL;
     for (const t of R.trim) tri(ch.wall[0], t[0], t[1], t[2], TRIM, TRIM, TRIM, [t[3][0], t[3][1] + 50], [t[4][0], t[4][1] + 50], [t[5][0], t[5][1] + 50], t[6][0], t[6][1], t[6][2]);
     if (arr) { slot0.L = keep[1]; slot.L = skinL; }
@@ -2243,6 +2250,9 @@ function genBuilding(B, ch, F) {
     }
     if (P.units) { const unitC = hex(0xc9c8c3); FAC = [1, 100, STYLE.shed, 0]; for (const u of roofUnits(flat, top, P.area, mulberry(Math.floor(P.seed * 9e5)), P.units)) { box3(ch.wall[3], u.x, u.y, u.z, u.w, u.h, u.d, unitC); kit.push({ k: 'hvac', x: u.x, y: u.y, z: u.z, sx: u.w, sy: u.h, sz: u.d, c: 0xd4d3ce }); } FAC = null; }
   }
+  if (FK) for (const bc of FK.balconies) { // balcony slabs (their rails are in the near kit)
+    const f = bc.f, um = (bc.u0 + bc.u1) / 2, hd = bc.d / 2; if (arr) slot.L = WA.id('concrete_smooth');
+    obox(ch.wall[matIdx], f.ax + f.tx * um + f.ox * hd, f.az + f.tz * um + f.oz * hd, f.tx, f.tz, (bc.u1 - bc.u0) / 2, hd, bc.y - 0.16, bc.y, hex(0xd9d6cf)); if (arr) slot.L = skinL; }
   // floor bands where the storeys meet (the facade shader's storey heights)
   if (P.bands && P.floors >= 2) { const st = P.style === STYLE.office ? Math.max(3.4, vt / P.floors) : Math.max(2.6, vt / P.floors); for (const q of bands(fr, g, P.floors, st)) plain(ch.wall[matIdx], q, wallC.clone().multiplyScalar(1.07)); }
   // awnings and canopies over the shop fronts
@@ -2259,6 +2269,21 @@ function genBuilding(B, ch, F) {
   if (!B.kit && KIT_REACH) { B.kit = true; (BKIT || (BKIT = createBldKit(scene, { reach: () => KIT_REACH }))).add(B, kit); } // the small repeated things, instanced near the camera (src/world/bldkit.js)
 }
 let BKIT = null; const KIT_REACH = { potato: 0, low: 170, medium: 250, high: 330, ultra: 430 }[GFX.id] ?? 250;
+// a front porch: a shed roof in the house's own roofing from the wall out over the door, a beam and posts in painted wood,
+// a soffit under it. p: facadeKit's porch { f (the wall), u0, u1, depth, yWall, yEave }
+function porchGeom(ch, p, gb, rc, trimC, g, trimL) {
+  const f = p.f, at = (u, d, y) => [f.ax + f.tx * u + f.ox * d, y, f.az + f.tz * u + f.oz * d], D = p.depth + 0.25, u0 = p.u0 - 0.15, u1 = p.u1 + 0.15;
+  const sl = Math.hypot(D, p.yWall - p.yEave), nx = f.ox * (p.yWall - p.yEave), nz = f.oz * (p.yWall - p.yEave);
+  tri(gb, at(u0, 0, p.yWall), at(u1, 0, p.yWall), at(u1, D, p.yEave), rc, rc, rc, [u0, sl], [u1, sl], [u1, 0], nx, D, nz);
+  tri(gb, at(u0, 0, p.yWall), at(u1, D, p.yEave), at(u0, D, p.yEave), rc, rc, rc, [u0, sl], [u1, 0], [u0, 0], nx, D, nz);
+  const sv = ch.wall[0].L; if (trimL !== null) ch.wall[0].L = trimL; FAC = [1, 100, STYLE.shed, 0];
+  const s0 = at(u0, 0, p.yWall - 0.12), s1 = at(u1, 0, p.yWall - 0.12), s2 = at(u1, D, p.yEave - 0.12), s3 = at(u0, D, p.yEave - 0.12);
+  tri(ch.wall[0], s0, s1, s2, trimC, trimC, trimC, [0, 50], [1, 50], [1, 51], 0, -1, 0); tri(ch.wall[0], s0, s2, s3, trimC, trimC, trimC, [0, 50], [1, 51], [0, 51], 0, -1, 0);
+  const um = (p.u0 + p.u1) / 2, bm = at(um, p.depth, 0); obox(ch.wall[0], bm[0], bm[2], f.tx, f.tz, (u1 - u0) / 2, 0.09, p.yEave - 0.32, p.yEave - 0.1, trimC); // the beam
+  const posts = p.u1 - p.u0 > 5 ? [p.u0 + 0.15, um, p.u1 - 0.15] : [p.u0 + 0.15, p.u1 - 0.15];
+  for (const u of posts) { const q = at(u, p.depth, 0); obox(ch.wall[0], q[0], q[2], f.tx, f.tz, 0.085, 0.085, g - 0.1, p.yEave - 0.3, trimC); }
+  FAC = null; ch.wall[0].L = sv;
+}
 // a flat roof's deep eaves: the deck carried out past the walls, a fascia at its edge, a painted soffit under it
 function eaveSlab(ch, fr, top, depth, roofG, rcol, trimC) {
   const n = fr.length, off = [];

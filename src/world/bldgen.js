@@ -179,6 +179,15 @@ const SKIN_TYPE = {
   row: (w, hs) => hs === 'spanish' ? SKINS.spanish : [['stucco_sand', 40], ['stucco', 30], ['siding_lap', 15], ['stucco_fine', 15]],
 };
 SKIN_TYPE.strip = SKIN_TYPE.shop;
+// trim by local look: [window surround, how often], how often shutters, a porch, gutters
+const TRIMS = {
+  tract: { win: ['foam', 0.75], shut: 0.1, porch: 0.15, gutter: 0.6 }, spanish: { win: ['stucco', 0.65], shut: 0.15, porch: 0.1, gutter: 0.2 },
+  ranch: { win: ['wood', 0.8], shut: 0.45, porch: 0.55, gutter: 0.8 }, modern: { win: ['metal', 0.9], shut: 0, porch: 0, gutter: 0.3 },
+  cottage: { win: ['wood', 0.85], shut: 0.5, porch: 0.4, gutter: 0.7 }, bungalow: { win: ['wood', 0.6], shut: 0.15, porch: 0.5, gutter: 0.5 },
+  apt: { win: ['foam', 0.6], shut: 0, porch: 0, gutter: 0.5 }, civic: { win: ['foam', 0.5], shut: 0, porch: 0, gutter: 0.4 },
+};
+const TRIM_FOAM = [[0xf2efe6, 3], [0xece6d6, 2], [0xe3dcc8, 2]], TRIM_WOOD = [[0xf2efe6, 6], [0x3b332b, 2], [0x5a4636, 2]], TRIM_METAL = [[0x2a2a2c, 3], [0x3b332b, 1]];
+const SHUTTERS = [[0x2f4a35, 3], [0x1f1f1f, 3], [0x6e2a22, 2], [0x233548, 2], [0xece8de, 2], [0x7d8a6a, 2], [0x4a3a2c, 1]];
 // how often a street front gets a wainscot (the SoCal "stone on the front")
 const WAINS = { tract: 0.22, spanish: 0.1, ranch: 0.38, modern: 0.12, cottage: 0.05, bungalow: 0.06, strip: 0.3, shop: 0.15, civic: 0.2, row: 0.15, apartment: 0.1 };
 
@@ -293,9 +302,21 @@ export function planBuilding(S, o) {
   // the cladding (a layer of the wall array, src/world/wallarr.js) and, on some street fronts, a wainscot of stone or brick
   const skin = pickW(r, SKIN_TYPE[type] ? SKIN_TYPE[type](wall, hs) : SKINS[hs]);
   const wr = r(), wp = WAINS[type === TYPE.house || type === TYPE.garage ? hs : type] || 0;
-  const wains = wr < wp ? { h: 0.85 + r() * 0.35, skin: pickW(r, hs === 'spanish' ? [['stone_river_rock', 1]] : [['stone_ledgestone', 70], ['stone_river_rock', 20], ['brick_tan', 10]]) } : null;
+  const wains = wr < wp ? { h: 0.55 + r() * 0.25, skin: pickW(r, hs === 'spanish' ? [['stone_river_rock', 1]] : [['stone_ledgestone', 70], ['stone_river_rock', 20], ['brick_tan', 10]]) } : null;
+  // the trim the near kit fits round the openings and along the eaves (facadeKit, src/world/bldkit.js)
+  const homeLike = type === TYPE.house || type === TYPE.garage || type === TYPE.row || type === TYPE.apartment || type === TYPE.hall || type === TYPE.civic;
+  let trim = null;
+  if (homeLike) {
+    const lk = type === TYPE.house || type === TYPE.garage ? hs : type === TYPE.civic || type === TYPE.hall ? 'civic' : 'apt';
+    const TR = TRIMS[lk] || TRIMS.tract, pitched = form !== 'flat';
+    const win = r() < TR.win[1] ? TR.win[0] : null, winC = pickW(r, win === 'metal' ? TRIM_METAL : win === 'wood' ? TRIM_WOOD : TRIM_FOAM);
+    trim = { win, winC, shutters: type === TYPE.house && win && r() < TR.shut ? pickW(r, lk === 'spanish' ? [[0x4a3a2c, 2], [0x2f4a35, 1]] : SHUTTERS) : null,
+      rejas: type === TYPE.house && lk === 'spanish' && r() < 0.35, porch: type === TYPE.house && pitched && floors <= 2 && r() < TR.porch, porchW: r(),
+      gutter: pitched && r() < TR.gutter ? pickW(r, [[0xece8de, 4], [0xd8cbb0, 2], [0x6b5640, 1], [win === 'wood' && winC === 0x3b332b ? 0x3b332b : 0xece8de, 1]]) : null,
+      balcony: (type === TYPE.apartment && floors >= 2 && r() < 0.45) || (type === TYPE.row && r() < 0.25), rail: pickW(r, [[0x232323, 3], [0xece8de, 2], [0x5a4636, 1]]) };
+  } else if (type === TYPE.shop || type === TYPE.strip) trim = { win: r() < 0.6 ? 'foam' : null, winC: pickW(r, TRIM_FOAM) };
   return {
-    type, style: FAC[type], floors, storey, wings, wall, area: A, look: hs, walls: wall === 0 ? HS.walls : null, kind, poi, skin, wains,
+    type, style: FAC[type], floors, storey, wings, wall, area: A, look: hs, walls: wall === 0 ? HS.walls : null, kind, poi, skin, wains, trim,
     roof: { form, mat, pitch, over, parapet, eave, gables, col: o.roofCol >= 0 ? o.roofCol : -1 },
     awning, mansard, raised, cornice, bands, chimney, units, kit,
     seed: r(), r1: r(), r2: r(), r3: r(),
@@ -391,4 +412,102 @@ export function chimney(frames, roles, g, wallTop, pitch, r) {
   const f = c[Math.floor(r() * c.length)], u = f.len * (0.3 + r() * 0.4), w = 0.62 + r() * 0.3, d = 0.62;
   const top = wallTop + Math.max(1.3, 2.6 * pitch + 0.9);
   return { x: f.ax + f.tx * u + f.ox * (d / 2 + 0.02), z: f.az + f.tz * u + f.oz * (d / 2 + 0.02), tx: f.tx, tz: f.tz, hu: w / 2, ho: d / 2, y0: g - 0.3, y1: top };
+}
+
+// ---------------------------------------------------------------- openings
+// The openings the facade shader paints on a wall (src/world/surfaces.js, FACADE_FS), worked out by the same rules, so
+// real pieces can be fitted round them. u: metres along the wall from its first corner, v: metres above the ground.
+//   openings({ style, role, len, fH, floors, seed, gBit, gSide }) -> [{ k, u0, u1, v0, v1, fl }]
+//   k: 'win' (a house, apartment or upstairs window), 'door', 'garage', 'store' (a storefront bay), 'sdoor' (a service door)
+const sH11 = n => { const x = Math.sin(n * 91.3458) * 47453.5453; return x - Math.floor(x); };
+export function openings(o) {
+  const { style, role, fH, seed } = o, floors = Math.max(1, Math.min(7, o.floors)), front = role === 1, back = role === 2, out = [];
+  if (style === 0 || style === 5 || style === 7) { // a house, apartments, a hall, townhouses (a unit at a time on the street and back walls)
+    const unit = style === 7 && (front || back) ? Math.max(1, Math.floor(o.len / 6.5 + 0.5)) : 1, uw = o.len / unit;
+    for (let ui = 0; ui < unit; ui++) {
+      const off = ui * uw, len = uw, gBit = style === 7 && (front || back) ? (back ? 1 : 0) : o.gBit, gSide = style === 7 && (front || back) ? ui % 2 : o.gSide;
+      const st = Math.max(2.6, fH / floors), gw = len > 16 ? 4.9 : 2.75, gx0 = gSide ? 0.9 : len - 0.9 - gw;
+      const hasG = gBit && ((front && style === 0) || (back && style === 7)), door = front && len > 3;
+      const dx0 = hasG ? (gx0 < 1 ? Math.min(gx0 + gw + 1.7, len - 1.6) : Math.max(gx0 - 2.7, 0.6)) : len * 0.5 - 0.48;
+      if (hasG) out.push({ k: 'garage', u0: off + gx0, u1: off + gx0 + gw, v0: 0, v1: 2.15, fl: 0 });
+      if (door) out.push({ k: 'door', u0: off + dx0, u1: off + dx0 + 0.96, v0: 0, v1: 2.1, fl: 0 });
+      const n = Math.floor((len - 0.6) / (front ? 3.3 : 3.9)); if (n < 1) continue;
+      const sp = len / n;
+      for (let fl = 0; fl < floors; fl++) for (let k = 0; k < n; k++) {
+        const cx = (k + 0.5) * sp, ww = front && fl === 0 ? 1.8 : 1.5, wh = fl > 0 ? 1.2 : 1.32, sill = 0.92 + fl * st, a = cx - ww / 2, b = cx + ww / 2;
+        if ((hasG && fl === 0 && b > gx0 - 0.4 && a < gx0 + gw + 0.4) || (door && fl === 0 && b > dx0 - 0.35 && a < dx0 + 1.3) || sill + wh > fl * st + st - 0.25) continue;
+        out.push({ k: 'win', u0: off + a, u1: off + b, v0: sill, v1: sill + wh, fl });
+      }
+    }
+  } else if (style === 1) { // a shop: storefront bays on the street, a service door behind, windows upstairs
+    const st0 = Math.min(fH, 4.6), up = floors - 1;
+    if (front) { const nb = Math.max(1, Math.floor(o.len / 7.2)), bw = o.len / nb;
+      for (let k = 0; k < nb; k++) { const isDoor = (k + Math.floor(seed * 7)) % 2 < 1; out.push({ k: 'store', u0: k * bw + 0.4, u1: (k + 1) * bw - 0.4, v0: 0.45, v1: 3.05, fl: 0, door: isDoor ? [k * bw + bw / 2 - 0.95, k * bw + bw / 2 + 0.95] : null, bw }); } }
+    else if (back) for (let k = 0; (k + 0.5) * 16 + 0.5 <= o.len; k++) out.push({ k: 'sdoor', u0: (k + 0.5) * 16 - 0.5, u1: (k + 0.5) * 16 + 0.5, v0: 0, v1: 2.1, fl: 0 });
+    if (up > 0 && o.len > 3) { const st = (fH - st0) / up;
+      for (let fl = 0; fl < up; fl++) for (let k = 0; (k + 0.5) * 2.4 + 0.7 <= o.len; k++) { const cx = (k + 0.5) * 2.4; out.push({ k: 'win', u0: cx - 0.7, u1: cx + 0.7, v0: st0 + fl * st + 0.9, v1: st0 + fl * st + 2.4, fl: fl + 1, shop: 1 }); } }
+  } else if (style === 6) { // a garage: sectional doors to the street, maybe a side door
+    if (front && o.len > 2.4) { const nd = o.len < 7.4 ? 1 : Math.floor((o.len - 0.3) / 3.2), dw = nd < 2 ? (o.len > 5.8 ? 4.9 : Math.min(2.75, o.len - 0.5)) : 2.6, sp = o.len / nd;
+      for (let k = 0; k < nd; k++) { const x0 = k * sp + (sp - dw) / 2; out.push({ k: 'garage', u0: x0, u1: x0 + dw, v0: 0, v1: 2.15, fl: 0 }); } }
+    else if (!front && !back && o.len > 3.2 && sH11(seed * 3.1 + role) < 0.5) out.push({ k: 'sdoor', u0: o.len / 2 - 0.45, u1: o.len / 2 + 0.45, v0: 0, v1: 2.05, fl: 0 });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the near kit
+// The small real pieces round a building's openings and along its eaves (instanced near the camera by
+// src/world/bldkit.js): window surrounds (foam, wood, stucco or a thin metal frame), shutters, Spanish rejas, door
+// casings, garage jambs, storefront mullions, gutters and downspouts, balcony rails. And the bigger ones that belong in
+// the town's own meshes (a front porch, balcony slabs), returned for index.html to draw.
+//   facadeKit(frames, roles, plan, { g, fH, floors, style, seeds (per wall), gBit (per wall), gSide, eaves, wallTop })
+//     -> { items: [{ k, x, y, z, ry, sx, sy, sz, c }], porch, balconies: [{ f, u0, u1, y, d }] }
+const box = (items, k, f, u, v, d, w, h, t, c) => items.push({ k, x: f.ax + f.tx * u + f.ox * d, y: v, z: f.az + f.tz * u + f.oz * d, ry: Math.atan2(f.ox, f.oz), sx: w, sy: h, sz: t, c });
+export function facadeKit(frames, roles, P, o) {
+  const T = P.trim, items = [], balconies = [], g = o.g; let porch = null;
+  if (!T) return { items, porch, balconies };
+  frames.forEach((f, i) => {
+    if (f.len < 1) return;
+    const ops = openings({ style: o.style, role: roles[i] || 0, len: f.len, fH: o.fH, floors: o.floors, seed: o.seeds[i], gBit: o.gBit[i], gSide: o.gSide });
+    for (const p of ops) {
+      const w = p.u1 - p.u0, h = p.v1 - p.v0, uc = (p.u0 + p.u1) / 2;
+      if (p.k === 'win' && T.win) { // the surround: jambs and head, the sill is the town mesh's own (index.html sills)
+        const tw = T.win === 'metal' ? 0.035 : T.win === 'stucco' ? 0.12 : T.win === 'foam' ? 0.1 : 0.085, td = T.win === 'metal' ? 0.03 : T.win === 'stucco' ? 0.07 : 0.045, k = T.win === 'metal' ? 'metal' : 'box', c = T.win === 'stucco' ? o.wallHex : T.winC;
+        for (const u of [p.u0 - 0.06 - tw / 2, p.u1 + 0.06 + tw / 2]) box(items, k, f, u, g + p.v0 - 0.02, td / 2, tw, h + 0.1 + tw, td, c);
+        box(items, k, f, uc, g + p.v1 + 0.08, td / 2 + (T.win === 'foam' ? 0.01 : 0), w + 0.12 + tw * 2 + (T.win === 'foam' ? 0.08 : 0), T.win === 'foam' ? tw * 1.3 : tw, td + (T.win === 'foam' ? 0.02 : 0), c);
+        if (T.shutters && !p.shop && w < 2) for (const [u, s] of [[p.u0 - 0.06 - tw - w * 0.21 - 0.02, -1], [p.u1 + 0.06 + tw + w * 0.21 + 0.02, 1]]) box(items, 'shutter', f, u, g + p.v0 - 0.02, 0.025, w * 0.42, h + 0.08, 1, T.shutters);
+        if (T.rejas && p.fl === 0 && roles[i] === 1) box(items, 'reja', f, uc, g + p.v0 - 0.05, 0.09, w + 0.1, h + 0.12, 1, 0x232120);
+      } else if (p.k === 'door' && T.win) { // a casing round the front door
+        const tw = 0.11; for (const u of [p.u0 - 0.1 - tw / 2, p.u1 + 0.1 + tw / 2]) box(items, 'box', f, u, g - 0.02, 0.03, tw, 2.32, 0.06, T.winC);
+        box(items, 'box', f, uc, g + 2.2, 0.035, w + 0.2 + tw * 2 + 0.1, 0.16, 0.07, T.winC);
+      } else if (p.k === 'garage') { // jambs beside the garage door (its header is drawn with the yard)
+        for (const u of [p.u0 - 0.08, p.u1 + 0.08]) box(items, 'box', f, u, g - 0.02, 0.03, 0.14, 2.32, 0.06, T.winC);
+      } else if (p.k === 'store') { // the storefront's aluminium: head, sill, transom and mullions between the panes
+        const c = sH11(o.seeds[i] * 5.1) < 0.6 ? 0x141415 : 0x47382a, m = Math.max(1, Math.floor(w / 1.55)), cw = w / (m + 1); // the shader's frame colour
+        box(items, 'metal', f, uc, g + p.v1 - 0.04, 0.03, w + 0.08, 0.1, 0.06, c);
+        box(items, 'metal', f, uc, g + 2.31, 0.025, w, 0.08, 0.05, c);
+        if (!p.door) box(items, 'metal', f, uc, g + p.v0 - 0.06, 0.03, w + 0.08, 0.1, 0.06, c);
+        for (let j = 0; j <= m + 1; j++) { const u = p.u0 + j * cw; if (p.door && u > p.door[0] + 0.05 && u < p.door[1] - 0.05) continue; box(items, 'metal', f, u, g + (p.door && u >= p.door[0] - 0.05 && u <= p.door[1] + 0.05 ? 0.02 : p.v0), 0.03, 0.07, p.v1 - (p.door && u >= p.door[0] - 0.05 && u <= p.door[1] + 0.05 ? 0.02 : p.v0), 0.05, c); }
+        if (p.door) for (const u of p.door) box(items, 'metal', f, u, g + 0.02, 0.035, 0.08, 2.3, 0.06, c); // the door's frame
+      }
+      if (p.k === 'win' && T.balcony && p.fl > 0 && roles[i] !== 0 && Math.round(uc / 3) % 2 === 0) { // a balcony under every other upper window
+        const d = 1.15, u0 = p.u0 - 0.35, u1 = p.u1 + 0.35, y = g + p.v0 - 0.92 + 0.02; balconies.push({ f, u0, u1, y, d });
+        box(items, 'rail', f, (u0 + u1) / 2, y, d, u1 - u0, 0.95, 1, T.rail);
+        for (const u of [u0, u1]) items.push({ k: 'rail', x: f.ax + f.tx * u + f.ox * d / 2, y, z: f.az + f.tz * u + f.oz * d / 2, ry: Math.atan2(f.ox, f.oz) + Math.PI / 2, sx: d, sy: 0.95, sz: 1, c: T.rail });
+      }
+    }
+    // the front porch: a shed roof on posts over the front door of the main street wall
+    if (T.porch && !porch && roles[i] === 1 && f.len > 6) { const d = ops.find(q => q.k === 'door'); if (d) { const w = Math.min(f.len - 1, 3.2 + T.porchW * 2.6), uc = Math.min(Math.max((d.u0 + d.u1) / 2, w / 2 + 0.3), f.len - w / 2 - 0.3);
+      let u0 = uc - w / 2, u1 = uc + w / 2; const gar = ops.find(q => q.k === 'garage'); // never in front of the garage door
+      if (gar) { if (gar.u0 >= d.u1) u1 = Math.min(u1, gar.u0 - 0.35); else u0 = Math.max(u0, gar.u1 + 0.35); }
+      if (u1 - u0 >= 2.4 && u0 < d.u0 && u1 > d.u1) porch = { f, u0, u1, depth: 1.8 + T.porchW * 0.6, yWall: Math.min(o.wallTop - 0.3, g + 3.1), yEave: g + 2.55 }; } }
+  });
+  // gutters along the eaves and a downspout at each end (pitched roofs)
+  if (T.gutter && o.eaves) for (const [a, b, n, oh] of o.eaves) {
+    const L = Math.hypot(b[0] - a[0], b[2] - a[2]); if (L < 1) continue;
+    const ry = Math.atan2(n[0], n[1]), mx = (a[0] + b[0]) / 2 + n[0] * 0.07, mz = (a[2] + b[2]) / 2 + n[1] * 0.07;
+    items.push({ k: 'box', x: mx, y: a[1] - 0.17, z: mz, ry, sx: L, sy: 0.12, sz: 0.13, c: T.gutter });
+    for (const p of [a, b]) { const tx = (b[0] - a[0]) / L * (p === a ? 1 : -1), tz = (b[2] - a[2]) / L * (p === a ? 1 : -1), x = p[0] + tx * (oh + 0.3) - n[0] * (oh - 0.06), z = p[2] + tz * (oh + 0.3) - n[1] * (oh - 0.06); // down the wall by the corner
+      items.push({ k: 'box', x, y: g - 0.05, z, ry, sx: 0.075, sy: Math.max(0.5, a[1] - 0.15 - g), sz: 0.075, c: T.gutter }); }
+  }
+  return { items, porch, balconies };
 }

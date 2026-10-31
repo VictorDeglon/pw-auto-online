@@ -110,8 +110,17 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   and painted brick, painted and split-face block, tilt-up and smooth concrete, corrugated metal. Tracts are stucco;
   Spanish houses lace stucco or plaster; ranch houses board-and-batten, lap siding, stucco or painted brick; beach
   cottages siding; strip malls rough stucco, painted block or brick; big boxes and warehouses tilt-up, panels, block or
-  metal. Some street fronts carry a wainscot of ledgestone, river rock or tan brick about a metre high, capped. Trim is
+  metal. Some street fronts carry a knee-high wainscot of ledgestone, river rock or tan brick, capped, the cap broken at
+  the doors. Trim is
   painted wood. Natural materials (brick, stone, block, wood) keep their own colour with only a hint of the paint.
+- **Fittings** (`facadeKit` in `src/world/bldgen.js`, fitted round the openings the facade shader paints, laid out by the
+  same rules): window surrounds by look (foam on tracts, deep stucco on Spanish houses, painted wood on ranch houses,
+  cottages and bungalows, a thin dark metal frame on modern ones); louvred shutters on many ranch houses and cottages;
+  wrought-iron rejas on Spanish front windows; door casings; jambs beside garage doors; storefronts framed in black or
+  bronze aluminium with a transom; gutters and downspouts in white, beige or brown under pitched eaves; front porches
+  (a shed roof in the house's own roofing on painted posts) on ranch houses, cottages and bungalows, never in front of
+  the garage; balconies with iron or white rails on garden apartments. The small pieces are instanced near the camera;
+  porches and balcony slabs are part of the town's meshes.
 - Canvas is sun-faded and deep (forest, oxblood, navy, sand, rust, charcoal, plum, khaki); canopies are painted metal
   (bronze, charcoal, white, brown). Awnings and canopies are only drawn near (with the sidewalks).
 

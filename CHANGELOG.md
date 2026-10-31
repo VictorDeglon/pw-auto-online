@@ -8,6 +8,16 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.4 (2026-10-30)
+
+- **Real fittings round the windows and doors:** window surrounds by the neighbourhood's look (foam, deep stucco,
+  painted wood, thin dark metal), louvred shutters, wrought-iron rejas on Spanish houses, door casings, garage-door
+  jambs, storefronts framed in aluminium with transoms, gutters and downspouts along the eaves, front porches on posts
+  on ranch houses, cottages and bungalows, and balconies with railings on garden apartments. They are laid out by the
+  same rules as the painted windows (`openings` in `src/world/bldgen.js`), so they sit exactly round them. The small
+  pieces are instanced near you (`src/world/bldkit.js`); a refill now only copies prebuilt matrices.
+- Wainscots sit lower (below the window sills) and their cap stops at doors, garage doors and storefronts.
+
 ## 0.9.3 (2026-10-30)
 
 - **Real cladding on the buildings:** walls are clad in real materials chosen by the neighbourhood's look and the
