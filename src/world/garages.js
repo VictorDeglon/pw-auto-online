@@ -1,5 +1,5 @@
 // Your garages. The first one, by Poway High, is index.html's (setupGarage); the story opens more of them as people
-// start trusting you with a parking spot: a bay at Dee's, the Salas barn, the boat lot at the lake.
+// start trusting you with a parking spot: a bay at Doc's, the Salas barn, the boat lot at the lake.
 // Each is an auto shop by the road with the same menu (save, repair, tune, take a car out). Whichever garage is
 // nearest is the one a car you take out comes out of. All of them are on both maps (garageMarks).
 //   initGarages()      once, after initStory     updateGarages(dt)   every frame
@@ -8,7 +8,7 @@ import { ctx } from '../ctx.js';
 import { isUnlocked as storyUnlocked } from '../story/unlocks.js';
 
 export const GARAGES = [
-  { key: 'garage:dee', name: 'Dee\'s Garage', at: 'deeGarage', why: 'Tommy\'s Friend' },
+  { key: 'garage:dee', name: 'Doc\'s Garage', at: 'deeGarage', why: 'Impound' },
   { key: 'garage:canyon', name: 'Salas barn', at: 'canyonMouth', why: 'Sycamore Smoke' },
   { key: 'garage:lake', name: 'Lake Poway boat lot', at: 'lakeGate', why: 'The Lake' },
 ];

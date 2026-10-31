@@ -21,7 +21,11 @@
 //   text {from, msg, [wait]} · card {title, [sub], [t], [hour]}   a text message / a black title card ("FOUR DAYS LATER")
 //   learn {keys, [lines]}                        open up crimes, abilities, garages (src/story/unlocks.js, crimes.js)
 //   crime {kind, n, [at], text}                  do that crime n times (crime:done events from src/story/crimes.js)
-//   marcosCar                                    the prologue: Marco's own car where the game put Tommy's
+//   flee {from, n, r, [looks], text}             they've seen you: run until you're r m clear of every one of them
+//   brawl {as, at, [who|look], [give], text}     a fistfight; done once they give up (health under `give`)
+//   targets {at, n, text}                        bottles on a plank: shoot every one (shooting practice)
+//   pay {money, label}                           cash in hand · garageSave {car, text}: save that car in a garage bay
+// Any step can carry `tips: ['sprint', ...]`: how-to-play cards shown while it runs (src/story/tips.js).
 // A step with `if: 'wanted'` only runs while you have a wanted level.
 // A mission with `auto: true` starts by itself when it's available (the prologue); `offline: true` keeps it out of
 // online rooms.
@@ -29,7 +33,7 @@ import { ctx } from '../ctx.js';
 import { on, emit } from '../events.js';
 import { addInteract, removeInteract } from '../interact.js';
 import { police, npcFire, setWanted } from '../police.js';
-import { CAST_SKINS } from '../reserved.js';
+import { CAST_SKINS, OUTLAW_LOOKS } from '../reserved.js';
 import { steerTo, driveTo, routeEdges, routePolyline, samplePolyline } from '../drive.js';
 import { CAST, LOOKS } from './cast.js';
 import { PLACES } from './places.js';
@@ -40,7 +44,8 @@ import { unlockList } from './unlocks.js';
 import { initFog, updateFog, fogStats, fogDebug } from '../ui/fog.js';
 import { initGarages, updateGarages, GARAGES } from '../world/garages.js';
 import { initMapKey } from '../ui/mapkey.js';
-import { freeHuman } from '../humans.js';
+import { tip, untip, updateTips, tipsJournal } from './tips.js';
+import { freeHuman, HUMANS } from '../humans.js';
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -72,7 +77,8 @@ function place(key, m) {
   if (placeCache.has(key)) return placeCache.get(key);
   const P = PLACES[key]; if (!P) return null; let pt;
   if (P.special === 'home') pt = homeSpot();
-  else if (P.special === 'sheriff') pt = { x: ctx.SHERIFF.x, z: ctx.SHERIFF.z };
+  else if (P.special === 'sheriff') pt = { x: ctx.SHERIFF.x + (P.dx || 0), z: ctx.SHERIFF.z + (P.dz || 0) };
+  else if (P.special === 'spawn') { const c = ctx.spawnPt.curb || ctx.spawnPt; pt = { x: c.x, z: c.z }; } // the street by where a new game starts
   else if (P.special === 'hospital') { const s = ctx.sidewalkNear(ctx.HOSPITAL.x, ctx.HOSPITAL.z); pt = { x: s.x, z: s.z }; }
   else if (P.special === 'plaza') { const s = ctx.sidewalkNear(ctx.PLAZA_CENTER.x + (P.dx || 0), ctx.PLAZA_CENTER.z + (P.dz || 0)); pt = { x: s.x, z: s.z }; }
   else if (P.special === 'summit') pt = summit(P.below || 0);
@@ -146,8 +152,10 @@ function makePed(look, x, z, o = {}) {
   p.maxHp = p.health; if (o.rot !== undefined) p.rotY = o.rot;
   return p;
 }
+// a cast member's own avatar: the first of their skins that's installed (src/reserved.js)
+export function skinFor(who) { const l = [].concat(CAST_SKINS[who] || []); return l.find(n => HUMANS.proto.has(n)) || l.find(n => HUMANS.manifest && HUMANS.manifest.avatars.some(a => a.name === n)) || l[0]; }
 function castPed(who, pt) { // every cast member wears their own avatar (src/reserved.js); nobody else ever does
-  const c = CAST[who], p = makePed({ ...(c.look || {}), kind: 'civ', avatar: CAST_SKINS[who] }, pt.x, pt.z, { invuln: true, who, voice: c.voice });
+  const c = CAST[who], p = makePed({ ...(c.look || {}), kind: 'civ', avatar: skinFor(who) }, pt.x, pt.z, { invuln: true, who, voice: c.voice });
   if (c.home && PLACES[c.home] && hyp(place(c.home).x - pt.x, place(c.home).z - pt.z) < 30) S.pool.set(who, p);
   return p;
 }
@@ -219,7 +227,8 @@ function npcIdle(p, dt) {
   if (p.state !== 'ai') return null;
   const f = ctx.focusPos();
   if (p.walkTo) { const w = p.walkTo; if (hyp(w.x - p.pos.x, w.z - p.pos.z) > 1.4) { face(p, w.x, w.z, dt); move(p, 1.7, dt); return { speed: 1.7 }; } p.walkTo = null; }
-  if (hyp(f.x - p.pos.x, f.z - p.pos.z) < 14) face(p, f.x, f.z, dt, 4);
+  if (p.lookAt) face(p, p.lookAt.x, p.lookAt.z, dt, 4); // a cutscene says where to look
+  else if (hyp(f.x - p.pos.x, f.z - p.pos.z) < 14) face(p, f.x, f.z, dt, 4);
   return { speed: 0, mode: p.pose || null };
 }
 const TAUNT = ['Who invited you?', 'Wrong barn, homie!', 'Light him up!', 'Vance said no witnesses!', 'You picked the wrong ranch!'];
@@ -346,7 +355,7 @@ const STEPS = {
       if (d.car && !P.inCar) { setObjective('Get in a <em>car</em>.'); return false; }
       const close = hyp(f.x - pt.x, f.z - pt.z) < (d.r || 10);
       if (d.foot && P.inCar && close) { setObjective('Get out of the car (<em>F</em>).'); return false; }
-      setObjective(d.text);
+      const dist = hyp(f.x - pt.x, f.z - pt.z); setObjective(dist > 60 ? `${d.text} <small class="odist">${dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist / 10) * 10 + ' m'}</small>` : d.text);
       return close && (!P.inCar || P.inCar.vel.length() < 8);
     },
   },
@@ -358,6 +367,7 @@ const STEPS = {
       const q = d.parked ? (d.dx || d.dz ? { x: pt.x, z: pt.z, rot: d.rot || 0 } : curbAt(pt, names)) : laneAt(pt, d.ahead || 0, ctx.focusPos());
       const v = spawnVehicle(d.type, d.model, q.x, q.z, q.rot, d.tint); if (d.hp) v.health = d.hp;
       if (d.parked) v.parked = true; else { v.driver = 'ai'; v.mode = 'free'; }
+      if (d.tommy) v.tommy = true;
       m.h[d.as] = v; if (d.protect) m.watch.push(() => (v.dead || v.removed) ? d.protect : null);
     },
   },
@@ -609,7 +619,7 @@ const STEPS = {
   },
   kill: { // a target (with guards); spooked, they run, on foot or for their car. Dead = done.
     start(s, d, m) {
-      const c = place(d.at, m), look = d.who ? { ...(CAST[d.who].look || {}), avatar: CAST_SKINS[d.who], kind: 'civ', gun: !!d.armed } : { ...pick(LOOKS.thug), gun: !!d.armed };
+      const c = place(d.at, m), look = d.who ? { ...(CAST[d.who].look || {}), avatar: skinFor(d.who), kind: 'civ', gun: !!d.armed } : { ...pick(LOOKS.thug), gun: !!d.armed };
       const p = makePed(look, c.x, c.z, { ai: null, hp: d.hp || 160, who: d.who || null, voice: d.who ? CAST[d.who].voice : 1 }); ctx.collideCircle(p.pos, 0.35);
       Object.assign(p, { ai: targetAI, runSpeed: d.speed || 6.2, seedA: rand(0, 10), spookR: d.spook || 35, invuln: false, onHurt: function () { this.spooked = true; } });
       if (d.flee === 'car') { const q = curbAt(c, PLACES[d.at] && PLACES[d.at].names); const v = spawnVehicle(d.car || 'sports', d.model, q.x, q.z, q.rot, d.tint); v.parked = true; p.car = v; m.h[d.as + 'Car'] = v; }
@@ -713,7 +723,7 @@ const STEPS = {
   sneak: { // get to a spot past guards without being seen for long
     start(s, d, m) {
       const c = place(d.at, m); s.goal = { x: c.x + (d.dx || 0), z: c.z + (d.dz || 0) }; s.list = []; s.seen = 0;
-      for (let i = 0; i < (d.guards || 3); i++) { const a = rand(0, TAU), r = rand(8, 20), p = makePed({ ...pick(LOOKS.thug), gun: true }, s.goal.x + Math.cos(a) * r, s.goal.z + Math.sin(a) * r, { ai: guardAI, money: 30 }); ctx.collideCircle(p.pos, 0.35); p.rotY = rand(0, TAU); p.onHurt = hostileHurt; s.list.push(p); }
+      for (let i = 0; i < (d.guards || 3); i++) { const a = rand(0, TAU), r = rand(8, 20), p = makePed({ ...pick(LOOKS[d.looks || 'thug']), gun: true }, s.goal.x + Math.cos(a) * r, s.goal.z + Math.sin(a) * r, { ai: guardAI, money: 30 }); ctx.collideCircle(p.pos, 0.35); p.rotY = rand(0, TAU); p.onHurt = hostileHurt; s.list.push(p); }
       m.h[d.as || 'guards'] = s.list; setObjective(d.text);
     },
     update(s, d, m, dt) {
@@ -726,6 +736,7 @@ const STEPS = {
       }
       s.seen = spot ? s.seen + dt : Math.max(0, s.seen - dt * 0.5);
       setMeter(s.seen > 0 ? bar(1 - s.seen / 1.2, 'Spotted…') : 'Unseen · crouch (C) to stay low');
+      if (s.seen > 1.2 && d.alarm === 'stars') { setWanted(Math.max(2, police.wanted), '<b>They saw you.</b> Deputies on the radio.', { seen: true, what: 'theft' }); for (const g of s.list) { g.ai = null; g.state = 'walk'; g.keep = false; } s.list.length = 0; return true; }
       if (s.seen > 1.2) { if (d.alarm) { for (const g of s.list) { g.ai = hostileAI; g.aggro = true; } ctx.notify('<b>They saw you.</b>', 'red', 2000); s.list.length = 0; return d.alarm === 'fight' ? false : true; } return d.failText || 'You were spotted.'; }
       aimAt(m, s.goal, 'beam'); return hyp(f.x - s.goal.x, f.z - s.goal.z) < (d.r || 3);
     },
@@ -761,9 +772,15 @@ const STEPS = {
     },
   },
   stage: { start(s, d, m) { const sc = SCENES[d.scene]; if (sc && sc.stage) sc.stage(m, cineHelpers()); } },
-  cutscene: {
-    start(s, d, m) { s.over = false; setObjective(''); setMeter(''); aimAt(m, null); playCutscene(d.scene, m, cineHelpers()).then(() => { s.over = true; }); },
-    update(s) { return s.over; },
+  cutscene: { // (after the garage menu or the map is closed: a scene holds the mouse)
+    start(s, d, m) { s.over = false; s.go = false; setObjective(''); setMeter(''); aimAt(m, null); },
+    update(s, d, m) {
+      if (!s.go) {
+        if (ctx.garageOpen || ctx.mapOpen) { setObjective(ctx.garageOpen ? 'Close the garage menu (<em>E</em>).' : ''); return false; }
+        s.go = true; setObjective(''); playCutscene(d.scene, m, cineHelpers()).then(() => { s.over = true; });
+      }
+      return s.over;
+    },
   },
   text: {
     start(s, d) { s.t = d.wait || 0; later(d.delay || 0, () => text(d.from, d.msg)); s.t += d.delay || 0; },
@@ -793,7 +810,92 @@ const STEPS = {
     },
     end(s) { ctx.crimeStep = false; if (s.off) s.off(); },
   },
+  // ---------------------------------------------------------------- the how-to-play run up to your first car
+  flee: { // they've seen you: hunters come out of the dark after you; done when you're r m clear of all of them
+    start(s, d, m) {
+      const c = place(d.from, m); s.list = [];
+      for (let i = 0; i < (d.n || 2); i++) {
+        const a = rand(0, TAU), p = makePed({ ...pick(LOOKS[d.looks || 'enforcer']), gun: true }, c.x + Math.cos(a) * 7, c.z + Math.sin(a) * 7, { ai: hunterAI, hp: 140 });
+        ctx.collideCircle(p.pos, 0.35); p.onHurt = hostileHurt; p.seedA = rand(0, 10); s.list.push(p);
+      }
+      m.h[d.as || 'hunters'] = s.list; setObjective(d.text);
+    },
+    update(s, d, m) {
+      const f = ctx.focusPos(), alive = s.list.filter(p => !p.removed && p.state !== 'dead' && !p.out);
+      m.targets = alive.map(p => p.pos); aimAt(m, d.to ? place(d.to, m) : null);
+      if (!alive.length) return true;
+      const near = Math.min(...alive.map(p => hyp(p.pos.x - f.x, p.pos.z - f.z)));
+      setMeter(`<b>${Math.round(near)} m</b>${near < (d.r || 120) ? 'they\'re coming' : 'clear'}`);
+      return near > (d.r || 120);
+    },
+    end(s) { for (const p of s.list) if (!p.removed && p.state !== 'dead') { p.ai = null; p.state = 'walk'; p.agent = null; p.keep = false; } },
+  },
+  brawl: { // a fistfight: they come at you; done once they've had enough (or they're down for good)
+    start(s, d, m) {
+      const c = place(d.at, m), had = m.h[d.as], p = had && had.pos && !had.removed ? had : d.who ? castPed(d.who, c) : makePed(d.look || pick(LOOKS.thug), c.x, c.z, { money: 0 });
+      if (S.pool.get(p.who) === p) S.pool.delete(p.who);
+      Object.assign(p, { invuln: false, ai: null, state: 'fight', timer: 999, anger: 100, personality: 'tough', keep: true, reported: true, health: 100, maxHp: 100 }); p.rig.gun.visible = false;
+      s.p = p; m.h[d.as] = p; setObjective(d.text);
+    },
+    update(s, d, m) {
+      const p = s.p; if (!p || p.removed) return 'They got away.';
+      if (p.state === 'dead') { m.flags.lethal = true; return true; }
+      aimAt(m, p.pos, 'arrow'); m.arrowH = 2.6;
+      if (p.state !== 'fight' && p.state !== 'down' && p.state !== 'fly' && !p.ai) { p.state = 'fight'; p.timer = 999; p.anger = 100; } // he stays in it
+      if (p.health < (d.give || 55) && p.state !== 'fly') { p.ai = surrenderAI; p.state = 'ai'; p.callT = 0; ctx.say(p, d.giveUp || 'Okay! OKAY! I\'ll pay!', 'mad'); setMeter(''); return true; }
+      setMeter(bar((p.health - (d.give || 55)) / (100 - (d.give || 55)), 'Still swinging'));
+      return false;
+    },
+  },
+  targets: { // shooting practice: bottles on a plank across a lot; shoot every one
+    start(s, d, m) {
+      const c = place(d.at, m), THREE = ctx.THREE, ne = ctx.nearestEdge(c.x, c.z, 80, e => e.t <= 5);
+      let nx = 1, nz = 0; if (ne) { nx = -ne.tz; nz = ne.tx; if ((c.x - ne.x) * nx + (c.z - ne.z) * nz < 0) { nx = -nx; nz = -nz; } } // away from the street
+      // the first spot off the street with room for the plank (no wall, fence or tree in the way)
+      let cx, cz; const half = (d.n || 5) * 0.35 + 0.7;
+      for (const [k, o] of [[d.dist || 11, 0], [8, 0], [14, 0], [11, 8], [11, -8], [6, 0], [17, 0], [8, 12], [8, -12], [4, 0]]) {
+        const x = c.x + nx * k - nz * o, z = c.z + nz * k + nx * o, q = { x, z }; ctx.collideCircle(q, half);
+        if (Math.hypot(q.x - x, q.z - z) < 0.05) { cx = x; cz = z; break; }
+      }
+      if (cx === undefined) { cx = c.x + nx * 5; cz = c.z + nz * 5; }
+      const tx = -nz, tz = nx, y0 = ctx.heightAt(cx, cz);
+      s.g = new THREE.Group(); ctx.scene.add(s.g); s.list = [];
+      const plank = new THREE.Mesh(ctx.boxG(0.22, 0.08, (d.n || 5) * 0.7 + 0.6), ctx.lam('#7a5a3a')); plank.position.set(cx, y0 + 0.95, cz); plank.rotation.y = Math.atan2(tx, tz); s.g.add(plank);
+      for (const k of [-1, 1]) { const leg = new THREE.Mesh(ctx.boxG(0.12, 0.95, 0.12), ctx.lam('#5b3822')); leg.position.set(cx + tx * k * (d.n || 5) * 0.3, y0 + 0.47, cz + tz * k * (d.n || 5) * 0.3); s.g.add(leg); }
+      const glass = new THREE.MeshStandardMaterial({ color: 0x3f7a3a, roughness: 0.15, metalness: 0.1, emissive: 0x0d2a0b, emissiveIntensity: 0.6 });
+      for (let i = 0; i < (d.n || 5); i++) { const o = (i - ((d.n || 5) - 1) / 2) * 0.7, b = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.3, 10), glass); b.position.set(cx + tx * o, y0 + 1.14, cz + tz * o); s.g.add(b); s.list.push(b); }
+      s.left = s.list.length; s.c = { x: cx, z: cz };
+      s.off = on('shot:fired', e => { if (e.from !== 'player') return; const cam = ctx.camera, o = cam.position, dir = cam.getWorldDirection(new THREE.Vector3()), far = e.hit && e.hit.t || 200;
+        for (const b of s.list) { if (!b.visible) continue; const v = b.position.clone().sub(o), t = v.dot(dir); if (t < 0 || t > far + 2) continue; if (v.addScaledVector(dir, -t).length() < 0.16 + t * 0.004) { b.visible = false; s.left--; ctx.sparks && ctx.sparks(b.position.x, b.position.y, b.position.z, 6); ctx.tone(2400, 0.07, 'triangle', 0.12); ctx.noise(0.12, 'highpass', 3000, 0.25); } } });
+      setObjective(d.text);
+    },
+    update(s, d, m) { aimAt(m, { x: s.c.x, z: s.c.z, y: ctx.heightAt(s.c.x, s.c.z) + 1.2 }, 'arrow'); m.arrowH = 0.9; setMeter(`<b>${s.list.length - s.left}/${s.list.length}</b>bottles`); return s.left <= 0; },
+    end(s) { if (s.off) s.off(); setTimeout(() => { ctx.scene.remove(s.g); }, 4000); },
+  },
+  pay: { start(s, d) { ctx.save.money += d.money; ctx.sfx.cash(); ctx.notify(`${d.label || 'Cash.'} <b>+$${d.money.toLocaleString()}</b>`, 'green', 3500); } },
+  garageSave: { // get that car into a garage bay and save it (the garage menu's first button)
+    start(s, d) { setObjective(d.text); },
+    update(s, d, m) {
+      const P = ctx.player, v = P.inCar;
+      if (v && v.ownedId) { m.h[d.car] = v; v.tommy = v.tommy || !!d.tommy; return true; }
+      const g = d.at ? place(d.at, m) : ctx.garage; aimAt(m, g ? { x: g.x, z: g.z } : null, 'beam');
+      if (!v) setObjective(`Get back in <em>${d.carName || 'the car'}</em>.`); else setObjective(d.text);
+      return false;
+    },
+  },
 };
+// the Deacon's men, after a witness in the dark: they close in at a jog, and shoot when they get a clear look (not well)
+function hunterAI(p, dt) {
+  if (p.state !== 'ai') return null;
+  const f = ctx.focusPos(), d = hyp(f.x - p.pos.x, f.z - p.pos.z), t = ctx.simTime;
+  face(p, f.x, f.z, dt, 6);
+  if (d > 9) move(p, 5.1, dt);
+  if (t >= (p.losNext || 0)) { p.losNext = t + 0.4; p.see = d < 45 && ctx.los(p.pos.x, p.pos.y + 1.6, p.pos.z, f.x, f.y + 1.2, f.z); }
+  p.shootCd = (p.shootCd ?? rand(1, 2)) - dt;
+  if (p.see && p.shootCd <= 0) { p.shootCd = rand(1.4, 2.4); npcFire(p.pos.x + Math.sin(p.rotY) * 0.6, p.pos.y + 1.45, p.pos.z + Math.cos(p.rotY) * 0.6, d < 14 ? 0.12 : 0.05, 5); }
+  return { speed: d > 9 ? 5.1 : 0, mode: 'aim' };
+}
+function surrenderAI(p, dt) { if (p.state !== 'ai') return null; const f = ctx.focusPos(); face(p, f.x, f.z, dt, 4); return { speed: 0, mode: 'hands' }; }
 function announce(c) { ctx.notify(`<b>NEW · ${c.name.toUpperCase()}</b> ${c.how}`, 'green', 9000); ctx.sfx.cash(); }
 // what a cutscene needs from the story: places, people, cars, and the subtitles
 function cineHelpers() {
@@ -862,7 +964,7 @@ function pass() {
   else ctx.notify(`<b>${title}</b> · +$${rw.money}`, 'green', 6000);
   if (!def.quiet) ctx.sfx.job();
   if (def.type === 'main') later(def.quiet ? 0.5 : 4.5, () => nextGoal(true));
-  for (const a of def.after || []) later(a.t, () => text(a.text[0], a.text[1]));
+  for (const a of def.after || []) later(a.t, () => { text(a.text[0], a.text[1]); if (a.tip) tip(a.tip); });
   emit('mission:pass', { id: def.id });
   m.passed = true; endMission(); ctx.persist();
 }
@@ -928,11 +1030,19 @@ export function initStory() {
   // saves from before the prologue: anyone past the start has been through it; and whatever their missions taught
   // (the `learn` steps added since) is theirs too
   if (st.done.some(id => id !== 'p0-tommy') && !st.done.includes('p0-tommy')) st.done.unshift('p0-tommy');
+  // 0.9: Collections, Iron, Wheels and Impound came in between Homecoming and the rest. A save already past them
+  // (anything done besides the prologue, Homecoming and side jobs) has them done, and Tommy's car in its garage.
+  const EARLY = ['a1-collections', 'a1-iron', 'a1-wheels', 'a1-impound'];
+  if (st.done.some(id => !['p0-tommy', 'a1-homecoming', ...EARLY].includes(id) && /^(a1|a2|n|l|o)\d?-/.test(id) && MISSIONS.some(d => d.id === id && d.type === 'main')) && !st.done.includes('a1-impound')) {
+    for (const id of EARLY) if (!st.done.includes(id)) st.done.push(id);
+    const G = ctx.save.garage || (ctx.save.garage = []);
+    if (!G.some(e => e.type === 'sports' && e.tint === gold)) G.push({ id: 'c' + Date.now().toString(36), type: 'sports', tint: gold, mods: {}, paint: null, neon: null, parts: {} });
+  }
   const L = unlockList(); for (const id of st.done) { const def = MISSIONS.find(d => d.id === id); if (def) for (const d of def.steps) if (d.do === 'learn') for (const k of d.keys) if (!L.includes(k)) L.push(k); }
   ctx.storyPlace = k => place(k); ctx.storyBusy = storyBusy;
   ctx.storyPlaces = done => MISSIONS.filter(d => done.includes(d.id) && PLACES[d.at]).map(d => place(d.at)).filter(Boolean);
   for (const q of st.props) ctx.addRamp(q.x, q.z, q.rot, q); // ramps you built along the way stay where they are
-  if (ctx.ensureAvatar) for (const n of Object.values(CAST_SKINS)) ctx.ensureAvatar(n); // load the cast's own skins in the background
+  if (ctx.ensureAvatar) for (const n of [...Object.keys(CAST_SKINS).map(skinFor), ...OUTLAW_LOOKS]) ctx.ensureAvatar(n); // one skin per cast member, and the Deacon's men, in the background
   on('player:died', ({ kind }) => { if (S.m) { S.failPending = kind === 'busted' ? 'You got busted.' : 'You got wasted.'; fail(S.failPending, true); } });
   on('player:respawn', () => { if (S.failPending) { const r = S.failPending; S.failPending = null; later(0.6, () => { ctx.big('MISSION FAILED', r, 'wasted', 3.5); }); } });
 }
@@ -945,7 +1055,13 @@ export function updateStory(dt) {
     S.autoT = 2.5;
     if (ensureSave().done.includes('p0-tommy')) later(8, () => nextGoal(false));
   }
-  updateCutscene(dt); updateFog(dt); updateGarages(dt); updateCrimes(dt);
+  // Tommy's gold car isn't waiting at the curb any more, offline: Kessler had it towed (you take it back in Impound,
+  // and from then on it's yours, in your garages). Online it's still everyone's starter.
+  if (!S.curbClear && !ctx.online && ctx.running) {
+    S.curbClear = true; const P = ctx.player;
+    for (const v of ctx.vehicles.slice()) if (v.tommy && !v.ownedId && v !== P.inCar && !Object.values(S.m ? S.m.h : {}).includes(v)) v.remove();
+  }
+  updateCutscene(dt); updateFog(dt); updateGarages(dt); updateCrimes(dt); updateTips(dt);
   // the prologue (and anything else marked auto) starts by itself, offline, once you're in control
   if (!S.m && !ctx.online && ctx.running && !ctx.player.dead && police.wanted === 0 && !ctx.job) {
     S.autoT -= dt; if (S.autoT <= 0) { S.autoT = 3; const a = MISSIONS.find(d => d.auto && available(d)); if (a) startMission(a); }
@@ -965,10 +1081,11 @@ export function updateStory(dt) {
       if (!m.st) {
         if (d.if && !COND[d.if]()) { m.si++; continue; }
         m.st = {}; m.target = null; m.targets = []; setObjective(''); setMeter('');
+        if (d.tips) for (const t of d.tips) tip(t);
         if (H.start) H.start(m.st, d, m);
       }
       const r = H.update ? H.update.call(H, m.st, d, m, dt) : true;
-      if (r === true) { if (H.end) H.end(m.st, d, m); m.st = null; m.si++; dt = 0; continue; }
+      if (r === true) { if (H.end) H.end(m.st, d, m); if (d.tips) for (const t of d.tips) untip(t); m.st = null; m.si++; dt = 0; continue; }
       if (typeof r === 'string') { if (H.end) H.end(m.st, d, m); m.st = null; fail(r); }
       break;
     }
@@ -1011,6 +1128,7 @@ export function storyJournal() {
   h += '<h3>People</h3>' + st.met.filter(w => CAST[w]).map(w => `<p><span class="who" style="background:${CAST[w].color}"></span><b>${CAST[w].full}</b> · ${esc(CAST[w].bio)}${st.trust[w] !== undefined ? ` <i>Trust ${st.trust[w]}</i>` : ''}</p>`).join('');
   if (st.voicemails.length) h += '<h3>Tommy\'s voicemails</h3>' + st.voicemails.map(id => `<p><b>${id}</b> · "${(st.vmText && st.vmText[id] || []).join(' ')}"</p>`).join('');
   h += crimeJournal();
+  h += tipsJournal();
   return h;
 }
 // Debug: jump the story (window.__gtp.story).

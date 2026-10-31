@@ -16,10 +16,11 @@ export const CATEGORIES = [
   { id: 'trades', label: 'Trades', kinds: ['construction', 'gardener', 'wood', 'delivery', 'chef'] },
   { id: 'athletes', label: 'Athletes', kinds: ['sports'] },
   { id: 'uniforms', label: 'Uniforms', kinds: ['pilot', 'security', 'police', 'military'] },
+  { id: 'outlaws', label: 'Outlaws', kinds: ['outlaw'] },
 ];
 const ROLE = { civilian: 'Local', business: 'Office worker', fire: 'Firefighter', medical: 'Paramedic', construction: 'Construction crew',
   gardener: 'Gardener', wood: 'Lumberjack', delivery: 'Courier', chef: 'Chef', sports: 'Athlete', pilot: 'Pilot', security: 'Security guard',
-  police: 'Deputy', military: 'Soldier' };
+  police: 'Deputy', military: 'Soldier', outlaw: 'Outlaw' };
 
 function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
 const cache = new Map(), used = new Set();
@@ -31,7 +32,7 @@ export function person(a) {
   let i = 0, first, last;
   do { first = firsts[(h + i) % firsts.length]; last = LAST[((h >>> 8) + i * 7) % LAST.length]; i++; } while (used.has(first + last) && i < 400);
   used.add(first + last);
-  const p = { first, last, full: first + ' ' + last, role: ROLE[a.kind] || 'Local', category: cat.id };
+  const p = { first, last, full: a.label || first + ' ' + last, role: a.role || ROLE[a.kind] || 'Local', category: cat.id };
   cache.set(a.name, p); return p;
 }
 export function nameAll(avatars) { for (const a of [...avatars].sort((x, y) => x.name < y.name ? -1 : 1)) person(a); }

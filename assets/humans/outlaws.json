@@ -1,0 +1,6 @@
+{
+  "note": "Outlaws: rigged characters from Sketchfab, fitted by tools/humans/fit_outlaw.py and animated with the Rocketbox clips (src/humans.js retarget). CC BY 4.0: credit the authors (README, in-game credits).",
+  "avatars": [
+    { "name": "Outlaw_Boss", "file": "outlaws/boss.glb", "sex": "m", "label": "Jericho Vance", "role": "Crimelord", "credit": { "title": "Eric Rigged 001 - Rigged 3D Business Man", "author": "renderpeople", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/a46bc9f67aaa415bb4f3241eef900e7f" } }
+  ]
+}

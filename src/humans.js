@@ -1,7 +1,9 @@
 // Rocketbox people (Microsoft Rocketbox Avatar Library, MIT): the player, pedestrians and deputies.
 //
 // assets/humans/ is built by tools/humans/build_rocketbox.py: one GLB per avatar (80-bone 3ds Max Biped) and one GLB
-// per animation clip. Every avatar shares the skeleton, so clips bind by bone name. At load we fetch the player, the
+// per animation clip. Every avatar shares the skeleton, so clips bind by bone name. Outlaws (assets/humans/outlaws.json)
+// are characters from Sketchfab with rigs of their own: tools/humans/fit_outlaw.py renames their main bones to the
+// Biped's, and the clips are re-aimed onto their rest pose here (retarget), once per avatar and clip. At load we fetch the player, the
 // police avatars, a random pool of civilians and the clips; after that `makeHuman` is synchronous, so the old
 // `buildRig` call sites keep working. If anything fails to load, the game keeps the blocky rigs.
 //
@@ -66,6 +68,8 @@ export async function loadHumans(opts = {}) {
   const loader = new GLTFLoader(), poolSize = opts.pool ?? 14;
   const res = await fetch(BASE + 'manifest.json'); if (!res.ok) throw new Error('humans manifest: HTTP ' + res.status);
   const man = await res.json(); HUMANS.manifest = man;
+  // the outlaws join the list; the first of them is the skin a new player starts in
+  try { const o = await fetch(BASE + 'outlaws.json').then(r => r.ok ? r.json() : null); if (o && o.avatars) { for (const a of o.avatars) man.avatars.push({ ...a, kind: a.kind || 'outlaw' }); if (o.player) man.player = o.player; HUMANS.outlaws = o; } } catch (e) { console.warn('[humans] outlaws', e); }
   const all = man.avatars, rnd = () => Math.random();
   const free = a => !RESERVED.has(a.name) && !SWIM(a.name); // story / dealer skins and swimwear never join the random pools
   const police = all.filter(a => a.kind === 'police' && free(a)).map(a => a.name);
@@ -94,9 +98,11 @@ export async function loadHumans(opts = {}) {
   return HUMANS.ready;
 }
 
+const fileOf = a => BASE + (a && a.file || (a ? a.name : '') + '.glb');
+function protoOf(g, a) { return { root: prep(g.scene), sex: (a || {}).sex || 'm', retarget: !!(a && a.file), clips: {} }; }
 async function loadAvatar(loader, n) {
   const a = HUMANS.manifest.avatars.find(x => x.name === n);
-  try { const g = await loader.loadAsync(BASE + n + '.glb'); HUMANS.proto.set(n, { root: prep(g.scene), sex: (a || {}).sex || 'm' }); }
+  try { const g = await loader.loadAsync(fileOf(a || { name: n })); HUMANS.proto.set(n, protoOf(g, a)); }
   catch (e) { console.warn('[humans] avatar', n, e); }
 }
 function fillPools(skip) {
@@ -120,7 +126,7 @@ export function ensureAvatar(name) {
   if (!HUMANS.manifest || !HUMANS.manifest.avatars.some(a => a.name === name)) return Promise.resolve(false);
   if (pending.has(name)) return pending.get(name);
   const info = HUMANS.manifest.avatars.find(a => a.name === name);
-  const p = new GLTFLoader().loadAsync(BASE + name + '.glb').then(g => { HUMANS.proto.set(name, { root: prep(g.scene), sex: info.sex || 'm' }); return true; })
+  const p = new GLTFLoader().loadAsync(fileOf(info)).then(g => { HUMANS.proto.set(name, protoOf(g, info)); return true; })
     .catch(e => { console.warn('[humans] avatar', name, e); return false; }).finally(() => pending.delete(name));
   pending.set(name, p); return p;
 }
@@ -162,10 +168,11 @@ export function makeHuman(name, props = {}) {
   const hand = inst.getObjectByName('Bip01_R_Hand'), armR = new THREE.Group();
   if (hand) { hand.add(armR); armR.scale.setScalar(1 / Math.max(1e-3, hand.getWorldScale(new THREE.Vector3()).x)); }
   const mixer = new THREE.AnimationMixer(inst), clips = HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? HUMANS.clips[P.sex] : HUMANS.clips.m;
-  const actions = {}; for (const k in clips) { actions[k] = mixer.clipAction(clips[k]); actions[k].play(); actions[k].setEffectiveWeight(0); }
+  const actions = {}; for (const k in clips) { const c = clipFor(P, k, clips); if (!c) continue; actions[k] = mixer.clipAction(c); actions[k].play(); actions[k].setEffectiveWeight(0); }
   const r = { human: true, name, sex: HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? P.sex : 'm', g, body, inst, mixer, actions, cur: null, armR, armL: new THREE.Group(), legL: new THREE.Group(), legR: new THREE.Group(), phase: Math.random() * 10, punch: 0, gun: props.gun || new THREE.Object3D(), phone: props.phone || new THREE.Object3D() };
   const holder = new THREE.Group(); holder.add(r.gun); r.gun.position.set(0, 0, 0.08); r.gun.rotation.set(0, 0, 0); g.add(holder); r.gun = holder; // placed by holdWeapon
   r.phone.position.set(0.05, 0, 0.03); armR.add(r.phone);
+  r.proto = P;
   setAction(r, 'idle', 0); r.mixer.setTime(Math.random() * 3);
   return r;
 }
@@ -178,7 +185,7 @@ export function freeHuman(r) {
 }
 
 function setAction(r, k, fade = 0.25) {
-  if (!r.actions[k]) { const c = (HUMANS.clips[r.sex] || {})[k]; if (c) { r.actions[k] = r.mixer.clipAction(c); r.actions[k].play(); r.actions[k].setEffectiveWeight(0); } else k = 'idle'; } // clips that arrived after this rig was made
+  if (!r.actions[k]) { const c = r.proto ? clipFor(r.proto, k, HUMANS.clips[r.sex] || {}) : (HUMANS.clips[r.sex] || {})[k]; if (c) { r.actions[k] = r.mixer.clipAction(c); r.actions[k].play(); r.actions[k].setEffectiveWeight(0); } else k = 'idle'; } // clips that arrived after this rig was made
   if (r.cur === k) return;
   const next = r.actions[k], prev = r.cur && r.actions[r.cur];
   next.reset(); next.setEffectiveWeight(1); next.play();
@@ -205,6 +212,78 @@ export function animHuman(r, speed, dt, mode) {
   if (mode === 'hands') { handsUp(r); return; }
   if (mode === 'aim') holdWeapon(r, _t.set(Math.sin(r.g.rotation.y), 0, Math.cos(r.g.rotation.y)), { twoHand: true, grip: 0.12, dt });
   else if (r.gun.visible) holdWeapon(r, null, { dt });
+}
+
+// ---- outlaws: the Rocketbox clips re-aimed onto a rig of another shape
+// Each mapped bone follows the Biped bone of the same name in world space: the rotation the Biped bone has made since
+// its rest pose is applied to the outlaw's bone, after first turning the outlaw's bone so it points the way the Biped's
+// pointed at rest (so a rig that rests in an A-pose still follows a T-pose's arms). The pelvis also takes the bob, scaled
+// to the outlaw's leg length. Bones the Biped doesn't have (fingers, the face, cloth) keep their rest pose.
+const CHAIN = { Bip01_Spine: 'Bip01_Spine1', Bip01_Spine1: 'Bip01_Spine2', Bip01_Spine2: 'Bip01_Neck', Bip01_Neck: 'Bip01_Head' };
+for (const s of ['L', 'R']) Object.assign(CHAIN, { [`Bip01_${s}_Clavicle`]: `Bip01_${s}_UpperArm`, [`Bip01_${s}_UpperArm`]: `Bip01_${s}_Forearm`, [`Bip01_${s}_Forearm`]: `Bip01_${s}_Hand`,
+  [`Bip01_${s}_Thigh`]: `Bip01_${s}_Calf`, [`Bip01_${s}_Calf`]: `Bip01_${s}_Foot`, [`Bip01_${s}_Foot`]: `Bip01_${s}_Toe0` });
+const MAPPED = new Set(['Bip01_Pelvis', 'Bip01_Head', 'Bip01_L_Hand', 'Bip01_R_Hand', 'Bip01_L_Toe0', 'Bip01_R_Toe0', ...Object.keys(CHAIN)]);
+function restOf(root) {
+  root.updateMatrixWorld(true); const by = new Map(), rest = new Map(), list = [];
+  root.traverse(o => { if (!o.isBone) return; by.set(o.name, o); list.push(o); rest.set(o.name, { q: o.getWorldQuaternion(new THREE.Quaternion()), p: o.getWorldPosition(new THREE.Vector3()), lq: o.quaternion.clone() }); });
+  return { by, rest, list };
+}
+const SRC = new Map(); // sex -> a Biped instance to play the clips on
+function sourceRig(sex) {
+  if (SRC.has(sex)) return SRC.get(sex);
+  let P = null; for (const p of HUMANS.proto.values()) if (!p.retarget && p.sex === sex) { P = p; break; }
+  if (!P) for (const p of HUMANS.proto.values()) if (!p.retarget) { P = p; break; }
+  if (!P) return null;
+  const inst = skClone(P.root), S = { inst, mixer: new THREE.AnimationMixer(inst), ...restOf(inst) };
+  SRC.set(sex, S); return S;
+}
+function clipFor(P, k, clips) {
+  if (!P.retarget) return clips[k] || null;
+  if (P.clips[k]) return P.clips[k];
+  const c = clips[k] || (HUMANS.clips.m || {})[k]; if (!c) return null;
+  const S = sourceRig(P.sex); if (!S) return null;
+  const T = P.T || (P.T = restOf(P.root));
+  if (!P.align) { // per bone: the turn that makes the outlaw's rest direction match the Biped's
+    P.align = new Map();
+    for (const n of MAPPED) {
+      const a = new THREE.Quaternion(), ch = CHAIN[n];
+      if (ch && T.rest.has(n) && T.rest.has(ch) && S.rest.has(n) && S.rest.has(ch)) {
+        const dt = new THREE.Vector3().subVectors(T.rest.get(ch).p, T.rest.get(n).p), ds = new THREE.Vector3().subVectors(S.rest.get(ch).p, S.rest.get(n).p);
+        if (dt.lengthSq() > 1e-8 && ds.lengthSq() > 1e-8) a.setFromUnitVectors(dt.normalize(), ds.normalize());
+      }
+      P.align.set(n, a);
+    }
+    const tp = T.rest.get('Bip01_Pelvis'), sp = S.rest.get('Bip01_Pelvis');
+    P.hipK = tp && sp && sp.p.y > 0.05 ? tp.p.y / sp.p.y : 1;
+  }
+  const act = S.mixer.clipAction(c); S.mixer.stopAllAction(); act.reset(); act.play(); act.setEffectiveWeight(1);
+  const fps = 30, n = Math.max(2, Math.round(c.duration * fps) + 1), times = new Float32Array(n);
+  const mapped = T.list.filter(b => MAPPED.has(b.name) && S.by.has(b.name)), vals = new Map(mapped.map(b => [b.name, new Float32Array(n * 4)]));
+  const pel = T.by.get('Bip01_Pelvis'), pos = pel && S.by.has('Bip01_Pelvis') ? new Float32Array(n * 3) : null;
+  const W = new Map(), q = new THREE.Quaternion(), d = new THREE.Quaternion(), loc = new THREE.Quaternion(), v = new THREE.Vector3(), base = new THREE.Quaternion();
+  const pelParentInv = pel && pel.parent ? pel.parent.matrixWorld.clone().invert() : null;
+  for (let i = 0; i < n; i++) {
+    const t = Math.min(c.duration, i / fps); times[i] = t;
+    S.mixer.setTime(t); S.inst.updateMatrixWorld(true); W.clear();
+    for (const b of T.list) {
+      const pw = b.parent && W.get(b.parent.name) || (b.parent ? b.parent.getWorldQuaternion(base) : base.identity());
+      let wq;
+      if (vals.has(b.name)) {
+        S.by.get(b.name).getWorldQuaternion(q); d.copy(S.rest.get(b.name).q).invert().premultiply(q); // the Biped bone's turn since rest
+        wq = d.clone().multiply(P.align.get(b.name)).multiply(T.rest.get(b.name).q);
+        loc.copy(pw).invert().multiply(wq); loc.toArray(vals.get(b.name), i * 4);
+      } else wq = pw.clone().multiply(T.rest.get(b.name).lq);
+      W.set(b.name, wq);
+    }
+    if (pos) { // the hips: the Biped's bob and sway, scaled to these legs
+      S.by.get('Bip01_Pelvis').getWorldPosition(v).sub(S.rest.get('Bip01_Pelvis').p).multiplyScalar(P.hipK).add(T.rest.get('Bip01_Pelvis').p);
+      if (pelParentInv) v.applyMatrix4(pelParentInv); v.toArray(pos, i * 3);
+    }
+  }
+  act.stop();
+  const tracks = mapped.map(b => new THREE.QuaternionKeyframeTrack(b.name + '.quaternion', times, vals.get(b.name)));
+  if (pos) tracks.push(new THREE.VectorKeyframeTrack(pel.name + '.position', times, pos));
+  return (P.clips[k] = new THREE.AnimationClip(k, c.duration, tracks));
 }
 
 // ---- holding and aiming guns. Rocketbox ships no weapon animations, so arms are posed on top of the clip with
