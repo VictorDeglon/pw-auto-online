@@ -8,6 +8,14 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.2 (2026-10-30)
+
+- **The slender trees have their branches back up close,** and the console has no shader error on load: the near
+  model's branch material tiled its bark on a second UV set that the web LOD no longer carried, so its program failed
+  to compile (`'uv1' : undeclared identifier`) and the branches between the trunk and the leaves weren't drawn. The LOD
+  keeps the set each material's colour map reads (`tools/nature/slim_glb.py`), and the near meshes always read their
+  one UV set (`src/nature/vegetation.js`).
+
 ## 0.9.1 (2026-10-30)
 
 - **Buildings generated from their footprints,** all 28,000 in Poway and every one out in the county
