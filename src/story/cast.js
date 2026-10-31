@@ -118,7 +118,7 @@ export const LOOKS = {
   // the Deacon's men: outlaws from Sketchfab when they're installed (src/reserved.js OUTLAW_LOOKS), dark clothes if not
   enforcer: [
     { kind: 'civ', avatar: 'Outlaw_Masked', skin: '#e0ac85', shirt: '#1b1c1f', pants: '#22252b', hair: '#111', hat: '#111', gun: true },
-    { kind: 'civ', avatar: 'Outlaw_Muscle', skin: '#c68863', shirt: '#2a2c31', pants: '#3a3226', hair: '#1a1a1a', gun: true },
+    { kind: 'civ', skin: '#c68863', shirt: '#2a2c31', pants: '#3a3226', hair: '#1a1a1a', gun: true },
   ],
   deputy: [{ kind: 'police', skin: '#e0ac85', shirt: '#b8a77a', sleeve: '#b8a77a', pants: '#2c4430', hair: '#4b3020', hat: '#2c4430', gun: true }],
 };

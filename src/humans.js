@@ -89,7 +89,9 @@ export async function loadHumans(opts = {}) {
   const want = [...new Set([me, ...pools.civ, ...police, ...pools.plain])];
   // opts.crowd === false: only the player's avatar now; loadCrowd() fetches everyone else after the loading screen,
   // and until then buildRig() falls back to the blocky people
-  const now = opts.crowd === false ? [me] : want;
+  // an outlaw player is animated from a Rocketbox body's clips (clipFor), so one of those loads with it
+  const meA = all.find(a => a.name === me), src = meA && meA.file ? pools.civ.find(n => (all.find(a => a.name === n) || {}).sex === (meA.sex || 'm')) || pools.civ[0] : null;
+  const now = opts.crowd === false ? [me, ...(src ? [src] : [])] : want;
   HUMANS.crowd = pools; HUMANS.later = want.filter(n => !now.includes(n));
   await Promise.all(now.map(n => loadAvatar(loader, n)));
   await Promise.all(['m', 'f'].flatMap(s => man.clips.filter(c => CORE.includes(c)).map(c => loadClip(loader, s, c))));
@@ -193,7 +195,7 @@ export function freeHuman(r) {
 function setAction(r, k, fade = 0.25) {
   if (!r.actions[k]) { const c = r.proto ? clipFor(r.proto, k, HUMANS.clips[r.sex] || {}) : (HUMANS.clips[r.sex] || {})[k]; if (c) { r.actions[k] = r.mixer.clipAction(c); r.actions[k].play(); r.actions[k].setEffectiveWeight(0); } else k = 'idle'; } // clips that arrived after this rig was made
   if (r.cur === k) return;
-  const next = r.actions[k], prev = r.cur && r.actions[r.cur];
+  const next = r.actions[k], prev = r.cur && r.actions[r.cur]; if (!next) return; // (nothing to play it from yet)
   next.reset(); next.setEffectiveWeight(1); next.play();
   if (prev && fade > 0) prev.crossFadeTo(next, fade, false); else if (prev) prev.setEffectiveWeight(0);
   r.cur = k;

@@ -10,7 +10,7 @@
 # The model comes out at its real height in metres, standing on y = 0, facing +z, with WebP textures and no animations
 # of its own. The report lists the bone map, so a bad match shows up before the game does.
 import bpy, sys, json, re
-from mathutils import Vector
+from mathutils import Vector, Quaternion
 
 argv = sys.argv[sys.argv.index('--') + 1:]
 SRC, DST, OPT, REP = argv[0], argv[1], json.loads(argv[2]), argv[3]
@@ -135,6 +135,16 @@ for o in meshes(): # vertex groups follow the bones' new names
 
 # ---------------------------------------------------------------- size, facing, decimate, textures
 ms = meshes()
+root = bpy.data.objects.new('root', None); scene.collection.objects.link(root); root.rotation_mode = 'QUATERNION'
+for o in [o for o in bpy.data.objects if o.parent is None and o is not root]: o.parent = root
+# standing: some exports lie on their back (their up isn't Blender's z); the pelvis-to-head line says which way is up
+pb, hb = arm.data.bones.get('Bip01 Pelvis'), arm.data.bones.get('Bip01 Head'); up = Quaternion()
+if pb and hb:
+    v = (arm.matrix_world @ hb.head_local) - (arm.matrix_world @ pb.head_local)
+    if v.length > 1e-6 and v.normalized().z < 0.85:
+        up = v.normalized().rotation_difference(Vector((0, 0, 1))); warn.append('stood up: pelvis to head ran %.2f %.2f %.2f' % tuple(v.normalized()))
+root.rotation_quaternion = up
+bpy.context.view_layer.update()
 lo, hi = bbox(ms); hgt = hi[2] - lo[2]
 want = OPT.get('height', 1.78)
 s = want / hgt if hgt > 0 else 1
@@ -147,10 +157,7 @@ if ft and toe:
 else: face = Vector((0, -1, 0))
 import math
 ang = math.atan2(face.x, -face.y)  # rotation about z that turns `face` into -y
-root = bpy.data.objects.new('root', None); scene.collection.objects.link(root)
-for o in [o for o in bpy.data.objects if o.parent is None and o is not root]: o.parent = root
-c = (lo + hi) / 2
-root.rotation_euler = (0, 0, -ang)
+root.rotation_quaternion = Quaternion((0, 0, 1), -ang) @ up
 root.scale = (s, s, s)
 bpy.context.view_layer.update()
 lo2, hi2 = bbox(meshes()); c2 = (lo2 + hi2) / 2

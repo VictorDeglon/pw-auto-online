@@ -10,7 +10,7 @@ export const CAST_SKINS = {
   tommy: ['Outlaw_Gunslinger', 'Male_Adult_16'], vance: ['Outlaw_Boss', 'Business_Male_01'], salas: ['Outlaw_Patron', 'Male_Adult_20'],
   boone: ['Outlaw_Bandana', 'Male_Adult_14'], jesse: ['Outlaw_Kid', 'Male_Adult_09'], pike: ['Outlaw_Masked', 'Male_Adult_21'],
 };
-export const OUTLAW_LOOKS = ['Outlaw_Masked', 'Outlaw_Muscle'];
+export const OUTLAW_LOOKS = ['Outlaw_Masked'];
 export const DEALER_SKINS = ['Security_Male_01', 'Business_Male_02', 'Construction_Male_03', 'Military_Male_02'];
 export const RESERVED = new Set([...Object.values(CAST_SKINS).flat(), ...DEALER_SKINS, ...OUTLAW_LOOKS]);
 export const SWIM = name => /^Sports_/.test(name);

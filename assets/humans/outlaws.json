@@ -1,6 +1,20 @@
 {
-  "note": "Outlaws: rigged characters from Sketchfab, fitted by tools/humans/fit_outlaw.py and animated with the Rocketbox clips (src/humans.js retarget). CC BY 4.0: credit the authors (README, in-game credits).",
+  "note": "Outlaws: rigged characters from Sketchfab, fitted by tools/humans/fit_outlaw.py (scaled to a height, decimated, textures resized to WebP, main bones renamed to the Rocketbox Biped's) and animated with the Rocketbox clips (src/humans.js retarget). CC BY 4.0: each is credited here and in the README. player: the default skin of a new player.",
+  "player": "Outlaw_Cowboy",
   "avatars": [
-    { "name": "Outlaw_Boss", "file": "outlaws/boss.glb", "sex": "m", "label": "Jericho Vance", "role": "Crimelord", "credit": { "title": "Eric Rigged 001 - Rigged 3D Business Man", "author": "renderpeople", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/a46bc9f67aaa415bb4f3241eef900e7f" } }
+    { "name": "Outlaw_Cowboy", "file": "outlaws/cowboy.glb", "sex": "m", "label": "Drifter", "role": "Outlaw",
+      "credit": { "title": "Western Cowboy (Rigged)", "author": "stevedaman", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/160bf043b71c458984c81c717b7483c9" } },
+    { "name": "Outlaw_Gunslinger", "file": "outlaws/gunslinger.glb", "sex": "m", "label": "Tommy \"Lightning\" Reyes", "role": "Dust Devil",
+      "credit": { "title": "Gunslinger", "author": "archiebattley", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/95336de7a15145238c151388ee84d22b" } },
+    { "name": "Outlaw_Boss", "file": "outlaws/boss.glb", "sex": "m", "label": "Jericho Vance", "role": "Crimelord",
+      "credit": { "title": "Eric Rigged 001 - Rigged 3D Business Man", "author": "renderpeople", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/a46bc9f67aaa415bb4f3241eef900e7f" } },
+    { "name": "Outlaw_Patron", "file": "outlaws/patron.glb", "sex": "m", "label": "El Patrón", "role": "Patrón",
+      "credit": { "title": "1920's Gangster", "author": "wolfprint3d", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/fafffece58b3455dbfe7e15693b5ed39" } },
+    { "name": "Outlaw_Masked", "file": "outlaws/masked.glb", "sex": "m", "label": "Cyrus Pike", "role": "The Undertaker",
+      "credit": { "title": "Gangster", "author": "abassim867", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/8cd3a8cfe32b4529886571f2bb77d86c" } },
+    { "name": "Outlaw_Kid", "file": "outlaws/kid.glb", "sex": "m", "label": "Jesse \"Rattler\" Ortiz", "role": "Dust Devil",
+      "credit": { "title": "Dave (Gangster)", "author": "VladislavKolesnikov", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/356faa4e9c354691b2ddbd7f885720f2" } },
+    { "name": "Outlaw_Bandana", "file": "outlaws/bandana.glb", "sex": "m", "label": "Boone Calloway", "role": "Dust Devil",
+      "credit": { "title": "Gunnar the Gunslinger (rigged, motions)", "author": "tegnemaskin", "licence": "CC-BY-4.0", "url": "https://sketchfab.com/3d-models/1bb1864f3e414215850e3b37d3c65db2" } }
   ]
 }
