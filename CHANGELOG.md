@@ -8,7 +8,7 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
-## 0.9.3 (2026-10-30)
+## 0.10.0: Outlaws (2026-10-31)
 
 - **Act I, all the way to your first car.** A new game starts on foot, and the story is a run from Poway High to
   Tommy's gold car that teaches the game as it goes. *Last Ride:* Tommy is waiting out front of the school on Espola
@@ -35,6 +35,11 @@ update you ship**, and add an entry here at the same time:
   them: a new player starts as a cowboy, and Tommy, the Deacon, El Patrón, Pike, Rattler and Boone each have their own.
   The Deacon's men wear Pike's look or dark clothes. The character editor leaves their hats on.
 - Saves already past the opening get the four new missions marked done and Tommy's car in their garage.
+- **The slender trees have their branches back up close,** and the console has no shader error on load: the near
+  model's branch material tiled its bark on a second UV set that the web LOD no longer carried, so its program failed
+  to compile (`'uv1' : undeclared identifier`) and the branches between the trunk and the leaves weren't drawn. The LOD
+  keeps the set each material's colour map reads (`tools/nature/slim_glb.py`), and the near meshes always read their
+  one UV set (`src/nature/vegetation.js`).
 
 ## 0.9.2 (2026-10-30)
 

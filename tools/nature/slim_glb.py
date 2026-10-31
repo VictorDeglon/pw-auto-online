@@ -1,7 +1,7 @@
 # Slim a near-LOD GLB for the web (what gltf-transform did for the first trees): positions as 16-bit integers
 # (KHR_mesh_quantization, the mesh in a child node that scales them back), normals as bytes, AO colours as bytes,
-# UVs as 16-bit when they stay in 0..1; tangents and normal maps dropped (the leaves' normals are bent by the
-# runtime), images nothing uses any more removed. Geometry comes out about half the size.
+# UVs (the one set the colour map reads) as 16-bit when they stay in 0..1; tangents and normal maps dropped (the
+# leaves' normals are bent by the runtime), images nothing uses any more removed. Geometry comes out about half the size.
 #   python slim_glb.py <in.glb> <out.glb>
 import json, struct, sys
 import numpy as np
@@ -56,6 +56,12 @@ for ii, im in enumerate(J.get('images', [])):
         v = J['bufferViews'][im['bufferView']]; data = np.frombuffer(B, np.uint8, v['byteLength'], v.get('byteOffset', 0)).copy()
         img_view[ii] = data
 
+# the UV set a primitive's colour map reads (tree_small_02's branches tile their bark on TEXCOORD_1): the only one kept,
+# written as TEXCOORD_0, since the runtime merges every LOD onto one UV set
+def uv_set(p):
+    pbr = J['materials'][p['material']].get('pbrMetallicRoughness', {}) if 'material' in p else {}
+    return pbr.get('baseColorTexture', {}).get('texCoord', 0)
+
 # meshes: one dequantize transform per mesh (uniform scale, so normals aren't skewed)
 mesh_xf = {}
 for mi, m in enumerate(J['meshes']):
@@ -71,8 +77,9 @@ for mi, m in enumerate(J['meshes']):
             n = read_fast(at['NORMAL']).astype(np.float32); n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-8)
             n4 = np.zeros((len(n), 4), np.int8); n4[:, :3] = np.round(n * 127).clip(-127, 127)
             na['NORMAL'] = acc(put(n4, 4, 34962), 5120, 'VEC3', len(n), True)
-        if 'TEXCOORD_0' in at:
-            uv = read_fast(at['TEXCOORD_0']).astype(np.float32)
+        uv_at = 'TEXCOORD_%d' % uv_set(p)
+        if uv_at in at:
+            uv = read_fast(at[uv_at]).astype(np.float32)
             if uv.min() >= 0 and uv.max() <= 1: na['TEXCOORD_0'] = acc(put(np.round(uv * 65535).astype(np.uint16), 4, 34962), 5123, 'VEC2', len(uv), True)
             else: na['TEXCOORD_0'] = acc(put(np.ascontiguousarray(uv), None, 34962), 5126, 'VEC2', len(uv))
         if 'COLOR_0' in at:
@@ -90,6 +97,7 @@ def tex_refs(mt):
     pbr = mt.get('pbrMetallicRoughness', {})
     return [r for r in [pbr.get('baseColorTexture'), pbr.get('metallicRoughnessTexture'), mt.get('occlusionTexture'), mt.get('emissiveTexture')] if r]
 refs = [r for mt in J.get('materials', []) for r in tex_refs(mt)]
+for r in refs: r.pop('texCoord', None)  # the kept set is TEXCOORD_0 now
 used_tex = sorted({r['index'] for r in refs})
 tex_map = {o: n for n, o in enumerate(used_tex)}; textures = [dict(J['textures'][o]) for o in used_tex]
 for r in refs: r['index'] = tex_map[r['index']]
