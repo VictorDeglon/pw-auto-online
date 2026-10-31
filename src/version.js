@@ -1,3 +1,3 @@
 // The game's version, shown on the loading screen and the menu. Bump it with every update you ship (CHANGELOG.md):
 // the minor number for each day of updates, the patch number for each deploy within the day. 0.0.0 was the first commit.
-export const VERSION = { n: '0.9.1', name: 'Dressed Up', date: '2026-10-30' };
+export const VERSION = { n: '0.9.2', name: 'Dressed Up', date: '2026-10-30' };

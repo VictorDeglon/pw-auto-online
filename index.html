@@ -636,6 +636,7 @@ import { createCascades } from './src/cascades.js';
 import { createComposer, procSongs } from './src/audio/composer.js';
 import { createSfx2 } from './src/audio/sfx2.js';
 import { buildPlaza, PLAZA_CENTER } from './src/world/plaza.js';
+import { buildClub } from './src/world/club.js'; // the Velvet Javelina, by the plaza's club strip: the one building you can walk into
 import { createPower } from './src/world/power.js';
 import { boatModel as buildBoat } from './src/world/boatmodels.js';
 import { createHarbor } from './src/world/harbor.js';
@@ -2369,6 +2370,7 @@ function blastBuildings(x, z, R, by) {
   }
 }
 let PLAZA = null; // Carmel Mountain Plaza storefronts (src/world/plaza.js)
+let CLUB = null; // the Velvet Javelina (src/world/club.js)
 let PARK = null; // parking lots, stalls and the cars that use them (src/world/parking.js)
 // how busy a spot is (traffic, full parking lots): the plaza, Poway Road downtown, the civic centre, Poway High on school days
 function busyAt(x, z) {
@@ -6441,6 +6443,7 @@ function initExtras() {
     onBuy: (kind, w, k, lv) => { bus.emit('shop:buy', { kind, weapon: w.id, upgrade: k, level: lv }); if (kind === 'buy') player.weapon = WEAPONS.indexOf(w); persist(); } });
   setupDealer(); setupTravel(); setupGarage(); setupCarDealers(); initRegionBanner();
   try { PLAZA = buildPlaza({ THREE, scene, BLD, POIS, heightAt, addInteract, notify, sfx, hour: () => hour, inCar: () => player.inCar }); } catch (e) { console.warn('plaza:', e); }
+  try { CLUB = buildClub({ THREE, scene, heightAt, addPoly: (flat, base, top) => { addPoly(flat, base, top); return polys.length - 1; }, ensureAvatar, makeHuman, animHuman, notify }); } catch (e) { console.warn('club:', e); }
   ACH.initAchievements({ save, persist, bus, sfx, probe: () => {
     const v = player.inCar; return { mph: v ? Math.abs(v.speed || 0) * 2.237 : 0, airT: v && v.air ? v.airT : 0, wanted: police.wanted, inCar: !!v, hour,
       garage: garageList().length, ownedAll: WEAPONS.every((w, i) => !w.id || w.id === 'fists' || owned(i)) }; } });
@@ -8478,6 +8481,7 @@ function tick(rdt) {
   if (ARCH_WORLD) { ARCH_WORLD.update(dt); if ((archCullT -= rdt) <= 0) { archCullT = 0.25; const f = focusPos(); cullFar(ARCH_WORLD.group, f.x, f.z, GFX.view + 150); cullFar(ARCH_WORLD.plazas && ARCH_WORLD.plazas.group, f.x, f.z, GFX.view + 150); } }
   PROF.mark('arch'); PHS.updatePHS(dt, focusPos()); PROF.mark('phs'); // PHS
   if (PLAZA) PLAZA.update(focusPos(), nightAmount);
+  if (CLUB) CLUB.update(dt, focusPos(), nightAmount);
   if (PARK && !WORLD.following) PARK.update(dt, focusPos());
   PROF.mark('plaza+park'); sigT -= rdt; if (sigT <= 0) { sigT = 0.1; updateSignals(); }
   smoke.update(dt); fire.update(dt); NUKE_FX.update(rdt, skyU.horizon.value);
@@ -8554,6 +8558,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
+  if (/[?&]dbg\b/.test(location.search)) { window.__ctx = ctx; window.__club = () => CLUB; } // for poking at the game from the console while testing
   Object.assign(ctx, { applyLook, lookOf: k => TUNE.lookOf(k), garageAt, garageSite, boatModel, CAR_TINTS,
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
     heightAt, los, rayBuildings, collideCircle, addPoly, nearestEdge, edgePos, laneSample, laneOff, walkOff, agentFromNearest, advance, endNode,

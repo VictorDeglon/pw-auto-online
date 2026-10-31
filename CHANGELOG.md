@@ -8,6 +8,15 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.2 (2026-10-30)
+
+- **The Velvet Javelina,** a cabaret lounge by the Carmel Mountain Plaza club strip and the first building you can walk
+  into (`src/world/club.js`). Pink script neon over the canopy, a doorman in a suit and shades at the velvet rope, and
+  inside, lit only by what glows: a black gloss stage with lit edges and a red curtain, coloured beams sweeping through
+  the haze, a disco ball, a DJ in headphones, a bar with a back-lit shelf and a bartender, booths and high-tops full of
+  patrons. Three dancers on the stage, in their party outfits. Nobody undresses, whatever the settings.
+- This deploy also ships 0.9.0 (the character editor) and 0.9.1 (buildings from their footprints).
+
 ## 0.9.1 (2026-10-30)
 
 - **Buildings generated from their footprints,** all 28,000 in Poway and every one out in the county

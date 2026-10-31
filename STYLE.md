@@ -153,6 +153,14 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - Beaches have surf rental shacks by the towers, boards stuck in the sand, boards on car roofs in the beach towns.
 - Sand is soft: ruts and footprints, fading over a couple of minutes.
 
+## The club (`src/world/club.js`)
+
+- The Velvet Javelina, a cabaret lounge on open ground by the Carmel Mountain Plaza club strip: dark stucco, the name
+  in pink script neon over a canopy, a doorman in a suit and shades at a velvet rope, a paved apron to the street.
+- Inside it's lit only by what glows: stage-lip strips, coloured beams through the haze, the bar's back-lit shelf, a
+  disco ball. A pleated red curtain behind a black gloss stage, a DJ booth, booths and high-tops.
+- The dancers dance in their party outfits. Nobody undresses, whatever the settings.
+
 ## Two wheels (`src/twowheel.js`)
 
 - Beach cruisers, step-through scooters and rental kick scooters; the rider is the player's own avatar, posed on the
