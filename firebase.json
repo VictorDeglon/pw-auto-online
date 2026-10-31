@@ -2,11 +2,12 @@
   "database": { "rules": "database.rules.json" },
   "hosting": {
     "public": ".",
-    "predeploy": ["test -f \"$PROJECT_DIR/nakama.json\" || (echo nakama.json is missing - copy it in, it is git-ignored, or every player falls back to Firebase && exit 1)"],
-    "ignore": ["firebase.json", "database.rules.json", "**/.*", "**/.*/**", "gha-creds-*.json", "nakama.local.json", "**/node_modules/**", "tools/**", "server/**", "docs/**", "*.md"],
+    "predeploy": ["test -f \"$PROJECT_DIR/nakama.json\" || (echo nakama.json is missing - copy it in, it is git-ignored, or every player falls back to Firebase && exit 1)", "node \"$PROJECT_DIR/tools/packs/check.mjs\" \"$PROJECT_DIR\""],
+    "ignore": ["firebase.json", "database.rules.json", "**/.*", "**/.*/**", "gha-creds-*.json", "nakama.local.json", "**/node_modules/**", "tools/**", "server/**", "docs/**", "build/**", "*.md"],
     "headers": [
       { "source": "assets/**", "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }] },
       { "source": "**/*.@(js|mjs)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "assets-manifest.json", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
       { "source": "**", "headers": [{ "key": "Document-Policy", "value": "js-profiling" }] }
     ]
   },
