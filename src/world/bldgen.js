@@ -103,18 +103,19 @@ export function contextIndex(flats, areas = [], pois = []) {
     for (let i = 0; i < f.length; i += 2) { x0 = Math.min(x0, f[i]); x1 = Math.max(x1, f[i]); z0 = Math.min(z0, f[i + 1]); z1 = Math.max(z1, f[i + 1]); }
     const A = { k, f }; for (let i = Math.floor(x0 / CG); i <= Math.floor(x1 / CG); i++) for (let j = Math.floor(z0 / CG); j <= Math.floor(z1 / CG); j++) { const kk = key(i, j); let c = ag.get(kk); if (!c) ag.set(kk, c = []); c.push(A); }
   }
-  for (const [t, x, z] of pois) put(pg, x, z, [t, x, z]);
+  for (const [t, x, z, name] of pois) put(pg, x, z, [t, x, z, name || '']);
   const cells = (g, x, z, r, fn) => { for (let i = Math.floor((x - r) / CG); i <= Math.floor((x + r) / CG); i++) for (let j = Math.floor((z - r) / CG); j <= Math.floor((z + r) / CG); j++) { const c = g.get(key(i, j)); if (c) for (const v of c) fn(v); } };
   const areaAt = (x, z) => { let k = 0; const c = ag.get(key(Math.floor(x / CG), Math.floor(z / CG))); if (c) for (const A of c) if (pipF(x, z, A.f)) k |= 1 << A.k; return k; };
   return {
+    lot: (x, z) => !!(areaAt(x, z) & 4), // in a mapped parking lot
     at(x, z, S, flat) {
       let n = 0, sa = 0; cells(bg, x, z, 60, b => { const d = Math.hypot(b[0] - x, b[1] - z); if (d > 0.5 && d < 60) { n++; sa += b[2]; } });
       // areas: under the middle, and just outside each side of its bounding rectangle
       const ux = Math.cos(S.ang), uz = Math.sin(S.ang), a = S.L / 2 + 9, b = S.W / 2 + 9;
       const under = areaAt(x, z); let by = 0;
       for (const [p, q] of [[a, 0], [-a, 0], [0, b], [0, -b]]) by |= areaAt(S.cx + ux * p - uz * q, S.cz + uz * p + ux * q);
-      let poi = null, pd = 1e9; cells(pg, x, z, Math.max(S.L, 20), p => { const d = pipF(p[1], p[2], flat) ? 0 : Math.hypot(p[1] - x, p[2] - z) - S.L / 2; if (d < 8 && d < pd) { pd = d; poi = p[0]; } });
-      return { near: n, meanA: n ? sa / n : 0, parking: !!(by & 4) || !!(under & 4), school: !!(under & 8), park: !!(under & 2), poi };
+      let poi = null, poiName = '', pd = 1e9; cells(pg, x, z, Math.max(S.L, 20), p => { const d = pipF(p[1], p[2], flat) ? 0 : Math.hypot(p[1] - x, p[2] - z) - S.L / 2; if (d < 8 && d < pd) { pd = d; poi = p[0]; poiName = p[3]; } });
+      return { near: n, meanA: n ? sa / n : 0, parking: !!(by & 4) || !!(under & 4), school: !!(under & 8), park: !!(under & 2), poi, poiName };
     },
   };
 }
@@ -132,6 +133,9 @@ const HSTYLE = {
   modern: { form: [['flat', 75], ['shed', 25]], mat: [['membrane', 1]], pitch: [0.08, 0.14], over: [0.7, 1.1], walls: 'modern' },
   cottage: { form: [['gable', 64], ['cross', 26], ['hip', 10]], mat: [['shingle', 85], ['tile', 15]], pitch: [0.5, 0.75], over: [0.3, 0.45], walls: 'coast' },
   bungalow: { form: [['gable', 42], ['hip', 38], ['flat', 20]], mat: [['shingle', 70], ['tile', 30]], pitch: [0.3, 0.42], over: [0.4, 0.6], walls: 'bungalow' },
+  // the big 1980s estate houses on Poway's acre lots: gables and cross gables in flat concrete tile, light stucco, white
+  // trim, often a two-storey wing, chimneys, skylights, solar
+  estate: { form: [['cross', 55], ['gable', 33], ['hip', 12]], mat: [['tile', 70], ['clay', 15], ['shingle', 15]], pitch: [0.38, 0.5], over: [0.55, 0.75], walls: 'estate' },
 };
 // Poway by neighbourhood (src/world/regions.js), the county by zone (src/world/zones.js); strip: how its shops are fronted
 const ARCH_REGION = {
@@ -158,11 +162,49 @@ const ARCH_ZONE = {
   rural: { house: [['ranch', 70], ['spanish', 15], ['tract', 15]], strip: [['metal', 50], ['canvas', 25], ['tile', 25]] },
 };
 const STRIP0 = [['tile', 42], ['metal', 30], ['canvas', 28]];
+const ACCENTS = [[0x24466e, 3], [0x1f6b6b, 2], [0x8a2a22, 2], [0x2f5a3c, 2], [0x3d3d3a, 2], [0xb5893a, 1]]; // big-box accent bands: navy, teal, red, green, charcoal, ochre
+// what the walls are clad in, by local look (houses, garages) or by type; layer names of src/world/wallarr.js
+const SKINS = {
+  tract: [['stucco', 40], ['stucco_sand', 35], ['stucco_fine', 25]],
+  spanish: [['stucco_lace', 45], ['stucco_sand', 30], ['plaster_smooth', 25]],
+  ranch: [['siding_board_batten', 30], ['stucco_sand', 30], ['siding_lap', 25], ['brick_painted', 15]],
+  modern: [['plaster_smooth', 55], ['stucco_fine', 30], ['concrete_smooth', 15]],
+  cottage: [['siding_lap', 55], ['siding_board_batten', 25], ['stucco_fine', 20]],
+  bungalow: [['stucco_aged', 45], ['stucco_sand', 30], ['siding_lap', 25]],
+  estate: [['stucco_sand', 40], ['stucco', 30], ['stucco_fine', 30]],
+};
+const SKIN_TYPE = {
+  shop: w => w === 2 ? [['brick', 50], ['brick_tan', 30], ['brick_painted', 20]] : [['stucco_rough', 40], ['stucco_sand', 30], ['cmu_painted', 20], ['plaster_smooth', 10]],
+  office: () => [['plaster_smooth', 40], ['concrete_smooth', 30], ['stucco_fine', 30]],
+  bigbox: () => [['tiltup', 60], ['concrete_panel', 25], ['cmu_split_face', 15]],
+  warehouse: () => [['tiltup', 40], ['metal_corrugated', 30], ['cmu_split_face', 30]],
+  civic: () => [['stucco_sand', 45], ['plaster_smooth', 30], ['cmu_split_face', 25]],
+  hall: () => [['stucco_lace', 40], ['stucco', 30], ['brick', 30]],
+  shed: () => [['siding_weathered', 40], ['metal_wall', 30], ['siding_board_batten', 30]],
+  apartment: (w, hs) => hs === 'spanish' ? SKINS.spanish : [['stucco_sand', 40], ['stucco', 30], ['siding_lap', 15], ['stucco_fine', 15]],
+  row: (w, hs) => hs === 'spanish' ? SKINS.spanish : [['stucco_sand', 40], ['stucco', 30], ['siding_lap', 15], ['stucco_fine', 15]],
+};
+SKIN_TYPE.strip = SKIN_TYPE.shop;
+// trim by local look: [window surround, how often], how often shutters, a porch, gutters
+const TRIMS = {
+  tract: { win: ['foam', 0.75], shut: 0.1, porch: 0.15, gutter: 0.6 }, spanish: { win: ['stucco', 0.65], shut: 0.15, porch: 0.1, gutter: 0.2 },
+  ranch: { win: ['wood', 0.8], shut: 0.45, porch: 0.55, gutter: 0.8 }, modern: { win: ['metal', 0.9], shut: 0, porch: 0, gutter: 0.3 },
+  cottage: { win: ['wood', 0.85], shut: 0.5, porch: 0.4, gutter: 0.7 }, bungalow: { win: ['wood', 0.6], shut: 0.15, porch: 0.5, gutter: 0.5 },
+  apt: { win: ['foam', 0.6], shut: 0, porch: 0, gutter: 0.5 }, civic: { win: ['foam', 0.5], shut: 0, porch: 0, gutter: 0.4 },
+  estate: { win: ['wood', 0.85], shut: 0.12, porch: 0.25, gutter: 0.85 },
+};
+const TRIM_FOAM = [[0xf2efe6, 3], [0xece6d6, 2], [0xe3dcc8, 2]], TRIM_WOOD = [[0xf2efe6, 6], [0x3b332b, 2], [0x5a4636, 2]], TRIM_METAL = [[0x2a2a2c, 3], [0x3b332b, 1]];
+const TRIM_ESTATE = [[0xf4f2ec, 8], [0xe6dcc6, 3], [0x3b332b, 1]]; // white vinyl, almond, now and then the original bronze aluminium
+const SHUTTERS = [[0x2f4a35, 3], [0x1f1f1f, 3], [0x6e2a22, 2], [0x233548, 2], [0xece8de, 2], [0x7d8a6a, 2], [0x4a3a2c, 1]];
+// how often a street front gets a wainscot (the SoCal "stone on the front")
+const WAINS = { estate: 0.25, tract: 0.22, spanish: 0.1, ranch: 0.38, modern: 0.12, cottage: 0.05, bungalow: 0.06, strip: 0.3, shop: 0.15, civic: 0.2, row: 0.15, apartment: 0.1 };
 
 // ---------------------------------------------------------------- what it is
 const pickW = (r, list) => { let t = 0; for (const [, w] of list) t += w; let x = r() * t; for (const [k, w] of list) { x -= w; if (x <= 0) return k; } return list[0][0]; };
+const CLUBS = /costco|sam'?s club|bj'?s wholesale/i, MARTS = /walmart|target|kmart|home depot|lowe'?s/i;
 const COMMERCE = new Set(['shop', 'restaurant', 'fast_food', 'cafe', 'bank', 'fuel']), CIVIC = new Set(['fire_station', 'post_office', 'library', 'police']);
-//   o: { h, kind (0 house/yes, 1 commercial, 2 civic), retail (a mapped store), zone, region (id), x, z, ctx (contextIndex),
+//   o: { h, kind (0 house/yes, 1 commercial, 2 civic), retail (a mapped store), unsure (the core's kind 1: not
+//        necessarily commercial), zone, region (id), x, z, ctx (contextIndex),
 //        street ({ t: road type 0 motorway .. 4 residential, d: metres from the middle }), roofCol (roof:colour, or -1) }
 export function planBuilding(S, o) {
   const r = rnd(o.x, o.z, 17), h = o.h, A = S.A, zone = o.zone || 'suburb', C = o.ctx || {}, st = o.street;
@@ -173,6 +215,9 @@ export function planBuilding(S, o) {
   // building outlines and say nothing) by a parking lot on a main road is a shop, not a house; one on school grounds is
   // a school; a mapped shop, restaurant or bank inside it says what it is
   let kind = o.kind;
+  // the core's kind 1 is any mapped building that isn't a store: on a quiet residential street with nothing round it
+  // that says business (no shop or office at the door, no parking lot, no main road) it is a home
+  if (o.unsure && kind === 1 && !poi && !C.parking && !arterial && (!st || st.t >= 4) && A < 1500) kind = 0;
   if (kind === 0 && (COMMERCE.has(poi) || (C.parking && A > 300 && h < 8.5 && (arterial || A > 900)) || (arterial && C.parking && A > 160) || (A > 520 && C.meanA > 900))) kind = 1; // (the last: a big one among big ones, a business park)
   if (kind !== 2 && (CIVIC.has(poi) || poi === 'school' || poi === 'hospital' || (C.school && A > 150))) kind = 2;
   let type, floors = 1, storey = 2.95;
@@ -187,7 +232,7 @@ export function planBuilding(S, o) {
   } else if (kind === 1) {
     if ((h === 10.5 || h === 13.5) && !C.parking && !COMMERCE.has(poi) && A < 4000) type = TYPE.apartment; // the county tiles' height for building=apartments (tools/world/build.py)
     else if (poi === 'hospital' || (h >= 10.5 && A < 6000 && !o.retail)) type = TYPE.office;
-    else if (A >= 4500 || (A >= 2400 && S.fill > 0.86 && S.aspect < 2.6)) type = zone === 'downtown' ? TYPE.office : (S.aspect > 2.4 || S.fill < 0.8) && !C.parking ? TYPE.warehouse : TYPE.bigbox;
+    else if (A >= 4500 || (A >= 2400 && S.fill > 0.86 && S.aspect < 2.6)) type = zone === 'downtown' ? TYPE.office : (S.aspect > 2.4 || S.fill < 0.8) && !C.parking && !o.retail && !COMMERCE.has(poi) ? TYPE.warehouse : TYPE.bigbox; // a mapped store or a shop at its door is a big box, parking or not
     else if (S.aspect >= 2.0 && S.W >= 9 && S.W <= 30 && A >= 220) type = TYPE.strip;
     else type = TYPE.shop;
   } else {
@@ -204,7 +249,8 @@ export function planBuilding(S, o) {
   else if (type === TYPE.civic) { storey = 4; floors = h > 8.4 ? 2 : 1; }
   // the local look: the neighbourhood's, else the zone's; big lots out of town lean Spanish and ranch
   let hs = pickW(r, AR.house || AZ.house);
-  if (sparse && hs === 'tract' && r() < 0.5) hs = r() < 0.5 ? 'spanish' : 'ranch';
+  if (type === TYPE.house && A > 280 && (hs === 'tract' || hs === 'ranch') && (sparse || r() < 0.35)) hs = 'estate';
+  else if (sparse && hs === 'tract' && r() < 0.5) hs = r() < 0.5 ? 'spanish' : 'ranch';
   const HS = HSTYLE[hs];
   // the roof
   let form = 'flat', mat = 'gravel', pitch = 0, over = 0, parapet = 0, eave = 0, gables = 'main';
@@ -215,7 +261,7 @@ export function planBuilding(S, o) {
     if (form === 'cross' && wings === 1) form = r() < 0.6 ? 'hip' : 'gable';
     if (form === 'gable' && wings > 1) form = 'cross';
     if (form === 'shed' && wings > 1 && S.fill < 0.8) form = 'flat';
-    gables = form === 'gable' ? 'all' : form === 'cross' ? 'wings' : 'none';
+    gables = form === 'gable' ? 'all' : form === 'cross' ? (hs === 'estate' ? 'all' : 'wings') : 'none'; // the estates show their gable ends all round
     if (form === 'flat') { mat = 'membrane'; eave = over; } // a thin roof slab over deep eaves
     if (form === 'shed') mat = hs === 'modern' ? 'metal' : mat;
   } else if (type === TYPE.row || type === TYPE.apartment) {
@@ -260,15 +306,46 @@ export function planBuilding(S, o) {
   if (type === TYPE.office || (type === TYPE.apartment && form === 'flat')) { cornice = true; bands = true; }
   if (type === TYPE.civic && parapet) cornice = r() < 0.5;
   if (type === TYPE.row || (type === TYPE.apartment && form !== 'flat') || (type === TYPE.house && floors === 2)) bands = r() < 0.55;
-  if (type === TYPE.house && form !== 'flat' && form !== 'shed') chimney = r() < (hs === 'ranch' || hs === 'spanish' ? 0.55 : hs === 'tract' ? 0.4 : 0.25);
+  if (type === TYPE.house && form !== 'flat' && form !== 'shed') chimney = r() < (hs === 'estate' ? 0.8 : hs === 'ranch' || hs === 'spanish' ? 0.55 : hs === 'tract' ? 0.4 : 0.25);
   if (type === TYPE.row) chimney = r() < 0.25;
   if (form === 'flat' && !eave) units = type === TYPE.bigbox || type === TYPE.warehouse ? Math.min(18, Math.floor(A / 400)) : type === TYPE.house ? 0 : Math.min(10, Math.floor(A / 220) + 1);
   if (type === TYPE.house || type === TYPE.row) { kit.dish = r() < (zone === 'rural' ? 0.35 : zone === 'working' ? 0.3 : 0.14); kit.turbine = form !== 'flat' && r() < (zone === 'working' ? 0.35 : 0.18); }
   // the walls: painted stucco on homes (in the local look's colours); rough stucco or brick on shops; tilt-up concrete
   // on big boxes and warehouses
   const wall = type === TYPE.shop || type === TYPE.strip ? (r() < (zone === 'downtown' ? 0.35 : 0.12) ? 2 : 1) : type === TYPE.office ? 1 : type === TYPE.bigbox || type === TYPE.warehouse ? (r() < 0.75 ? 3 : 1) : type === TYPE.civic ? (r() < 0.4 ? 3 : 1) : 0;
+  // the cladding (a layer of the wall array, src/world/wallarr.js) and, on some street fronts, a wainscot of stone or brick
+  // a big box: a warehouse club (corrugated metal over a block base, one entrance, two accent bands) or a supercenter
+  // (EIFS over split-face block, two entrances on a long front, a tower over each), pilasters on the panel joints, an
+  // accent band under the parapet, a glass vestibule out front, docks behind
+  const cr = type === TYPE.bigbox ? r() : 1, brand = C.poiName || ''; /* a store's name says which kind of big box it is; otherwise a guess */
+  const box = type === TYPE.bigbox || type === TYPE.warehouse ? { club: type === TYPE.bigbox && (CLUBS.test(brand) || (!MARTS.test(brand) && cr < 0.4)), accent: pickW(r, ACCENTS), accent2: pickW(r, ACCENTS), pilasters: r() < 0.85, vestibule: type === TYPE.bigbox } : null;
+  if (box) box.entries = type === TYPE.bigbox ? (S.L > 120 && !box.club ? 2 : 1) : 0;
+  const skin = box && box.club ? 'metal_corrugated' : box && type === TYPE.bigbox ? pickW(r, [['stucco_fine', 50], ['tiltup', 30], ['concrete_panel', 20]]) : pickW(r, SKIN_TYPE[type] ? SKIN_TYPE[type](wall, hs) : SKINS[hs]);
+  const wr = r(), wp = WAINS[type === TYPE.house || type === TYPE.garage ? hs : type] || 0;
+  const wains = box && (type === TYPE.bigbox || wr < 0.5) ? { h: box.club ? 1.6 : 1.2, skin: 'cmu_split_face' } : wr < wp ? { h: 0.55 + r() * 0.25, skin: pickW(r, hs === 'spanish' ? [['stone_river_rock', 1]] : [['stone_ledgestone', 70], ['stone_river_rock', 20], ['brick_tan', 10]]) } : null;
+  // the trim the near kit fits round the openings and along the eaves (facadeKit, src/world/bldkit.js)
+  const homeLike = type === TYPE.house || type === TYPE.garage || type === TYPE.row || type === TYPE.apartment || type === TYPE.hall || type === TYPE.civic;
+  let trim = null;
+  if (homeLike) {
+    const lk = type === TYPE.house || type === TYPE.garage ? hs : type === TYPE.civic || type === TYPE.hall ? 'civic' : 'apt';
+    const TR = TRIMS[lk] || TRIMS.tract, pitched = form !== 'flat';
+    const win = r() < TR.win[1] ? TR.win[0] : null, winC = pickW(r, win === 'metal' ? TRIM_METAL : win === 'wood' ? (lk === 'estate' ? TRIM_ESTATE : TRIM_WOOD) : TRIM_FOAM);
+    trim = { win, winC, shutters: type === TYPE.house && win && r() < TR.shut ? pickW(r, lk === 'spanish' ? [[0x4a3a2c, 2], [0x2f4a35, 1]] : SHUTTERS) : null,
+      rejas: type === TYPE.house && lk === 'spanish' && r() < 0.35, porch: type === TYPE.house && pitched && floors <= 2 && r() < TR.porch, porchW: r(),
+      gutter: pitched && r() < TR.gutter ? pickW(r, [[0xece8de, 4], [0xd8cbb0, 2], [0x6b5640, 1], [win === 'wood' && winC === 0x3b332b ? 0x3b332b : 0xece8de, 1]]) : null,
+      balcony: (type === TYPE.apartment && floors >= 2 && r() < 0.45) || (type === TYPE.row && r() < 0.25), rail: pickW(r, [[0x232323, 3], [0xece8de, 2], [0x5a4636, 1]]) };
+    if (type === TYPE.house) trim.alcove = !trim.porch && r() < (lk === 'tract' ? 0.35 : lk === 'spanish' ? 0.3 : lk === 'estate' ? 0.4 : 0.12); // a covered entry niche
+    if (type === TYPE.house && pitched) { trim.patio = r() < (lk === 'estate' ? 0.55 : lk === 'ranch' ? 0.45 : lk === 'modern' ? 0.25 : 0.38); trim.patioW = r(); } // a covered patio over the slider out back
+  } else if (type === TYPE.shop || type === TYPE.strip) trim = { win: r() < 0.6 ? 'foam' : null, winC: pickW(r, TRIM_FOAM) };
+  // the massing and the roof's extras: a two-storey wing over a single-storey house (its own higher roof), solar arrays on
+  // the sunny slope, skylights, a second chimney on the big ones
+  const pitchedH = type === TYPE.house && form !== 'flat' && form !== 'shed';
+  const split = pitchedH && floors === 1 && wings >= 2 && A > 220 && h >= 3.6 && r() < (hs === 'estate' ? 0.7 : hs === 'tract' ? 0.25 : hs === 'spanish' ? 0.2 : 0.12);
+  const solar = (pitchedH || (type === TYPE.row && form !== 'flat')) && r() < (zone === 'rich' ? 0.35 : zone === 'working' ? 0.12 : 0.28);
+  const skylights = pitchedH && r() < (hs === 'estate' || hs === 'tract' ? 0.3 : 0.12), chimneys = chimney ? (A > 300 && r() < 0.5 ? 2 : 1) : 0;
   return {
-    type, style: FAC[type], floors, storey, wings, wall, area: A, look: hs, walls: wall === 0 ? HS.walls : null, kind, poi,
+    type, style: FAC[type], floors, storey, wings, wall, area: A, look: hs, walls: wall === 0 ? HS.walls : null, kind, poi, skin, wains, trim,
+    split: split ? (s => ({ gable: gables !== 'none' || s < 0.3, deck: (gables !== 'none' || s < 0.3) && (s * 7.31) % 1 < (hs === 'estate' ? 0.65 : 0.3) }))(r()) : null, /* the wing is roofed like the rest of the house */ solar, skylights, chimneys, box,
     roof: { form, mat, pitch, over, parapet, eave, gables, col: o.roofCol >= 0 ? o.roofCol : -1 },
     awning, mansard, raised, cornice, bands, chimney, units, kit,
     seed: r(), r1: r(), r2: r(), r3: r(),
@@ -282,6 +359,7 @@ export const WALLS = {
   modern: ['#f4f3ef', '#ecebe6', '#d9d8d3', '#c6c5c0', '#e8e4dc', '#a9a8a3'],
   coast: ['#f4f3ef', '#e9ecea', '#dfe6e8', '#c9d6dc', '#eae4d6', '#d6dccf', '#f2ede2', '#bfcad0', '#e6e1d8'],
   bungalow: ['#efd9c0', '#e6d3a8', '#d8e0cc', '#e8cfc0', '#d9dfe3', '#f1e3b8', '#e2d0b6', '#cfd3c6'],
+  estate: ['#f4f1ea', '#efe9dc', '#ebe5d6', '#f2ede2', '#e4e1d8', '#ece4d2', '#e3d9c4', '#e9dfcc'],
 };
 
 // ---------------------------------------------------------------- details
@@ -299,19 +377,19 @@ export function wallFrames(flat) {
 }
 // storefront awnings over a shop's street walls, one per bay as the facade shader lays the bays out (7.2 m), or one
 // continuous metal canopy. Returns quads [p0, p1, p2, p3, normal hint, uv size] in world space, y from ground g.
-export function awnings(frames, roles, kind, g, r) {
+export function awnings(frames, roles, kind, g, r, ents) { // ents: a big box's entrances, as fractions of its front
   const Q = [], fr = (p0, p1, p2, p3, n, w, h) => Q.push([p0, p1, p2, p3, n, w, h]);
   let entry = null; if (kind === 'entry') for (const f of frames) if (roles[f.i] === 1 && f.len > 20 && (!entry || f.len > entry.len)) entry = f;
   for (const f of frames) {
     if (roles[f.i] !== 1 || f.len < 3.2) continue;
     const at = (u, d, y) => [f.ax + f.tx * u + f.ox * d, g + y, f.az + f.tz * u + f.oz * d];
-    if (kind === 'entry') { // a big box's entrance canopy, centred on the doors the facade shader draws
+    if (kind === 'entry') { // a big box's entrance canopy, over each of the entrances the facade shader draws
       if (f !== entry) continue;
-      const u0 = f.len / 2 - 7.5, u1 = f.len / 2 + 7.5, D = 4.2, y = 4.7, t = 0.75;
+      for (const cx of ents ? ents.map(e => e * f.len) : [f.len / 2]) { const u0 = cx - 7.5, u1 = cx + 7.5, D = 4.2, y = 4.7, t = 0.75;
       fr(at(u0, 0.02, y), at(u1, 0.02, y), at(u1, D, y), at(u0, D, y), [0, 1, 0], u1 - u0, D);
       fr(at(u0, 0.02, y - 0.1), at(u0, D, y - 0.1), at(u1, D, y - 0.1), at(u1, 0.02, y - 0.1), [0, -1, 0], u1 - u0, D);
       fr(at(u0, D, y - t), at(u1, D, y - t), at(u1, D, y + 0.05), at(u0, D, y + 0.05), [f.ox, 0, f.oz], u1 - u0, t);
-      for (const [u, s] of [[u0, -1], [u1, 1]]) fr(u > u0 ? at(u, D, y - t) : at(u, 0.02, y - t), u > u0 ? at(u, 0.02, y - t) : at(u, D, y - t), u > u0 ? at(u, 0.02, y + 0.05) : at(u, D, y + 0.05), u > u0 ? at(u, D, y + 0.05) : at(u, 0.02, y + 0.05), [f.tx * s, 0, f.tz * s], D, t);
+      for (const [u, s] of [[u0, -1], [u1, 1]]) fr(u > u0 ? at(u, D, y - t) : at(u, 0.02, y - t), u > u0 ? at(u, 0.02, y - t) : at(u, D, y - t), u > u0 ? at(u, 0.02, y + 0.05) : at(u, D, y + 0.05), u > u0 ? at(u, D, y + 0.05) : at(u, 0.02, y + 0.05), [f.tx * s, 0, f.tz * s], D, t); }
       continue;
     }
     if (kind === 'metal') { // a flat canopy on the head of the storefronts, with a deep fascia
@@ -361,7 +439,143 @@ export function raisedFront(frames, roles, y0, rise, r, centre) {
 // a fireplace chimney: a stucco chase on the outside of a side or back wall, up past the eaves
 export function chimney(frames, roles, g, wallTop, pitch, r) {
   const c = frames.filter(f => roles[f.i] !== 1 && f.len > 4.2); if (!c.length) return null;
-  const f = c[Math.floor(r() * c.length)], u = f.len * (0.3 + r() * 0.4), w = 0.62 + r() * 0.3, d = 0.62;
+  const f = c[Math.floor(r() * c.length)], u = f.len * (0.3 + r() * 0.4), w = 0.95 + r() * 0.45, d = 0.78;
   const top = wallTop + Math.max(1.3, 2.6 * pitch + 0.9);
   return { x: f.ax + f.tx * u + f.ox * (d / 2 + 0.02), z: f.az + f.tz * u + f.oz * (d / 2 + 0.02), tx: f.tx, tz: f.tz, hu: w / 2, ho: d / 2, y0: g - 0.3, y1: top };
+}
+
+// ---------------------------------------------------------------- openings
+// The openings the facade shader paints on a wall (src/world/surfaces.js, FACADE_FS), worked out by the same rules, so
+// real pieces can be fitted round them. u: metres along the wall from its first corner, v: metres above the ground.
+//   openings({ style, role, len, fH, floors, seed, gBit, gSide }) -> [{ k, u0, u1, v0, v1, fl }]
+//   k: 'win' (a house, apartment or upstairs window), 'door', 'garage', 'store' (a storefront bay), 'sdoor' (a service door)
+const sH11 = n => { const x = Math.sin(n * 91.3458) * 47453.5453; return x - Math.floor(x); };
+export function openings(o) {
+  const { style, role, fH, seed } = o, floors = Math.max(1, Math.min(7, o.floors)), front = role === 1, back = role === 2, out = [];
+  if (style === 0 || style === 5 || style === 7) { // a house, apartments, a hall, townhouses (a unit at a time on the street and back walls)
+    const unit = style === 7 && (front || back) ? Math.max(1, Math.floor(o.len / 6.5 + 0.5)) : 1, uw = o.len / unit;
+    for (let ui = 0; ui < unit; ui++) {
+      const off = ui * uw, len = uw, gBit = style === 7 && (front || back) ? (back ? 1 : 0) : o.gBit, gSide = style === 7 && (front || back) ? ui % 2 : o.gSide;
+      const st = Math.max(2.6, fH / floors), gw = len > 16 ? 4.9 : 2.75, gx0 = gSide ? 0.9 : len - 0.9 - gw;
+      const hasG = gBit && ((front && style === 0) || (back && style === 7)), door = front && len > 3;
+      const dx0 = hasG ? (gx0 < 1 ? Math.min(gx0 + gw + 1.7, len - 1.6) : Math.max(gx0 - 2.7, 0.6)) : len * 0.5 - 0.48;
+      if (hasG) out.push({ k: 'garage', u0: off + gx0, u1: off + gx0 + gw, v0: 0, v1: 2.15, fl: 0 });
+      if (door) out.push({ k: 'door', u0: off + dx0, u1: off + dx0 + 0.96, v0: 0, v1: 2.1, fl: 0 });
+      const n = Math.floor((len - 0.6) / (front ? 3.3 : 3.9)); if (n < 1) continue;
+      const sp = len / n, sk = Math.floor(Math.fround(Math.fround(seed) * 13)); // (the shader's float32 arithmetic)
+      for (let fl = 0; fl < floors; fl++) for (let k = 0; k < n; k++) {
+        const pic = front && fl === 0 && sp >= 3.2 && (k + sk) % 3 === 0, bath = !front && !back && n > 1 && (k * 2 + sk + fl) % 5 === 0;
+        const slide = back && fl === 0 && style === 0 && sp >= 2.9 && k === sk % n, wide = back && fl === 0 && !slide && sp >= 3.4 && (k + sk) % 2 === 0, blank = !front && !back && n > 2 && (k + sk) % 4 === 3;
+        const cx = (k + 0.5) * sp, ww = slide ? Math.min(2.4, sp - 0.5) : pic ? Math.min(2.6, sp - 0.7) : wide ? Math.min(2.2, sp - 0.8) : bath ? 0.75 : front && fl === 0 ? 1.8 : 1.5;
+        const wh = slide ? 2.05 : pic ? 1.55 : wide ? 1.4 : bath ? 0.7 : fl > 0 ? 1.2 : 1.32, sill = (slide ? 0.04 : pic ? 0.62 : wide ? 0.85 : bath ? 1.5 : 0.92) + fl * st, a = cx - ww / 2, b = cx + ww / 2;
+        if (blank || (hasG && fl === 0 && b > gx0 - 0.4 && a < gx0 + gw + 0.4) || (door && fl === 0 && b > dx0 - 0.35 && a < dx0 + 1.3) || sill + wh > fl * st + st - 0.25) continue;
+        out.push({ k: 'win', u0: off + a, u1: off + b, v0: sill, v1: sill + wh, fl, pic, bath, slide });
+      }
+    }
+  } else if (style === 1) { // a shop: storefront bays on the street, a service door behind, windows upstairs
+    const st0 = Math.min(fH, 4.6), up = floors - 1;
+    if (front) { const nb = Math.max(1, Math.floor(o.len / 7.2)), bw = o.len / nb;
+      for (let k = 0; k < nb; k++) { const isDoor = (k + Math.floor(seed * 7)) % 2 < 1; out.push({ k: 'store', u0: k * bw + 0.4, u1: (k + 1) * bw - 0.4, v0: 0.45, v1: 3.05, fl: 0, door: isDoor ? [k * bw + bw / 2 - 0.95, k * bw + bw / 2 + 0.95] : null, bw }); } }
+    else if (back) for (let k = 0; (k + 0.5) * 16 + 0.5 <= o.len; k++) out.push({ k: 'sdoor', u0: (k + 0.5) * 16 - 0.5, u1: (k + 0.5) * 16 + 0.5, v0: 0, v1: 2.1, fl: 0 });
+    if (up > 0 && o.len > 3) { const st = (fH - st0) / up;
+      for (let fl = 0; fl < up; fl++) for (let k = 0; (k + 0.5) * 2.4 + 0.7 <= o.len; k++) { const cx = (k + 0.5) * 2.4; out.push({ k: 'win', u0: cx - 0.7, u1: cx + 0.7, v0: st0 + fl * st + 0.9, v1: st0 + fl * st + 2.4, fl: fl + 1, shop: 1 }); } }
+  } else if (style === 2) { // a big box: its entrance (two on a long front), roll-up doors behind
+    if (front && o.len > 14) for (const cx of o.gBit ? [o.len * 0.28, o.len * 0.72] : [o.len * 0.5]) out.push({ k: 'entry', u0: cx - 4.5, u1: cx + 4.5, v0: 0.02, v1: 3.9, fl: 0 });
+    if (back) for (let k = 0; (k + 0.5) * 18 + 1.8 <= o.len; k++) out.push({ k: 'roll', u0: (k + 0.5) * 18 - 1.8, u1: (k + 0.5) * 18 + 1.8, v0: 0, v1: 4.3, fl: 0 });
+  } else if (style === 6) { // a garage: sectional doors to the street, maybe a side door
+    if (front && o.len > 2.4) { const nd = o.len < 7.4 ? 1 : Math.floor((o.len - 0.3) / 3.2), dw = nd < 2 ? (o.len > 5.8 ? 4.9 : Math.min(2.75, o.len - 0.5)) : 2.6, sp = o.len / nd;
+      for (let k = 0; k < nd; k++) { const x0 = k * sp + (sp - dw) / 2; out.push({ k: 'garage', u0: x0, u1: x0 + dw, v0: 0, v1: 2.15, fl: 0 }); } }
+    else if (!front && !back && o.len > 3.2 && sH11(seed * 3.1 + role) < 0.5) out.push({ k: 'sdoor', u0: o.len / 2 - 0.45, u1: o.len / 2 + 0.45, v0: 0, v1: 2.05, fl: 0 });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the near kit
+// The small real pieces round a building's openings and along its eaves (instanced near the camera by
+// src/world/bldkit.js): window surrounds (foam, wood, stucco or a thin metal frame), shutters, Spanish rejas, door
+// casings, garage jambs, storefront mullions, gutters and downspouts, balcony rails. And the bigger ones that belong in
+// the town's own meshes (a front porch, balcony slabs), returned for index.html to draw.
+//   facadeKit(frames, roles, plan, { g, fH, floors, style, seeds (per wall), gBit (per wall), gSide, eaves, wallTop })
+//     -> { items: [{ k, x, y, z, ry, sx, sy, sz, c }], porch, balconies: [{ f, u0, u1, y, d }] }
+const box = (items, k, f, u, v, d, w, h, t, c) => items.push({ k, x: f.ax + f.tx * u + f.ox * d, y: v, z: f.az + f.tz * u + f.oz * d, ry: Math.atan2(f.ox, f.oz), sx: w, sy: h, sz: t, c });
+export function facadeKit(frames, roles, P, o) {
+  const T = P.trim, items = [], balconies = [], g = o.g; let porch = null, patio = null;
+  if (!T) return { items, porch, patio, balconies };
+  // the footprint's walls, then any upper-storey bands (a two-storey wing: their own role, floors and seed; only their
+  // upper windows count)
+  const walls = frames.map((f, i) => ({ f, i, role: roles[i] || 0, seed: o.seeds[i], gBit: o.gBit[i], fH: o.fH, floors: o.floors, minV: -1e9 }))
+    .concat((o.bands || []).map(b => ({ f: b, i: -1, role: b.role, seed: b.seed, gBit: 0, fH: b.fH, floors: b.floors, minV: b.minV })));
+  // a deck off the upstairs of a two-storey wing, across its gable end, the back one if it has one
+  const deck = P.split && P.split.deck ? walls.filter(w => w.i < 0 && w.f.gableEnd && w.role !== 1 && w.f.len >= 4).sort((a, b) => (b.role === 2) - (a.role === 2))[0] : null;
+  walls.forEach(({ f, i, role, seed, gBit, fH, floors, minV }) => {
+    if (f.len < 1) return;
+    const ops = openings({ style: o.style, role, len: f.len, fH, floors, seed, gBit, gSide: o.gSide }).filter(p => p.v0 >= minV);
+    for (const p of ops) {
+      const w = p.u1 - p.u0, h = p.v1 - p.v0, uc = (p.u0 + p.u1) / 2;
+      if (p.k === 'win' && T.win) { // the surround: jambs and head, the sill is the town mesh's own (index.html sills)
+        const tw = T.win === 'metal' ? 0.035 : T.win === 'stucco' ? 0.12 : T.win === 'foam' ? 0.1 : 0.085, td = T.win === 'metal' ? 0.03 : T.win === 'stucco' ? 0.07 : 0.045, k = T.win === 'metal' ? 'metal' : 'box', c = T.win === 'stucco' ? o.wallHex : T.winC;
+        for (const u of [p.u0 - 0.06 - tw / 2, p.u1 + 0.06 + tw / 2]) box(items, k, f, u, g + p.v0 - 0.02, td / 2, tw, h + 0.1 + tw, td, c);
+        box(items, k, f, uc, g + p.v1 + 0.08, td / 2 + (T.win === 'foam' ? 0.01 : 0), w + 0.12 + tw * 2 + (T.win === 'foam' ? 0.08 : 0), T.win === 'foam' ? tw * 1.3 : tw, td + (T.win === 'foam' ? 0.02 : 0), c);
+        if (T.shutters && !p.shop && w < 2) for (const [u, s] of [[p.u0 - 0.06 - tw - w * 0.21 - 0.02, -1], [p.u1 + 0.06 + tw + w * 0.21 + 0.02, 1]]) box(items, 'shutter', f, u, g + p.v0 - 0.02, 0.025, w * 0.42, h + 0.08, 1, T.shutters);
+        if (T.rejas && p.fl === 0 && role === 1) box(items, 'reja', f, uc, g + p.v0 - 0.05, 0.09, w + 0.1, h + 0.12, 1, 0x232120);
+      } else if (p.k === 'door' && T.win) { // a casing round the front door, or round its covered niche
+        const tw = 0.11, ex = T.alcove && role === 1 ? 0.3 : 0.1, top = T.alcove && role === 1 ? 2.57 : 2.2;
+        for (const u of [p.u0 - ex - tw / 2, p.u1 + ex + tw / 2]) box(items, 'box', f, u, g - 0.02, 0.03, tw, top + 0.12, 0.06, T.winC);
+        box(items, 'box', f, uc, g + top, 0.035, w + ex * 2 + tw * 2 + 0.1, 0.16, 0.07, T.winC);
+      } else if (p.k === 'garage') { // jambs beside the garage door (its header is drawn with the yard)
+        for (const u of [p.u0 - 0.08, p.u1 + 0.08]) box(items, 'box', f, u, g - 0.02, 0.03, 0.14, 2.32, 0.06, T.winC);
+      } else if (p.k === 'store') { // the storefront's aluminium: head, sill, transom and mullions between the panes
+        const c = sH11(seed * 5.1) < 0.6 ? 0x141415 : 0x47382a, m = Math.max(1, Math.floor(w / 1.55)), cw = w / (m + 1); // the shader's frame colour
+        box(items, 'metal', f, uc, g + p.v1 - 0.04, 0.03, w + 0.08, 0.1, 0.06, c);
+        box(items, 'metal', f, uc, g + 2.31, 0.025, w, 0.08, 0.05, c);
+        if (!p.door) box(items, 'metal', f, uc, g + p.v0 - 0.06, 0.03, w + 0.08, 0.1, 0.06, c);
+        for (let j = 0; j <= m + 1; j++) { const u = p.u0 + j * cw; if (p.door && u > p.door[0] + 0.05 && u < p.door[1] - 0.05) continue; box(items, 'metal', f, u, g + (p.door && u >= p.door[0] - 0.05 && u <= p.door[1] + 0.05 ? 0.02 : p.v0), 0.03, 0.07, p.v1 - (p.door && u >= p.door[0] - 0.05 && u <= p.door[1] + 0.05 ? 0.02 : p.v0), 0.05, c); }
+        if (p.door) for (const u of p.door) box(items, 'metal', f, u, g + 0.02, 0.035, 0.08, 2.3, 0.06, c); // the door's frame
+      }
+      if (p.k === 'win' && T.balcony && p.fl > 0 && role !== 0 && Math.round(uc / 3) % 2 === 0) { // a balcony under every other upper window
+        const d = 1.15, u0 = p.u0 - 0.35, u1 = p.u1 + 0.35, y = g + p.v0 - 0.92 + 0.02; balconies.push({ f, u0, u1, y, d });
+        box(items, 'rail', f, (u0 + u1) / 2, y, d, u1 - u0, 0.95, 1, T.rail);
+        for (const u of [u0, u1]) items.push({ k: 'rail', x: f.ax + f.tx * u + f.ox * d / 2, y, z: f.az + f.tz * u + f.oz * d / 2, ry: Math.atan2(f.ox, f.oz) + Math.PI / 2, sx: d, sy: 0.95, sz: 1, c: T.rail });
+      }
+    }
+    if (deck && deck.f === f) {
+      const up = ops.find(q => q.k === 'win' && q.fl >= 1), y = up ? g + up.v0 - 0.9 : g + fH - 2.95, w = Math.min(f.len - 0.8, 6.5), u0 = (f.len - w) / 2, u1 = u0 + w, d = 1.8;
+      balconies.push({ f, u0, u1, y, d }); box(items, 'rail', f, (u0 + u1) / 2, y, d, w, 0.95, 1, T.rail);
+      for (const u of [u0, u1]) items.push({ k: 'rail', x: f.ax + f.tx * u + f.ox * d / 2, y, z: f.az + f.tz * u + f.oz * d / 2, ry: Math.atan2(f.ox, f.oz) + Math.PI / 2, sx: d, sy: 0.95, sz: 1, c: T.rail });
+      for (const u of [u0 + 0.12, u1 - 0.12]) box(items, 'box', f, u, g - 0.3, d - 0.12, 0.2, y - g + 0.14, 0.2, T.rail === 0x232323 ? T.winC : T.rail); /* its posts */
+    }
+    // the covered patio out back: a shed roof on posts over the sliding door
+    if (T.patio && !patio && i >= 0 && role === 2 && f.len > 6) { const sd = ops.find(q => q.slide); if (sd) { const w = Math.min(f.len - 0.6, 5 + T.patioW * 5), uc = Math.min(Math.max((sd.u0 + sd.u1) / 2, w / 2 + 0.3), f.len - w / 2 - 0.3);
+      patio = { f, u0: uc - w / 2, u1: uc + w / 2, depth: 2.8 + T.patioW * 1.2, yWall: Math.min(o.wallTop - 0.25, g + 3.05), yEave: g + 2.45 }; } }
+    // the front porch: a shed roof on posts over the front door of the main street wall
+    if (T.porch && !porch && i >= 0 && role === 1 && f.len > 6) { const d = ops.find(q => q.k === 'door'); if (d) { const w = Math.min(f.len - 1, 3.2 + T.porchW * 2.6), uc = Math.min(Math.max((d.u0 + d.u1) / 2, w / 2 + 0.3), f.len - w / 2 - 0.3);
+      let u0 = uc - w / 2, u1 = uc + w / 2; const gar = ops.find(q => q.k === 'garage'); // never in front of the garage door
+      if (gar) { if (gar.u0 >= d.u1) u1 = Math.min(u1, gar.u0 - 0.35); else u0 = Math.max(u0, gar.u1 + 0.35); }
+      if (u1 - u0 >= 2.4 && u0 < d.u0 && u1 > d.u1) porch = { f, u0, u1, depth: 1.8 + T.porchW * 0.6, yWall: Math.min(o.wallTop - 0.3, g + 3.1), yEave: g + 2.55 }; } }
+  });
+  // a big box's loading docks (black seals round each roll-up door, bumpers) and bollards in front of its entrances
+  if (P.box) walls.forEach(({ f, i, role, seed, gBit }) => { if (i < 0 || f.len < 14) return;
+    for (const p of openings({ style: o.style, role, len: f.len, fH: o.fH, floors: o.floors, seed, gBit: o.ent2 && role === 1 ? 1 : 0, gSide: 0 })) {
+      const uc = (p.u0 + p.u1) / 2, w = p.u1 - p.u0;
+      if (p.k === 'roll') { for (const u of [p.u0 - 0.18, p.u1 + 0.18]) box(items, 'box', f, u, g, 0.15, 0.36, 4.75, 0.3, 0x151515); box(items, 'box', f, uc, g + 4.3, 0.15, w + 0.72, 0.6, 0.3, 0x151515);
+        for (const u of [p.u0 + 0.3, p.u1 - 0.3]) box(items, 'box', f, u, g + 0.9, 0.09, 0.26, 0.5, 0.18, 0x1c1c1c); box(items, 'metal', f, uc, g + 5.1, 0.12, 0.3, 0.15, 0.25, 0x6b6e70); }
+      if (p.k === 'entry' && P.box.vestibule) for (let k = 0; k < 7; k++) box(items, 'box', f, p.u0 - 1.2 + k * (w + 2.4) / 6, g, 4.6, 0.2, 0.95, 0.2, k % 2 ? 0xc8a12a : 0xb3261e); // bollards beyond the vestibule
+    } });
+  // a weep screed: the galvanized strip along the foot of stucco walls, broken at doors and garage doors
+  if (o.stucco) frames.forEach((f, i) => { if (f.len < 1) return;
+    const cut = openings({ style: o.style, role: roles[i] || 0, len: f.len, fH: o.fH, floors: o.floors, seed: o.seeds[i], gBit: o.gBit[i], gSide: o.gSide }).filter(q => q.v0 < 0.3).map(q => [q.u0 - (T.alcove && roles[i] === 1 && q.k === 'door' ? 0.35 : 0.05), q.u1 + (T.alcove && roles[i] === 1 && q.k === 'door' ? 0.35 : 0.05)]).sort((a, b) => a[0] - b[0]);
+    let u = 0; for (const [c0, c1] of [...cut, [f.len, f.len]]) { if (c0 - u > 0.3) box(items, 'metal', f, (u + c0) / 2, g + 0.07, 0.01, c0 - u, 0.035, 0.02, 0x8d8f8b); u = Math.max(u, c1); } });
+  // louvred vents high in the gable ends
+  if (o.gables) for (const t of o.gables) { const lo = Math.min(t[0][1], t[1][1]), hi = t[2][1]; if (hi - lo < 1.3 || Math.abs(t[0][1] - t[1][1]) > 0.05) continue;
+    const mx = (t[0][0] + t[1][0]) / 2, mz = (t[0][2] + t[1][2]) / 2, n = t[6], nl = Math.hypot(n[0], n[2]) || 1, vh = Math.min(0.55, (hi - lo) * 0.3);
+    items.push({ k: 'shutter', x: mx + n[0] / nl * 0.03, y: lo + (hi - lo) * 0.38, z: mz + n[2] / nl * 0.03, ry: Math.atan2(n[0], n[2]), sx: vh * 1.3, sy: vh, sz: 1, c: T.winC || 0xece8de }); }
+  // gutters along the eaves and a downspout at each end (pitched roofs)
+  if (T.gutter && o.eaves) for (const [a, b, n, oh] of o.eaves) {
+    const L = Math.hypot(b[0] - a[0], b[2] - a[2]); if (L < 1) continue;
+    const ry = Math.atan2(n[0], n[1]), mx = (a[0] + b[0]) / 2 + n[0] * 0.07, mz = (a[2] + b[2]) / 2 + n[1] * 0.07;
+    items.push({ k: 'box', x: mx, y: a[1] - 0.17, z: mz, ry, sx: L, sy: 0.12, sz: 0.13, c: T.gutter });
+    for (const p of [a, b]) { const tx = (b[0] - a[0]) / L * (p === a ? 1 : -1), tz = (b[2] - a[2]) / L * (p === a ? 1 : -1), x = p[0] + tx * (oh + 0.3) - n[0] * (oh - 0.06), z = p[2] + tz * (oh + 0.3) - n[1] * (oh - 0.06); // down the wall by the corner
+      items.push({ k: 'box', x, y: g - 0.05, z, ry, sx: 0.075, sy: Math.max(0.5, a[1] - 0.15 - g), sz: 0.075, c: T.gutter }); }
+  }
+  return { items, porch, patio, balconies };
 }

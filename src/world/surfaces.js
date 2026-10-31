@@ -144,10 +144,16 @@ const FACADE_FS = /* glsl */`
     float n = floor((fLen - 0.6) / (front ? 3.3 : 3.9));
     if (n >= 1.0 && fDoor < 0.5) {
       float sp = fLen / n, k = clamp(floor(u / sp), 0.0, n - 1.0), cx = (k + 0.5) * sp;
-      float ww = (front && fl < 0.5) ? 1.8 : 1.5, wh = fl > 0.5 ? 1.2 : 1.32, sill = 0.92 + fl * st;
+      // which windows are which, in whole numbers only so bldgen.js openings() gets the same answer: a wide, tall picture
+      // window every third bay of the street front's ground floor, a small high bathroom window now and then on the sides
+      // and on the back, a sliding glass door to the yard and wide windows; on the sides, some bays left blank
+      float sk = floor(seed * 13.0); bool pic = front && fl < 0.5 && sp >= 3.2 && mod(k + sk, 3.0) < 0.5, bath = !front && !back && n > 1.0 && mod(k * 2.0 + sk + fl, 5.0) < 0.5;
+      bool slide = back && fl < 0.5 && style < 0.5 && sp >= 2.9 && abs(k - mod(sk, n)) < 0.5, wide = back && fl < 0.5 && !slide && sp >= 3.4 && mod(k + sk, 2.0) < 0.5, blank = !front && !back && n > 2.0 && mod(k + sk, 4.0) > 2.5;
+      float ww = slide ? min(2.4, sp - 0.5) : pic ? min(2.6, sp - 0.7) : wide ? min(2.2, sp - 0.8) : bath ? 0.75 : (front && fl < 0.5) ? 1.8 : 1.5;
+      float wh = slide ? 2.05 : pic ? 1.55 : wide ? 1.4 : bath ? 0.7 : fl > 0.5 ? 1.2 : 1.32, sill = (slide ? 0.04 : pic ? 0.62 : wide ? 0.85 : bath ? 1.5 : 0.92) + fl * st;
       vec2 a = vec2(cx - ww * 0.5, sill), b = vec2(cx + ww * 0.5, sill + wh);
-      bool blocked = (hasG && fl < 0.5 && b.x > gx0 - 0.4 && a.x < gx0 + gw + 0.4) || (door && fl < 0.5 && b.x > dx0 - 0.35 && a.x < dx0 + 1.3) || b.y > fl * st + st - 0.25;
-      if (!blocked) sWin(p, a, b, 0.055, fc, 0.0, ww > 1.6 ? 1.0 : 1.0, sH11(seed * 2.2) < 0.3 ? 1.0 : 0.0, 0.92, st - 0.1, 3.5 + 2.0 * sH11(wid + k), rd, wid + k + fl * 37.0, 0.0);
+      bool blocked = blank || (hasG && fl < 0.5 && b.x > gx0 - 0.4 && a.x < gx0 + gw + 0.4) || (door && fl < 0.5 && b.x > dx0 - 0.35 && a.x < dx0 + 1.3) || b.y > fl * st + st - 0.25;
+      if (!blocked) sWin(p, a, b, 0.055, fc, 0.0, pic ? 2.0 : 1.0, sH11(seed * 2.2) < 0.3 ? 1.0 : 0.0, sill - fl * st, st - 0.1, 3.5 + 2.0 * sH11(wid + k), rd, wid + k + fl * 37.0, 0.0);
     }
   } else if (style < 1.5) { // ---- a shop: storefront on the street, service doors behind
     float floorsUp = floors - 1.0, st0 = min(fH, 4.6);
@@ -174,7 +180,8 @@ const FACADE_FS = /* glsl */`
   } else if (style < 2.5) { // ---- a big box: tilt-up panels, an entrance, roll-up doors behind
     float j = abs(fract(u / 7.6 + 0.5) - 0.5) * 7.6; fShade = max(fShade, 1.0 - smoothstep(0.015, 0.03, j));
     fShade = max(fShade, (1.0 - smoothstep(0.015, 0.03, abs(v - 1.2))) + (1.0 - smoothstep(0.015, 0.03, abs(v - (fH - 1.4)))));
-    if (front && fLen > 14.0) { float cx = fLen * 0.5; sWin(p, vec2(cx - 4.5, 0.02), vec2(cx + 4.5, 3.9), 0.08, vec3(0.08), 0.6, 5.0, 0.0, 0.0, 6.0, 14.0, rd, wid, 1.0); if (v > 3.95 && v < 4.6 && abs(u - cx) < 5.2) fPanel = 1.0; }
+    if (front && fLen > 14.0) { float cx = gBit > 0.5 ? (u < fLen * 0.5 ? fLen * 0.28 : fLen * 0.72) : fLen * 0.5; // one entrance, or two on a long front (the garage bit says which)
+      sWin(p, vec2(cx - 4.5, 0.02), vec2(cx + 4.5, 3.9), 0.08, vec3(0.08), 0.6, 5.0, 0.0, 0.0, 6.0, 14.0, rd, wid, 1.0); if (v > 3.95 && v < 4.6 && abs(u - cx) < 5.2) fPanel = 1.0; }
     if (back) { float sp = 18.0, k = floor(u / sp), cx = (k + 0.5) * sp; float d = sRect(p, vec2(cx - 1.8, 0.0), vec2(cx + 1.8, 4.3));
       if (d > 0.0) { fDoor = d; fDoorCol = vec3(0.62, 0.62, 0.6) * (0.85 + 0.15 * step(0.5, fract(v * 9.0))); fMetal = 0.5; } }
   } else if (style < 3.5) { // ---- an office: ribbon windows over spandrels
@@ -236,24 +243,42 @@ function pathMaterial(THREE, T, pathN) {
   m.customProgramCacheKey = () => 'path1';
   return m;
 }
+// the wall-array variant (src/world/wallarr.js): the layer comes per vertex (aWL), with its own repeat, paint and detail
+const ARR_VS_HEAD = 'attribute float aWL; varying float vWL;', ARR_VS = 'vWL = aWL;';
+const ARR_FS_HEAD = /* glsl */`
+uniform highp sampler2DArray uWA, uWN; uniform float uWInv[64], uWMean[64], uWPaint[64]; varying float vWL;
+vec3 wPerturb(vec3 eye, vec3 N, vec3 mapN, vec2 uv, float fd) { // the tangent frame from screen-space derivatives of the uv
+  vec3 q0 = dFdx(eye), q1 = dFdy(eye); vec2 st0 = dFdx(uv), st1 = dFdy(uv);
+  vec3 q1p = cross(q1, N), q0p = cross(N, q0), T = q1p * st0.x + q0p * st1.x, B = q1p * st0.y + q0p * st1.y;
+  float det = max(dot(T, T), dot(B, B)), sc = det == 0.0 ? 0.0 : fd * inversesqrt(det);
+  return normalize(T * (mapN.x * sc) + B * (mapN.y * sc) + N * mapN.z);
+}`;
+const ARR_MAP = /* glsl */`
+  float wL = floor(vWL + 0.5); int wI = int(wL); vec2 wUv = vFuv * uWInv[wI];
+  vec4 wC = texture(uWA, vec3(wUv, wL)), wNR = texture(uWN, vec3(wUv, wL)); float wTl = dot(wC.rgb, vec3(0.2126, 0.7152, 0.0722));
+  diffuseColor.rgb *= mix(wC.rgb * clamp(0.32 / uWMean[wI], 1.0, 2.2), vec3(wTl / uWMean[wI]), uWPaint[wI]); // painted: its relief, the wall's colour; natural: its own, lifted to the town's brightness`;
 function facadeMaterial(THREE, set, U, o) {
-  for (const k of ['c', 'n', 'arm']) if (set[k]) set[k].repeat.set(1 / o.tile, 1 / o.tile);
-  const m = new THREE.MeshStandardMaterial({ map: set.c, normalMap: set.n, normalScale: new THREE.Vector2(o.bump ?? 0.8, o.bump ?? 0.8), roughnessMap: set.arm, aoMap: set.arm, aoMapIntensity: 0.6, vertexColors: true, roughness: 1, metalness: 0 });
+  const arr = o.arr; // a wall array: no maps of its own, every layer from WA
+  if (!arr) for (const k of ['c', 'n', 'arm']) if (set[k]) set[k].repeat.set(1 / o.tile, 1 / o.tile);
+  const m = arr ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 })
+    : new THREE.MeshStandardMaterial({ map: set.c, normalMap: set.n, normalScale: new THREE.Vector2(o.bump ?? 0.8, o.bump ?? 0.8), roughnessMap: set.arm, aoMap: set.arm, aoMapIntensity: 0.6, vertexColors: true, roughness: 1, metalness: 0 });
   m.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U, { uPaint: { value: o.paint ? 1 : 0 }, uMapLum: { value: o.lum || 0.55 } });
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + FACADE_VS_HEAD).replace('#include <begin_vertex>', '#include <begin_vertex>\n' + FACADE_VS);
+    if (arr) Object.assign(sh.uniforms, { uWA: { value: arr.A }, uWN: { value: arr.N }, uWInv: { value: arr.inv }, uWMean: { value: arr.mean }, uWPaint: { value: arr.paint } });
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + FACADE_VS_HEAD + (arr ? ARR_VS_HEAD : '')).replace('#include <begin_vertex>', '#include <begin_vertex>\n' + FACADE_VS + (arr ? ARR_VS : ''));
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + FACADE_FS_HEAD)
-      .replace('#include <map_fragment>', `#ifdef USE_MAP
+      .replace('#include <common>', '#include <common>\n' + FACADE_FS_HEAD + (arr ? ARR_FS_HEAD : ''))
+      .replace('#include <map_fragment>', arr ? ARR_MAP : `#ifdef USE_MAP
           vec4 texelColor = texture2D(map, vMapUv); float tl = dot(texelColor.rgb, vec3(0.299, 0.587, 0.114));
           diffuseColor.rgb *= mix(texelColor.rgb, vec3(tl / uMapLum), uPaint); // paint: the scan's relief, the house's colour
         #endif`)
       .replace('#include <color_fragment>', '#include <color_fragment>\n' + FACADE_FS)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+      .replace('#include <aomap_fragment>', arr ? '{ float ambientOcclusion = mix(1.0, wNR.a, 0.6); reflectedLight.indirectDiffuse *= ambientOcclusion; }' : '#include <aomap_fragment>')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>${arr ? '\n        roughnessFactor = wNR.b;' : ''}
         roughnessFactor = mix(roughnessFactor, 0.42, fFrame); roughnessFactor = mix(roughnessFactor, 0.5, fDoor); roughnessFactor = mix(roughnessFactor, 0.04, fGlass);`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         metalnessFactor = max(metalnessFactor, fMetal * max(fFrame, fDoor));`)
-      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      .replace('#include <normal_fragment_maps>', `${arr ? `{ vec3 wN = vec3(wNR.xy * 2. - 1., 0.); wN.y = -wN.y; wN.xy *= 0.9; wN.z = sqrt(max(1. - dot(wN.xy, wN.xy), 0.)); normal = wPerturb(-vViewPosition, normal, wN, wUv, faceDirection); }` : '#include <normal_fragment_maps>'}
         normal = normalize(mix(normal, nonPerturbedNormal, max(max(fGlass, fFrame), fDoor)));
         { // bullnose corners, as SoCal stucco has: the normal rolls round the last 7 cm of each wall end
           float cu = vFuv.x, cl = vFac.x, ce = min(cu, cl - cu), k = (cl > 1.5 && ce >= 0.) ? 1. - smoothstep(0., .07, ce) : 0.; // real walls only (small boxes and non-facade quads carry other uvs)
@@ -264,7 +289,7 @@ function facadeMaterial(THREE, set, U, o) {
         { float cv = clamp(dot(normalize(cameraPosition - vWPos), normalize(vWN)), 0.0, 1.0), F = 0.04 + 0.96 * pow(1.0 - cv, 5.0);
           totalEmissiveRadiance += fRoom * fGlass * (1.0 - F); }`);
   };
-  m.customProgramCacheKey = () => 'facade' + (o.paint ? 'p' : '');
+  m.customProgramCacheKey = () => 'facade' + (o.paint ? 'p' : '') + (arr ? 'A' : '');
   return m;
 }
 
@@ -403,6 +428,8 @@ function avgColor(t) {
     return m.map(v => Math.max(0.02, v / 256));
   } catch (e) { return [0.3, 0.2, 0.15]; }
 }
+// every wall in one material over the wall array (src/world/wallarr.js)
+export function wallArrayMaterial(THREE, S, WA) { return facadeMaterial(THREE, null, S.U, { arr: WA }); }
 export function createSurfaces(THREE, T) {
   const U = { uNight: { value: 0 }, uDayLum: { value: 1 } };
   const S = { U, T };

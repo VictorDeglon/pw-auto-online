@@ -40,6 +40,52 @@ update you ship**, and add an entry here at the same time:
   to compile (`'uv1' : undeclared identifier`) and the branches between the trunk and the leaves weren't drawn. The LOD
   keeps the set each material's colour map reads (`tools/nature/slim_glb.py`), and the near meshes always read their
   one UV set (`src/nature/vegetation.js`).
+- **Real cladding on the buildings:** walls are clad in real materials chosen by the neighbourhood's look and the
+  building's type: smooth, sand, lace and aged stucco, plaster, lap siding, board-and-batten, shiplap, red, tan and
+  painted brick, painted and split-face block, tilt-up, concrete panels, corrugated metal. Some street fronts have a
+  stone or brick wainscot with a cap; trim is painted wood. The materials sit in one texture array
+  (`src/world/wallarr.js`: Poly Haven scans plus the generated library from `tools/matpack`), so every wall in a block
+  of town is one mesh: fewer draw calls than before (14-48 % fewer in the views tested).
+- **Real fittings round the windows and doors:** window surrounds by the neighbourhood's look (foam, deep stucco,
+  painted wood, thin dark metal), louvred shutters, wrought-iron rejas on Spanish houses, door casings, garage-door
+  jambs, storefronts framed in aluminium with transoms, gutters and downspouts along the eaves, front porches on posts
+  on ranch houses, cottages and bungalows, and balconies with railings on garden apartments. They are laid out by the
+  same rules as the painted windows (`openings` in `src/world/bldgen.js`), so they sit exactly round them. The small
+  pieces are instanced near you (`src/world/bldkit.js`); a refill now only copies prebuilt matrices.
+- Wainscots sit lower (below the window sills) and their cap stops at doors, garage doors and storefronts.
+- **Houses with depth:** windows and doors are set into the walls with reveals, some front doors in a covered alcove;
+  picture windows on the front, a slider and wide windows out back, small bath windows and blank stretches on the
+  sides; covered patios on posts over the back slider; a weep screed at the foot of stucco walls; vents in gable ends.
+  Gable ends get rake boards and a soffit up the slopes instead of a fascia across them.
+- **Estate houses** on Poway's big lots: cross gables in flat concrete tile, light stucco, white window frames, one or
+  two chimneys, and often a two-storey wing under its own roof (roofed like the rest of the house) with a deck across
+  its gable end.
+- **Solar panels show again** (the ridge's cap tiles had been taken for the sunny slope); arrays go on the sunniest big
+  slope, south then west. Tile roofs with no aerial photo over them are no longer darkened by the tile scan. Chimney
+  chases are a real width and stop 0.7 m past the roof near them.
+- **Big boxes:** doors face the parking lot, not the nearest street; supercenters get two entrances with raised towers,
+  vestibules and canopies, pilasters, accent bands, a block base and bollards; warehouse clubs corrugated metal over a
+  tall block base; the store's mapped name says which (the Poway Walmart now has its grocery and home entrances on its
+  lot), and a mapped store is never drawn as a plain warehouse. Dock seals and bumpers behind.
+- Footprints the map isn't sure about, on quiet residential streets with nothing mapped at the door, are houses, not
+  shops. Brown concrete tile in the aerial photo is no longer read as clay.
+- **Hillside lots are graded:** a house on a slope stands on a level terrace at the height where its driveway meets
+  the garage, its side and back yards level with it out to the lot lines (half way to the neighbours, short of a
+  street). Where the hill keeps falling or rising behind the house the back yard steps down or up in terraces, up to
+  three, no wall between them over 2.4 m, joined by concrete stairs through the retaining wall (straight down, or along
+  the wall from a landing). A pool sits whole on one terrace, at its own ground. The houses no longer stand on tall
+  blank walls down the slope (`src/world/pads.js`; the ground shader leaves out the hill inside a terrace).
+- **Walls and fences along the lot lines,** stepped down the slope, holding the ground where a terrace and the land
+  beyond part, with a fence over the higher side by neighbourhood: stuccoed block, block with pilasters, stone pillars
+  with cast caps (stone-faced walls on those lots), wood boards on posts, white vinyl, a split rail out in the country;
+  wrought iron (between stone pillars on estates) on the side with the view. Some lots round their corners in a curved
+  wall. The side yards' gates stand open, between pillars where the fence has them, with steps where the ground beyond
+  is higher or lower, so every part of the yard can be walked to. You walk and drive on the terraces and stairs, and the
+  walls stop you; plain yard walls still give way to a fast car.
+- **Planting in the back yards:** shrubs along the walls inside, a tree (palms, olive, pepper, jacaranda by the look)
+  in a back corner.
+- Side-yard walls stop at the lot line, half way to the neighbour's house, so two neighbours no longer each build one
+  in the same side yard; narrow side yards still get their gate.
 - **The game's files stay on your computer:** the town comes as a few zip files (packs) from the game's own asset
   server instead of Firebase. On a first visit the loading screen streams the pack it needs (56 MB for the 85 MB of
   files it loads), a few megabytes per request, each file checked against the manifest and kept as soon as it's in,

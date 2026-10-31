@@ -87,12 +87,23 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   in Starridge, Twin Peaks and Espola; ranch houses in Old Poway and Silverset; Spanish revival (low clay hips and cross
   gables, white and cream stucco) and ranch on Green Valley's and Valle Verde's big lots; Spanish and modern in the rich
   coastal places; steep shingle cottages and modern boxes in the beach towns; small stucco bungalows in the working
-  neighbourhoods. Out of town, big lots lean Spanish and ranch.
+  neighbourhoods. Out of town, big lots lean Spanish and ranch. The big 1980s estate houses on Poway's acre lots (big
+  tract and ranch footprints, more where it's sparse): cross gables in flat concrete tile, light stucco, white trim,
+  often a two-storey wing, chimneys, a covered patio out back.
 - **Houses:** hip roofs mostly, low ranch gables, cross gables over L and T plans; clay barrel tile low-pitched with
   short eaves, concrete tile and shingle with deeper ones; a few flat-roofed modern houses with a thin roof slab over
   deep eaves (more of them in La Jolla, the beach towns and downtown). Where the aerial photo shows the roof, its
   material and colour win. A single-storey house whose height was guessed low is still a house (windows, a door, a
-  yard), not a shed. Some have a stucco chimney chase up a side or back wall, capped, with a spark arrestor.
+  yard), not a shed. Some have a stucco chimney chase about a metre wide up a side or back wall, capped, with a spark
+  arrestor, rising 0.7 m past the roof within 3 m of it (and no further). A gable end has rake boards and a soffit up
+  its slopes, never a fascia across it. A tile roof with no photo over it takes its palette colour as it should look,
+  not darkened by the scan.
+- **Depth on houses:** windows and doors sit in the wall, with reveals; some have an entry alcove. The front gets a
+  picture window or two, the back a slider and wide windows, the sides small bath windows and blank stretches. A
+  two-storey wing over a single-storey house has its own roof, the same kind as the rest (gables with gables, hips with
+  hips), and many estates a deck with a rail across its gable end. Solar arrays sit on the sunniest big slope (south,
+  then west, never north; where the aerial photo shows the roof, it decides), skylights on another. Covered patios on
+  posts over the back slider; a weep screed at the foot of stucco; vents in the gable ends.
 - **Garages and sheds:** a detached garage shows sectional doors to the street (one car, two, or a row of them); a shed
   gets a shed roof.
 - **Townhouses:** long two- and three-storey rows, a front door per unit on the street side and a garage each behind.
@@ -101,10 +112,30 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - **Shops:** flat behind a parapet. Strip malls (long and shallow) carry a clay tile mansard on the street side, or a
   painted metal canopy, or canvas awnings over the storefront bays, and some a raised parapet over the middle. Small pads
   get a tile mansard all round, or a low clay hip roof.
-- **Big boxes and warehouses:** tilt-up concrete; a big box has a raised parapet and a canopy over its entrance, and
-  rooftop units; a warehouse is plain, roll-up doors behind.
+- **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it),
+  wherever the street is. A supercenter: stucco, tilt-up or concrete panels over a split-face block base, pilasters, an
+  accent band, a raised tower with a vestibule and canopy over each entrance (two on a long front: grocery and home),
+  bollards. A warehouse club: corrugated metal over a tall split-face base, two accent bands, one entrance. The store's
+  mapped name decides which (Costco, Sam's Club: a club; Walmart, Target: a supercenter), else a guess; a mapped store
+  is a big box even with no lot mapped. Rooftop units; roll-up doors and dock seals behind. A warehouse is plain.
 - **Offices and civic buildings:** offices have ribbon windows, floor bands, a cornice and rooftop units. Civic buildings
   are low clay hips over deep eaves, or a school's flat roof over deep eaves along the walks; a hall has a steep gable.
+- **Cladding** (`src/world/wallarr.js`): walls are clad by the local look and the type, from one texture array of real
+  materials: smooth, sand-finish, lace and aged stucco, smooth plaster, lap siding, board-and-batten, shiplap, red, tan
+  and painted brick, painted and split-face block, tilt-up and smooth concrete, corrugated metal. Tracts are stucco;
+  Spanish houses lace stucco or plaster; ranch houses board-and-batten, lap siding, stucco or painted brick; beach
+  cottages siding; strip malls rough stucco, painted block or brick; big boxes and warehouses tilt-up, panels, block or
+  metal. Some street fronts carry a knee-high wainscot of ledgestone, river rock or tan brick, capped, the cap broken at
+  the doors. Trim is
+  painted wood. Natural materials (brick, stone, block, wood) keep their own colour with only a hint of the paint.
+- **Fittings** (`facadeKit` in `src/world/bldgen.js`, fitted round the openings the facade shader paints, laid out by the
+  same rules): window surrounds by look (foam on tracts, deep stucco on Spanish houses, painted wood on ranch houses,
+  cottages and bungalows, a thin dark metal frame on modern ones); louvred shutters on many ranch houses and cottages;
+  wrought-iron rejas on Spanish front windows; door casings; jambs beside garage doors; storefronts framed in black or
+  bronze aluminium with a transom; gutters and downspouts in white, beige or brown under pitched eaves; front porches
+  (a shed roof in the house's own roofing on painted posts) on ranch houses, cottages and bungalows, never in front of
+  the garage; balconies with iron or white rails on garden apartments. The small pieces are instanced near the camera;
+  porches and balcony slabs are part of the town's meshes.
 - Canvas is sun-faded and deep (forest, oxblood, navy, sand, rust, charcoal, plum, khaki); canopies are painted metal
   (bronze, charcoal, white, brown). Awnings and canopies are only drawn near (with the sidewalks).
 
@@ -124,6 +155,15 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 
 - Streets end the way Poway's do: cul-de-sacs among houses, barricades with END markers elsewhere (`src/world/roadends.js`).
 - House fronts have depth: stoops, beds with mow curbs, sills, trim, lanterns, mailboxes, curb cuts, side gates.
+- Hillside lots are graded, never a house on stilts down the slope: the house and its side and back yards sit on a
+  level terrace at the height where the driveway meets the garage (the front yard keeps its grade); a steep back yard
+  steps down (or up) in up to three terraces, no wall between them over 2.4 m, every one reached by stairs, every side
+  yard by a gate (with steps where the ground beyond is higher or lower). A pool sits whole on one terrace. Walls along
+  the lot lines, stepped down the slope, hold up to 3 m of ground (more only to keep a pool level), with the fence over
+  the higher side by neighbourhood: stuccoed block, block with pilasters, stone pillars with cast caps, wood boards,
+  white vinyl, a split rail in the country; open wrought iron on the side with the view. Some lots round a corner in a
+  curved wall. Shrubs line the walls inside, a tree stands in a back corner. Side-yard walls stop half way to the
+  neighbour's house.
 - Main roads with houses backing onto them get tan split-face block walls with pilasters; country roads get white
   ranch fences; estates get stone pillars and open iron gates.
 - Trails are decomposed granite (`SURF.path`): compacted down the middle, loose at ragged edges, stones along them.
