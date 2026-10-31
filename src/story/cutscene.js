@@ -445,7 +445,6 @@ export const SCENES = {
             clearAround([M.c, path.at(0), path.at(path.len * 0.5)], 140);
             onFoot(); stand(P, mspot.x, mspot.z, M.W.x, M.W.z);
             for (const p of Object.values(who)) if (p !== P) p.lookAt = { x: M.W.x, z: M.W.z };
-            const q = path.at(0, curb * 0.45), V = H.spawnVehicle('suv', 'q-suv', q.x, q.z, q.rot, 0x0d0e10); scriptCar(V, () => { }); V.parked = true; s.V = V; s.vs = 0; m.h.suv = V;
           },
         },
         { // establishing: the depot, the wreath, the three of them and Marco
@@ -460,9 +459,12 @@ export const SCENES = {
             ['walt', 'Lord, keep him. He always drove too fast for the rest of us.'],
           ], min: 1, cam: s => groupCam(s, who, H) },
         { // a black SUV comes down the street, slow, and stops at the curb
-          dur: 7, lines: [['dee', '...Oh, you have got to be kidding me.']],
-          enter: s => { ctx.noise && ctx.noise(2.5, 'lowpass', 80, 0.18); },
-          tick: (s, dt, t) => { const V = s.V, L = stop, sp = Math.max(1.2, Math.min(9, (L - s.vs) * 0.6)); if (s.vs < L) s.vs = Math.min(L, s.vs + sp * dt); place(V, path.at(s.vs, lerp(curb * 0.45, curb, ease(s.vs / L)))); setSpeed(V, s.vs < L ? sp : 0);
+          dur: 8, lines: [['dee', '...Oh, you have got to be kidding me.']],
+          enter: s => {
+            ctx.noise && ctx.noise(2.5, 'lowpass', 80, 0.18); s.vs = Math.max(0, stop - 60);
+            const q = path.at(s.vs, curb * 0.45), V = H.spawnVehicle('suv', 'q-suv', q.x, q.z, q.rot, 0x0d0e10); scriptCar(V, () => { }); s.V = V; m.h.suv = V;
+          },
+          tick: (s, dt, t) => { const V = s.V, L = stop, sp = Math.max(1.5, Math.min(14, (L - s.vs) * 0.8)); if (s.vs < L) s.vs = Math.min(L, s.vs + sp * dt); place(V, path.at(s.vs, lerp(curb * 0.45, curb, ease(s.vs / L)))); setSpeed(V, s.vs < L ? sp : 0);
             for (const p of Object.values(who)) if (p !== P) p.lookAt = { x: V.pos.x, z: V.pos.z }; },
           cam: s => { const V = s.V, dx = V.pos.x - P.pos.x, dz = V.pos.z - P.pos.z, l = Math.hypot(dx, dz) || 1; return { pos: above([P.pos.x - dx / l * 2.2 + dz / l * 0.9, P.pos.y + 1.7, P.pos.z - dz / l * 2.2 - dx / l * 0.9], 1.3), look: [V.pos.x, V.pos.y + 1, V.pos.z], fov: 34 }; },
         },

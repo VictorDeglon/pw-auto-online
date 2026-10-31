@@ -1015,7 +1015,9 @@ function updateGivers() {
       if (p && !p.removed) { g.it.x = p.pos.x; g.it.z = p.pos.z; p.setMarker(letterMat(def.giver)); }
     }
   }
-  for (const [key, g] of S.givers) if (!want.has(key)) { removeInteract(g.it); S.givers.delete(key); }
+  for (const [key, g] of S.givers) if (!want.has(key)) { // (and their letter comes off: they're in a mission, or done giving)
+    removeInteract(g.it); S.givers.delete(key); const p = S.pool.get(g.def.giver); if (p && !p.removed && p.state !== 'dead' && ![...want.values()].some(d => d.giver === g.def.giver)) p.setMarker(null);
+  }
   for (const [who, p] of S.pool) {
     const busy = S.m && Object.values(S.m.h).includes(p);
     if (p.removed || p.state === 'dead') { S.pool.delete(who); continue; }

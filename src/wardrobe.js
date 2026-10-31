@@ -69,8 +69,8 @@ export const AVATAR_UNLOCK = {
 };
 // people who already wear something on their head (a hood, a cap, a keffiyeh, a hijab, a helmet) or over their eyes
 // (glasses, a mask, a visor): a hat or glasses would go through it, so they keep their own
-const HEADWEAR = /^(Construction|Fire|Military|Pilot|Security)_|^(Female_Adult_(06|10|16)|Male_Adult_(15|17|18|19|21)|Police_Female_01|Police_Male_0[1-5]|Medical_Male_0[45]|Chef_Female_01|Delivery_Male_01|Wood_Male_01)$/;
-const FACEWEAR = /^Fire_|^(Female_Adult_16|Business_Female_02|Construction_Male_01|Military_Male_0[34]|Police_Female_01|Police_Male_02)$/;
+const HEADWEAR = /^(Construction|Fire|Military|Pilot|Security|Outlaw)_|^(Female_Adult_(06|10|16)|Male_Adult_(15|17|18|19|21)|Police_Female_01|Police_Male_0[1-5]|Medical_Male_0[45]|Chef_Female_01|Delivery_Male_01|Wood_Male_01)$/;
+const FACEWEAR = /^Fire_|^(Outlaw_Masked|Female_Adult_16|Business_Female_02|Construction_Male_01|Military_Male_0[34]|Police_Female_01|Police_Male_02)$/;
 export function fits(avatar, slot) { return slot === 'hat' ? !HEADWEAR.test(avatar) : slot === 'glasses' ? !FACEWEAR.test(avatar) : true; }
 export const HEIGHTS = [0.94, 0.96, 0.98, 1, 1.02, 1.04, 1.06], BUILDS = [0.94, 0.97, 1, 1.03, 1.06, 1.09];
 export const DEFAULT = { hat: [0, 0], glasses: [0, 0], neck: [0, 0], back: [0, 0], h: 3, b: 2 };
