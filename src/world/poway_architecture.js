@@ -7,8 +7,7 @@
  *
  * ZONING & TYPOLOGY:
  * 1. Big-Box Commercial / Industrial Retail (Carmel Mountain & Poway Rd):
- *    - Target: Concentric red bullseye logo, red concrete sphere bollards, high-bay warehouse trusses,
- *      checkout conveyor lanes, customer service.
+ *    - (Target: drawn by the building generator on its real footprint, src/world/bldgen.js.)
  *    - Walmart Supercenter: Blue entry portal, yellow spark logo, pharmacy, grocery aisles, electronics display.
  *    - Costco Wholesale: Industrial corrugated steel, 3D red/blue typography logo, multi-tier pallet racking towers,
  *      food court counter with pizza ovens and wholesale staging.
@@ -58,7 +57,7 @@ export function createPowayArchitecture(ctx) {
 
   // --- Brand Logos (Procedural Canvas Textures) ---
   // the chains' marks, as parodies (./plazas/brands.js): drawn to the shape of what they go on
-  const targetLogoTex = brandLogo(THREE, 'target_mark', 1), walmartLogoTex = brandLogo(THREE, 'walmart_mark', 1), costcoLogoTex = brandLogo(THREE, 'costco', 2);
+  const walmartLogoTex = brandLogo(THREE, 'walmart_mark', 1), costcoLogoTex = brandLogo(THREE, 'costco', 2);
   const subwayLogoTex = brandLogo(THREE, 'subway', 4), greatClipsLogoTex = brandLogo(THREE, 'great_clips', 4), starbucksLogoTex = brandLogo(THREE, 'starbucks', 1);
 
   // Base Physical Materials
@@ -107,143 +106,8 @@ export function createPowayArchitecture(ctx) {
     parent.add(curbBorder);
   }
 
-  // =========================================================================
-  // 1. BIG-BOX COMMERCIAL: TARGET (Carmel Mountain / Poway Border)
-  // =========================================================================
-  function buildTargetStore() {
-    const cx = -4581.7, cz = -1997.5;
-    const floorY = heightAt(cx, cz);
-    const bW = 78.0, bD = 62.0, bH = 8.8;
-
-    const bGroup = new THREE.Group();
-    bGroup.name = 'Target_Superstore';
-    bGroup.position.set(cx, floorY, cz);
-
-    createCurbSidewalk(bGroup, bW, bD, 0);
-
-    // Polished Concrete Floor
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.3, bD), concreteFloorMat);
-    floor.position.y = 0.15;
-    floor.receiveShadow = true;
-    bGroup.add(floor);
-
-    // Industrial Ceiling with Open Web Bar Joists & LED Shop Lights
-    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.3, bD), ceilingGridMat);
-    ceiling.position.y = bH - 0.15;
-    bGroup.add(ceiling);
-
-    // Exterior Envelope Walls (Back, Left, Right)
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, 0.5), beigeCommercialWallMat);
-    backWall.position.set(0, bH / 2, bD / 2);
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, bH, bD), beigeCommercialWallMat);
-    leftWall.position.set(-bW / 2, bH / 2, 0);
-    const rightWall = leftWall.clone();
-    rightWall.position.x = bW / 2;
-    bGroup.add(backWall, leftWall, rightWall);
-
-    // Front Wall with Prominent Red Fascia Portal
-    const frontWallL = new THREE.Mesh(new THREE.BoxGeometry(bW * 0.35, bH, 0.5), beigeCommercialWallMat);
-    frontWallL.position.set(-bW * 0.325, bH / 2, -bD / 2);
-    const frontWallR = frontWallL.clone();
-    frontWallR.position.x = bW * 0.325;
-    bGroup.add(frontWallL, frontWallR);
-
-    // Central Glass Entrance Facade (SEE-THROUGH GLASS)
-    const glassW = bW * 0.3, glassH = 4.8;
-    const glassFront = new THREE.Mesh(new THREE.PlaneGeometry(glassW, glassH), seeThroughGlassMat);
-    glassFront.position.set(0, glassH / 2 + 0.1, -bD / 2 - 0.02);
-    bGroup.add(glassFront);
-
-    // Target Red Architectural Portal Arch above Entrance
-    const portalMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.4 });
-    const portalBeam = new THREE.Mesh(new THREE.BoxGeometry(glassW + 4.0, 2.2, 1.4), portalMat);
-    portalBeam.position.set(0, glassH + 1.2, -bD / 2 - 0.5);
-    portalBeam.castShadow = true;
-
-    // Glowing 3D Target Bullseye Logo
-    const logoMat = new THREE.MeshStandardMaterial({
-      map: targetLogoTex,
-      emissive: new THREE.Color(0xef4444),
-      emissiveMap: targetLogoTex,
-      emissiveIntensity: 0.9,
-      roughness: 0.2
-    });
-    const logoMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.25, 24), logoMat);
-    logoMesh.rotation.x = Math.PI / 2;
-    logoMesh.position.set(0, glassH + 2.8, -bD / 2 - 1.25);
-    bGroup.add(portalBeam, logoMesh);
-
-    // Signature Red Concrete Sphere Entrance Bollards
-    for (let bx = -glassW * 0.55; bx <= glassW * 0.55; bx += 3.2) {
-      const bollard = new THREE.Mesh(new THREE.SphereGeometry(0.55, 16, 16), redBollardMat);
-      bollard.position.set(bx, 0.55, -bD / 2 - 2.8);
-      bollard.castShadow = true;
-      bGroup.add(bollard);
-    }
-
-    // --- FURNISHED INTERIOR ---
-    // 1. Checkout Conveyor Lanes (8 Lanes)
-    const laneW = 1.4, laneL = 4.2;
-    for (let c = -14; c <= 14; c += 4.0) {
-      const lane = new THREE.Mesh(
-        new THREE.BoxGeometry(laneW, 0.95, laneL),
-        new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.5 })
-      );
-      lane.position.set(c, 0.48, -bD * 0.3);
-
-      // Register Monitor & Green Lane Light Pylon
-      const pylon = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.04, 0.04, 2.6, 8),
-        stainlessSteelMat
-      );
-      pylon.position.set(c + 0.5, 1.3, -bD * 0.3 - laneL / 2 + 0.4);
-
-      const lightBeacon = new THREE.Mesh(
-        new THREE.BoxGeometry(0.25, 0.25, 0.25),
-        new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 1.0 })
-      );
-      lightBeacon.position.set(c + 0.5, 2.6, -bD * 0.3 - laneL / 2 + 0.4);
-
-      bGroup.add(lane, pylon, lightBeacon);
-    }
-
-    // 2. Retail Merchandise Gondola Aisles (6 Deep Aisle Blocks)
-    const rackMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.6 });
-    const productColors = [0xef4444, 0x3b82f6, 0x10b981, 0xf59e0b, 0x8b5cf6];
-    for (let rx = -bW * 0.38; rx <= bW * 0.38; rx += 7.5) {
-      for (let rz = -bD * 0.05; rz <= bD * 0.35; rz += 12.0) {
-        const gondola = new THREE.Mesh(new THREE.BoxGeometry(1.6, 3.2, 9.0), rackMat);
-        gondola.position.set(rx, 1.6, rz);
-        gondola.castShadow = true;
-
-        // Stocked Goods on Shelves
-        for (let sh = 0.6; sh <= 2.8; sh += 0.8) {
-          const prodMat = new THREE.MeshStandardMaterial({
-            color: productColors[Math.floor(Math.random() * productColors.length)],
-            roughness: 0.4
-          });
-          const itemBlock = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.35, 8.6), prodMat);
-          itemBlock.position.set(rx, sh, rz);
-          bGroup.add(itemBlock);
-        }
-        bGroup.add(gondola);
-      }
-    }
-
-
-    group.add(bGroup);
-
-    // Register interior boundaries for camera collision & walk mode
-    interiorBounds.push({
-      minX: cx - bW / 2 + 0.5,
-      maxX: cx + bW / 2 - 0.5,
-      minZ: cz - bD / 2 + 0.5,
-      maxZ: cz + bD / 2 - 0.5,
-      floorY,
-      ceilY: floorY + bH,
-      name: 'Target Supercenter'
-    });
-  }
+  // (the Target that stood here, a box on top of the plaza's shops, is now drawn on its real footprint on Pomerado Road
+  // by the building generator: src/world/bldgen.js MAPLESS_STORES)
 
   // =========================================================================
   // 2. BIG-BOX COMMERCIAL: COSTCO WHOLESALE (Carmel Mountain Plaza)
@@ -821,7 +685,6 @@ export function createPowayArchitecture(ctx) {
     }
 
     // 1. Big-Box Commercial Anchors (Separated from residential!)
-    buildTargetStore();
     buildWalmartStore();
 
     // 2. Strip Plaza Retail & Dining

@@ -27,6 +27,12 @@ update you ship**, and add an entry here at the same time:
   in a back corner.
 - Side-yard walls stop at the lot line, half way to the neighbour's house, so two neighbours no longer each build one
   in the same side yard; narrow side yards still get their gate.
+- **Target is a real store now:** the hand-built box that stood on top of the Carmel Mountain shops is gone, and the
+  Poway Target is drawn on its own footprint on Pomerado Road (the map has it only as an unlabelled outline): a red
+  entrance tower with its parody sign, red bands and red bollards. Known chains wear their colours and signs on their
+  big boxes (Walmark, Costko, Trader Moe's; Sprouts green, Ralphs blue...), supermarkets are grocery anchors (Sprouts was
+  a tall blank shop), a store's name wins over the café inside it, and a big box's doors never open onto a wall another
+  building stands against.
 
 ## 0.10.0 Up Close (2026-10-31)
 

@@ -103,7 +103,7 @@ export function contextIndex(flats, areas = [], pois = []) {
     for (let i = 0; i < f.length; i += 2) { x0 = Math.min(x0, f[i]); x1 = Math.max(x1, f[i]); z0 = Math.min(z0, f[i + 1]); z1 = Math.max(z1, f[i + 1]); }
     const A = { k, f }; for (let i = Math.floor(x0 / CG); i <= Math.floor(x1 / CG); i++) for (let j = Math.floor(z0 / CG); j <= Math.floor(z1 / CG); j++) { const kk = key(i, j); let c = ag.get(kk); if (!c) ag.set(kk, c = []); c.push(A); }
   }
-  for (const [t, x, z, name] of pois) put(pg, x, z, [t, x, z, name || '']);
+  for (const [t, x, z, name] of [...pois, ...MAPLESS_STORES]) put(pg, x, z, [t, x, z, name || '']);
   const cells = (g, x, z, r, fn) => { for (let i = Math.floor((x - r) / CG); i <= Math.floor((x + r) / CG); i++) for (let j = Math.floor((z - r) / CG); j <= Math.floor((z + r) / CG); j++) { const c = g.get(key(i, j)); if (c) for (const v of c) fn(v); } };
   const areaAt = (x, z) => { let k = 0; const c = ag.get(key(Math.floor(x / CG), Math.floor(z / CG))); if (c) for (const A of c) if (pipF(x, z, A.f)) k |= 1 << A.k; return k; };
   return {
@@ -114,7 +114,9 @@ export function contextIndex(flats, areas = [], pois = []) {
       const ux = Math.cos(S.ang), uz = Math.sin(S.ang), a = S.L / 2 + 9, b = S.W / 2 + 9;
       const under = areaAt(x, z); let by = 0;
       for (const [p, q] of [[a, 0], [-a, 0], [0, b], [0, -b]]) by |= areaAt(S.cx + ux * p - uz * q, S.cz + uz * p + ux * q);
-      let poi = null, poiName = '', pd = 1e9; cells(pg, x, z, Math.max(S.L, 20), p => { const d = pipF(p[1], p[2], flat) ? 0 : Math.hypot(p[1] - x, p[2] - z) - S.L / 2; if (d < 8 && d < pd) { pd = d; poi = p[0]; poiName = p[3]; } });
+      let poi = null, poiName = '', pd = 1e9; // the nearest, but a big store the footprint is named for (its anchor) over the shops round it
+      const better = (d, name) => { const a = ANCHOR.test(name), c = ANCHOR.test(poiName); return a === c ? d < pd : a ? d <= 0 || d < pd : pd > 0 && d < pd; };
+      cells(pg, x, z, Math.max(S.L, 20), p => { const d = pipF(p[1], p[2], flat) ? 0 : Math.hypot(p[1] - x, p[2] - z) - S.L / 2; if (d < 8 && better(d, p[3])) { pd = d; poi = p[0]; poiName = p[3]; } });
       return { near: n, meanA: n ? sa / n : 0, parking: !!(by & 4) || !!(under & 4), school: !!(under & 8), park: !!(under & 2), poi, poiName };
     },
   };
@@ -202,6 +204,20 @@ const WAINS = { estate: 0.25, tract: 0.22, spanish: 0.1, ranch: 0.38, modern: 0.
 // ---------------------------------------------------------------- what it is
 const pickW = (r, list) => { let t = 0; for (const [, w] of list) t += w; let x = r() * t; for (const [k, w] of list) { x -= w; if (x <= 0) return k; } return list[0][0]; };
 const CLUBS = /costco|sam'?s club|bj'?s wholesale/i, MARTS = /walmart|target|kmart|home depot|lowe'?s/i;
+const GROCERS = /sprouts|vons|ralphs|albertsons|trader joe|smart ?& ?final|stater bros|whole foods|grocery outlet|food 4 less|\baldi\b|safeway|pavilions|northgate|99 ranch|h ?mart|supermarket/i;
+const ANCHOR = new RegExp([CLUBS, MARTS, GROCERS].map(r => r.source).join('|'), 'i'); // the store a big footprint is named for, over the shops inside it
+// the chains' own colours on their big boxes (the parody marks are in src/world/plazas/brands.js): the accent band, the
+// entrance tower, the bollards, the sign over the door; and how many entrances
+const BOX_BRANDS = [
+  [/target/i, { sign: 'target', accent: 0xcc0d12, tower: 0xb3121b, bollard: 0xcc0d12, entries: 1 }],
+  [/walmart/i, { sign: 'walmart', accent: 0x0b63c6, bollard: 0x9aa3ab }],
+  [/costco/i, { sign: 'costco', accent: 0xcc0d12, accent2: 0x1f5aa6 }],
+  [/trader joe/i, { sign: 'trader_joes', accent: 0x8a2a22, entries: 1 }],
+  [/sprouts/i, { accent: 0x4f8a2b, entries: 1 }], [/ralphs/i, { accent: 0x1c3f94, entries: 1 }], [/vons|albertsons|safeway|pavilions/i, { accent: 0xb3261e, entries: 1 }],
+  [/smart ?& ?final/i, { accent: 0xd52b1e, entries: 1 }], [/lowe'?s/i, { accent: 0x00508f }], [/home depot/i, { accent: 0xf96302 }],
+];
+// big stores the map has only as an unlabelled footprint (OpenStreetMap's POI is missing): a point inside each, its name
+export const MAPLESS_STORES = [['shop', -2377, -2266, 'Target']]; // 14823 Pomerado Rd: 10,450 m2, Starbucks inside
 const COMMERCE = new Set(['shop', 'restaurant', 'fast_food', 'cafe', 'bank', 'fuel']), CIVIC = new Set(['fire_station', 'post_office', 'library', 'police']);
 //   o: { h, kind (0 house/yes, 1 commercial, 2 civic), retail (a mapped store), unsure (the core's kind 1: not
 //        necessarily commercial), zone, region (id), x, z, ctx (contextIndex),
@@ -233,6 +249,7 @@ export function planBuilding(S, o) {
     if ((h === 10.5 || h === 13.5) && !C.parking && !COMMERCE.has(poi) && A < 4000) type = TYPE.apartment; // the county tiles' height for building=apartments (tools/world/build.py)
     else if (poi === 'hospital' || (h >= 10.5 && A < 6000 && !o.retail)) type = TYPE.office;
     else if (A >= 4500 || (A >= 2400 && S.fill > 0.86 && S.aspect < 2.6)) type = zone === 'downtown' ? TYPE.office : (S.aspect > 2.4 || S.fill < 0.8) && !C.parking && !o.retail && !COMMERCE.has(poi) ? TYPE.warehouse : TYPE.bigbox; // a mapped store or a shop at its door is a big box, parking or not
+    else if (A >= 1500 && GROCERS.test(C.poiName || '')) type = zone === 'downtown' ? TYPE.shop : TYPE.bigbox; // a supermarket: a grocery anchor, its doors on its lot
     else if (S.aspect >= 2.0 && S.W >= 9 && S.W <= 30 && A >= 220) type = TYPE.strip;
     else type = TYPE.shop;
   } else {
@@ -318,8 +335,10 @@ export function planBuilding(S, o) {
   // (EIFS over split-face block, two entrances on a long front, a tower over each), pilasters on the panel joints, an
   // accent band under the parapet, a glass vestibule out front, docks behind
   const cr = type === TYPE.bigbox ? r() : 1, brand = C.poiName || ''; /* a store's name says which kind of big box it is; otherwise a guess */
-  const box = type === TYPE.bigbox || type === TYPE.warehouse ? { club: type === TYPE.bigbox && (CLUBS.test(brand) || (!MARTS.test(brand) && cr < 0.4)), accent: pickW(r, ACCENTS), accent2: pickW(r, ACCENTS), pilasters: r() < 0.85, vestibule: type === TYPE.bigbox } : null;
+  const box = type === TYPE.bigbox || type === TYPE.warehouse ? { club: type === TYPE.bigbox && (CLUBS.test(brand) || (!MARTS.test(brand) && !GROCERS.test(brand) && cr < 0.4)), accent: pickW(r, ACCENTS), accent2: pickW(r, ACCENTS), pilasters: r() < 0.85, vestibule: type === TYPE.bigbox } : null;
   if (box) box.entries = type === TYPE.bigbox ? (S.L > 120 && !box.club ? 2 : 1) : 0;
+  const BB = type === TYPE.bigbox && brand ? (BOX_BRANDS.find(([re]) => re.test(brand)) || [])[1] : null; // a known chain: its colours, its sign
+  if (BB) { box.accent = BB.accent; if (BB.accent2) box.accent2 = BB.accent2; if (BB.entries) box.entries = BB.entries; box.brand = BB; }
   const skin = box && box.club ? 'metal_corrugated' : box && type === TYPE.bigbox ? pickW(r, [['stucco_fine', 50], ['tiltup', 30], ['concrete_panel', 20]]) : pickW(r, SKIN_TYPE[type] ? SKIN_TYPE[type](wall, hs) : SKINS[hs]);
   const wr = r(), wp = WAINS[type === TYPE.house || type === TYPE.garage ? hs : type] || 0;
   const wains = box && (type === TYPE.bigbox || wr < 0.5) ? { h: box.club ? 1.6 : 1.2, skin: 'cmu_split_face' } : wr < wp ? { h: 0.55 + r() * 0.25, skin: pickW(r, hs === 'spanish' ? [['stone_river_rock', 1]] : [['stone_ledgestone', 70], ['stone_river_rock', 20], ['brick_tan', 10]]) } : null;
@@ -559,7 +578,7 @@ export function facadeKit(frames, roles, P, o) {
       const uc = (p.u0 + p.u1) / 2, w = p.u1 - p.u0;
       if (p.k === 'roll') { for (const u of [p.u0 - 0.18, p.u1 + 0.18]) box(items, 'box', f, u, g, 0.15, 0.36, 4.75, 0.3, 0x151515); box(items, 'box', f, uc, g + 4.3, 0.15, w + 0.72, 0.6, 0.3, 0x151515);
         for (const u of [p.u0 + 0.3, p.u1 - 0.3]) box(items, 'box', f, u, g + 0.9, 0.09, 0.26, 0.5, 0.18, 0x1c1c1c); box(items, 'metal', f, uc, g + 5.1, 0.12, 0.3, 0.15, 0.25, 0x6b6e70); }
-      if (p.k === 'entry' && P.box.vestibule) for (let k = 0; k < 7; k++) box(items, 'box', f, p.u0 - 1.2 + k * (w + 2.4) / 6, g, 4.6, 0.2, 0.95, 0.2, k % 2 ? 0xc8a12a : 0xb3261e); // bollards beyond the vestibule
+      if (p.k === 'entry' && P.box.vestibule) for (let k = 0; k < 7; k++) box(items, 'box', f, p.u0 - 1.2 + k * (w + 2.4) / 6, g, 4.6, 0.2, 0.95, 0.2, P.box.brand && P.box.brand.bollard || (k % 2 ? 0xc8a12a : 0xb3261e)); // bollards beyond the vestibule (a chain's own colour)
     } });
   // a weep screed: the galvanized strip along the foot of stucco walls, broken at doors and garage doors
   if (o.stucco) frames.forEach((f, i) => { if (f.len < 1) return;

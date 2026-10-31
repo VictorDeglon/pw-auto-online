@@ -112,12 +112,18 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - **Shops:** flat behind a parapet. Strip malls (long and shallow) carry a clay tile mansard on the street side, or a
   painted metal canopy, or canvas awnings over the storefront bays, and some a raised parapet over the middle. Small pads
   get a tile mansard all round, or a low clay hip roof.
-- **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it),
-  wherever the street is. A supercenter: stucco, tilt-up or concrete panels over a split-face block base, pilasters, an
-  accent band, a raised tower with a vestibule and canopy over each entrance (two on a long front: grocery and home),
-  bollards. A warehouse club: corrugated metal over a tall split-face base, two accent bands, one entrance. The store's
-  mapped name decides which (Costco, Sam's Club: a club; Walmart, Target: a supercenter), else a guess; a mapped store
-  is a big box even with no lot mapped. Rooftop units; roll-up doors and dock seals behind. A warehouse is plain.
+- **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it,
+  the nearest counting most), wherever the street is; never a wall another building stands against; with no lot mapped,
+  the long wall facing the most open ground. A supercenter: stucco, tilt-up or concrete panels over a split-face block
+  base, pilasters, an accent band, a raised tower with a vestibule and canopy over each entrance (two on a long front:
+  grocery and home), bollards. A warehouse club: corrugated metal over a tall split-face base, two accent bands, one
+  entrance. A supermarket (Sprouts, Ralphs, Vons, Trader Joe's...) is a grocery anchor: one entrance, a big box's front.
+  The store's mapped name decides which (Costco, Sam's Club: a club; Walmart, Target: a supercenter), else a guess; a
+  mapped store is a big box even with no lot mapped, and it wins the footprint's name over the shops inside it. A known
+  chain wears its own colours (band, tower, bollards) and its parody sign on the tower (`src/world/plazas/brands.js`:
+  Tarjet, Walmark, Costko...). Big stores the map has only as an unlabelled footprint are named in
+  `MAPLESS_STORES` (src/world/bldgen.js), never drawn as a separate box over the map's buildings. Rooftop units;
+  roll-up doors and dock seals behind. A warehouse is plain.
 - **Offices and civic buildings:** offices have ribbon windows, floor bands, a cornice and rooftop units. Civic buildings
   are low clay hips over deep eaves, or a school's flat roof over deep eaves along the walks; a hall has a steep gable.
 - **Cladding** (`src/world/wallarr.js`): walls are clad by the local look and the type, from one texture array of real
