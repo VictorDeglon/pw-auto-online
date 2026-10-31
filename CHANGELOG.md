@@ -8,6 +8,53 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.2 (2026-10-30)
+
+- **The Velvet Javelina,** a cabaret lounge by the Carmel Mountain Plaza club strip and the first building you can walk
+  into (`src/world/club.js`). Pink script neon over the canopy, a doorman in a suit and shades at the velvet rope, and
+  inside, lit only by what glows: a black gloss stage with lit edges and a red curtain, coloured beams sweeping through
+  the haze, a disco ball, a DJ in headphones, a bar with a back-lit shelf and a bartender, booths and high-tops full of
+  patrons. Three dancers on the stage, in their party outfits. Nobody undresses, whatever the settings.
+- This deploy also ships 0.9.0 (the character editor) and 0.9.1 (buildings from their footprints).
+
+## 0.9.1 (2026-10-30)
+
+- **Buildings generated from their footprints,** all 28,000 in Poway and every one out in the county
+  (`src/world/bldgen.js`): the shape (area, how long and thin, how much of its bounding rectangle it fills, square
+  corners, wings), the map's kind, height and roof colour, what's round it (parking lots, school grounds, parks, how
+  built-up, the shop or restaurant mapped at its door), the street it faces, the zone and the neighbourhood's own look
+  (tract, Spanish revival, ranch, modern, beach cottage, bungalow) decide what a building is and how it's built.
+  Houses get hip, gable or cross-gabled roofs fitted to their L and T plans (a wing's roof now runs into the main one
+  instead of standing a gable up through it), a few modern flat or shed roofs over deep eaves, chimneys; detached
+  garages show their doors to the street; townhouse rows have a door per unit in front and garages behind; garden
+  apartments are pitched, the big ones flat with cornices and floor bands; strip malls get clay tile mansards, metal
+  canopies or canvas awnings over the storefronts and raised parapets; big boxes a raised entrance parapet and canopy;
+  banks and civic buildings low clay hips, schools deep eaves; halls steep gables; sheds a shed roof. Untagged
+  footprints by a parking lot on a main road are shops, not houses; on school grounds, schools.
+- **Rooftop units, satellite dishes and turbine vents** are real models near you, instanced (three draw calls in all,
+  `src/world/bldkit.js`); far away a rooftop unit is the plain box it was. Awnings are drawn with the sidewalks.
+- **Single-storey houses are houses again:** about 3,000 low homes whose height was guessed under 3.6 m were drawn as
+  windowless sheds; they now have windows, a front door and a yard.
+- **Everyone sees the same town:** wall colours and every choice above come from where the building stands (they were
+  random per player).
+
+## 0.9.0: Dressed Up (2026-10-30)
+
+- **Character editor:** the Character screen now dresses who you play as. Tabs for the person, hats (ball cap,
+  backwards cap, beanie, sun visor, bucket hat, fedora, cowboy hat, hard hat, open-face helmet, crown), glasses
+  (shades, round specs, aviators, sport wraps, gold aviators), the neck (bandana, headphones, chain, chain and
+  medallion, lei) and the back (backpack, sling bag, parachute pack, cash duffel), each in a choice of colours, plus
+  height and build sliders. Drag the preview to turn them round.
+- **Unlocks:** everyday things are bought with your cash; others come with an achievement (the hard hat, the helmet,
+  the crown, the sport wraps, the lei, the parachute pack, the duffel) or, online, a career level. Uniforms come with
+  the work they stand for (firefighters with Chain Reaction, pilots with Frequent Flyer, police at level 10, and so
+  on); athletes are bought. What you wore before stays yours. Purchases are saved and travel with your cloud save.
+- **Fitted to each person:** everything is measured against that person's own body and moves with it: hats on the
+  skull, glasses just in front of the eyes, chains and leis along the collar, straps over the shoulders and across the
+  chest. People who already wear something on their head or face (hoods, keffiyehs, uniform caps, helmets, masks)
+  keep it, and the editor says so.
+- **Online:** other players see your outfit, height and build, and see changes as you make them.
+
 ## 0.8.8 (2026-10-29)
 
 - **Cheat sheet:** it opens by typing its new phrase straight on the keyboard while you play, chat closed, one letter

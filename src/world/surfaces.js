@@ -15,8 +15,9 @@
 //   wall geometry needs attribute fac = [wall length, wall height, code, seed]; uv = [m along the wall, m above ground]
 //   code = style + 8 * role + 32 * (u runs along +T) + 64 * floors (< 8) + 512 * garage + 1024 * garage side (1: at u = 0.9)
 //   style 0 house, 1 shop, 2 big box, 3 office, 4 shed,
-//   5 apartment; role 0 side, 1 street front, 2 back
-export const STYLE = { house: 0, shop: 1, big: 2, office: 3, shed: 4, apartment: 5 };
+//   5 apartment, 6 garage (sectional doors along the street side), 7 townhouse row (a unit every ~6.5 m: a front door
+//   each on the street, a garage each behind); role 0 side, 1 street front, 2 back
+export const STYLE = { house: 0, shop: 1, big: 2, office: 3, shed: 4, apartment: 5, garage: 6, row: 7 };
 export const ROLE = { side: 0, front: 1, back: 2 };
 
 const SETS = ['asphalt', 'asphalt_old', 'concrete', 'concrete_stain', 'stucco', 'stucco_rough', 'tiltup', 'brick', 'siding',
@@ -115,11 +116,15 @@ const FACADE_FS = /* glsl */`
   vec3 rd = vec3(dot(Vd, Tw), Vd.y, -dot(Vd, Nw));
   bool front = role > 0.5 && role < 1.5, back = role > 1.5;
   float wid = seed * 1000.0 + role * 101.0;
-  if (style < 0.5 || style > 4.5) { // ---- a house or apartments
+  if (style > 6.5 && (front || back)) { // a townhouse row: the street and back walls are a row of units, each laid out on its own
+    float nu = max(1.0, floor(fLen / 6.5 + 0.5)), uw = fLen / nu, ui = clamp(floor(u / uw), 0.0, nu - 1.0);
+    u -= ui * uw; p.x = u; fLen = uw; wid += ui * 13.0; gBit = back ? 1.0 : 0.0; gSide = mod(ui, 2.0);
+  }
+  if (style < 0.5 || (style > 4.5 && style < 5.5) || style > 6.5) { // ---- a house, apartments or townhouses
     float st = max(2.6, fH / floors), fl = clamp(floor(v / st), 0.0, floors - 1.0), vy = v - fl * st;
     vec3 fc = sH11(seed * 9.1) < 0.8 ? vec3(0.93, 0.92, 0.89) : vec3(0.32, 0.27, 0.22); // white vinyl, some bronze
     float gw = fLen > 16.0 ? 4.9 : 2.75, gx0 = gSide > 0.5 ? 0.9 : fLen - 0.9 - gw;
-    bool hasG = front && style < 0.5 && gBit > 0.5;
+    bool hasG = gBit > 0.5 && ((front && style < 0.5) || (back && style > 6.5));
     float dx0 = hasG ? (gx0 < 1.0 ? min(gx0 + gw + 1.7, fLen - 1.6) : max(gx0 - 2.7, 0.6)) : fLen * 0.5 - 0.48;
     bool door = front && fLen > 3.0;
     if (hasG && v < 2.4) { // a sectional garage door
@@ -175,12 +180,24 @@ const FACADE_FS = /* glsl */`
   } else if (style < 3.5) { // ---- an office: ribbon windows over spandrels
     float st = max(3.4, fH / floors), fl = floor(v / st), vy = v - fl * st;
     if (vy > 0.95 && vy < st - 0.5) sWin(p, vec2(0.3, fl * st + 0.95), vec2(fLen - 0.3, fl * st + st - 0.5), 0.05, vec3(0.12, 0.13, 0.14), 0.7, floor((fLen - 0.6) / 1.5), 0.0, 0.95, st - 0.3, 8.0, rd, wid + fl * 37.0 + floor(u / 3.0), 1.0);
-  } else { // ---- a shed or garage: a door at most
+  } else if (style > 5.5) { // ---- a garage: sectional doors to the street (one car, two, or a row of them); a side door
+    if (front && fLen > 2.4) {
+      float nd = fLen < 7.4 ? 1.0 : floor((fLen - 0.3) / 3.2), dw = nd < 1.5 ? (fLen > 5.8 ? 4.9 : min(2.75, fLen - 0.5)) : 2.6, sp = fLen / nd, k = clamp(floor(u / sp), 0.0, nd - 1.0), x0 = k * sp + (sp - dw) * 0.5;
+      float gd = sRect(p, vec2(x0, 0.0), vec2(x0 + dw, 2.15));
+      if (gd > 0.0) { float r = fract(v / 0.5375), pc = dw > 3.0 ? 8.0 : 4.0, c = fract((u - x0) / (dw / pc));
+        float groove = smoothstep(0.0, 0.035, r) * smoothstep(1.0, 0.965, r), panel = 1.0 - 0.12 * (1.0 - sRect(vec2(c, r), vec2(0.08, 0.18), vec2(0.92, 0.82)));
+        fDoor = gd; fDoorCol = (sH11(seed * 4.3 + k * 0.37) < 0.8 ? vec3(0.92, 0.91, 0.87) : vec3(0.52, 0.4, 0.28)) * (0.72 + 0.28 * groove) * panel; }
+      fShade = max(fShade, (sRect(p, vec2(x0 - 0.12, 0.0), vec2(x0 + dw + 0.12, 2.27)) - gd) * step(1.0, v));
+    } else if (!front && !back && fLen > 3.2 && sH11(seed * 3.1 + role) < 0.5) {
+      float d = sRect(p, vec2(fLen * 0.5 - 0.45, 0.0), vec2(fLen * 0.5 + 0.45, 2.05));
+      if (d > 0.0) { fDoor = d; fDoorCol = vec3(0.86, 0.85, 0.8) * (0.85 + 0.15 * sRect(fract(vec2(u * 2.0, v * 0.7)), vec2(0.15), vec2(0.85))); }
+    }
+  } else { // ---- a shed: a door at most
     if (front) { float d = sRect(p, vec2(fLen * 0.5 - 1.3, 0.0), vec2(fLen * 0.5 + 1.3, 2.1)); if (d > 0.0) { fDoor = d; fDoorCol = vec3(0.85, 0.84, 0.8) * (0.8 + 0.2 * step(0.5, fract(v / 0.53))); } }
   }
   // ---- weathering on the wall itself
   float wall = 1.0 - max(max(fGlass, fFrame), fDoor);
-  float splash = 1.0 - smoothstep(0.0, 0.6, v), blot = 0.86 + 0.24 * sFbm(vec2(u * 0.3 + seed * 13.0, v * 0.45)), fine = 0.94 + 0.12 * sVn(vec2(u * 3.1, v * 2.3));
+  float splash = 1.0 - smoothstep(0.0, 0.6, v), blot = 0.86 + 0.24 * sFbm(vec2(vFuv.x * 0.3 + seed * 13.0, v * 0.45)), fine = 0.94 + 0.12 * sVn(vec2(vFuv.x * 3.1, v * 2.3));
   float eave = (style < 0.5 || style > 4.5) ? 1.0 - 0.32 * smoothstep(fH - 0.7, fH, v) : 1.0;
   float corner = mix(0.84, 1.0, smoothstep(0.0, 0.45, min(u, fLen - u)));
   vec3 wc = diffuseColor.rgb * blot * fine * eave * corner * (1.0 - 0.22 * fStreak) * (1.0 - 0.35 * fShade);

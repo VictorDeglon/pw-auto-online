@@ -5,10 +5,11 @@
 //   shownName(raw, id?, skin?)   shownChat(text)   shownLine(text)   onShownChange(fn)   MOD (the setting)
 import { MOD, displayName, cleanChat, cleanLine, rememberPlayer } from './moderation.js';
 import { NET } from './net.js';
-import { HUMANS } from '../humans.js';
+import { HUMANS, splitSkin } from '../humans.js';
 export { MOD };
 
 function sexOf(skin) { // the character's sex from the avatar list ('m' / 'f'), so a nickname fits the look
+  skin = splitSkin(skin).avatar;
   const A = HUMANS.manifest && HUMANS.manifest.avatars, a = skin && A ? A.find(q => q.name === skin) : null;
   return a ? a.sex : /^female/i.test(skin || '') ? 'f' : /^male/i.test(skin || '') ? 'm' : undefined;
 }

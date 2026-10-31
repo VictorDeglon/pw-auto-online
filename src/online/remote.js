@@ -6,7 +6,7 @@
 import { RESERVED } from '../reserved.js';
 import { ctx } from '../ctx.js';
 import { NET, on, unpack } from './net.js';
-import { HUMANS, ensureAvatar } from '../humans.js';
+import { HUMANS, ensureAvatar, splitSkin } from '../humans.js';
 import { makeAircraft } from '../aircraft.js';
 import { shownName } from './shown.js';
 
@@ -48,7 +48,7 @@ async function add(d) {
 }
 async function spawnPed(rem) { // keeps the old body (if any) on screen until the new one is ready
   const { THREE } = ctx;
-  let avatar = rem.skin && HUMANS.ready && !RESERVED.has(rem.skin) ? rem.skin : null; // nobody online can wear a story character's skin
+  let avatar = rem.skin && HUMANS.ready && !RESERVED.has(splitSkin(rem.skin).avatar) ? rem.skin : null; // nobody online can wear a story character's skin (their look rides along: src/wardrobe.js)
   if (avatar && !(await ensureAvatar(avatar))) avatar = null;
   const p = new ctx.Ped(rem.st.x, rem.st.z, { remote: true, look: { kind: 'civ', avatar, gun: false } });
   if (ctx.renderer && ctx.renderer.compileAsync) { // compile the new body's shaders off the frame before it shows (a skin swap used to hitch)
