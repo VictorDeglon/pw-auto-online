@@ -165,6 +165,7 @@ export function createOuter(E) {
     for (const x of d.x || []) roads.push([-1, x[0], E.roadWidth ? E.roadWidth(x[0], x[1] * E.ROAD_SCALE, 0) : x[1] * E.ROAD_SCALE, Array.from(abs(x[2])), 0]);
     t.roads = roads;
     t.blds = []; for (const b of d.b || []) { t.blds.push([b[0], b[1], Array.from(abs(b[2])), b[3] * 0.1]); if (due()) yield; }
+    t.areas = (d.ar || []).map(a => [a[0], Array.from(abs(a[1]))]); // parks, parking, school grounds: what's round each building
     yield;
     t.phase = 'paint';
     if (roads.length) { // the road surface, painted a few dozen roads at a time
@@ -258,11 +259,11 @@ export function createOuter(E) {
     yield;
     // buildings: one footprint makes both the walls you see and the polygon you hit
     t.phase = 'buildings'; on(); t.bld[0] = E.bldCount(); const p0 = E.polyCount(); t.polys = [p0, p0]; t.partial = true; // until done, unbuild drops everything added since p0
-    n = 0;
+    n = 0; const CX = E.bldContext ? E.bldContext(t.blds.map(b => b[2]), t.areas) : null;
     for (const b of t.blds) {
       if (b[2].length < 6) continue;
-      const kind = b[1] === 0 && area(b[2]) > 450 ? 1 : b[1]; // a big "building=yes" is not a house
-      E.addBuilding([b[0], kind, b[2], kind === 0 ? 1 : 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // houses get hip roofs
+      const kind = !CX && b[1] === 0 && area(b[2]) > 450 ? 1 : b[1]; // a big "building=yes" is not a house (with surroundings, src/world/bldgen.js tells)
+      E.addBuilding([b[0], kind, b[2], kind === 0 ? 1 : 0, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0], false, CX); // drawn from its footprint and surroundings
       n++; if (due()) { off(); yield; on(); }
     }
     off(); t.bld[1] = E.bldCount(); t.polys = [p0, E.polyCount()]; t.partial = false;

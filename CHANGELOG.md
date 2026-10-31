@@ -8,6 +8,27 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.1 (2026-10-30)
+
+- **Buildings generated from their footprints,** all 28,000 in Poway and every one out in the county
+  (`src/world/bldgen.js`): the shape (area, how long and thin, how much of its bounding rectangle it fills, square
+  corners, wings), the map's kind, height and roof colour, what's round it (parking lots, school grounds, parks, how
+  built-up, the shop or restaurant mapped at its door), the street it faces, the zone and the neighbourhood's own look
+  (tract, Spanish revival, ranch, modern, beach cottage, bungalow) decide what a building is and how it's built.
+  Houses get hip, gable or cross-gabled roofs fitted to their L and T plans (a wing's roof now runs into the main one
+  instead of standing a gable up through it), a few modern flat or shed roofs over deep eaves, chimneys; detached
+  garages show their doors to the street; townhouse rows have a door per unit in front and garages behind; garden
+  apartments are pitched, the big ones flat with cornices and floor bands; strip malls get clay tile mansards, metal
+  canopies or canvas awnings over the storefronts and raised parapets; big boxes a raised entrance parapet and canopy;
+  banks and civic buildings low clay hips, schools deep eaves; halls steep gables; sheds a shed roof. Untagged
+  footprints by a parking lot on a main road are shops, not houses; on school grounds, schools.
+- **Rooftop units, satellite dishes and turbine vents** are real models near you, instanced (three draw calls in all,
+  `src/world/bldkit.js`); far away a rooftop unit is the plain box it was. Awnings are drawn with the sidewalks.
+- **Single-storey houses are houses again:** about 3,000 low homes whose height was guessed under 3.6 m were drawn as
+  windowless sheds; they now have windows, a front door and a yard.
+- **Everyone sees the same town:** wall colours and every choice above come from where the building stands (they were
+  random per player).
+
 ## 0.9.0: Dressed Up (2026-10-30)
 
 - **Character editor:** the Character screen now dresses who you play as. Tabs for the person, hats (ball cap,

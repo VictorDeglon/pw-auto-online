@@ -76,6 +76,38 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - Surfaces are scanned PBR (assets/pbr, CC0) with wear: grime at the foot of walls, streaks under sills, patched
   asphalt, stained slabs.
 
+## Buildings (`src/world/bldgen.js`, `src/world/roofs.js`, the facade shader in `src/world/surfaces.js`)
+
+- Every building is generated from its footprint: its shape (area, the smallest rectangle round it and how much of it
+  the footprint fills, how square its corners are, how many wings), the map's kind, height and roof colour, what's round
+  it (how built-up, a parking lot, school grounds, a park, a mapped shop, restaurant, bank or fire station at its door),
+  the street it faces and the zone decide what it is and how it's built, in Poway and out in the county alike. Its looks
+  come from a hash of where it stands, never a random pick, so every player sees the same town.
+- **The local look:** each Poway neighbourhood and each county zone has its own mix. Tract stucco (concrete tile hips)
+  in Starridge, Twin Peaks and Espola; ranch houses in Old Poway and Silverset; Spanish revival (low clay hips and cross
+  gables, white and cream stucco) and ranch on Green Valley's and Valle Verde's big lots; Spanish and modern in the rich
+  coastal places; steep shingle cottages and modern boxes in the beach towns; small stucco bungalows in the working
+  neighbourhoods. Out of town, big lots lean Spanish and ranch.
+- **Houses:** hip roofs mostly, low ranch gables, cross gables over L and T plans; clay barrel tile low-pitched with
+  short eaves, concrete tile and shingle with deeper ones; a few flat-roofed modern houses with a thin roof slab over
+  deep eaves (more of them in La Jolla, the beach towns and downtown). Where the aerial photo shows the roof, its
+  material and colour win. A single-storey house whose height was guessed low is still a house (windows, a door, a
+  yard), not a shed. Some have a stucco chimney chase up a side or back wall, capped, with a spark arrestor.
+- **Garages and sheds:** a detached garage shows sectional doors to the street (one car, two, or a row of them); a shed
+  gets a shed roof.
+- **Townhouses:** long two- and three-storey rows, a front door per unit on the street side and a garage each behind.
+- **Apartments:** garden apartments are two or three storeys under pitched concrete tile; the big and tall ones are flat
+  behind a parapet with a cornice and floor bands.
+- **Shops:** flat behind a parapet. Strip malls (long and shallow) carry a clay tile mansard on the street side, or a
+  painted metal canopy, or canvas awnings over the storefront bays, and some a raised parapet over the middle. Small pads
+  get a tile mansard all round, or a low clay hip roof.
+- **Big boxes and warehouses:** tilt-up concrete; a big box has a raised parapet and a canopy over its entrance, and
+  rooftop units; a warehouse is plain, roll-up doors behind.
+- **Offices and civic buildings:** offices have ribbon windows, floor bands, a cornice and rooftop units. Civic buildings
+  are low clay hips over deep eaves, or a school's flat roof over deep eaves along the walks; a hall has a steep gable.
+- Canvas is sun-faded and deep (forest, oxblood, navy, sand, rust, charcoal, plum, khaki); canopies are painted metal
+  (bronze, charcoal, white, brown). Awnings and canopies are only drawn near (with the sidewalks).
+
 ## Water (`src/world/water.js`)
 
 - **Pools:** clear as glass: a white plaster shell, a 15 cm band of blue mosaic tile at the waterline, a shallow end

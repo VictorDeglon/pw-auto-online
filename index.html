@@ -618,7 +618,9 @@ import { createPilot, BOATS as BOAT_STATS } from './src/pilot.js';
 import { createDealers } from './src/dealers.js';
 import { VERSION } from './src/version.js';
 import { loadSurfaces, STYLE, ROLE } from './src/world/surfaces.js';
-import { pitchedRoof, roofUnits } from './src/world/roofs.js';
+import { pitchedRoof, shedRoof, mansard, roofUnits } from './src/world/roofs.js';
+import { createBldKit } from './src/world/bldkit.js';
+import { shapeOf, planBuilding, contextIndex, WALLS as LOOK_WALLS, wallFrames, awnings, bands, cornice, raisedFront, chimney as chimneyOf, TYPE } from './src/world/bldgen.js';
 import { roadWidth, roadFitter } from './src/world/roadwidth.js';
 import { planYard, yardPaving, BIN_COLORS } from './src/world/yards.js';
 import { createWater } from './src/world/water.js';
@@ -1201,6 +1203,7 @@ async function loadAssets() {
     SURF = await loadSurfaces(THREE, loadTex);
     M.walls = SURF.walls; M.road = SURF.road; M.side = SURF.side;
     M.roofClay = SURF.roofs.clay; M.roofShingle = SURF.roofs.shingle; M.roofFlat = SURF.roofs.gravel; M.roofTile = SURF.roofs.tile; M.roofBitumen = SURF.roofs.flat;
+    M.awning = awningMaterial();
   } catch (e) { console.error('[surfaces]', e); }
   M.water = waterMat(0x24566e, 0.035, 0.3); M.pool = waterMat(0x3fb4c8, 0.22, 0.25);
   M.pole = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.6, metalness: 0.4 });
@@ -1294,7 +1297,7 @@ function groundTri(gb, ax, az, bx, bz, cx, cz, lift, col, ua, ub, uc) {
 const CHUNK = 400;
 const chunks = new Map();
 function newChunk(cx, cz) {
-  return { cx, cz, wall: [new GB(true, true), new GB(true, true), new GB(true, true), new GB(true, true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), roofT: new GB(true), roofB: new GB(true), facade: new GB(true), apron: new Map(), trail: new GB(true), path: new GB(true), wood: new GB(true), hedge: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } };
+  return { cx, cz, wall: [new GB(true, true), new GB(true, true), new GB(true, true), new GB(true, true)], roofP: [new GB(true), new GB(true), new GB(true)], roofC: new GB(true), roofT: new GB(true), roofB: new GB(true), facade: new GB(true), awn: new GB(true), apron: new Map(), trail: new GB(true), path: new GB(true), wood: new GB(true), hedge: new GB(true), roofS: new GB(true), roofF: new GB(true), poolWall: new GB(true), coping: new GB(true), side: new GB(true), road: new GB(true), line: new GB(), water: new GB(), pool: new GB(), trees: [], group: new THREE.Group(), roofGs: new Map(), roofG(i) { let g = this.roofGs.get(i); if (!g) { g = new GB(true); this.roofGs.set(i, g); } return g; } };
 }
 let CHUNK_SINK = null; // while an outer-world tile is being built (src/world/outer.js), every chunk asked for is that tile's
 function chunkAt(x, z) {
@@ -1963,7 +1966,7 @@ function walls(ch, flat, base, top, wallC, matIdx, F) {
     FAC = F ? [len, vt, F.style + 8 * (F.roles[i] || 0) + 32 * (S > 0 ? 1 : 0) + 64 * Math.min(7, F.floors) + (i === F.fi && F.gar ? 512 + 1024 * F.gar.side : 0), (F.seed + i * 0.1371) % 1] : null;
     tri(gb, [ax, base, az], [bx, base, bz], [bx, top, bz], wallC, wallC, wallC, [0, vb], [len, vb], [len, vt], ox, 0, oz);
     tri(gb, [ax, base, az], [bx, top, bz], [ax, top, az], wallC, wallC, wallC, [0, vb], [len, vt], [0, vt], ox, 0, oz);
-    if (F && (F.style === STYLE.house || F.style === STYLE.apartment) && SILLS) sills(gb, F, i, ax, az, dx / len, dz / len, len, g, vt, wallC);
+    if (F && (F.style === STYLE.house || F.style === STYLE.apartment || F.style === STYLE.row) && SILLS) sills(gb, F, i, ax, az, dx / len, dz / len, len, g, vt, wallC);
   }
   FAC = null;
   return S;
@@ -1972,8 +1975,17 @@ function walls(ch, flat, base, top, wallC, matIdx, F) {
 // windows: the same layout, worked out here, so each sill sits under its window and throws a shadow line
 const SILLS = true;
 function sills(gb, F, i, ax, az, tx, tz, len, g, fH, wallC) {
-  const role = F.roles[i] || 0, front = role === 1, floors = Math.max(1, Math.min(7, F.floors)), st = Math.max(2.6, fH / floors);
-  const hasG = front && F.style === STYLE.house && i === F.fi && !!F.gar, gw = len > 16 ? 4.9 : 2.75, gx0 = F.gar && F.gar.side ? 0.9 : len - 0.9 - gw;
+  const role = F.roles[i] || 0;
+  if (F.style === STYLE.row && role) { // townhouses: each unit on its own, as the shader lays them out (a garage each behind)
+    const nu = Math.max(1, Math.floor(len / 6.5 + 0.5)), uw = len / nu;
+    for (let k = 0; k < nu; k++) sillRun(gb, F, ax + tx * k * uw, az + tz * k * uw, tx, tz, uw, g, fH, wallC, role === 1, role === 2 ? k % 2 : -1);
+    return;
+  }
+  sillRun(gb, F, ax, az, tx, tz, len, g, fH, wallC, role === 1, role === 1 && F.style === STYLE.house && i === F.fi && F.gar ? (F.gar.side ? 1 : 0) : -1);
+}
+function sillRun(gb, F, ax, az, tx, tz, len, g, fH, wallC, front, gside) { // gside: which end the garage door is at (-1: none)
+  const floors = Math.max(1, Math.min(7, F.floors)), st = Math.max(2.6, fH / floors);
+  const hasG = gside >= 0, gw = len > 16 ? 4.9 : 2.75, gx0 = gside === 1 ? 0.9 : len - 0.9 - gw;
   const dx0 = hasG ? (gx0 < 1 ? Math.min(gx0 + gw + 1.7, len - 1.6) : Math.max(gx0 - 2.7, 0.6)) : len * 0.5 - 0.48, door = front && len > 3;
   const n = Math.floor((len - 0.6) / (front ? 3.3 : 3.9)); if (n < 1) return;
   const sp = len / n, c = wallC.clone().multiplyScalar(1.1);
@@ -2009,7 +2021,7 @@ function wallRoles(flat) {
 }
 // buildings are registered once (collision, destruction record, colours) and drawn when their chunk is built; the core's
 // chunks are built near you and dropped far away (lazy), an outer tile's when the tile is (src/world/outer.js)
-function addBuilding(b, lazy) {
+function addBuilding(b, lazy, CX) { // CX: what's round it (contextIndex over the list it came in)
   const [h, kind, flat, rs, bcol, rcol] = b; const n = flat.length / 2; if (n < 3) return;
   const [mn, mx, cx, cz] = footprintHeights(flat); const base = mn - 0.6, top = mx + h;
   const big = kind === 2 || (kind === 1 && h > 8);
@@ -2019,14 +2031,22 @@ function addBuilding(b, lazy) {
   if (kind === 0) { if (h <= 3.4) style = STYLE.shed; else if (h >= 8.5) { style = STYLE.apartment; floors = clamp(Math.round((h - 0.6) / 2.9), 2, 6); } else { style = STYLE.house; floors = h > 6.4 ? 2 : 1; } }
   else if (kind === 1) { if (h >= 10.5 && area0 < 6000) { style = STYLE.office; floors = Math.max(2, Math.round(h / 3.8)); } else { style = STYLE.shop; floors = h > 7.8 ? 2 : 1; } }
   else if (h >= 13) { style = STYLE.office; floors = Math.max(2, Math.round(h / 3.9)); } else style = STYLE.big;
-  const matIdx = style === STYLE.shop ? (srand() < 0.15 ? 2 : 1) : style === STYLE.office ? 1 : style === STYLE.big ? (srand() < 0.75 ? 3 : 1) : 0;
+  let matIdx = style === STYLE.shop ? (srand() < 0.15 ? 2 : 1) : style === STYLE.office ? 1 : style === STYLE.big ? (srand() < 0.75 ? 3 : 1) : 0;
   const reg = inCorePhoto(cx, cz) ? null : socalRegion(cx, cz, mn); // out beyond the core: the region's own colours
-  const wallC = matIdx === 2 ? hex(0xffffff).multiplyScalar(0.85 + srand() * 0.15) : bcol >= 0 ? hex(bcol) : pick(matIdx === 3 ? WALL_BIG : reg && matIdx === 0 ? REGION_WALLS[reg] : WALL_HOUSE);
+  let wallC = matIdx === 2 ? hex(0xffffff).multiplyScalar(0.85 + srand() * 0.15) : bcol >= 0 ? hex(bcol) : pick(matIdx === 3 ? WALL_BIG : reg && matIdx === 0 ? REGION_WALLS[reg] : WALL_HOUSE);
   const photo = !!(b[12] > 0 && TX.roofs[b[14] || 0]), roofK = photo ? 'P' : kind === 0 ? (srand() < 0.5 ? 'C' : 'S') : 'F';
   const roofC = photo ? hex(0xffffff) : (rcol >= 0 ? hex(rcol) : (kind === 0 ? pick(reg ? REGION_ROOFS[reg] : roofK === 'C' ? ROOF_CLAY : ROOF_SHINGLE) : hex(0xb8b4ac)));
+  // what it is, from its footprint, kind, height and zone (src/world/bldgen.js); its looks from a hash of where it stands,
+  // so every player sees the same building (the old picks above still run: the stream of srand stays as it was)
+  const P = SURF ? planFor(flat, h, kind, cx, cz, CX, rcol, !!lazy) : null;
+  if (P) {
+    style = P.style; floors = P.floors; matIdx = P.wall;
+    if (bcol < 0) wallC = matIdx === 2 ? hex(0xffffff).multiplyScalar(0.85 + P.r1 * 0.15) : pickAt(matIdx === 3 ? WALL_BIG : P.walls ? LOOK_WALLS_C[P.walls] : WALL_HOUSE, P.r1);
+  }
   const poly = polys.length; addPoly(flat, base, top + 2);
   let area = 0; for (let i = 0, j = n - 1; i < n; j = i++) area += (flat[j * 2] + flat[i * 2]) * (flat[j * 2 + 1] - flat[i * 2 + 1]); area = Math.abs(area) / 2;
-  const B = { ranges: [], flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false, b, big, wallC, matIdx, roofK, roofC, photo, style, floors, ground: mn, seed: srand() };
+  const B = { ranges: [], flat, base, top, cx, cz, poly, col: wallC.getHex(), hp: Math.min(6000, Math.max(260, area * h * 0.45)), dead: false, b, big, wallC, matIdx, roofK, roofC, photo, style, floors, ground: mn, seed: srand(), plan: P };
+  if (P) B.seed = P.seed;
   B.hp0 = B.hp; B.i = BLD.length; BLD.push(B); bldOfPoly.set(poly, B);
   if (SURF && style === STYLE.house && ROADS) { // the yard: driveway, walk, side walls, AC, bins, shrubs, a tree (src/world/yards.js)
     B.roles = wallRoles(flat);
@@ -2049,6 +2069,7 @@ function buildingGeom(B, ch) {
   const { b, flat, base, top, cx, cz, big, wallC, matIdx, roofC, photo } = B, kind = b[1], rs = b[3], n = flat.length / 2;
   const gbs0 = new Map(chunkGBs(ch).map(g => [g, g.p.length / 3]));
   const ground = B.ground ?? base + 0.6, F = { ground, style: B.style ?? STYLE.shop, floors: B.floors || 1, roles: B.roles || (B.roles = wallRoles(flat)), seed: B.seed ?? 0.5, fi: B.yard ? B.yard.fi : -1, gar: B.yard && B.yard.gar };
+  if (SURF && B.plan && !B.genFail) { try { genBuilding(B, ch, F); } catch (e) { B.genFail = true; console.warn('[bldgen] drawn the old way:', B.i, e); return buildingGeom(B, ch); } B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); } B.drawn = true; return; }
   // houses, apartments and sheds: walls to the ceiling, a pitched roof over them (src/world/roofs.js)
   const pitched = SURF && (F.style === STYLE.house || F.style === STYLE.apartment || F.style === STYLE.shed);
   let R = null, wallTop = top;
@@ -2111,6 +2132,124 @@ function buildingGeom(B, ch) {
   if (!SURF && kind === 0 && ZONE && inCore(cx, cz)) facadeDetails(ch, flat, S, base, top, cx, cz);
   B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); }
   B.drawn = true;
+}
+// ---- a building from its plan (src/world/bldgen.js): walls up to the eaves or the roof deck, the roof the plan fitted to
+// its footprint (hip, gable, cross-gabled wings, a shed slope, or flat behind a parapet or under deep eaves), and its
+// details: floor bands, a cornice, a raised entrance parapet, a tile mansard, awnings and canopies over the shop fronts,
+// a chimney, rooftop units. All of it goes into the chunk's merged meshes, so a collapse takes the lot.
+// the plan for a footprint (src/world/bldgen.js): its shape, the map's kind and height, the zone, the neighbourhood's
+// look, the street it faces, what's round it and a mapped roof colour
+const LOOK_WALLS_C = Object.fromEntries(Object.entries(LOOK_WALLS).map(([k, a]) => [k, a.map(c => hex(c))]));
+function planFor(flat, h, kind, cx, cz, CX, rcol, core) {
+  const S = shapeOf(flat), ne = nearestEdge(cx, cz, 80, STREET), retail = core && kind === 2; // the core's kind 2 is retail, the county's civic
+  return planBuilding(S, { h, kind: retail ? 1 : kind, retail, zone: zoneHere(cx, cz).kind, region: regionAt(cx, cz).id, x: cx, z: cz, ctx: CX ? CX.at(cx, cz, S, flat) : null, street: ne ? { t: edges[ne.e].t, d: ne.dist } : null, roofCol: rcol });
+}
+const ROOF_GB = { clay: 'roofC', tile: 'roofT', shingle: 'roofS', metal: 'roofB', gravel: 'roofF', membrane: 'roofB' };
+const AWN_C = ['#2f5a3c', '#7a2a24', '#23384f', '#b49a6c', '#8a4a2a', '#3d3d3a', '#5a2f4a', '#c2ae84'].map(c => hex(c)); // canvas: forest, oxblood, navy, sand, rust, charcoal, plum, khaki
+const CANOPY_C = ['#3b332b', '#2f3134', '#e6e3db', '#6b5a48'].map(c => hex(c)); // painted metal: bronze, charcoal, white, brown
+const pickAt = (a, r) => a[Math.min(a.length - 1, Math.floor(r * a.length))];
+const isClay = c => c[0] > c[1] * 1.3 && c[0] > c[2] * 1.6;
+function genBuilding(B, ch, F) {
+  const P = B.plan, RF = P.roof, { flat, base, top, wallC, matIdx } = B, g = F.ground, n = flat.length / 2, rr = mulberry(Math.floor(P.seed * 7e5) + 3);
+  const mx = B.gmx ?? (B.gmx = footprintHeights(flat)[1]), cell = Math.max(0.5, Math.sqrt(P.area) / 90);
+  // the aerial photo has the last word on the roof where it shows one: a tile roof is pitched, its colour is the roof's
+  const pc = roofPhotoColor(B); let form = RF.form, mat = RF.mat, pitch = RF.pitch, over = RF.over, gables = RF.gables;
+  if (pc && isClay(pc) && form === 'flat' && (P.type === TYPE.house || (P.type === TYPE.shop && P.area < 1500))) { form = 'hip'; mat = 'clay'; pitch = 0.32; over = P.type === TYPE.house ? 0.4 : 0.7; gables = 'none'; }
+  let wallTop = top, R = null;
+  if (form !== 'flat') {
+    const T = P.type, wh = T === TYPE.garage ? 2.75 : T === TYPE.shed ? 2.3 : T === TYPE.hall ? Math.max(4.2, top - mx - 3) : T === TYPE.civic || T === TYPE.shop ? Math.max(3.6, Math.min(top - mx, 4.8)) : P.floors * (T === TYPE.house ? 2.85 : 2.9) + 0.2;
+    wallTop = Math.min(top, mx + wh);
+    R = form === 'shed' ? shedRoof(flat, wallTop, { pitch, overhang: over, flip: P.r3 < 0.5, cell }) : pitchedRoof(flat, wallTop, { pitch, overhang: over, gables, cell });
+    if (!R) { form = 'flat'; wallTop = top; }
+  }
+  const S = walls(ch, flat, base, wallTop, wallC, matIdx, F), fr = wallFrames(flat), roles = F.roles, vt = wallTop - g, kit = [];
+  const TRIM = TRIM_C[Math.floor(P.r2 * TRIM_C.length)], plain = (gb, q, c) => obox(gb, q[0], q[1], q[2], q[3], q[4], q[5], q[6], q[7], c);
+  if (R) {
+    let gb = ch[ROOF_GB[mat]], rc = mat === 'clay' ? hex(0xffffff).multiplyScalar(0.82 + rr() * 0.22) : mat === 'tile' ? ROOF_TILE[Math.floor(rr() * ROOF_TILE.length)] : mat === 'metal' ? hex(0x9aa1a6).multiplyScalar(0.8 + rr() * 0.3) : ROOF_SHING[Math.floor(rr() * ROOF_SHING.length)];
+    if (pc) { // the real roof's material and colour: red-orange is clay tile, very dark is shingle, the rest flat concrete tile
+      const lum = 0.2126 * pc[0] + 0.7152 * pc[1] + 0.0722 * pc[2];
+      gb = isClay(pc) ? ch.roofC : lum < 0.04 ? ch.roofS : ch.roofT;
+      const mean = SURF.roofMean[gb === ch.roofC ? 'clay' : gb === ch.roofS ? 'shingle' : 'tile'];
+      rc = new THREE.Color(...pc.map((v, k) => clamp(v * 1.1 / mean[k], 0.25, 1.9)));
+    } else if (RF.col >= 0) rc = hex(RF.col); // a mapped roof:colour
+    for (const t of R.roof) tri(gb, t[0], t[1], t[2], rc, rc, rc, t[3], t[4], t[5], t[6][0], t[6][1], t[6][2]);
+    FAC = [1, 100, STYLE.shed, 0];
+    for (const t of R.trim) tri(ch.wall[0], t[0], t[1], t[2], TRIM, TRIM, TRIM, [t[3][0], t[3][1] + 50], [t[4][0], t[4][1] + 50], [t[5][0], t[5][1] + 50], t[6][0], t[6][1], t[6][2]);
+    for (const t of R.gable) tri(ch.wall[matIdx], t[0], t[1], t[2], wallC, wallC, wallC, [t[3][0], t[3][1] + wallTop - g], [t[4][0], t[4][1] + wallTop - g], [t[5][0], t[5][1] + wallTop - g], t[6][0], t[6][1], t[6][2]);
+    FAC = null;
+    if (P.chimney) { const c = chimneyOf(fr, roles, g, wallTop, pitch, rr); if (c) { // a stucco chase, its cap and the spark arrestor
+      obox(ch.wall[0], c.x, c.z, c.tx, c.tz, c.hu, c.ho, c.y0, c.y1, wallC);
+      obox(ch.wall[3], c.x, c.z, c.tx, c.tz, c.hu + 0.07, c.ho + 0.07, c.y1, c.y1 + 0.09, hex(0x8a8580));
+      obox(ch.wall[3], c.x, c.z, c.tx, c.tz, 0.2, 0.2, c.y1 + 0.09, c.y1 + 0.42, hex(0x2c2a28)); } }
+    if (P.kit.turbine) { let t = null; for (const q of R.roof) for (let k = 0; k < 3; k++) if (!t || q[k][1] > t[1]) t = q[k]; if (t) kit.push({ k: 'turbine', x: t[0], y: t[1] - 0.06, z: t[2], c: 0xbdbdb8 }); } // a whirlybird on the ridge
+    if (P.kit.dish) { const c = fr.filter(f => roles[f.i] !== 1 && f.len > 3); if (c.length) { const f = c[Math.floor(P.r2 * c.length)]; kit.push({ k: 'dish', x: f.ax + f.tx * f.len * 0.3 + f.ox * 0.12, y: wallTop - 0.45, z: f.az + f.tz * f.len * 0.3 + f.oz * 0.12, ry: (P.r3 - 0.5) * 0.8, c: 0xe8e8e4 }); } } // on the fascia, facing south
+  } else {
+    // flat: the deck (gravel on the big ones, membrane on the rest), behind a parapet or under deep eaves
+    const roofG = ch[ROOF_GB[mat]] || ch.roofB, rcol = hex(0xffffff).multiplyScalar(0.85 + P.r2 * 0.2);
+    const contour = []; for (let i = 0; i < n; i++) contour.push(new THREE.Vector2(flat[i * 2], flat[i * 2 + 1]));
+    let tris; try { tris = THREE.ShapeUtils.triangulateShape(contour, []); } catch (e) { tris = []; }
+    for (const t of tris) tri(roofG, [contour[t[0]].x, top, contour[t[0]].y], [contour[t[1]].x, top, contour[t[1]].y], [contour[t[2]].x, top, contour[t[2]].y], rcol, rcol, rcol, [contour[t[0]].x, contour[t[0]].y], [contour[t[1]].x, contour[t[1]].y], [contour[t[2]].x, contour[t[2]].y], 0, 1, 0);
+    const lip = top + RF.parapet, eave = RF.parapet ? 0 : RF.eave || (P.type === TYPE.house ? 0.6 : 0);
+    if (RF.parapet) {
+      const gb = ch.wall[matIdx], cap = wallC.clone().multiplyScalar(0.92); FAC = [1, 100, STYLE.shed, 0];
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n; const ax = flat[i * 2], az = flat[i * 2 + 1], bx = flat[j * 2], bz = flat[j * 2 + 1], L = Math.hypot(bx - ax, bz - az); const ox = S > 0 ? bz - az : az - bz, oz = S > 0 ? ax - bx : bx - ax;
+        tri(gb, [ax, top, az], [bx, top, bz], [bx, lip, bz], wallC, wallC, cap, [0, vt + 50], [L, vt + 50], [L, vt + 50.7], ox, 0, oz); tri(gb, [ax, top, az], [bx, lip, bz], [ax, lip, az], wallC, cap, cap, [0, vt + 50], [L, vt + 50.7], [0, vt + 50.7], ox, 0, oz);
+        tri(gb, [ax, top + 0.05, az], [bx, top + 0.05, bz], [bx, lip, bz], cap, cap, cap, [0, 0], [L, 0], [L, 0.7], -ox, 0, -oz); tri(gb, [ax, top + 0.05, az], [bx, lip, bz], [ax, lip, az], cap, cap, cap, [0, 0], [L, 0.7], [0, 0.7], -ox, 0, -oz); }
+      FAC = null;
+      if (P.cornice) for (const q of cornice(fr, lip)) plain(ch.wall[matIdx], q, wallC.clone().multiplyScalar(1.05));
+      if (P.raised) { const rf = raisedFront(fr, roles, lip - 0.3, P.type === TYPE.bigbox ? 3.4 : 2.4, rr, P.type === TYPE.bigbox); if (rf) { // a taller false front, capped
+        const f = rf.f, um = (rf.u0 + rf.u1) / 2, x = f.ax + f.tx * um + f.ox * 0.12, z = f.az + f.tz * um + f.oz * 0.12, hu = (rf.u1 - rf.u0) / 2;
+        obox(ch.wall[matIdx], x, z, f.tx, f.tz, hu, 0.16, rf.y0, rf.y1, wallC); obox(ch.wall[matIdx], x + f.ox * 0.05, z + f.oz * 0.05, f.tx, f.tz, hu + 0.15, 0.26, rf.y1, rf.y1 + 0.3, wallC.clone().multiplyScalar(1.05)); } }
+    }
+    if (eave > 0) eaveSlab(ch, fr, top, eave, roofG, rcol, TRIM);
+    if (P.mansard) { // a skirt of clay tile on the street walls (all round a small pad), hiding the parapet
+      const all = P.type === TYPE.shop, E = []; for (const f of fr) if ((all || roles[f.i] === 1) && f.len > 0.3) E.push([f.ax, f.az, f.ax + f.tx * f.len, f.az + f.tz * f.len, f.ox, f.oz]);
+      const M_ = mansard(E, lip + 0.3, P.mansard * 0.7, P.mansard), mc = hex(0xffffff).multiplyScalar(0.84 + P.r3 * 0.2);
+      for (const t of M_.roof) tri(ch.roofC, t[0], t[1], t[2], mc, mc, mc, t[3], t[4], t[5], t[6][0], t[6][1], t[6][2]);
+      FAC = [1, 100, STYLE.shed, 0]; for (const t of M_.under) tri(ch.wall[0], t[0], t[1], t[2], wallC, wallC, wallC, [t[3][0], t[3][1] + 50], [t[4][0], t[4][1] + 50], [t[5][0], t[5][1] + 50], t[6][0], t[6][1], t[6][2]); FAC = null;
+    }
+    if (P.units) { const unitC = hex(0xc9c8c3); FAC = [1, 100, STYLE.shed, 0]; for (const u of roofUnits(flat, top, P.area, mulberry(Math.floor(P.seed * 9e5)), P.units)) { box3(ch.wall[3], u.x, u.y, u.z, u.w, u.h, u.d, unitC); kit.push({ k: 'hvac', x: u.x, y: u.y, z: u.z, sx: u.w, sy: u.h, sz: u.d, c: 0xd4d3ce }); } FAC = null; }
+  }
+  // floor bands where the storeys meet (the facade shader's storey heights)
+  if (P.bands && P.floors >= 2) { const st = P.style === STYLE.office ? Math.max(3.4, vt / P.floors) : Math.max(2.6, vt / P.floors); for (const q of bands(fr, g, P.floors, st)) plain(ch.wall[matIdx], q, wallC.clone().multiplyScalar(1.07)); }
+  // awnings and canopies over the shop fronts
+  if (P.awning && ch.awn) {
+    const kind = P.awning, col = kind === 'canvas' ? null : pickAt(CANOPY_C, P.r3);
+    for (const q of awnings(fr, roles, kind, g, rr)) {
+      const c = col || AWN_C[Math.floor(Math.abs(P.r3 + (kind === 'canvas' && P.r1 < 0.3 ? q[0][0] * 0.013 : 0)) * 997) % AWN_C.length]; // one colour a shop, or one a bay
+      if (q[3]) { tri(ch.awn, q[0], q[1], q[2], c, c, c, [0, 0], [q[5], 0], [q[5], q[6]], q[4][0], q[4][1], q[4][2]); tri(ch.awn, q[0], q[2], q[3], c, c, c, [0, 0], [q[5], q[6]], [0, q[6]], q[4][0], q[4][1], q[4][2]); }
+      else tri(ch.awn, q[0], q[1], q[2], c, c, c, [0, q[6]], [q[5], 0], [q[5], q[6] - 0.24], q[4][0], q[4][1], q[4][2]);
+    }
+  }
+  if (B.yard) drawYard(ch, B);
+  if (!B.kit && KIT_REACH) { B.kit = true; (BKIT || (BKIT = createBldKit(scene, { reach: () => KIT_REACH }))).add(B, kit); } // the small repeated things, instanced near the camera (src/world/bldkit.js)
+}
+let BKIT = null; const KIT_REACH = { potato: 0, low: 170, medium: 250, high: 330, ultra: 430 }[GFX.id] ?? 250;
+// a flat roof's deep eaves: the deck carried out past the walls, a fascia at its edge, a painted soffit under it
+function eaveSlab(ch, fr, top, depth, roofG, rcol, trimC) {
+  const n = fr.length, off = [];
+  for (let i = 0; i < n; i++) {
+    const a = fr[(i + n - 1) % n], b = fr[i], k = 1 + a.ox * b.ox + a.oz * b.oz;
+    let ox = k < 0.3 ? b.ox * depth : (a.ox + b.ox) * depth / k, oz = k < 0.3 ? b.oz * depth : (a.oz + b.oz) * depth / k; const l = Math.hypot(ox, oz);
+    if (l > depth * 2.5) { ox *= depth * 2.5 / l; oz *= depth * 2.5 / l; } off.push([ox, oz]);
+  }
+  const t = top - 0.24; FAC = [1, 100, STYLE.shed, 0];
+  for (let i = 0; i < n; i++) {
+    const f = fr[i], j = (i + 1) % n; if (f.len < 0.05) continue;
+    const ax = f.ax, az = f.az, bx = fr[j].ax, bz = fr[j].az, Ax = ax + off[i][0], Az = az + off[i][1], Bx = bx + off[j][0], Bz = bz + off[j][1];
+    tri(roofG, [ax, top + 0.01, az], [bx, top + 0.01, bz], [Bx, top + 0.01, Bz], rcol, rcol, rcol, [ax, az], [bx, bz], [Bx, Bz], 0, 1, 0); tri(roofG, [ax, top + 0.01, az], [Bx, top + 0.01, Bz], [Ax, top + 0.01, Az], rcol, rcol, rcol, [ax, az], [Bx, Bz], [Ax, Az], 0, 1, 0);
+    tri(ch.wall[0], [ax, t, az], [bx, t, bz], [Bx, t, Bz], trimC, trimC, trimC, [0, 50], [f.len, 50], [f.len, 50 + depth], 0, -1, 0); tri(ch.wall[0], [ax, t, az], [Bx, t, Bz], [Ax, t, Az], trimC, trimC, trimC, [0, 50], [f.len, 50 + depth], [0, 50 + depth], 0, -1, 0);
+    const L = Math.hypot(Bx - Ax, Bz - Az);
+    tri(ch.wall[0], [Ax, t, Az], [Bx, t, Bz], [Bx, top + 0.08, Bz], trimC, trimC, trimC, [0, 50], [L, 50], [L, 50.3], f.ox, 0, f.oz); tri(ch.wall[0], [Ax, t, Az], [Bx, top + 0.08, Bz], [Ax, top + 0.08, Az], trimC, trimC, trimC, [0, 50], [L, 50.3], [0, 50.3], f.ox, 0, f.oz);
+  }
+  FAC = null;
+}
+// canvas for the awnings: a fine weave, uv in metres
+function awningMaterial() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), d = g.createImageData(64, 64);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) { const w = ((x >> 1) + (y >> 1)) % 2 ? 236 : 214, v = w + ((x * 7 + y * 13) % 5) * 3, o = (y * 64 + x) * 4; d.data[o] = d.data[o + 1] = d.data[o + 2] = v; d.data[o + 3] = 255; }
+  g.putImageData(d, 0, 0); const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return new THREE.MeshStandardMaterial({ map: t, vertexColors: true, roughness: 0.85, side: THREE.DoubleSide });
 }
 // a house's yard (src/world/yards.js): concrete drive and walks draped on the ground, block walls, the AC, the bins
 const BLOCK_C = ['#d9cdb6', '#cfc3ab', '#e3dbc9', '#c8b79a', '#bdb4a6'].map(c => hex(c));
@@ -2208,7 +2347,7 @@ function box3(gb, x, y, z, w, h, d, col) {
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 // ---- destruction: every building knows its vertex ranges in the chunk meshes, so it can come down
 const BLD = [], bldOfPoly = new Map(), collapsing = [], pendingBooms = [], BLD_HURT = new Set(); // BLD_HURT: damaged or fallen, for the repair scan
-function chunkGBs(ch) { const a = [...ch.wall, ...ch.roofP, ch.roofC, ch.roofT, ch.roofB, ch.roofS, ch.roofF, ch.facade]; for (const g of ch.roofGs.values()) a.push(g); return a; }
+function chunkGBs(ch) { const a = [...ch.wall, ...ch.roofP, ch.roofC, ch.roofT, ch.roofB, ch.roofS, ch.roofF, ch.facade]; if (ch.awn) a.push(ch.awn); for (const g of ch.roofGs.values()) a.push(g); return a; }
 function buildingsNear(x, z, R) {
   const out = [], st = ++stampN;
   for (let gx = Math.floor((x - R) / CELL); gx <= Math.floor((x + R) / CELL); gx++) for (let gz = Math.floor((z - R) / CELL); gz <= Math.floor((z + R) / CELL); gz++) {
@@ -2240,7 +2379,7 @@ function busyAt(x, z) {
 }
 const REBUILD_S = 120; // a collapsed building stands back up two minutes later (online ruins expire on the same clock)
 function collapseBuilding(B, dirx, dirz, by, instant, lite) { // instant: already rubble when you arrived (online ruins); lite: no flying blocks (a nuke flattens dozens)
-  if (B.dead) return; B.dead = true; BLD_HURT.add(B); polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
+  if (B.dead) return; B.dead = true; BLD_HURT.add(B); if (BKIT) BKIT.dirty(); polys[B.poly].dead = true; if (PLAZA) PLAZA.onCollapse(B);
   B.repairAt = simTime + REBUILD_S; B.fall = { dirx, dirz };
   if (online && by !== 'net') { sendEvent('col', { i: B.i, dx: dirx, dz: dirz }); setRuin(B.i, B.cx, B.cz); }
   const H = B.top - B.base, dur = 1.6 + Math.min(2.4, H * 0.12), anims = [];
@@ -2312,7 +2451,7 @@ function updateRepairs(dt) {
       for (let j = 0; j < A.k; j++) { const h = A.y0[j] - B.base; if (k >= 1) A.pos.setXYZ(A.a + j, A.x0[j], A.y0[j], A.z0[j]); else A.pos.setXYZ(A.a + j, A.x0[j] + dirx * h * e * 0.35, B.base + h * (1 - e) - e * 0.8, A.z0[j] + dirz * h * e * 0.35); }
       if (A.pos.addUpdateRange) A.pos.addUpdateRange(A.a * 3, A.k * 3); A.pos.needsUpdate = true;
     }
-    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (B.lazy && B.lazy.built && !B.drawn) B.lazy.dirty = true; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
+    if (k >= 1) { rebuilding.splice(i, 1); B.dead = false; if (BKIT) BKIT.dirty(); B.repairing = false; B.repairAt = null; B.anims = null; polys[B.poly].dead = false; B.hp = B.hp0; B.smoking = false; B.hurtAt = null; if (B.lazy && B.lazy.built && !B.drawn) B.lazy.dirty = true; if (PLAZA && PLAZA.onRepair) PLAZA.onRepair(B); }
   }
 }
 // garage door + front door on the wall that faces the street, mailbox at the curb (detail zone only)
@@ -3201,6 +3340,7 @@ function* meshChunkSteps(ch, grp, out) { // one mesh per step (the outer tiles s
   for (let i = 0; i < ch.wall.length; i++) { const m = ch.wall[i].mesh(M.walls[i], true); if (m) grp.add(m); yield; }
   ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true); if (m) grp.add(m); }); ch.roofP = null;
   { const m = ch.facade.mesh(M.facade, false); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.facade = null; }
+  if (ch.awn) { const m = ch.awn.mesh(M.awning, true); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.awn = null; } // shop awnings and canopies: small, so only near
   for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofT', M.roofTile || M.roofClay, true], ['roofB', M.roofBitumen || M.roofFlat, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
     const m = ch[key].mesh(mat, sh); if (m) { if (LOD_KEYS.has(key)) { m.userData.lod = 1; lod.push(m); } grp.add(m); } ch[key] = null; yield;
   }
@@ -3318,7 +3458,8 @@ async function buildWorld() {
   launchBoats(); initPilot(); // every boat on the lakes can be taken (src/pilot.js)
   progress('Raising ' + D.buildings.length.toLocaleString() + ' mapped buildings…'); await tick();
   let count = 0;
-  let tB = performance.now(); for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true); ++count; if (performance.now() - tB > 40) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); tB = performance.now(); } } // PHS; drawn chunk by chunk near you (lazyOf)
+  const BCX = contextIndex(D.buildings.map(b => b[2]), D.areas, D.pois.map(p => [p[1], p[2], p[3]])); // what's round each one (src/world/bldgen.js)
+  let tB = performance.now(); for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true, BCX); ++count; if (performance.now() - tB > 40) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); tB = performance.now(); } } // PHS; drawn chunk by chunk near you (lazyOf)
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
@@ -3614,7 +3755,7 @@ const OUTER = createOuter({ budget: bgBudget,
   holdPolys: list => { POLY_HOLD = list; }, releasePolys,
   paveRoad: (t, w, p, rd) => paveRoad(t, w, p, rd), paveRoadSteps: (t, w, p, rd) => paveRoadSteps(t, w, p, rd), paveCorner: c => paveCorner(c), paveMedian: m => paveMedian(m), // rd: { rs, ri } the tile's road surface
   mapRoad: e => { const bb = bbox(e.p); mapRoads.push({ t: e.t, w: e.w, p: e.p, name: e.name }); binAdd(bb[0], bb[1], bb[2], bb[3], 'r', mapRoads.length - 1); },
-  addEdges: addOuterEdges, addBuilding, bldCount: () => BLD.length, polyCount: () => polys.length, dropPolys, dropBuildings,
+  addEdges: addOuterEdges, addBuilding, bldContext: (flats, areas) => contextIndex(flats, areas), bldCount: () => BLD.length, polyCount: () => polys.length, dropPolys, dropBuildings,
   streetKit: outerKit, dropKit: dropOuterKit, plantTiles: plantTile, dropTrees,
   terrainMaterial: proc => { const m = new THREE.MeshStandardMaterial({ map: proc ? null : (M.outerHold || (M.outerHold = holdTex(0x8a8260))), roughness: 1 }); m.onBeforeCompile = groundPatch(TX.ground, { photoBias: 1.5, procedural: !!proc }); return m; }, // one shared stand-in until the photo's in
   loadPhoto: url => loadTex(url, true, false).then(t => { if (t) t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t; }),
@@ -8342,7 +8483,7 @@ function tick(rdt) {
   smoke.update(dt); fire.update(dt); NUKE_FX.update(rdt, skyU.horizon.value);
   for (let i = tracers.length - 1; i >= 0; i--) { tracers[i].t -= dt; if (tracers[i].t <= 0) { scene.remove(tracers[i].l); tracers[i].l.geometry.dispose(); tracers.splice(i, 1); } }
   PROF.mark('fx'); updateHold(rdt); updateCamera(rdt); updateBubbles(rdt); updateHud(rdt); PROF.mark('hud'); drawMinimap(); PROF.mark('minimap'); updateBeacons(rdt);
-  const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); } PROF.mark('chunkVis');
+  const f = focusPos(); visT -= rdt; if (visT <= 0) { visT = 0.5; updateChunkVisibility(f.x, f.z); } if (BKIT) BKIT.update(camera.position.x, camera.position.z, rdt); PROF.mark('chunkVis');
   if (bigTimer > 0) { bigTimer -= rdt; if (bigTimer <= 0) $('big').hidden = true; }
   updateSand(rdt); if (POWER) POWER.update(camera, renderer, nightAmount); if (HARBOR) HARBOR.update(camera, nightAmount); if (TRAILERS) TRAILERS.update(camera); PROF.mark('power+harbor');
   NIGHTL.update(camera, nightAmount, lampsNear, rdt); if (AIRT) AIRT.update(dt, nightAmount, focusPos()); // street lamps' light, aircraft
@@ -8605,7 +8746,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { curb: { cars: curbCars, update: dt => updateCurbParking(dt) }, prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { curb: { cars: curbCars, update: dt => updateCurbParking(dt) }, prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, buildNear: (x, z, r) => buildLazyNear(x, z, r), stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';
