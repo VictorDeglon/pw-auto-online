@@ -651,7 +651,8 @@ import { DEALER_SKINS, RESERVED } from './src/reserved.js';
 import { createWheel, ICONS as WICONS } from './src/ui/wheel.js';
 import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
 import * as MAPKIT from './src/ui/mapkit.js';
-import { setGroundTint, setGroundLand, setPoolHoles, TRACK_U, SHORE_U } from './src/nature/ground.js';
+import { setGroundTint, setGroundLand, setPoolHoles, setPadCuts, TRACK_U, SHORE_U } from './src/nature/ground.js';
+import { createPads, clipRect } from './src/world/pads.js';
 import { createTracks } from './src/world/tracks.js';
 import { updateBeacons } from './src/online/beacons.js';
 import { createOuter } from './src/world/outer.js';
@@ -918,7 +919,10 @@ function heightAt(x, z) {
   return builtAt(x, z);
 }
 // the graded bench behind a curbed sidewalk where it stands above the terrain mesh (drawn by apron())
-function benchOver(x, z, g) { const b = ROADS && ROADS.benchAt ? ROADS.benchAt(x, z, terrainAt) : null; return b !== null && b > g ? b + 0.04 : g; }
+function benchOver(x, z, g) { if (PADS && PADS.at(x, z) !== null) return g; return benchOver0(x, z, g); }
+function benchOver0(x, z, g) { const b = ROADS && ROADS.benchAt ? ROADS.benchAt(x, z, terrainAt) : null; return b !== null && b > g ? b + 0.04 : g; }
+// the ground as it was before any pad was graded into it (src/world/pads.js plans from this)
+function natAt(x, z) { const g = coreMeshAt(x, z); return g !== null ? benchOver0(x, z, g) : builtAt(x, z); }
 function builtAt(x, z) {
   if (ROADS) { const h = ROADS.surfaceAt(x, z, terrainAt); if (h !== null) return h; }
   return terrainAt(x, z);
@@ -987,6 +991,8 @@ function coreTerrainAt(x, z) {
 // height of the rendered ground mesh (vertex heights include road carving, triangles interpolate between them): what
 // grass, shrubs and anything else that must sit ON the visible ground uses, instead of the smooth heightAt
 let MESHG = null, ZMESH = null, ZMN = 0;
+let PADS = null; // graded house pads (src/world/pads.js): inside one, the ground is its level
+const TERR = { zone: [], aer: new Map(), nchx: 0, CH: 1024, G: 4096 }; // the terrain tile meshes, for adding the pads' tops (finishPads)
 function tri3(h00, h10, h01, h11, fx, fy) { return fx > fy ? h00 + (h10 - h00) * fx + (h11 - h10) * fy : h00 + (h11 - h01) * fx + (h01 - h00) * fy; }
 // nothing planted or placed on a road, its sidewalk / shoulder, or a metre either side
 function signOk(x, z) { return !ROADS || !ROADS.onAsphalt(x, z, 0.5); } // poles off any carriageway
@@ -1000,7 +1006,7 @@ function standAt(x, z) {
   return Math.max(groundAt(x, z) + 0.01, b);
 }
 function meshAt(x, z) {
-  const g = coreMeshAt(x, z); if (g !== null) return g;
+  const g = coreMeshAt(x, z); if (g !== null) return PADS ? PADS.at(x, z, g) ?? g : g;
   return OUTER.ready ? OUTER.meshAt(x, z) : null;
 }
 function coreMeshAt(x, z) {
@@ -2101,13 +2107,85 @@ function addBuilding(b, lazy, CX) { // CX: what's round it (contextIndex over th
     const Y = planYard(flat, B.roles, { onRoad: (x, z) => ROADS.onRoad(x, z, 0), inside: ROAD_FIT.inside }, mulberry(Math.floor(B.seed * 1e6) + 11));
     if (Y) {
       B.yard = Y; for (const q of yardPaving(Y)) clearPlants(q);
+      const t0 = performance.now(), lot = PADS && inCorePhoto(cx, cz, 60) ? PADS.plan(flat, Y, { nat: (x, z) => coreMeshAt(x, z) ?? builtAt(x, z), natB: natAt, inside: ROAD_FIT.inside, mine: (x, z) => pip(x, z, flat), onRoad: (x, z) => ROADS.onRoad(x, z, 0.3), pools: poolsNear,
+        rnd: mulberry(Math.floor(B.seed * 1e6) + 29), look: P && P.look, rural: (zoneHere(cx, cz) || {}).kind === 'rural' }) : null;
+      PAD_MS += performance.now() - t0;
+      if (lot && PADS.add(lot, padMesh)) { // a hillside lot graded level, terraced behind the house: walls round the lot lines, stairs between (src/world/pads.js)
+        B.pad = lot; Y.fences = []; B.ground = B.gmx = lot.y; B.base = Math.min(base, lot.y - 0.6); B.top = lot.y + h;
+        const PP = polys[poly]; PP.base = B.base; PP.top = B.top + 2;
+        for (const w of lot.walls) { // each wall's solid part; a gate stands open
+          let lo = 1e9, hi = -1e9; for (let k = 0; k < w.pieces.length; k += 4) { lo = Math.min(lo, w.pieces[k + 2]); hi = Math.max(hi, w.pieces[k + 3] + w.top + 0.06); } if (hi - lo < 0.5) continue;
+          const soft = w.kind === 'wood' || w.kind === 'vinyl' || w.kind === 'rail'; if (w.step < 0.6) w.key = fenceKey(w.ax, w.az);
+          for (const [s0, s1] of w.gate ? [[0, 0.1], [0.1 + w.gw, w.len]] : [[0, w.len]]) { if (s1 - s0 < 0.1) continue;
+            const ax = w.ax + w.tx * s0, az = w.az + w.tz * s0, ex = w.ax + w.tx * s1, ez = w.az + w.tz * s1, nx = -w.tz * 0.12, nz = w.tx * 0.12;
+            addPoly([ax + nx, az + nz, ex + nx, ez + nz, ex - nx, ez - nz, ax - nx, az - nz], lo, hi);
+            if (w.key) polys[polys.length - 1].brk = soft ? { kind: 'wood', str: 2.5, key: w.key, col: w.kind === 'vinyl' ? 0xf1efe9 : 0x8a6a4a } : { kind: 'block', str: 12, key: w.key }; } // a plain yard wall goes down to a car; one holding back the hill, not
+        }
+        for (const [sp, x, z, sc] of lot.plants) GARDEN.push([sp, x, z, sc]);
+        Y.bins = Y.bins.filter(([x, z]) => !lot.flights.some(f => Math.hypot(x - f.x, z - f.z) < 1.6 + f.n * f.tread)); // the bins out of the side gate's steps
+      }
       for (const [x0, z0, x1, z1] of Y.fences) { const L = Math.hypot(x1 - x0, z1 - z0) || 1, nx = -(z1 - z0) / L * 0.12, nz = (x1 - x0) / L * 0.12; addPoly([x0 + nx, z0 + nz, x1 + nx, z1 + nz, x1 - nx, z1 - nz, x0 - nx, z0 - nz], mn - 0.3, mn + 1.8); polys[polys.length - 1].brk = { kind: 'block', str: 12, key: fenceKey(x0, z0) }; }
-      if (Y.ac) addPoly([Y.ac[0] - 0.45, Y.ac[1] - 0.45, Y.ac[0] + 0.45, Y.ac[1] - 0.45, Y.ac[0] + 0.45, Y.ac[1] + 0.45, Y.ac[0] - 0.45, Y.ac[1] + 0.45], mn - 0.3, mn + 0.9);
+      if (Y.ac) addPoly([Y.ac[0] - 0.45, Y.ac[1] - 0.45, Y.ac[0] + 0.45, Y.ac[1] - 0.45, Y.ac[0] + 0.45, Y.ac[1] + 0.45, Y.ac[0] - 0.45, Y.ac[1] + 0.45], B.ground - 0.3, B.ground + 0.9);
       for (const sh of Y.shrubs) GARDEN.push(['scruboak', sh[0], sh[1], sh[2]]);
       if (Y.tree) GARDEN.push([Y.tree[2], Y.tree[0], Y.tree[1], 0]);
     }
   }
   if (lazy) { const L = lazyOf(chunkAt(cx, cz)); L.blds.push(B); B.lazy = L; } else buildingGeom(B, chunkAt(cx, cz));
+}
+let PAD_MS = 0, POOL_GRID = null; // the time spent planning pads; the mapped pools by 64 m cell while the buildings register
+function poolsNear(x, z, r) {
+  const out = []; if (!POOL_GRID) return out;
+  for (let i = Math.floor((x - r) / 64); i <= Math.floor((x + r) / 64); i++) for (let j = Math.floor((z - r) / 64); j <= Math.floor((z + r) / 64); j++) for (const p of POOL_GRID.get(i * 4096 + j) || []) if (Math.hypot(p[0] - x, p[1] - z) < r) out.push(p);
+  return out;
+}
+// a pad lies wholly on the detail zone's terrain mesh or wholly on the aerial grid's (their cells overlap by up to 13 m
+// along the zone's edge), well inside the photo
+function padMesh(q) {
+  let zn = 0, an = 0; for (const [x, z] of q.corners) { if (!inCorePhoto(x, z, 30)) return false; if (inCore(x, z, 26)) zn++; else if (!inCore(x, z, -26)) an++; }
+  return zn === 4 || an === 4;
+}
+// the graded terraces' tops, added to the terrain tiles under them (the ground shader skips the terrain inside a pad that isn't
+// at its level: setPadCuts), so a pad shows near or far, its chunk built or not; its walls (drawYard) close its edges
+function finishPads() {
+  if (!PADS || !PADS.n) return;
+  const add = new Map(), acc = m => { let a = add.get(m); if (!a) add.set(m, a = { p: [], n: [], uv: [] }); return a; }, P = [0, 0];
+  const TP = ZONE ? ZONE.tilePx : 1, c0 = ZONE ? ZONE.core0 : 0, NT = ZONE ? ZONE.tiles : 0, G = TERR.G, CH = TERR.CH;
+  const zoneUV = (i, j) => (x, z) => { zonePx(x, z, P); return [(P[0] - c0 - i * TP) / TP, 1 - (P[1] - c0 - j * TP) / TP]; };
+  const aerUV = (gi, gj) => (x, z) => { aerPx(x, z, P); return [(P[0] - gi * G) / G, 1 - (P[1] - gj * G) / G]; };
+  const cellsFor = (q, zone) => { // [mesh, uv, x0, z0, x1, z1] for each zone tile or aerial chunk under the pad
+    const px = zone ? zonePx : aerPx, inv = zone ? zoneInv : aerInv, S = zone ? TP : CH, o = zone ? c0 : 0, out = [];
+    let i0 = 1e9, i1 = -1e9, j0 = 1e9, j1 = -1e9; for (const [x, z] of q.corners) { px(x, z, P); i0 = Math.min(i0, P[0]); i1 = Math.max(i1, P[0]); j0 = Math.min(j0, P[1]); j1 = Math.max(j1, P[1]); }
+    for (let j = Math.floor((j0 - o) / S); j <= Math.floor((j1 - o) / S); j++) for (let i = Math.floor((i0 - o) / S); i <= Math.floor((i1 - o) / S); i++) {
+      let mesh = null, uv = null;
+      if (zone) { if (i >= 0 && j >= 0 && i < NT && j < NT && (mesh = TERR.zone[j * NT + i])) uv = zoneUV(i, j); }
+      else if (i >= 0 && j >= 0 && i < TERR.nchx) { const T = TERR.aer.get(j * TERR.nchx + i); if (T) { mesh = T.mesh; uv = aerUV(T.gi, T.gj); } }
+      if (!mesh) continue; const a = inv(o + i * S, o + j * S, [0, 0]), b = inv(o + (i + 1) * S, o + (j + 1) * S, [0, 0]);
+      out.push([mesh, uv, Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
+    }
+    return out;
+  };
+  const put = (a, uv, V, hx, hy, hz) => { // one triangle, wound to face (hx, hy, hz)
+    let [p, q, r] = V; const ux = q[0] - p[0], uy = q[1] - p[1], uz = q[2] - p[2], vx = r[0] - p[0], vy = r[1] - p[1], vz = r[2] - p[2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const L = Math.hypot(nx, ny, nz); if (L < 1e-9) return;
+    if (nx * hx + ny * hy + nz * hz < 0) { const t = q; q = r; r = t; nx = -nx; ny = -ny; nz = -nz; }
+    for (const v of [p, q, r]) { a.p.push(v[0], v[1], v[2]); a.n.push(nx / L, ny / L, nz / L); const t = uv(v[0], v[2]); a.uv.push(t[0], t[1]); }
+  };
+  for (const q of PADS.list) {
+    const zone = inCore(q.cx, q.cz), cells = cellsFor(q, zone), y = q.y;
+    for (const [mesh, uv, x0, z0, x1, z1] of cells) { // the top, split where it crosses into another tile
+      const poly = clipRect(q.outline, x0, z0, x1, z1); if (poly.length < 3) continue; const a = acc(mesh);
+      for (let k = 1; k < poly.length - 1; k++) put(a, uv, [[poly[0][0], y, poly[0][1]], [poly[k][0], y, poly[k][1]], [poly[k + 1][0], y, poly[k + 1][1]]], 0, 1, 0);
+    }
+  }
+  for (const [mesh, a] of add) { // appended to the tile's own vertices: no new meshes, no new draw calls
+    const g = mesh.geometry, pos = g.attributes.position.array, nrm = g.attributes.normal.array, uv = g.attributes.uv.array, I = g.index.array, n0 = pos.length / 3, n1 = a.p.length / 3;
+    const P2 = new Float32Array(pos.length + a.p.length); P2.set(pos); P2.set(a.p, pos.length);
+    const N2 = new Float32Array(nrm.length + a.n.length); N2.set(nrm); N2.set(a.n, nrm.length);
+    const U2 = new Float32Array(uv.length + a.uv.length); U2.set(uv); U2.set(a.uv, uv.length);
+    const I2 = new (n0 + n1 > 65535 ? Uint32Array : Uint16Array)(I.length + n1); I2.set(I); for (let k = 0; k < n1; k++) I2[I.length + k] = n0 + k;
+    g.dispose(); g.setAttribute('position', new THREE.BufferAttribute(P2, 3)); g.setAttribute('normal', new THREE.BufferAttribute(N2, 3)); g.setAttribute('uv', new THREE.BufferAttribute(U2, 2)); g.setIndex(new THREE.BufferAttribute(I2, 1)); g.computeBoundingSphere();
+  }
+  setPadCuts(THREE, PADS.cuts());
 }
 // walls, roof and facade of a registered building into chunk ch (B.ranges: its vertices there, for collapsing)
 const ROOF_TILE = ['#8a6a52', '#7a7a76', '#a0583a', '#5a5654', '#9b7b5c', '#b06a48', '#6e5a4a'].map(c => hex(c)); // flat concrete tile
@@ -2503,7 +2581,7 @@ function drawYard(ch, B) {
   const bc = BLOCK_C[Math.floor(B.seed * 997) % BLOCK_C.length], H = 1.75, T = 0.1;
   for (let [x0, z0, x1, z1, gate] of Y.fences) { // a stuccoed block wall with a cap; the side gate (wood) next to the house
     let L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.5 || BROKEN.has(fenceKey(x0, z0))) continue; const nx = -(z1 - z0) / L, nz = (x1 - x0) / L; // (knocked down: gone)
-    if (gate && L > 1.9) {
+    if (gate && L > 1.3) {
       const tx = (x1 - x0) / L, tz = (z1 - z0) / L, gx = x0 + tx * 0.72, gz = z0 + tz * 0.72, gy = drapeAt(gx, gz), wd = hex(Math.floor(B.seed * 31) % 3 ? 0x8a6a4a : 0x6b5a48);
       obox(ch.wood, gx, gz, tx, tz, 0.5, 0.025, gy + 0.05, gy + 1.62, wd); // boards
       for (const h of [0.35, 1.3]) obox(ch.wood, gx + nx * 0.035, gz + nz * 0.035, tx, tz, 0.47, 0.012, gy + h, gy + h + 0.1, wd.clone().multiplyScalar(0.8)); // rails
@@ -2516,9 +2594,75 @@ function drawYard(ch, B) {
     const cap = bc.clone().multiplyScalar(0.92), a1 = [x0 + nx * (T + 0.03), y1 + 0.06, z0 + nz * (T + 0.03)], b1 = [x1 + nx * (T + 0.03), y1 + 0.06, z1 + nz * (T + 0.03)], a2 = [x0 - nx * (T + 0.03), y1 + 0.06, z0 - nz * (T + 0.03)], b2 = [x1 - nx * (T + 0.03), y1 + 0.06, z1 - nz * (T + 0.03)];
     tri(ch.wall[0], a1, b1, b2, cap, cap, cap, [0, 50], [L, 50], [L, 50.2], 0, 1, 0); tri(ch.wall[0], a1, b2, a2, cap, cap, cap, [0, 50], [L, 50.2], [0, 50.2], 0, 1, 0);
   }
+  if (B.pad) { for (const w of B.pad.walls) if (!(w.key && BROKEN.has(w.key))) yardWall(ch, B, w, bc); for (const f of B.pad.flights) yardStairs(ch, f, bc); } // a graded lot (src/world/pads.js)
   if (Y.ac) box3(ch.wall[3], Y.ac[0], drapeAt(Y.ac[0], Y.ac[1]), Y.ac[1], 0.85, 0.82, 0.85, hex(0xc8c6be));
   for (const [x, z, , k] of Y.bins) box3(ch.wall[3], x, drapeAt(x, z), z, 0.58, 1.05, 0.68, hex(BIN_COLORS[k]));
   FAC = null;
+}
+// a wall along a graded lot's line (src/world/pads.js): the part holding the ground in stuccoed block, each piece level
+// and stepped down the slope, then the fence over the higher ground: more block (with pilasters, or between stone
+// pillars), wrought iron (on a stone base between stone pillars, or between stucco pilasters), wood boards on posts,
+// white vinyl panels, a split rail; its gate (wood, iron or vinyl) stands open, between pillars where it has them
+function yardWall(ch, B, w, bc) {
+  const P = w.pieces, cap = bc.clone().multiplyScalar(0.92), at = s => [w.ax + w.tx * s, w.az + w.tz * s], g0 = 0.1, g1 = w.gate ? 0.1 + w.gw : -1, kind = w.kind;
+  const stoneL = WALLARR && ch.wall[0].m ? WALLARR.id('stone_ledgestone') : -1, IRON = hex(0x1c1b19), WOOD = hex(Math.floor(B.seed * 31) % 3 ? 0x8a6a4a : 0x6b5a48), VINYL = hex(0xf1efe9), CAST = hex(0xe9e3d5), STONE = hex(0xf4f1ea);
+  const box = (gb, s0, s1, y0, y1, half, col, off = 0) => { if (s1 - s0 < 0.02 || y1 - y0 < 0.01) return; const [x, z] = at((s0 + s1) / 2); obox(gb, x + w.nx * off, z + w.nz * off, w.tx, w.tz, (s1 - s0) / 2, half, y0, y1, col); };
+  const stone = fn => { const g = ch.wall[0], L0 = g.L; if (stoneL >= 0) g.L = stoneL; fn(g); g.L = L0; };
+  const span = (s0, s1, fn) => { if (!w.gate || s1 <= g0 || s0 >= g1) return fn(s0, s1); if (s0 < g0) fn(s0, g0); if (s1 > g1) fn(g1, s1); }; // the parts off the gate
+  const solid = kind === 'block' || kind === 'pilaster' || kind === 'stone' || kind === 'inner', pieceAt = s => { for (let k = 0; k < P.length; k += 4) if (s <= P[k + 1] + 1e-3) return k; return P.length - 4; };
+  for (let k = 0; k < P.length; k += 4) {
+    const s0 = P[k], s1 = P[k + 1], lo = P[k + 2], mid = P[k + 3], top = mid + w.top, f0 = mid + 0.21;
+    span(s0, s1, (a, b) => { // the block: all the way up for the solid kinds, a capped course under the others
+      const yt = solid ? top : mid + 0.15; if (w.stone) stone(g => box(g, a, b, lo, yt, 0.1, STONE)); else box(ch.wall[0], a, b, lo, yt, 0.1, bc); box(ch.wall[0], a - 0.015, b + 0.015, yt, yt + 0.06, 0.13, w.stone ? CAST : cap); // stone-faced on a stone-pillared lot
+      if (kind === 'wood') { box(ch.wood, a, b, f0, top, 0.015, WOOD); box(ch.wood, a, b, top - 0.1, top, 0.035, WOOD.clone().multiplyScalar(0.85)); }
+      else if (kind === 'vinyl') { box(ch.wall[3], a, b, f0, top, 0.02, VINYL); box(ch.wall[3], a, b, top - 0.06, top, 0.035, VINYL); }
+      else if (kind === 'rail') for (const hh of [0.45, 0.85, 1.12]) box(ch.wood, a, b, mid + hh, mid + hh + 0.09, 0.03, WOOD.clone().multiplyScalar(0.9));
+      else if (kind === 'iron' || kind === 'stoneIron') { const base = kind === 'stoneIron' ? mid + 0.45 : f0;
+        if (kind === 'stoneIron') stone(g => box(g, a, b, mid + 0.15, base, 0.12, STONE));
+        box(ch.coping, a, b, base + 0.08, base + 0.11, 0.015, IRON); box(ch.coping, a, b, top - 0.1, top - 0.07, 0.015, IRON);
+        for (let t = a + 0.07; t < b - 0.03; t += 0.15) picket(ch.coping, ...at(t), w.tx, w.tz, base, top, IRON); } // (near only: the chunk's coping layer)
+    });
+    if (w.gate && s0 < g1 && lo < w.gy - 0.2) box(ch.wall[0], Math.max(s0, g0), Math.min(s1, g1), lo, w.gy + 0.03, 0.1, bc); // block up to the sill where the ground beyond falls away
+  }
+  // posts, pilasters and pillars: every few metres, at the ends and either side of the gate
+  const sp = { pilaster: 3.6, stone: 3.0, stoneIron: 3.0, iron: 2.8, wood: 2.4, vinyl: 2.4, rail: 2.8 }[kind];
+  if (sp) { const n = Math.max(1, Math.round(w.len / sp)), S = []; for (let i = 0; i <= n; i++) S.push(w.len * i / n); if (w.gate) S.push(g1 + 0.02);
+    for (const s of S) { if (w.gate && s > g0 - 0.2 && s < g1 - 0.05) continue; const k = pieceAt(s), lo = P[k + 2], mid = P[k + 3], top = mid + w.top;
+      if (kind === 'stone' || kind === 'stoneIron') { stone(g => box(g, s - 0.27, s + 0.27, lo, top + 0.16, 0.27, STONE)); box(ch.wall[0], s - 0.32, s + 0.32, top + 0.16, top + 0.25, 0.32, CAST); }
+      else if (kind === 'pilaster' || kind === 'iron') { box(ch.wall[0], s - 0.21, s + 0.21, lo, top + 0.12, 0.21, bc); box(ch.wall[0], s - 0.25, s + 0.25, top + 0.12, top + 0.2, 0.25, cap); }
+      else if (kind === 'vinyl') { box(ch.wall[3], s - 0.065, s + 0.065, mid, top + 0.05, 0.065, VINYL); box(ch.wall[3], s - 0.08, s + 0.08, top + 0.05, top + 0.1, 0.08, VINYL); }
+      else box(ch.wood, s - 0.05, s + 0.05, mid, top + 0.04, 0.05, WOOD.clone().multiplyScalar(0.75)); } }
+  if (!w.gate || kind === 'rail') return;
+  // the gate, swung open into the yard on its hinge by the house
+  const a = 1.25, gx = w.tx * Math.cos(a) + w.nx * Math.sin(a), gz = w.tz * Math.cos(a) + w.nz * Math.sin(a), [hx, hz] = at(g0 + 0.03), hw = w.gw / 2 - 0.03, cx = hx + gx * hw, cz = hz + gz * hw, gy = w.gy;
+  if (kind === 'iron' || kind === 'stoneIron') { obox(ch.coping, cx, cz, gx, gz, hw, 0.015, gy + 0.08, gy + 0.11, IRON); obox(ch.coping, cx, cz, gx, gz, hw, 0.015, gy + 1.15, gy + 1.18, IRON);
+    for (let t = -hw + 0.06; t < hw; t += 0.15) picket(ch.coping, cx + gx * t, cz + gz * t, gx, gz, gy + 0.05, gy + 1.22, IRON); }
+  else { const c = kind === 'vinyl' ? VINYL : WOOD, gb = kind === 'vinyl' ? ch.wall[3] : ch.wood; obox(gb, cx, cz, gx, gz, hw, 0.025, gy + 0.05, gy + 1.62, c);
+    if (kind !== 'vinyl') for (const hh of [0.35, 1.3]) obox(ch.wood, cx - gz * 0.035, cz + gx * 0.035, gx, gz, hw - 0.03, 0.012, gy + hh, gy + hh + 0.1, c.clone().multiplyScalar(0.8)); }
+}
+// stairs between a lot's terraces, or down from a side gate (src/world/pads.js): concrete treads (near only: the
+// chunk's coping layer), a sloped stucco cheek wall, a landing at the top where they run along a wall
+function yardStairs(ch, f, bc) {
+  const rise = (f.y0 - f.y1) / f.n, px = -f.tz, pz = f.tx, C = hex(0xd8d3c8), run = f.n * f.tread;
+  if (f.landing) { const [lx, lz, tx, tz, y] = f.landing; obox(ch.coping, lx, lz, tx, tz, 0.65, 0.65, f.y1 - 0.08, y + 0.01, C); }
+  for (let i = 0; i < f.n; i++) {
+    const top = f.y0 - (i + 1) * rise; if (top <= f.y1 + 0.02) break; const s = (i + 0.5) * f.tread;
+    obox(ch.coping, f.x + f.tx * s, f.z + f.tz * s, f.tx, f.tz, f.tread / 2, f.w / 2, f.y1 - 0.08, top, C);
+  }
+  FAC = [1000, 1000, STYLE.shed, 0.5];
+  for (const sd of f.side ? [f.side] : [1, -1]) { // the cheek: a wall along the flight, its top sloping with it
+    const o = f.w / 2 + 0.08, P = (s, e, y) => [f.x + f.tx * s + px * sd * (o + e), y, f.z + f.tz * s + pz * sd * (o + e)], yb = f.y1 - 0.1, t0 = f.y0 + 0.3, t1 = f.y1 + 0.3;
+    for (const e of [-0.08, 0.08]) { const a = P(0, e, yb), b = P(run, e, yb), c = P(run, e, t1), d = P(0, e, t0), nx = px * sd * Math.sign(e), nz = pz * sd * Math.sign(e);
+      tri(ch.wall[0], a, b, c, bc, bc, bc, [500, 500], [500 + run, 500], [500 + run, 500 + t1 - yb], nx, 0, nz); tri(ch.wall[0], a, c, d, bc, bc, bc, [500, 500], [500 + run, 500 + t1 - yb], [500, 500 + t0 - yb], nx, 0, nz); }
+    const a = P(0, -0.08, t0), b = P(0, 0.08, t0), c = P(run, 0.08, t1), d = P(run, -0.08, t1), cp = bc.clone().multiplyScalar(1.05);
+    tri(ch.wall[0], a, b, c, cp, cp, cp, [500, 500], [500.16, 500], [500.16, 500 + run], 0, 1, 0); tri(ch.wall[0], a, c, d, cp, cp, cp, [500, 500], [500.16, 500 + run], [500, 500 + run], 0, 1, 0);
+  }
+  FAC = null;
+}
+// a wrought-iron picket: a thin bar seen from either side of its fence (two faces, no ends)
+function picket(gb, x, z, tx, tz, y0, y1, col) {
+  const h = 0.009; for (const sd of [1, -1]) { const nx = -tz * sd, nz = tx * sd, a = [x - tx * h + nx * h, y0, z - tz * h + nz * h], b = [x + tx * h + nx * h, y0, z + tz * h + nz * h], c = [b[0], y1, b[2]], d = [a[0], y1, a[2]];
+    tri(gb, a, b, c, col, col, col, [0, 0], [0.02, 0], [0.02, y1 - y0], nx, 0, nz); tri(gb, a, c, d, col, col, col, [0, 0], [0.02, y1 - y0], [0, y1 - y0], nx, 0, nz); }
 }
 // a box from y0 to y1 centred on (cx, cz), half hu along (tx, tz) and half ho across it; no bottom
 function obox(gb, cx, cz, tx, tz, hu, ho, y0, y1, col) {
@@ -3577,7 +3721,9 @@ async function buildWorld() {
     if (!idx.length) continue;
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
     const mat = M.terrain[gj * AER.ground.gnx + gi] || M.outer; const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; scene.add(mesh);
+    TERR.aer.set(cj * nchx + ci, { mesh, gi, gj });
   }
+  TERR.nchx = nchx; TERR.CH = CH; TERR.G = G;
   // ---- detail zone terrain: 8x8 tiles of 256 m, 4 m cells from the 1 m DEM, 0.5 m aerial tiles
   if (ZH) {
     progress('Sculpting the detail zone…'); await tick();
@@ -3598,6 +3744,7 @@ async function buildWorld() {
       for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) { const a = j * W + i, b = a + 1, c = a + W, d = c + 1; idx.push(a, d, b, a, c, d); }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx); g.computeVertexNormals(); g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, M.zoneTiles[tj * ZONE.tiles + ti] || M.outer); mesh.receiveShadow = true; scene.add(mesh);
+      TERR.zone[tj * ZONE.tiles + ti] = mesh;
     }
   }
   // ---- outer hills: coarse terrain from the elevation tiles beyond the photo coverage
@@ -3657,10 +3804,13 @@ async function buildWorld() {
   progress('Raising ' + D.buildings.length.toLocaleString() + ' mapped buildings…'); await tick();
   let count = 0;
   const BCX = contextIndex(D.buildings.map(b => b[2]), D.areas, D.pois.map(p => [p[1], p[2], p[3], p[0]])); // what's round each one (src/world/bldgen.js)
+  if (SURF && AER.ground) PADS = createPads(PHOTO_R); // hillside houses get graded pads as they register
+  { const g = new Map(); for (const p of D.pools || []) { const k = Math.floor(p[0] / 64) * 4096 + Math.floor(p[1] / 64); let a = g.get(k); if (!a) g.set(k, a = []); a.push(p); } POOL_GRID = g; }
   let tB = performance.now(); for (const b of D.buildings) { if (PHS.phsSkipFlat(b[2])) continue; addBuilding(b, true, BCX); ++count; if (performance.now() - tB > 40) { progress(`Raising buildings… ${count.toLocaleString()}`); await tick(); tB = performance.now(); } } // PHS; drawn chunk by chunk near you (lazyOf)
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
+  { const t0 = performance.now(); finishPads(); console.info('[pads]', PADS ? PADS.n : 0, 'terraces on graded lots: planned in', Math.round(PAD_MS), 'ms, added to the terrain in', Math.round(performance.now() - t0), 'ms'); POOL_GRID = null; }
   progress('Digging ' + (D.pools || []).length.toLocaleString() + ' pools…'); await tick();
   { const PL = (D.pools || []).filter(p => !PHS.phsSkip(p[0], p[1])); for (const p of PL) addPool(p); setPoolHoles(THREE, PL); } // PHS has its own; the ground is cut out where each pool is
   progress('Posting street signs…'); await tick();

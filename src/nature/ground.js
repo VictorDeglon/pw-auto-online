@@ -145,6 +145,40 @@ float poolHole(vec2 p, float m) { // m: extra margin (the grass also keeps off t
   }
   return 0.0;
 }`;
+// Graded pads (src/world/pads.js): inside a pad the ground keeps only what lies at the pad's level (its top, added to
+// the terrain tile under it); the hill cut away for it and the slope it's filled out over are skipped. Up-facing
+// ground only: the walls along a pad's edge stand vertical. A grid texture (RGBA8 texels, two pad numbers each, up
+// to four texels a 16 m cell) and a table of the pads (centre, half sizes, along, level, rounded corners).
+//   setPadCuts(THREE, PADS.cuts())
+export const PAD_U = { gPads: { value: null }, gPadP: { value: null }, gPadR: { value: [0, 0, 16, 0] }, gPadN: { value: [0, 0, 2] }, gPadOn: { value: 0 } };
+export const PAD_GLSL = /* glsl */`
+uniform sampler2D gPads, gPadP; uniform vec4 gPadR; uniform vec3 gPadN; uniform float gPadOn;
+float padCut(vec3 p, vec3 n) { // 1: inside a pad, and not at its level
+  if (gPadOn < 0.5 || normalize(n).y < 0.3) return 0.0;
+  vec2 g = (p.xz - gPadR.xy) / gPadR.z; if (g.x < 0.0 || g.y < 0.0 || g.x >= gPadN.x || g.y >= gPadN.y) return 0.0;
+  ivec2 c = ivec2(g);
+  int W = int(gPadN.z);
+  for (int h = 0; h < 4; h++) {
+    if (h >= W) break;
+    vec4 e = floor(texelFetch(gPads, ivec2(c.x * W + h, c.y), 0) * 255.0 + 0.5);
+    for (int k = 0; k < 2; k++) {
+      float id = (k == 0 ? e.r * 256.0 + e.g : e.b * 256.0 + e.a) - 1.0; if (id < 0.0) return 0.0;
+      int t = int(id) * 2; vec4 a = texelFetch(gPadP, ivec2(t % 1024, t / 1024), 0), b = texelFetch(gPadP, ivec2((t + 1) % 1024, (t + 1) / 1024), 0);
+      vec2 d = p.xz - a.xy, l = vec2(dot(d, b.xy), d.x * b.y - d.y * b.x);
+      if (abs(l.x) >= a.z || abs(l.y) >= a.w) continue;
+      float m = floor(b.w / 16.0), r = b.w - m * 16.0; // a rounded corner: radius r, the corners in the bits of m
+      if (r > 0.0) { vec2 e = abs(l) - (a.zw - r); float bit = (l.x > 0.0 ? 1.0 : 0.0) + (l.y > 0.0 ? 2.0 : 0.0);
+        if (e.x > 0.0 && e.y > 0.0 && mod(floor(m / exp2(bit)), 2.0) > 0.5 && dot(e, e) > r * r) continue; }
+      return abs(p.y - b.z) > 0.03 ? 1.0 : 0.0;
+    }
+  }
+  return 0.0;
+}`;
+export function setPadCuts(THREE, { grid, nx, nz, slots, rect, table }) {
+  const gt = new THREE.DataTexture(grid, nx * slots / 2, nz, THREE.RGBAFormat, THREE.UnsignedByteType); gt.magFilter = gt.minFilter = THREE.NearestFilter; gt.generateMipmaps = false; gt.needsUpdate = true;
+  const pt = new THREE.DataTexture(table, 1024, table.length / 4096, THREE.RGBAFormat, THREE.FloatType); pt.magFilter = pt.minFilter = THREE.NearestFilter; pt.generateMipmaps = false; pt.needsUpdate = true;
+  PAD_U.gPads.value = gt; PAD_U.gPadP.value = pt; PAD_U.gPadR.value = [rect[0], rect[1], rect[2], 0]; PAD_U.gPadN.value = [nx, nz, slots / 2]; PAD_U.gPadOn.value = 1;
+}
 export function setPoolHoles(THREE, pools, cell = 16, margin = 0.3) {
   if (!pools.length) return;
   let x0 = 1e9, z0 = 1e9; for (const p of pools) { x0 = Math.min(x0, p[0] - 40); z0 = Math.min(z0, p[1] - 40); }
@@ -172,7 +206,7 @@ export function groundPatch(ground, opts = {}) {
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 140 }, gFar: { value: opts.far ?? 520 }, // detail out to here: nearer, the photo's smear showed past the first street
     gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
-    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...TRACK_U, ...SHORE_U,
+    gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...PAD_U, ...TRACK_U, ...SHORE_U,
   };
   (ground.users || (ground.users = [])).push(uniforms); // so setGround can swap the layers in later
   return sh => {
@@ -181,9 +215,10 @@ export function groundPatch(ground, opts = {}) {
       .replace('#include <common>', '#include <common>\nvarying vec3 vWp; varying vec3 vWn;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz; vWn = normalize(mat3(modelMatrix) * objectNormal);');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF; float gSandWet;\n' + HOLE_GLSL + TRACK_GLSL)
+      .replace('#include <common>', '#include <common>\n' + COMMON + '\nvec3 gNormalW; float gF; float gSandWet;\n' + HOLE_GLSL + PAD_GLSL + TRACK_GLSL)
       .replace('#include <map_fragment>', /* glsl */`
       if (poolHole(vWp.xz, 0.0) > 0.5) discard; // a pool here (setPoolHoles)
+      if (padCut(vWp, vWn) > 0.5) discard; // cut away or filled over for a graded pad (setPadCuts)
       #include <map_fragment>
       {
         vec3 Nw = normalize(vWn); float dd = length(vWp - cameraPosition);

@@ -155,6 +155,15 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 
 - Streets end the way Poway's do: cul-de-sacs among houses, barricades with END markers elsewhere (`src/world/roadends.js`).
 - House fronts have depth: stoops, beds with mow curbs, sills, trim, lanterns, mailboxes, curb cuts, side gates.
+- Hillside lots are graded, never a house on stilts down the slope: the house and its side and back yards sit on a
+  level terrace at the height where the driveway meets the garage (the front yard keeps its grade); a steep back yard
+  steps down (or up) in up to three terraces, no wall between them over 2.4 m, every one reached by stairs, every side
+  yard by a gate (with steps where the ground beyond is higher or lower). A pool sits whole on one terrace. Walls along
+  the lot lines, stepped down the slope, hold up to 3 m of ground (more only to keep a pool level), with the fence over
+  the higher side by neighbourhood: stuccoed block, block with pilasters, stone pillars with cast caps, wood boards,
+  white vinyl, a split rail in the country; open wrought iron on the side with the view. Some lots round a corner in a
+  curved wall. Shrubs line the walls inside, a tree stands in a back corner. Side-yard walls stop half way to the
+  neighbour's house.
 - Main roads with houses backing onto them get tan split-face block walls with pilasters; country roads get white
   ranch fences; estates get stone pillars and open iron gates.
 - Trails are decomposed granite (`SURF.path`): compacted down the middle, loose at ragged edges, stones along them.

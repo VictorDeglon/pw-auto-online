@@ -8,6 +8,26 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.10.1 (2026-10-31)
+
+- **Hillside lots are graded:** a house on a slope stands on a level terrace at the height where its driveway meets
+  the garage, its side and back yards level with it out to the lot lines (half way to the neighbours, short of a
+  street). Where the hill keeps falling or rising behind the house the back yard steps down or up in terraces, up to
+  three, no wall between them over 2.4 m, joined by concrete stairs through the retaining wall (straight down, or along
+  the wall from a landing). A pool sits whole on one terrace, at its own ground. The houses no longer stand on tall
+  blank walls down the slope (`src/world/pads.js`; the ground shader leaves out the hill inside a terrace).
+- **Walls and fences along the lot lines,** stepped down the slope, holding the ground where a terrace and the land
+  beyond part, with a fence over the higher side by neighbourhood: stuccoed block, block with pilasters, stone pillars
+  with cast caps (stone-faced walls on those lots), wood boards on posts, white vinyl, a split rail out in the country;
+  wrought iron (between stone pillars on estates) on the side with the view. Some lots round their corners in a curved
+  wall. The side yards' gates stand open, between pillars where the fence has them, with steps where the ground beyond
+  is higher or lower, so every part of the yard can be walked to. You walk and drive on the terraces and stairs, and the
+  walls stop you; plain yard walls still give way to a fast car.
+- **Planting in the back yards:** shrubs along the walls inside, a tree (palms, olive, pepper, jacaranda by the look)
+  in a back corner.
+- Side-yard walls stop at the lot line, half way to the neighbour's house, so two neighbours no longer each build one
+  in the same side yard; narrow side yards still get their gate.
+
 ## 0.10.0 Up Close (2026-10-31)
 
 - **Houses with depth:** windows and doors are set into the walls with reveals, some front doors in a covered alcove;

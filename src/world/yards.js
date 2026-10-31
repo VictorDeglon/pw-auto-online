@@ -38,12 +38,13 @@ export function planYard(flat, roles, H, rnd) {
     for (const [c0, c1] of [...cut, [fl - 0.15, 1e9]]) { if (c0 - u > 1.2 && clear(pt((u + c0) / 2, D)) && clear(pt(u, D)) && clear(pt(c0, D))) Y.beds.push([pt(u, 0), pt(c0, 0), pt(c0, D), pt(u, D)]); u = Math.max(u, c1); }
   }
   if (Y.drive && rnd() < 0.7) { const d = Math.hypot(Y.drive[3][0] - Y.drive[0][0], Y.drive[3][1] - Y.drive[0][1]), uM = G.gx0 < 1 ? G.gx0 + G.gw + 0.75 : G.gx0 - 0.75, p = pt(uM, d - 0.55); if (clear(p)) Y.mail = [p[0], p[1], Math.atan2(ox, oz), rnd() < 0.35]; }
-  // side yards: a block wall with a gate from each front corner (set back 1.5 m) out to the neighbour, then back along
-  // the property line
+  // side yards: a block wall with a gate from each front corner (set back 1.5 m) out to the lot line (half way to the
+  // neighbour's wall, so two neighbours don't each build one), then back along it
   for (const [u, dir] of [[0, -1], [fl, 1]]) {
     const s = pt(u, -1.5); let e = s, k = 0;
     for (k = 1; k <= 12; k++) { const q = [s[0] + tx * dir * k * 0.5, s[1] + tz * dir * k * 0.5]; if (!clear(q)) break; e = q; }
     if (k < 3) continue;
+    if (k <= 12 && H.inside(s[0] + tx * dir * k * 0.5, s[1] + tz * dir * k * 0.5)) e = [s[0] + tx * dir * k * 0.25, s[1] + tz * dir * k * 0.25];
     Y.fences.push([s[0], s[1], e[0], e[1], 1]); // 1: the side gate is in this one, next to the house
     let b = e; for (k = 1; k <= 30; k++) { const q = [e[0] - ox * k * 0.5, e[1] - oz * k * 0.5]; if (!clear(q)) break; b = q; }
     if (k > 4) Y.fences.push([e[0], e[1], b[0], b[1]]);
