@@ -30,7 +30,15 @@ and port as the game server, under a path:
 tailscale funnel --bg --set-path=/packs http://127.0.0.1:7360
 ```
 
-The server accepts requests with or without the `/packs` prefix, whichever way the proxy passes them.
+The server accepts requests with or without the `/packs` prefix, whichever way the proxy passes them. To take just this
+path down again: `tailscale funnel --https=443 --set-path=/packs off` (`--https=443 off` alone also drops whatever
+else is published on that port, such as the game server).
+
+**Funnel is slow for this.** Measured on 2026-10-31: 0.3-0.5 MB/s per connection and about 1.5-2 MB/s in total with
+2-8 connections, while Firebase Hosting gave 5.8-7.7 MB/s on the same line and the box's Tailscale used ~13 % of a
+core, so the limit is Funnel's relay, not the box or its uplink. At that rate the loading screen's pack takes ~40 s on
+a first visit (repeat visits read from disk either way). A tunnel without that cap (and with an edge cache for the
+immutable packs) is the way to make first visits fast.
 
 ## Players
 
