@@ -8,6 +8,20 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.6 (2026-10-31)
+
+- **No more shader freezes while you play:** on Windows every new shader program holds the game for a third to
+  two-thirds of a second, and some were still compiled in the middle of a frame, after the loading screen: the shadow
+  versions of things (three builds a separate program to draw each kind of object into the sun's shadow maps, and
+  nothing warmed those), the post-processing passes and the sun dust on the first frame, and things that only appear
+  later: the power-line wires and the docks as you come near them, the marina's boats, the first flight overhead, the
+  first rabbit or hawk, a car or bike model that first drives by after the loading screen, an avatar fetched in the
+  middle of play. Now each of them is built before it can show: the shadow programs with one shadow pass of the new
+  things alone into a tiny stand-in map, the late arrivals from one of each kind on a hidden holder. A program the
+  warm-ups built is kept even when the last thing using it goes (a bike's chain was compiled again every time the last
+  bike left town). Measured in a 30 s drive after loading: from 19-24 programs compiled inside frames to none. Nothing
+  looks different.
+
 ## 0.9.5 (2026-10-30)
 
 - **The game's files stay on your computer:** the town comes as a few zip files (packs) from the game's own asset
