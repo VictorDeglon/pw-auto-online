@@ -2928,7 +2928,17 @@ async function showCompiled(objs) {
   const hid = objs.filter(o => o && o.visible); for (const o of hid) o.visible = false;
   await compileInSteps(compileUnits(objs), null, 8); await uploadInSteps(objs, null, 8);
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
+  await warmShadows(objs);
   for (const o of hid) o.visible = true;
+}
+// the same for things not in the world yet (the crowd's avatars, animals, aircraft, the first wires and docks): put on
+// a hidden holder in the scene while their shaders build, then given back
+async function warmLoose(roots) {
+  roots = roots.filter(Boolean); if (!roots.length) return;
+  const holder = new THREE.Group(), was = roots.map(r => r.parent); holder.visible = false;
+  for (const r of roots) holder.add(r); scene.add(holder);
+  try { await compileInSteps(compileUnits(roots), null, 8); await uploadInSteps(roots, null, 8); await warmShadows(roots); }
+  finally { scene.remove(holder); roots.forEach((r, i) => { holder.remove(r); if (was[i]) was[i].add(r); }); }
 }
 // Shaders compiled a piece at a time, each new program waited for before the next piece, with a frame (or a step of the
 // loading bar) in between. Under Chrome on Windows (Direct3D) a new standard-material program holds the page for a few
@@ -2958,8 +2968,58 @@ async function compileInSteps(units, onStep, ms = 60) {
   for (let i = 0; i < units.length; i++) {
     const n0 = renderer.info.programs.length;
     try { renderer.compile(units[i], camera, scene); } catch (e) { continue; }
-    const P = renderer.info.programs; for (let k = n0; k < P.length; k++) gl.getProgramParameter(P[k].program, gl.LINK_STATUS);
+    const P = renderer.info.programs; for (let k = n0; k < P.length; k++) { gl.getProgramParameter(P[k].program, gl.LINK_STATUS); keepProgram(P[k]); }
     if (performance.now() - t > ms) { if (onStep) onStep(i / units.length); await new Promise(r => setTimeout(r, 0)); t = performance.now(); }
+  }
+}
+// What a warm-up built stays built. three frees a program when the last material using it is disposed, and the next
+// thing to need it compiled it again inside a frame: a bike's chain did, every time the last bike in town went.
+const KEPT = new WeakSet();
+function keepProgram(p) { if (!KEPT.has(p)) { KEPT.add(p); p.usedTimes++; } }
+const keepAll = () => { for (const p of renderer.info.programs) keepProgram(p); }; // after the loading screen's warm-ups and each later step: whatever compileAsync caught too
+// The shadow maps' programs. three draws every caster into the sun's maps with a depth material of its own kind
+// (skinned, instanced, alpha-cut, two-sided...) and builds that program the first time a shadow pass meets one, inside a
+// frame: renderer.compile builds none of them. So new casters get a shadow pass of their own before they show: only
+// them (on a layer of their own, with every light that shines, so the light setup is the frame's), into 4-pixel stand-ins
+// for the shadow maps, with the frame's own draws skipped. A kind of caster already warmed is skipped (WARMED), and the
+// new kinds go a few at a time with a frame in between, like compileInSteps.
+const WARM_LAYER = 31, WARM_SM = new THREE.WebGLRenderTarget(4, 4, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter }), WARMED = new Set();
+function casterKind(o) { // what the depth program depends on: the kind of object, the geometry's extra attributes, the materials
+  const g = o.geometry || {}, a = g.attributes || {}, mo = g.morphAttributes || {}, ms = Array.isArray(o.material) ? o.material : [o.material];
+  return `${o.type}${o.isSkinnedMesh ? 's' : ''}${o.isInstancedMesh ? 'i' + !!o.instanceColor : ''}${o.isBatchedMesh ? 'b' : ''}|${!!a.uv1}${!!a.uv2}${!!a.uv3}|${mo.position ? mo.position.length : 0}${!!mo.normal}${!!mo.color}|${ms.map(m => m && m.uuid)}|${o.customDepthMaterial ? o.customDepthMaterial.uuid : ''}${o.customDistanceMaterial ? o.customDistanceMaterial.uuid : ''}`;
+}
+function shadowPass(casters) {
+  const lit = [], n0 = renderer.info.programs.length; scene.traverseVisible(o => { if (o.isLight && o.layers.test(camera.layers)) lit.push(o); });
+  const shown = new Set(), keep = casters.map(o => [o, o.layers.mask, o.frustumCulled, o.count]), keepL = lit.map(L => [L, L.layers.mask, L.shadow && L.shadow.map, L.shadow && L.shadow.needsUpdate]);
+  const cam = camera.layers.mask, smNeeds = renderer.shadowMap.needsUpdate, rt = renderer.getRenderTarget(), rbd = renderer.renderBufferDirect;
+  try {
+    for (const o of casters) {
+      o.layers.enable(WARM_LAYER); o.frustumCulled = false; if (o.isInstancedMesh) o.count = Math.min(Math.max(o.count, 1), o.instanceMatrix.count); // one plant drawn, whatever's planted
+      for (let p = o; p; p = p.parent) if (!p.visible) { shown.add(p); p.visible = true; } // hidden for now, drawn later
+    }
+    for (const L of lit) { L.layers.enable(WARM_LAYER); if (L.castShadow && L.shadow) { L.shadow.map = WARM_SM; L.shadow.needsUpdate = true; } }
+    camera.layers.set(WARM_LAYER); renderer.shadowMap.needsUpdate = true;
+    // the shadow pass's draws (they have no scene) only. Their depth material is shared, and three picks its program
+    // again only when the kind of object changes (plain, instanced, skinned), so a frame builds a caster's own program
+    // (its sides, its map) only when it happens to come after another kind: here every caster gets its own
+    renderer.renderBufferDirect = function (c, s, g, m, ...a) { if (s === null) { m.needsUpdate = true; return rbd.call(this, c, s, g, m, ...a); } };
+    renderer.setRenderTarget(AIM_RT); renderer.render(scene, camera);
+  } finally {
+    renderer.renderBufferDirect = rbd; renderer.setRenderTarget(rt); renderer.shadowMap.needsUpdate = smNeeds; camera.layers.mask = cam;
+    for (const [L, m, map, nu] of keepL) { L.layers.mask = m; if (L.castShadow && L.shadow) { L.shadow.map = map; L.shadow.needsUpdate = nu; } }
+    for (const p of shown) p.visible = false;
+    for (const [o, m, fc, n] of keep) { o.layers.mask = m; o.frustumCulled = fc; if (o.isInstancedMesh) o.count = n; }
+  }
+  const P = renderer.info.programs; for (let k = n0; k < P.length; k++) keepProgram(P[k]);
+  return P.length - n0;
+}
+async function warmShadows(roots, onStep, ms = 60) {
+  if (!renderer.shadowMap.enabled) return;
+  const fresh = [];
+  for (const r of roots) if (r) r.traverse(o => { if ((o.isMesh || o.isLine || o.isPoints) && o.castShadow && o.material) { const k = casterKind(o); if (!WARMED.has(k)) { WARMED.add(k); fresh.push(o); } } });
+  let t = performance.now();
+  for (let i = 0; i < fresh.length; i += 16) {
+    if (shadowPass(fresh.slice(i, i + 16)) || performance.now() - t > ms) { if (onStep) onStep(i / fresh.length); await new Promise(r => setTimeout(r, 0)); t = performance.now(); }
   }
 }
 const sceneSince = before => scene.children.filter(o => !before.has(o));
@@ -3083,8 +3143,9 @@ async function plantNature() {
     const gcNew = sceneSince(before); for (const m of gcNew) m.visible = false; await showCompiled(gcNew.map(m => (m.visible = true, m)));
     const C = NATURE.cover; setGroundLand(TX.ground, C.landTex, [C.x0, C.z0, C.sx, C.sz]); // lawns and dry gardens in the ground itself
     // wildlife round you (src/nature/fauna.js): hawks, ravens, rabbits, ground squirrels and their burrows, coyotes at night
-    NATURE.fauna = createFauna({ THREE, scene, groundAt, onRoad: (x, z) => !!ROADS && ROADS.onRoad(x, z, 1), focus: () => focusPos(), hour: () => hour,
+    const fauna = createFauna({ THREE, scene, groundAt, onRoad: (x, z) => !!ROADS && ROADS.onRoad(x, z, 1), focus: () => focusPos(), hour: () => hour,
       cover: (x, z) => { const c = C.at(x, z); return c ? [c[0] / 255, c[1] / 255, c[2] / 255, c[3] / 255] : null; }, built: (x, z) => Math.min(1, ctx.built(x, z) / 6) });
+    await warmLoose(fauna.warmSet()); NATURE.fauna = fauna; // the animals' shaders before the first one shows
   }
   // the rest of the map, outward from wherever you are now, while you play
   NATURE.streaming = (async () => {
@@ -8655,8 +8716,13 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Uploading textures…'); await uploadInSteps(scene.children, f => { DL.msg = `Uploading textures… ${Math.round(f * 100)}%`; showProgress(); });
   progress('Warming up the effects…'); await FX.warm(renderer, camera, POST.level > 0 ? AIM_RT : null); await NUKE_FX.warm(renderer, camera);
+  DUST = DUST || createDust(THREE, scene); // made by the first frame otherwise, and its shader compiled inside it
   progress('Preparing the shaders…'); await compileInSteps(compileUnits(scene.children), f => { DL.msg = `Preparing the shaders… ${Math.round(f * 100)}%`; showProgress(); }); // a piece at a time: the bar moves, nothing compiles in the first frame
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
+  await warmShadows(scene.children, f => { DL.msg = `Preparing the shadows… ${Math.round(f * 100)}%`; showProgress(); });
+  await warmVehicles();
+  drawFrame(); // one frame behind the loading screen: the post chain's passes (src/post.js) build their programs here, not in the first frame you see
+  keepAll();
   console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
   worldReady = true; DL.on = false; last = performance.now(); performance.mark('pao:ready'); // marks for tools/packs/order.js
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
@@ -8678,11 +8744,19 @@ function startCareer() {
 // ---- after the loading screen: what it no longer waits for, most visible first. A step that fails logs and the rest go on.
 async function loadLater() {
   const t0 = performance.now();
-  const step = async (name, f) => { const t = performance.now(); PROF.label = name; try { await f(); await uploadInSteps(scene.children, null, 8); } catch (e) { console.warn('[later]', name, e); } PROF.label = ''; console.info('[later]', name, ((performance.now() - t) / 1000).toFixed(1) + 's'); }; // each step's new textures go up a few at a time, not inside a frame
+  const step = async (name, f) => { const t = performance.now(); PROF.label = name; try { await f(); await uploadInSteps(scene.children, null, 8); keepAll(); } catch (e) { console.warn('[later]', name, e); } PROF.label = ''; console.info('[later]', name, ((performance.now() - t) / 1000).toFixed(1) + 's'); }; // each step's new textures go up a few at a time, not inside a frame
   await step('ground layers', async () => setGround(TX.ground, await loadGround(THREE, renderer))); // first: until they're in, every patch of ground near you is the blurred photo
   await step('ground photos', loadGroundPhotos);
-  await step('crowd', async () => { if (await loadCrowd()) { await warmCrowd(); upgradePeds(); } });
-  await step('aircraft', async () => { ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes(); ctx.AIRT = AIRT = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) }); });
+  await step('crowd', async () => {
+    if (await loadCrowd()) { await warmCrowd(); upgradePeds(); }
+    HUMANS.prepare = root => warmLoose([root]); // an avatar fetched later (a uniform, swimwear, another player's skin): its shaders before anyone wears it
+  });
+  await step('aircraft', async () => {
+    const before = new Set(scene.children);
+    ctx.AIR = AIR = await loadAircraft(THREE, gltfLoader); if (!AIR) return; parkMedevac(); parkPlanes();
+    const air = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) });
+    await showCompiled(sceneSince(before)); await warmLoose(air.warmSet()); ctx.AIRT = AIRT = air; // the parked ones, then the first flight's models and lights
+  });
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
   await step('power lines', loadPower);
   await step('harbor', loadHarbor);
@@ -8705,23 +8779,25 @@ async function loadPower() {
     return out.sort((a, b) => a[0] - b[0]).slice(0, n).map(o => o[1]);
   };
   const probe = { x: 0, z: 0 }, before = new Set(scene.children);
-  POWER = await createPower(THREE, scene, { data, heightAt, roads: D.roads, sidewalks: ROADS && ROADS.sw, onAsphalt: (x, z, m) => !!ROADS && ROADS.onAsphalt(x, z, m),
+  const pw = await createPower(THREE, scene, { data, heightAt, roads: D.roads, sidewalks: ROADS && ROADS.sw, onAsphalt: (x, z, m) => !!ROADS && ROADS.onAsphalt(x, z, m),
     blocked: (x, z, r) => { probe.x = x; probe.z = z; return !!collideCircle(probe, r + 0.4, true) || offLimits(x, z, 0.2); } /* clear of walls, buildings and tree trunks */, density, houseNear, U: NATURE.U,
     heightReady: (x, z) => inCorePhoto(x, z) || (OUTER.ready && OUTER.terrainAt(x, z) !== null) });
-  for (const s of POWER.supports) { const c = Math.cos(s.yaw), sn = Math.sin(s.yaw);
+  for (const s of pw.supports) { const c = Math.cos(s.yaw), sn = Math.sin(s.yaw);
     for (const [fx, fz] of s.foot) { const x = s.x + (fx * c + fz * sn) * s.scale, z = s.z + (-fx * sn + fz * c) * s.scale, ti = treeC.length / 2; treeC.push(x, z); gridAdd(x, z, x, z, 't', ti);
       if (s.str) addProp({ kind: 'upole', x, z, ti, id: s.id, str: s.str, alive: true }); } }
-  await showCompiled(sceneSince(before));
+  await showCompiled(sceneSince(before)); await warmLoose(pw.warmSet()); POWER = pw; // updates (and the wires near you) start once their shaders are in
   console.info('[power]', POWER.count, 'supports,', POWER.spans, 'spans');
 }
 // ---- the waterfront (src/world/harbor.js): marina docks and their boats, the piers, the breakwaters
 let HARBOR = null, TRAILERS = null;
 async function loadHarbor() {
   const data = await fetch('assets/world/harbor.json').then(r => r.ok ? r.json() : null).catch(() => null); if (!data) return;
-  const before = new Set(scene.children);
-  HARBOR = await createHarbor(THREE, scene, { data, U: NATURE.U || { uTime: WATER_T },
+  const stage = new THREE.Group(); stage.visible = false; scene.add(stage); // what it adds while it's built (the boats, between pauses) stays undrawn until its shaders are in
+  const hb = await createHarbor(THREE, stage, { data, U: NATURE.U || { uTime: WATER_T },
     waterY: (e, x, z) => { for (const lk of LAKES) if (x >= lk.bb[0] && x <= lk.bb[2] && z >= lk.bb[1] && z <= lk.bb[3] && pip(x, z, lk.p)) return lk.y; return e ? exag(e) - HBASE : OUTER.seaLevel(); } });
-  if (HARBOR) { await showCompiled(sceneSince(before)); console.info('[harbor]', HARBOR.docks, 'docks,', HARBOR.slips, 'boats in their slips,', HARBOR.piers, 'piers,', HARBOR.breaks, 'breakwaters'); }
+  if (!hb) { scene.remove(stage); return; }
+  await showCompiled(stage.children); stage.visible = true; await warmLoose(hb.warmSet()); HARBOR = hb; // then the docks near you, as HARBOR.update builds them
+  console.info('[harbor]', HARBOR.docks, 'docks,', HARBOR.slips, 'boats in their slips,', HARBOR.piers, 'piers,', HARBOR.breaks, 'breakwaters');
 }
 async function loadGroundPhotos() {
   const gm = AER.ground; if (!gm) return;
@@ -8775,8 +8851,14 @@ function parkMedevac() {
 // the crowd's shaders and textures, a piece at a time, before anyone wears the new bodies (all 44 avatars' first
 // frame held a fast PC for two and a half seconds)
 async function warmCrowd() {
-  const roots = [...HUMANS.proto.values()].map(p => p.root).filter(Boolean);
-  await compileInSteps(compileUnits(roots), null, 8); await uploadInSteps(roots, null, 8);
+  await warmLoose([...HUMANS.proto.values()].map(p => p.root)); // their shadows too: a skinned body's shadow has its own program
+}
+// one of each vehicle model, warmed and dropped: a model that first drives by (or parks at the curb) after the loading
+// screen doesn't compile in a frame (a bike's chain did, the first time a bike showed up)
+async function warmVehicles() {
+  const ms = []; for (const [type, spec] of Object.entries(CAR)) for (const model of new Set(spec.model)) { try { ms.push(buildCar(type, CAR_TINTS[0], model)); } catch (e) { } }
+  await warmLoose(ms.map(m => m.g));
+  for (const m of ms) { scene.remove(m.g); for (const x of m.allMats) x.dispose(); m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
 }
 function upgradePeds() {
   for (const p of peds) if (!p.rig.human && ['walk', 'roam', 'idle', 'group', 'call'].includes(p.state)) reskin(p);

@@ -192,6 +192,12 @@ export function createAirTraffic(THREE, scene, AIR, o = {}) {
       }
     },
     clear() { for (let i = flights.length - 1; i >= 0; i--) remove(i); },
+    // every model, and a flight's propeller disc and nav lights: what index.html builds the shaders of before the first flight
+    warmSet() {
+      const names = [...AIR.protos.keys()], c = makeAircraft(AIR, names.find(n => AIR.protos.get(n).userData.disc) || names[0], { center: true });
+      if (c) { c.g.traverse(m => { if (m.isMesh) m.castShadow = false; }); navLights(THREE, tex, c); }
+      return [...AIR.protos.values(), c && c.g];
+    },
   };
 }
 

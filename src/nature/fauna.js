@@ -149,5 +149,5 @@ export function createFauna(H) {
       const flap = a.hawk ? Math.sin(clock * 0.8 + a.ph) * 0.06 + 0.12 : Math.sin(clock * 11 + a.ph) * 0.6; const [L, R] = a.obj.userData.wings; L.rotation.z = -flap; R.rotation.z = flap;
     }
   }
-  return { update, live };
+  return { update, live, warmSet: () => [rabbit(), squirrel(), coyote(), bird(true), bird(false), mound()] }; // one of each, for index.html to build their shaders before the first one shows
 }

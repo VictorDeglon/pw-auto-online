@@ -177,6 +177,8 @@ export async function createHarbor(THREE, scene, o) {
   const last = { x: 1e9, z: 1e9, t: 0 }, NEAR = 700, FAR = 3500, BUILD = 1300;
   const H = {
     slips: L.slips.length, docks: L.docks.length, piers: L.piers.length, breaks: L.breaks.length,
+    // a piece in each dock material (the docks are built as you come near): for index.html to build their shaders first
+    warmSet: () => Object.entries(mats).map(([k, m]) => { const o = new THREE.Mesh(new THREE.BufferGeometry(), m); o.castShadow = k !== 'rock'; return o; }),
     update(camera, night = 0) {
       const cx = camera.position.x, cz = camera.position.z;
       mats.lamp.emissiveIntensity = night * 2;

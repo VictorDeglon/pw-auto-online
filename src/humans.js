@@ -19,7 +19,7 @@ export { splitSkin };
 
 const BASE = 'assets/humans/';
 import { RESERVED, SWIM } from './reserved.js';
-export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [], swim: [] }, player: null };
+export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [], swim: [] }, player: null, prepare: null };
 
 function prep(scene) {
   // stand on y = 0, face +Z, about 1.75 m tall whatever the export units were
@@ -132,7 +132,7 @@ export function ensureAvatar(name) {
   if (!HUMANS.manifest || !HUMANS.manifest.avatars.some(a => a.name === name)) return Promise.resolve(false);
   if (pending.has(name)) return pending.get(name);
   const info = HUMANS.manifest.avatars.find(a => a.name === name);
-  const p = new GLTFLoader().loadAsync(fileOf(info)).then(g => { HUMANS.proto.set(name, protoOf(g, info)); return true; })
+  const p = new GLTFLoader().loadAsync(fileOf(info)).then(async g => { const P = protoOf(g, info); if (HUMANS.prepare) await HUMANS.prepare(P.root); HUMANS.proto.set(name, P); return true; }) // prepare: index.html builds its shaders first
     .catch(e => { console.warn('[humans] avatar', name, e); return false; }).finally(() => pending.delete(name));
   pending.set(name, p); return p;
 }

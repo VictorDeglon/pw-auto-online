@@ -618,6 +618,8 @@ export async function createPower(THREE, scene, o) {
       return { obj: g, transformer: s.type === 'X', top: new THREE.Vector3(s.x, s.y + 11 * s.scale, s.z) };
     },
     isBroken: id => BROKEN.has(id),
+    // a wire and a fallen pole, which only show up later (wires are built as you come near): for index.html to build their shaders first
+    warmSet() { const k = Object.keys(models)[0], pole = new THREE.Mesh(models[k].geo, mat); pole.castShadow = true; return [new THREE.Mesh(new THREE.BufferGeometry(), wmat), pole]; },
     dispose() { for (const M of Object.values(meshes)) { scene.remove(M.det, M.low); } for (const m of wcells.values()) if (m) { scene.remove(m); m.geometry.dispose(); } },
   };
   return P;
