@@ -15,7 +15,7 @@ const GEN = { // the library's layers used on walls (assets/mat/manifest.json), 
   stucco_fine: 1, stucco_sand: 1, stucco_lace: 1, stucco_aged: 1, plaster_smooth: 1, siding_lap: 1, siding_board_batten: 1,
   siding_shiplap_wood: 0, brick_tan: 0, brick_painted_white: 1, cmu_painted: 1, cmu_split_face: 0, stone_ledgestone: 0,
   stone_river_rock: 0, concrete_panel: 1, concrete_smooth: 1, metal_corrugated: 1, wood_fence_cedar: 0, trim_paint: 1,
-  garage_door_panels: 1, metal_galvanized: 0,
+  garage_door_panels: 1, metal_galvanized: 0, solar_panel: 0,
 };
 const LIN = new Float32Array(256).map((_, i) => { const c = i / 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
 

@@ -144,10 +144,16 @@ const FACADE_FS = /* glsl */`
     float n = floor((fLen - 0.6) / (front ? 3.3 : 3.9));
     if (n >= 1.0 && fDoor < 0.5) {
       float sp = fLen / n, k = clamp(floor(u / sp), 0.0, n - 1.0), cx = (k + 0.5) * sp;
-      float ww = (front && fl < 0.5) ? 1.8 : 1.5, wh = fl > 0.5 ? 1.2 : 1.32, sill = 0.92 + fl * st;
+      // which windows are which, in whole numbers only so bldgen.js openings() gets the same answer: a wide, tall picture
+      // window every third bay of the street front's ground floor, a small high bathroom window now and then on the sides
+      // and on the back, a sliding glass door to the yard and wide windows; on the sides, some bays left blank
+      float sk = floor(seed * 13.0); bool pic = front && fl < 0.5 && sp >= 3.2 && mod(k + sk, 3.0) < 0.5, bath = !front && !back && n > 1.0 && mod(k * 2.0 + sk + fl, 5.0) < 0.5;
+      bool slide = back && fl < 0.5 && style < 0.5 && sp >= 2.9 && abs(k - mod(sk, n)) < 0.5, wide = back && fl < 0.5 && !slide && sp >= 3.4 && mod(k + sk, 2.0) < 0.5, blank = !front && !back && n > 2.0 && mod(k + sk, 4.0) > 2.5;
+      float ww = slide ? min(2.4, sp - 0.5) : pic ? min(2.6, sp - 0.7) : wide ? min(2.2, sp - 0.8) : bath ? 0.75 : (front && fl < 0.5) ? 1.8 : 1.5;
+      float wh = slide ? 2.05 : pic ? 1.55 : wide ? 1.4 : bath ? 0.7 : fl > 0.5 ? 1.2 : 1.32, sill = (slide ? 0.04 : pic ? 0.62 : wide ? 0.85 : bath ? 1.5 : 0.92) + fl * st;
       vec2 a = vec2(cx - ww * 0.5, sill), b = vec2(cx + ww * 0.5, sill + wh);
-      bool blocked = (hasG && fl < 0.5 && b.x > gx0 - 0.4 && a.x < gx0 + gw + 0.4) || (door && fl < 0.5 && b.x > dx0 - 0.35 && a.x < dx0 + 1.3) || b.y > fl * st + st - 0.25;
-      if (!blocked) sWin(p, a, b, 0.055, fc, 0.0, ww > 1.6 ? 1.0 : 1.0, sH11(seed * 2.2) < 0.3 ? 1.0 : 0.0, 0.92, st - 0.1, 3.5 + 2.0 * sH11(wid + k), rd, wid + k + fl * 37.0, 0.0);
+      bool blocked = blank || (hasG && fl < 0.5 && b.x > gx0 - 0.4 && a.x < gx0 + gw + 0.4) || (door && fl < 0.5 && b.x > dx0 - 0.35 && a.x < dx0 + 1.3) || b.y > fl * st + st - 0.25;
+      if (!blocked) sWin(p, a, b, 0.055, fc, 0.0, pic ? 2.0 : 1.0, sH11(seed * 2.2) < 0.3 ? 1.0 : 0.0, sill - fl * st, st - 0.1, 3.5 + 2.0 * sH11(wid + k), rd, wid + k + fl * 37.0, 0.0);
     }
   } else if (style < 1.5) { // ---- a shop: storefront on the street, service doors behind
     float floorsUp = floors - 1.0, st0 = min(fH, 4.6);
@@ -174,7 +180,8 @@ const FACADE_FS = /* glsl */`
   } else if (style < 2.5) { // ---- a big box: tilt-up panels, an entrance, roll-up doors behind
     float j = abs(fract(u / 7.6 + 0.5) - 0.5) * 7.6; fShade = max(fShade, 1.0 - smoothstep(0.015, 0.03, j));
     fShade = max(fShade, (1.0 - smoothstep(0.015, 0.03, abs(v - 1.2))) + (1.0 - smoothstep(0.015, 0.03, abs(v - (fH - 1.4)))));
-    if (front && fLen > 14.0) { float cx = fLen * 0.5; sWin(p, vec2(cx - 4.5, 0.02), vec2(cx + 4.5, 3.9), 0.08, vec3(0.08), 0.6, 5.0, 0.0, 0.0, 6.0, 14.0, rd, wid, 1.0); if (v > 3.95 && v < 4.6 && abs(u - cx) < 5.2) fPanel = 1.0; }
+    if (front && fLen > 14.0) { float cx = gBit > 0.5 ? (u < fLen * 0.5 ? fLen * 0.28 : fLen * 0.72) : fLen * 0.5; // one entrance, or two on a long front (the garage bit says which)
+      sWin(p, vec2(cx - 4.5, 0.02), vec2(cx + 4.5, 3.9), 0.08, vec3(0.08), 0.6, 5.0, 0.0, 0.0, 6.0, 14.0, rd, wid, 1.0); if (v > 3.95 && v < 4.6 && abs(u - cx) < 5.2) fPanel = 1.0; }
     if (back) { float sp = 18.0, k = floor(u / sp), cx = (k + 0.5) * sp; float d = sRect(p, vec2(cx - 1.8, 0.0), vec2(cx + 1.8, 4.3));
       if (d > 0.0) { fDoor = d; fDoorCol = vec3(0.62, 0.62, 0.6) * (0.85 + 0.15 * step(0.5, fract(v * 9.0))); fMetal = 0.5; } }
   } else if (style < 3.5) { // ---- an office: ribbon windows over spandrels

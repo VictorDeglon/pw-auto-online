@@ -87,12 +87,23 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   in Starridge, Twin Peaks and Espola; ranch houses in Old Poway and Silverset; Spanish revival (low clay hips and cross
   gables, white and cream stucco) and ranch on Green Valley's and Valle Verde's big lots; Spanish and modern in the rich
   coastal places; steep shingle cottages and modern boxes in the beach towns; small stucco bungalows in the working
-  neighbourhoods. Out of town, big lots lean Spanish and ranch.
+  neighbourhoods. Out of town, big lots lean Spanish and ranch. The big 1980s estate houses on Poway's acre lots (big
+  tract and ranch footprints, more where it's sparse): cross gables in flat concrete tile, light stucco, white trim,
+  often a two-storey wing, chimneys, a covered patio out back.
 - **Houses:** hip roofs mostly, low ranch gables, cross gables over L and T plans; clay barrel tile low-pitched with
   short eaves, concrete tile and shingle with deeper ones; a few flat-roofed modern houses with a thin roof slab over
   deep eaves (more of them in La Jolla, the beach towns and downtown). Where the aerial photo shows the roof, its
   material and colour win. A single-storey house whose height was guessed low is still a house (windows, a door, a
-  yard), not a shed. Some have a stucco chimney chase up a side or back wall, capped, with a spark arrestor.
+  yard), not a shed. Some have a stucco chimney chase about a metre wide up a side or back wall, capped, with a spark
+  arrestor, rising 0.7 m past the roof within 3 m of it (and no further). A gable end has rake boards and a soffit up
+  its slopes, never a fascia across it. A tile roof with no photo over it takes its palette colour as it should look,
+  not darkened by the scan.
+- **Depth on houses:** windows and doors sit in the wall, with reveals; some have an entry alcove. The front gets a
+  picture window or two, the back a slider and wide windows, the sides small bath windows and blank stretches. A
+  two-storey wing over a single-storey house has its own roof, the same kind as the rest (gables with gables, hips with
+  hips), and many estates a deck with a rail across its gable end. Solar arrays sit on the sunniest big slope (south,
+  then west, never north; where the aerial photo shows the roof, it decides), skylights on another. Covered patios on
+  posts over the back slider; a weep screed at the foot of stucco; vents in the gable ends.
 - **Garages and sheds:** a detached garage shows sectional doors to the street (one car, two, or a row of them); a shed
   gets a shed roof.
 - **Townhouses:** long two- and three-storey rows, a front door per unit on the street side and a garage each behind.
@@ -101,8 +112,12 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - **Shops:** flat behind a parapet. Strip malls (long and shallow) carry a clay tile mansard on the street side, or a
   painted metal canopy, or canvas awnings over the storefront bays, and some a raised parapet over the middle. Small pads
   get a tile mansard all round, or a low clay hip roof.
-- **Big boxes and warehouses:** tilt-up concrete; a big box has a raised parapet and a canopy over its entrance, and
-  rooftop units; a warehouse is plain, roll-up doors behind.
+- **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it),
+  wherever the street is. A supercenter: stucco, tilt-up or concrete panels over a split-face block base, pilasters, an
+  accent band, a raised tower with a vestibule and canopy over each entrance (two on a long front: grocery and home),
+  bollards. A warehouse club: corrugated metal over a tall split-face base, two accent bands, one entrance. The store's
+  mapped name decides which (Costco, Sam's Club: a club; Walmart, Target: a supercenter), else a guess; a mapped store
+  is a big box even with no lot mapped. Rooftop units; roll-up doors and dock seals behind. A warehouse is plain.
 - **Offices and civic buildings:** offices have ribbon windows, floor bands, a cornice and rooftop units. Civic buildings
   are low clay hips over deep eaves, or a school's flat roof over deep eaves along the walks; a hall has a steep gable.
 - **Cladding** (`src/world/wallarr.js`): walls are clad by the local look and the type, from one texture array of real

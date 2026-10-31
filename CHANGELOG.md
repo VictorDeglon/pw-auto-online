@@ -8,6 +8,25 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.10.0 Up Close (2026-10-31)
+
+- **Houses with depth:** windows and doors are set into the walls with reveals, some front doors in a covered alcove;
+  picture windows on the front, a slider and wide windows out back, small bath windows and blank stretches on the
+  sides; covered patios on posts over the back slider; a weep screed at the foot of stucco walls; vents in gable ends.
+  Gable ends get rake boards and a soffit up the slopes instead of a fascia across them.
+- **Estate houses** on Poway's big lots: cross gables in flat concrete tile, light stucco, white window frames, one or
+  two chimneys, and often a two-storey wing under its own roof (roofed like the rest of the house) with a deck across
+  its gable end.
+- **Solar panels show again** (the ridge's cap tiles had been taken for the sunny slope); arrays go on the sunniest big
+  slope, south then west. Tile roofs with no aerial photo over them are no longer darkened by the tile scan. Chimney
+  chases are a real width and stop 0.7 m past the roof near them.
+- **Big boxes:** doors face the parking lot, not the nearest street; supercenters get two entrances with raised towers,
+  vestibules and canopies, pilasters, accent bands, a block base and bollards; warehouse clubs corrugated metal over a
+  tall block base; the store's mapped name says which (the Poway Walmart now has its grocery and home entrances on its
+  lot), and a mapped store is never drawn as a plain warehouse. Dock seals and bumpers behind.
+- Footprints the map isn't sure about, on quiet residential streets with nothing mapped at the door, are houses, not
+  shops. Brown concrete tile in the aerial photo is no longer read as clay.
+
 ## 0.9.4 (2026-10-30)
 
 - **Real fittings round the windows and doors:** window surrounds by the neighbourhood's look (foam, deep stucco,

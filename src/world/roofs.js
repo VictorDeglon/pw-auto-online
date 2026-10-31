@@ -4,7 +4,7 @@
 // intersect the way cross-gabled roofs do. Each slope's uv runs along the eave (x) and up the slope (y) in metres,
 // so tile courses follow the eaves.
 //   pitchedRoof(flat, top, o) -> { roof: [tri], trim: [tri], gable: [tri] }   tri = [a, b, c, uva, uvb, uvc, hint]
-//   o: { pitch (rise per run), overhang (m), gables ('none' hips all round, 'main' gable ends on the main body, 'wings'
+//   o: { pitch (rise per run), overhang (m), exclude (a rectangle of wings() to leave out), gables ('none' hips all round, 'main' gable ends on the main body, 'wings'
 //        on the wings only, 'all'; the old gable: true is 'main'), cell (raster size, m) }
 //   roof: the slopes; trim: fascia and soffits (white-painted wood); gable: the gable-end walls (wall material);
 //   eaves: [a, b, [nx, nz] (out), overhang] the horizontal eave lines a gutter can hang on
@@ -13,7 +13,7 @@
 //   wings(flat, cell) -> { rects, ux, uz, vx, vz } (rects in the main-axis frame), the footprint as rectangles
 
 export function wings(flat, cell = 0.5) { return rasterRects(flat, cell); }
-function rasterRects(flat, cell) {
+function rasterRects(flat, cell, ex) { // ex: a rectangle [u0, v0, u1, v1] in the same frame to leave out (a taller wing has its own roof)
   const n = flat.length / 2;
   // main axis: the longest edge, folded into 0..90 degrees
   let best = 0, ang = 0;
@@ -27,7 +27,7 @@ function rasterRects(flat, cell) {
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const pu = u0 + (i + 0.5) * cell, pv = v0 + (j + 0.5) * cell; let ins = false;
     for (let a = 0, b = n - 1; a < n; b = a++) { const ua = P[a * 2], va = P[a * 2 + 1], ub = P[b * 2], vb = P[b * 2 + 1]; if ((va > pv) !== (vb > pv) && pu < (ub - ua) * (pv - va) / (vb - va) + ua) ins = !ins; }
-    fill[j * W + i] = ins ? 1 : 0;
+    fill[j * W + i] = ins && !(ex && pu > ex[0] && pu < ex[2] && pv > ex[1] && pv < ex[3]) ? 1 : 0;
   }
   const total = fill.reduce((s, v) => s + v, 0); if (!total) return null;
   const cov = new Uint8Array(W * H), rects = [];
@@ -61,7 +61,7 @@ function rasterRects(flat, cell) {
 
 export function pitchedRoof(flat, top, o = {}) {
   const pitch = o.pitch ?? 0.42, oh = o.overhang ?? 0.5, out = { roof: [], trim: [], gable: [], eaves: [] };
-  const R = rasterRects(flat, o.cell || 0.5); if (!R || !R.rects.length) return null;
+  const R = rasterRects(flat, o.cell || 0.5, o.exclude); if (!R || !R.rects.length) return null;
   const gables = o.gables || (o.gable ? 'main' : 'none');
   const { ux, uz, vx, vz } = R, W = (u, v, y) => [u * ux + v * vx, y, u * uz + v * vz];
   const quad = (list, a, b, c, d, ua, ub, uc, ud, hint) => { list.push([a, b, c, ua, ub, uc, hint], [a, c, d, ua, uc, ud, hint]); };
@@ -118,7 +118,17 @@ export function pitchedRoof(flat, top, o = {}) {
     // fascia boards round the eaves and the soffit under them
     const E = [[A0, B0, A1, B0, -vx, -vz], [A1, B0, A1, B1, ux, uz], [A1, B1, A0, B1, vx, vz], [A0, B1, A0, B0, -ux, -uz]];
     const I = [[a0, b0, a1, b0], [a1, b0, a1, b1], [a1, b1, a0, b1], [a0, b1, a0, b0]];
+    const NUV = [[0, -1], [1, 0], [0, 1], [-1, 0]], gEnd = k => along ? (k === 3 && gA) || (k === 1 && gB) : (k === 0 && gA) || (k === 2 && gB);
     E.forEach(([pa, qa, pb, qb, nx, nz], k) => {
+      if (gEnd(k)) { // a gable end: rake boards up both slopes and a soffit under the rake's overhang, nothing across it
+        const mu = (pa + pb) / 2, mv = (qa + qb) / 2, du = -NUV[k][0] * oh, dv = -NUV[k][1] * oh;
+        for (const [u0, v0, y0, u1, v1, y1] of [[pa, qa, ey, mu, mv, ry], [mu, mv, ry, pb, qb, ey]]) {
+          const L = Math.hypot(u1 - u0, v1 - v0, y1 - y0);
+          quad(out.trim, W(u0, v0, y0 - fh), W(u1, v1, y1 - fh), W(u1, v1, y1 + 0.02), W(u0, v0, y0 + 0.02), [0, 0], [L, 0], [L, fh], [0, fh], [nx, 0, nz]);
+          quad(out.trim, W(u0, v0, y0 - fh), W(u0 + du, v0 + dv, y0 - fh), W(u1 + du, v1 + dv, y1 - fh), W(u1, v1, y1 - fh), [0, 0], [0, oh], [L, oh], [L, 0], [0, -1, 0]);
+        }
+        return;
+      }
       const L = Math.hypot(pb - pa, qb - qa);
       quad(out.trim, W(pa, qa, ey - fh), W(pb, qb, ey - fh), W(pb, qb, ey + 0.02), W(pa, qa, ey + 0.02), [0, 0], [L, 0], [L, fh], [0, fh], [nx, 0, nz]);
       const [ia, ja, ib, jb] = I[k];
