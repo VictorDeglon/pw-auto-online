@@ -8,6 +8,24 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.9.5 (2026-10-30)
+
+- **The game's files stay on your computer:** the town comes as a few zip files (packs) from the game's own asset
+  server instead of Firebase. On a first visit the loading screen streams the pack it needs (56 MB for the 85 MB of
+  files it loads), a few megabytes per request, each file checked against the manifest and kept as soon as it's in,
+  so a download that gets cut off carries on where it stopped. The county tiles, people and everything else come file
+  by file from their packs as you need them. A service worker keeps them all in the browser: the next visit loads
+  them from disk and downloads nothing, and after an update only the files that changed download again; files no
+  longer used are deleted. When the asset server doesn't answer, the game takes its files from the site as before,
+  and keeps those too. (`sw.js`, `tools/packs/`, `server/assets/`; off until the deploy's `nakama.json` names the
+  server.)
+- **Faster loading:** curb parking checked each of the 67,000 curb spots against every driveway and hydrant in town
+  (about 700 million distance checks), and finding the nearest street, asked a few hundred thousand times while the
+  buildings are raised and all through play, made garbage at every road segment it looked at. Both now look only
+  at what's near: raising the buildings dropped from 7–23 s to about 1 s on a test laptop, and the parking step from
+  1–15 s to a fraction of a second. Road lookups skip the far parts of long roads. The game server check now starts
+  with the page instead of holding up the game's code.
+
 ## 0.9.2 (2026-10-30)
 
 - **The Velvet Javelina,** a cabaret lounge by the Carmel Mountain Plaza club strip and the first building you can walk

@@ -1,5 +1,59 @@
 <meta charset="utf-8">
 <script>if (/[?&]jsprof\b/.test(location.search)) try { window.__P = new Profiler({ sampleInterval: 10, maxBufferSize: 1000000 }); } catch (e) { console.warn(e); }</script>
+<script>
+// Asset packs (sw.js, tools/packs/README.md): the game's files are kept on this computer once downloaded. This starts
+// the service worker, tells it where the packs are (nakama.json "assets", written at deploy time), streams the loading
+// screen's pack and only then loads the map data, so a first visit gets that from the asset host too. Without service
+// workers everything loads from this site as before. A copy served from this computer leaves packs off unless asked:
+// ?packs=1 (files from this site, kept), ?packs=<url> (a pack host), ?packs=prod (nakama.json's); ?packs=0 removes the worker.
+try { performance.setResourceTimingBufferSize(4000); } catch (e) { } // the loading screen's byte count and tools/packs/order.js read them
+window.PACKS = (() => {
+  const P = { on: false, info: null, got: 0, total: 0, busy: 0 }, sw = navigator.serviceWorker;
+  const q = new URLSearchParams(location.search).get('packs'), local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  const call = (m, ms, onP) => new Promise((res, rej) => { // one call to the worker, answered on its own port; { p } messages are progress
+    const w = sw.controller; if (!w) { rej(new Error('no worker')); return; }
+    const ch = new MessageChannel(), late = () => setTimeout(() => rej(new Error('the worker did not answer')), ms); let t = late();
+    ch.port1.onmessage = e => { clearTimeout(t); if (e.data && e.data.p !== undefined) { t = late(); if (onP) onP(e.data.p); } else res(e.data); };
+    w.postMessage(m, [ch.port2]);
+  });
+  const off = async () => { for (const r of await sw.getRegistrations()) if (/\/sw\.js$/.test((r.active || r.installing || {}).scriptURL || '')) r.unregister(); };
+  P.ready = (async () => {
+    if (!sw) return;
+    if (q === '0' || (local && !q) || !self.caches || !self.DecompressionStream) { await off(); return; }
+    try {
+      const hostP = (async () => { // nakama.json: "assets" is the pack host; "packs": false turns the worker off for everyone
+        if (local && /^https?:/.test(q)) return q; if (local && q !== 'prod') return null;
+        try { const r = await fetch('nakama.json', { cache: 'no-store' }); const c = r.ok ? await r.json() : {}; return c.packs === false ? false : c.assets || null; } catch (e) { return null; }
+      })();
+      if (await Promise.race([hostP, new Promise(r => setTimeout(r, 1500, null))]) === false) { await off(); return; } // (a slow answer doesn't hold the page)
+      await sw.register('sw.js');
+      if (!sw.controller) await new Promise((res, rej) => { sw.addEventListener('controllerchange', res, { once: true }); setTimeout(() => rej(new Error('the worker did not start')), 6000); });
+      P.info = await call({ t: 'config', manifest: 'assets-manifest.json', host: await hostP }, 20e3);
+      if (P.info.err) throw new Error(P.info.err);
+      P.on = true; P.install('boot').then(() => P.install('later')).then(P.clean); // 'later' streams while the world is built
+      console.info('[packs]', `${P.info.have} of ${P.info.files} files here; host ${P.info.host ? 'set' : 'none'};`, P.info.packs.map(p => `${p.n} ${(p.miss / 1048576).toFixed(1)} of ${(p.size / 1048576).toFixed(1)} MB to get`).join(', '));
+    } catch (e) { console.warn('[packs] off this time:', e && e.message || e); }
+  })();
+  P.install = async get => { // stream the packs fetched at this point ('boot': with the loading screen, 'later': after it), two requests at a time
+    if (!P.on || !P.info.host) return;
+    const packs = P.info.packs.filter(p => p.get === get && p.miss > 0); if (!packs.length) return;
+    P.busy++; const t0 = performance.now(), g0 = P.got; for (const p of packs) P.total += p.miss;
+    const lane = async p => { for (;;) { let cur = 0; const r = await call({ t: 'step', pack: p.i }, 30e3, g => { P.got += g - cur; cur = g; }).catch(e => ({ done: true, err: e.message })); P.got += (r.bytes || cur) - cur; if (r.done) return r.err; } };
+    for (const p of packs) { const err = (await Promise.all([lane(p), lane(p)])).find(Boolean); if (err) console.warn('[packs]', p.n, err); }
+    P.busy--; console.info('[packs]', get, ((P.got - g0) / 1048576).toFixed(1), 'MB in', ((performance.now() - t0) / 1000).toFixed(1) + 's');
+  };
+  P.clean = () => P.on ? call({ t: 'clean' }, 60e3).catch(() => null) : null;
+  P.stats = () => P.on ? call({ t: 'stats' }, 5e3) : null;
+  return P;
+})();
+// the map data and the embedded models, as classic scripts, once the worker can answer for them (the game module waits)
+window.PAO_DATA = PACKS.ready.then(() => {
+  const msg = setInterval(() => { const el = document.getElementById('loadmsg'); if (el && PACKS.busy && PACKS.total) el.textContent = `Downloading the map… ${(PACKS.got / 1048576).toFixed(1)} of ${(PACKS.total / 1048576).toFixed(1)} MB`; }, 250);
+  return Promise.all(['poway-data.js', 'assets/models.js'].map(src => new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.async = false; s.onload = res; s.onerror = () => rej(new Error('could not load ' + src)); document.head.appendChild(s);
+  }))).finally(() => clearInterval(msg));
+}).catch(e => console.error(e));
+</script>
 <title>Poway Automobile Online</title>
 <meta name="description" content="Poway Automobile Online: free-roam driving and mayhem in a real-scale Poway, CA, in your browser. Five online servers.">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -549,8 +603,6 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
   <div id="journal" class="journal"></div>
 </div></div>
 
-<script src="poway-data.js"></script>
-<script src="assets/models.js"></script>
 <script>
 (() => {
   function clearOuterWhite(img, cb) {
@@ -564,12 +616,13 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     g.putImageData(d, 0, 0); cb(c.toDataURL('image/png'));
   }
   const load = (src, cb) => { const im = new Image(); im.onload = () => clearOuterWhite(im, cb); im.onerror = () => cb(null); im.src = src; };
-  for (const src of ['assets/brand/logo.png', 'assets/brand/favicon.png']) load(src, url => { if (!url) return;
+  PACKS.ready.then(() => { for (const src of ['assets/brand/logo.png', 'assets/brand/favicon.png']) load(src, url => { if (!url) return;
     for (const el of document.querySelectorAll(`img[data-brand="${src}"]`)) { el.src = url; el.hidden = false; }
-    if (src.includes('favicon')) for (const l of document.querySelectorAll('link[rel=icon],link[rel=apple-touch-icon]')) l.href = url; });
+    if (src.includes('favicon')) for (const l of document.querySelectorAll('link[rel=icon],link[rel=apple-touch-icon]')) l.href = url; }); });
 })();
 </script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
+<script>import('./src/online/nkconfig.js').then(m => m.probe()).catch(() => { }); // the game server check, alongside everything else (src/online/net.js waits for it); after the import map, which has to come before any module</script>
 <script type="module">
 import * as THREE from 'three';
 import { rollLightLoops } from './src/lightloops.js';
@@ -666,6 +719,7 @@ import { SOCIAL, COMPANIONS } from './src/social.js';
 window.__AIRPORTS = AIRPORTS;
 import { GAMES, ARENA_X0, arenaGround, arenaOnRoad } from './src/games/games.js'; // crew garages: the community games online
 
+await window.PAO_DATA; // poway-data.js and assets/models.js (PACKS, at the top of the page)
 const D = window.POWAY_DATA;
 // K-12 schools (OpenStreetMap POIs): school zones get yellow crosswalks, SCHOOL signs and 25 mph "when children are present"
 const SCHOOLS = (D.pois || []).filter(p => p[1] === 'school' && /Elementary|Middle School|High School|Christian School|Saint/.test(p[0]) && !/Preschool/.test(p[0])).map(p => [p[2], p[3]]);
@@ -1066,7 +1120,8 @@ function showProgress() {
   if (buildN) { SHELL.bootProgress(0.62 + 0.36 * Math.min(1, buildN / 12), DL.msg); return; }
   DL.shown = Math.max(DL.shown, DL.total ? DL.done / DL.total : 0); // new downloads raise the total; the bar never goes back
   const mb = b => (b / 1048576).toFixed(1);
-  SHELL.bootProgress(0.02 + 0.6 * DL.shown, DL.total ? `${DL.msg} ${Math.min(99, Math.floor(DL.shown * 100))}% · ${mb(DL.done)} of ${mb(DL.total)} MB` : DL.msg);
+  const [got, all] = PACKS.busy && PACKS.total ? [Math.min(PACKS.got, PACKS.total), PACKS.total] : [DL.done, DL.total]; // with packs streaming in, what comes over the network
+  SHELL.bootProgress(0.02 + 0.6 * DL.shown, DL.total ? `${DL.msg} ${Math.min(99, Math.floor(DL.shown * 100))}% · ${mb(got)} of ${mb(all)} MB` : DL.msg);
 }
 const progTimer = setInterval(() => { if (DL.on) showProgress(); else clearInterval(progTimer); }, 250); // streams move between progress() calls
 const BOOT_T = { t: performance.now(), msg: 'Starting' }; // the loading screen's steps, timed in the console ([boot])
@@ -1458,25 +1513,35 @@ function edgePos(e, d, out) {
   const L = Math.hypot(bx - ax, bz - az) || 1; out.tx = (bx - ax) / L; out.tz = (bz - az) / L;
   return out;
 }
+// The edges near (x, z) by grid cell, the closest point on each. Called hundreds of thousands of times at load (which
+// wall faces the street) and all through play, so nothing is allocated per segment, an edge is marked seen by stamp,
+// and an edge whose bounding box is farther than the best so far is skipped (same answer as testing every segment).
+const NE_SEEN = { stamp: 0, at: new Uint32Array(4096) };
+function edgeBox(e) { const p = e.pts; let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity; for (let k = 0; k < p.length; k += 2) { if (p[k] < x0) x0 = p[k]; if (p[k] > x1) x1 = p[k]; if (p[k + 1] < z0) z0 = p[k + 1]; if (p[k + 1] > z1) z1 = p[k + 1]; } return e.bb = [x0, z0, x1, z1]; }
 function nearestEdge(x, z, maxD, filter) {
-  let best = null, bd = maxD * maxD; const r = Math.ceil(maxD / EG);
-  const gx = Math.floor(x / EG), gz = Math.floor(z / EG); const seen = new Set();
+  let bd = maxD * maxD, be = -1, bk = 0, bt = 0, bx = 0, bz = 0; const r = Math.ceil(maxD / EG);
+  const gx = Math.floor(x / EG), gz = Math.floor(z / EG);
+  if (NE_SEEN.at.length < edges.length) { const a = new Uint32Array(edges.length * 2); a.set(NE_SEEN.at); NE_SEEN.at = a; }
+  if (++NE_SEEN.stamp > 0xfffffff0) { NE_SEEN.at.fill(0); NE_SEEN.stamp = 1; }
+  const seen = NE_SEEN.at, stamp = NE_SEEN.stamp;
   for (let ix = -r; ix <= r; ix++) for (let iz = -r; iz <= r; iz++) {
     const c = egrid.get(ckey(gx + ix, gz + iz)); if (!c) continue;
     for (const ei of c) {
-      if (seen.has(ei)) continue; seen.add(ei); const e = edges[ei]; if (filter && !filter(e)) continue;
+      if (seen[ei] === stamp) continue; seen[ei] = stamp; const e = edges[ei]; if (filter && !filter(e)) continue;
+      const bb = e.bb || edgeBox(e), ox = Math.max(bb[0] - x, 0, x - bb[2]), oz = Math.max(bb[1] - z, 0, z - bb[3]);
+      if (ox * ox + oz * oz > bd * (1 + 1e-9) + 1e-9) continue; // nothing on this edge can beat the best so far
       const p = e.pts;
-      for (let k = 0; k < p.length - 2; k += 2) {
-        const q = segClosest(x, z, p[k], p[k + 1], p[k + 2], p[k + 3]);
-        const d = (q[0] - x) ** 2 + (q[1] - z) ** 2;
-        if (d < bd) {
-          bd = d; const sl = Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1]) || 1;
-          best = { e: ei, d: e.cum[k / 2] + q[2] * sl, x: q[0], z: q[1], tx: (p[k + 2] - p[k]) / sl, tz: (p[k + 3] - p[k + 1]) / sl, dist: Math.sqrt(d) };
-        }
+      for (let k = 0; k < p.length - 2; k += 2) { // segClosest, inline
+        const ax = p[k], az = p[k + 1], dx = p[k + 2] - ax, dz = p[k + 3] - az, L = dx * dx + dz * dz;
+        let t = L ? ((x - ax) * dx + (z - az) * dz) / L : 0; t = clamp(t, 0, 1);
+        const qx = ax + dx * t, qz = az + dz * t, d = (qx - x) ** 2 + (qz - z) ** 2;
+        if (d < bd) { bd = d; be = ei; bk = k; bt = t; bx = qx; bz = qz; }
       }
     }
   }
-  return best;
+  if (be < 0) return null;
+  const e = edges[be], p = e.pts, sl = Math.hypot(p[bk + 2] - p[bk], p[bk + 3] - p[bk + 1]) || 1;
+  return { e: be, d: e.cum[bk / 2] + bt * sl, x: bx, z: bz, tx: (p[bk + 2] - p[bk]) / sl, tz: (p[bk + 3] - p[bk + 1]) / sl, dist: Math.sqrt(bd) };
 }
 function endNode(a) { const e = edges[a.e]; return a.dir > 0 ? e.b : e.a; }
 function chooseNext(a, ped) {
@@ -3505,8 +3570,12 @@ async function buildWorld() {
       for (const u of lanes) extra.push({ x: p0[0] + ux * w * u + ox * 3.2, z: p0[1] + uz * w * u + oz * 3.2, rot: Math.atan2(-ox, -oz), ax: p0[0] + ux * w * u + ox * (L - 0.8), az: p0[1] + uz * w * u + oz * (L - 0.8), entry, home: true });
     }
     // curbside on residential streets: every ~9 m both sides, clear of driveways, hydrants and the corners
-    const _o = { x: 0, z: 0, tx: 0, tz: 0 }, endsAt = (x, z, r) => { for (let i = 0; i < ends.length; i += 2) if ((ends[i] - x) ** 2 + (ends[i + 1] - z) ** 2 < r * r) return true; return false; };
-    const hydAt = (x, z) => { const H2 = kitSpots.hyd; for (let i = 0; i < H2.length; i += 3) if ((H2[i] - x) ** 2 + (H2[i + 1] - z) ** 2 < 25) return true; return false; };
+    // driveway ends and hydrants by 10 m cell: checking every one of them at each of the ~67,000 curb spots took seconds
+    const pointGrid = (P, stride) => { const g = new Map(); for (let i = 0; i < P.length; i += stride) { const k = Math.floor(P[i] / 10) * 65536 + Math.floor(P[i + 1] / 10); let c = g.get(k); if (!c) g.set(k, c = []); c.push(P[i], P[i + 1]); } return g; };
+    const nearPoint = (g, x, z, r) => { const gx = Math.floor(x / 10), gz = Math.floor(z / 10); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const c = g.get((gx + a) * 65536 + gz + b); if (c) for (let i = 0; i < c.length; i += 2) if ((c[i] - x) ** 2 + (c[i + 1] - z) ** 2 < r * r) return true; } return false; };
+    const ENDS = pointGrid(ends, 2), HYDS = pointGrid(kitSpots.hyd, 3);
+    const _o = { x: 0, z: 0, tx: 0, tz: 0 }, endsAt = (x, z, r) => nearPoint(ENDS, x, z, r); // r up to the cell size
+    const hydAt = (x, z) => nearPoint(HYDS, x, z, 5);
     for (const e of edges) {
       if (e.t !== 4 || e.ow || e.w < 9.5 || e.len < 30) continue;
       for (let s = 14; s < e.len - 14; s += 8 + (e.i * 13 + s) % 4) for (const side of [1, -1]) {
@@ -8588,7 +8657,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   progress('Preparing the shaders…'); await compileInSteps(compileUnits(scene.children), f => { DL.msg = `Preparing the shaders… ${Math.round(f * 100)}%`; showProgress(); }); // a piece at a time: the bar moves, nothing compiles in the first frame
   if (renderer.compileAsync) await renderer.compileAsync(scene, camera).catch(() => { });
   console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
-  worldReady = true; DL.on = false; last = performance.now();
+  worldReady = true; DL.on = false; last = performance.now(); performance.mark('pao:ready'); // marks for tools/packs/order.js
   SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
   loadLater(); startCareer();
@@ -8616,7 +8685,7 @@ async function loadLater() {
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
   await step('power lines', loadPower);
   await step('harbor', loadHarbor);
-  console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's');
+  console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's'); performance.mark('pao:later');
 }
 // ---- power lines (src/world/power.js): the mapped transmission lines and the street lines laid along the roads; every
 // pole and tower foot is solid, and the wooden poles snap when a car hits them hard enough (props, kind 'upole')

@@ -117,9 +117,10 @@ Once steps 1 to 4 are done, every push to `main` can deploy the site and the rul
 
 Until the secret and variable exist, the workflow runs and does nothing.
 
-**Hosting bandwidth:** a first visit downloads roughly 100 to 150 MB (people, ground, terrain, music, Poway High). The
-free Spark plan allows 360 MB of hosting downloads a day, about three new players. GitHub Pages (100 GB a month)
-is the better host on a free budget; keep Firebase for the database only, or move to Blaze for hosting.
+**Hosting bandwidth:** a first visit downloads roughly 100 to 150 MB (people, ground, terrain, music, Poway High).
+With an asset host set up (`tools/packs/README.md`, `server/assets/README.md`), that comes from the host and Firebase
+Hosting only sends the page and its code (a couple of MB); a second visit downloads almost nothing. Without one, the
+free Spark plan allows 360 MB of hosting downloads a day, about three new players.
 
 **Limits on the free plan:** 100 simultaneous connections (20 per server here) and 10 GB of downloads a month. Each
 player sends about 6 small updates a second while moving and nothing while standing still. A few friends playing in
@@ -136,6 +137,9 @@ cheat. That's fine for playing with friends; it isn't an anti-cheat system.
   fog and aerial perspective), `src/cascades.js` (shadow cascades)
 - `poway-data.js`: map data (roads, buildings, terrain) as `window.POWAY_DATA`
 - `assets/`: models, textures, imagery, people, music
+- `sw.js`, `assets-manifest.json`, `tools/packs/`: the asset packs. Players download `assets/` as a few zip files
+  from an asset host of our own (`server/assets/`) and keep them; Firebase Hosting serves the page and its code, and
+  stays the fallback for every asset. See [`tools/packs/README.md`](tools/packs/README.md)
 - `vendor/firebase.mjs`: the Firebase JS SDK (Apache-2.0), bundled by `tools/vendor/build_firebase.sh`
 - `database.rules.json`, `firebase.json`: Firebase rules and hosting config
 
