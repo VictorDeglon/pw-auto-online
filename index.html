@@ -61,10 +61,10 @@ window.PAO_DATA = PACKS.ready.then(() => {
 <link rel="apple-touch-icon" href="assets/brand/favicon.png">
 <meta property="og:title" content="Poway Automobile Online">
 <meta property="og:image" content="assets/brand/logo.png">
-<meta name="theme-color" content="#0b1222">
+<meta name="theme-color" content="#1a1220">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Rye&family=Yellowtail&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=Mr+Dafoe&family=Ultra&family=Yellowtail&display=swap">
 <!-- the plaza shops' sign typefaces (src/world/plazas/brands.js) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Kanit:ital,wght@1,800&family=Poppins:wght@600;700&family=Playfair+Display:ital,wght@0,800;1,800&family=Cormorant+Garamond:wght@700&family=Nunito+Sans:wght@800;900&family=Lilita+One&family=Montserrat:wght@800&family=Arvo:wght@700&family=Josefin+Sans:wght@700&family=Pacifico&family=Lobster&family=Lora:ital,wght@1,700&family=Oswald:wght@600&display=swap">
 <style>
@@ -400,7 +400,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 @media (max-width:680px){#menu{grid-template-columns:1fr} .charwrap{grid-template-columns:1fr}}
 @media (max-height:640px){.menu-col{gap:14px} .plate:not(.big) .plate-script{font-size:30px} .plate:not(.big) .plate-main{font-size:40px} .mbtn{padding:9px 18px 8px;font-size:22px} .mnav{gap:6px}}
 </style>
-<link rel="stylesheet" href="src/ui/western.css">
+<link rel="stylesheet" href="src/ui/sunset.css">
 
 <div id="view"></div>
 <div id="vignette" class="hud"></div>
@@ -435,45 +435,27 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 
 <!-- boot: the loading screen while Poway is built -->
 <div id="boot">
-  <img class="brand-mark boot-mark" data-brand="assets/brand/logo.png" alt="" hidden>
-  <div class="boot-scene" aria-hidden="true"><svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
-<defs><linearGradient id="bsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1028"/><stop offset=".32" stop-color="#4d2246"/><stop offset=".56" stop-color="#b23d3f"/><stop offset=".72" stop-color="#ee7b33"/><stop offset=".86" stop-color="#ffc25a"/></linearGradient>
-<radialGradient id="bsun"><stop offset="0" stop-color="#fff3bf"/><stop offset=".6" stop-color="#ffc64d"/><stop offset="1" stop-color="#f6922f"/></radialGradient>
-<radialGradient id="bglow"><stop offset="0" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient>
-<clipPath id="bsunclip"><circle cx="800" cy="610" r="175"/></clipPath></defs>
-<rect width="1600" height="900" fill="url(#bsky)"/>
-<circle cx="800" cy="610" r="520" fill="url(#bglow)"/>
-<g class="boot-rays" fill="#ffe2a0" opacity=".13"><polygon points="800,610 2199,561 2199,659"/><polygon points="800,610 2164,925 2139,1019"/><polygon points="800,610 2036,1267 1987,1352"/><polygon points="800,610 1824,1565 1755,1634"/><polygon points="800,610 1542,1797 1457,1846"/><polygon points="800,610 1209,1949 1115,1974"/><polygon points="800,610 849,2009 751,2009"/><polygon points="800,610 485,1974 391,1949"/><polygon points="800,610 143,1846 58,1797"/><polygon points="800,610 -155,1634 -224,1565"/><polygon points="800,610 -387,1352 -436,1267"/><polygon points="800,610 -539,1019 -564,925"/><polygon points="800,610 -599,659 -599,561"/><polygon points="800,610 -564,295 -539,201"/><polygon points="800,610 -436,-47 -387,-132"/><polygon points="800,610 -224,-345 -155,-414"/><polygon points="800,610 58,-577 143,-626"/><polygon points="800,610 391,-729 485,-754"/><polygon points="800,610 751,-789 849,-789"/><polygon points="800,610 1115,-754 1209,-729"/><polygon points="800,610 1457,-626 1542,-577"/><polygon points="800,610 1755,-414 1824,-345"/><polygon points="800,610 1987,-132 2036,-47"/><polygon points="800,610 2139,201 2164,295"/></g>
-<g clip-path="url(#bsunclip)"><circle cx="800" cy="610" r="175" fill="url(#bsun)"/><rect x="620" y="630" width="360" height="4.0" fill="#ee7b33"/><rect x="620" y="656" width="360" height="6.4" fill="#ee7b33"/><rect x="620" y="682" width="360" height="8.8" fill="#ee7b33"/><rect x="620" y="708" width="360" height="11.2" fill="#ee7b33"/><rect x="620" y="734" width="360" height="13.6" fill="#ee7b33"/><rect x="620" y="760" width="360" height="16.0" fill="#ee7b33"/></g>
-<path class="boot-far" d="M0,900 L0,464 L33,447 L67,481 L100,458 L133,500 L167,502 L200,516 L233,536 L267,545 L300,549 L333,551 L367,538 L400,528 L433,504 L467,492 L500,482 L533,478 L567,485 L600,486 L633,461 L667,459 L700,500 L733,512 L767,528 L800,537 L833,547 L867,552 L900,548 L933,538 L967,525 L1000,515 L1033,493 L1067,471 L1100,467 L1133,445 L1167,472 L1200,473 L1233,488 L1267,487 L1300,501 L1333,516 L1367,541 L1400,545 L1433,553 L1467,551 L1500,541 L1533,533 L1567,515 L1600,500 L1600,900 Z" fill="#6e2a43" opacity=".9"/>
-<g class="boot-mid"><path d="M0,900 L0,584 L44,579 L89,586 L133,604 L178,610 L222,626 L267,628 L311,633 L356,630 L400,621 L444,608 L489,608 L533,584 L578,573 L622,571 L667,558 L711,564 L756,555 L800,587 L844,591 L889,603 L933,618 L978,621 L1022,628 L1067,631 L1111,630 L1156,626 L1200,611 L1244,597 L1289,589 L1333,587 L1378,575 L1422,564 L1467,575 L1511,574 L1556,577 L1600,598 L1600,900 Z" fill="#3b1729"/><g fill="#3b1729"><ellipse cx="1396" cy="577" rx="19" ry="14"/><ellipse cx="1592" cy="579" rx="12" ry="8"/><ellipse cx="295" cy="630" rx="18" ry="13"/><ellipse cx="835" cy="589" rx="9" ry="6"/><ellipse cx="1321" cy="591" rx="21" ry="15"/><ellipse cx="1311" cy="591" rx="16" ry="12"/><ellipse cx="1177" cy="628" rx="13" ry="9"/><ellipse cx="490" cy="610" rx="21" ry="15"/><ellipse cx="404" cy="623" rx="18" ry="13"/><ellipse cx="1076" cy="633" rx="11" ry="8"/><ellipse cx="388" cy="632" rx="11" ry="8"/><ellipse cx="312" cy="635" rx="10" ry="7"/><ellipse cx="920" cy="605" rx="15" ry="11"/><ellipse cx="105" cy="588" rx="11" ry="8"/></g></g>
-<path d="M0,900 L0,710 L80,715 L160,717 L240,717 L320,714 L400,710 L480,709 L560,706 L640,697 L720,696 L800,687 L880,688 L960,683 L1040,692 L1120,700 L1200,696 L1280,704 L1360,712 L1440,715 L1520,717 L1600,717 L1600,900 Z" fill="#1c0d10"/>
-<polygon points="786,648 814,648 1320,900 280,900" fill="#120a0b"/><line class="boot-dash" x1="800" y1="650" x2="800" y2="900" stroke="#f2c35a" stroke-width="5" opacity=".7"/><line x1="765" y1="650" x2="765" y2="642" stroke="#120a0b" stroke-width="1.0"/><line x1="742" y1="662" x2="742" y2="651" stroke="#120a0b" stroke-width="1.3"/><line x1="706" y1="680" x2="706" y2="666" stroke="#120a0b" stroke-width="1.6"/><line x1="660" y1="704" x2="660" y2="685" stroke="#120a0b" stroke-width="2.1"/><line x1="605" y1="731" x2="605" y2="707" stroke="#120a0b" stroke-width="2.6"/><line x1="543" y1="763" x2="543" y2="732" stroke="#120a0b" stroke-width="3.3"/><line x1="473" y1="798" x2="473" y2="760" stroke="#120a0b" stroke-width="4.0"/><line x1="397" y1="836" x2="397" y2="791" stroke="#120a0b" stroke-width="4.7"/><line x1="314" y1="878" x2="314" y2="824" stroke="#120a0b" stroke-width="5.6"/><line x1="827" y1="652" x2="827" y2="608" stroke="#120a0b" stroke-width="2.7"/><line x1="821" y1="611" x2="833" y2="611" stroke="#120a0b" stroke-width="2.0"/><line x1="862" y1="669" x2="862" y2="607" stroke="#120a0b" stroke-width="3.9"/><line x1="853" y1="612" x2="870" y2="612" stroke="#120a0b" stroke-width="2.8"/><line x1="913" y1="694" x2="913" y2="607" stroke="#120a0b" stroke-width="5.1"/><line x1="900" y1="613" x2="925" y2="613" stroke="#120a0b" stroke-width="3.6"/><line x1="977" y1="726" x2="977" y2="606" stroke="#120a0b" stroke-width="6.3"/><line x1="961" y1="614" x2="994" y2="614" stroke="#120a0b" stroke-width="4.4"/><line x1="1054" y1="763" x2="1054" y2="604" stroke="#120a0b" stroke-width="7.5"/><line x1="1032" y1="615" x2="1076" y2="615" stroke="#120a0b" stroke-width="5.2"/><line x1="1141" y1="806" x2="1141" y2="603" stroke="#120a0b" stroke-width="8.7"/><line x1="1113" y1="617" x2="1170" y2="617" stroke="#120a0b" stroke-width="6.0"/><line x1="1239" y1="853" x2="1239" y2="601" stroke="#120a0b" stroke-width="9.9"/><line x1="1203" y1="619" x2="1274" y2="619" stroke="#120a0b" stroke-width="6.8"/><path d="M822,611 Q838,618 854,612 M854,612 Q878,619 902,613 M902,613 Q933,620 963,614 M963,614 Q999,622 1035,615 M1035,615 Q1076,623 1117,617 M1117,617 Q1163,625 1208,619 " fill="none" stroke="#120a0b" stroke-width="1.6"/><path d="M832,611 Q851,618 869,612 M869,612 Q896,619 923,613 M923,613 Q958,620 992,614 M992,614 Q1033,622 1073,615 M1073,615 Q1119,623 1166,617 M1166,617 Q1217,625 1269,619 " fill="none" stroke="#120a0b" stroke-width="1.6"/>
-<path d="M250,900 C262.8,692.0 243.6,510.0 266.0,380" fill="none" stroke="#120a0b" stroke-width="9.6" stroke-linecap="round"/><path d="M266,380 Q238,351 210,473" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q218,351 169,449" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q210,351 154,415" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q218,351 169,346" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q238,351 210,322" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q266,351 266,313" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q294,351 322,322" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q314,351 363,346" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q322,351 378,415" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q314,351 363,449" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q294,351 322,473" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M390,880 C398.8,728.0 385.6,595.0 401.0,500" fill="none" stroke="#120a0b" stroke-width="6.6" stroke-linecap="round"/><path d="M401,500 Q382,480 362,564" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q368,480 334,547" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q362,480 324,524" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q368,480 334,477" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q382,480 362,460" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q401,480 401,454" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q420,480 440,460" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q434,480 468,477" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q440,480 478,524" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q434,480 468,547" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q420,480 440,564" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M1360,900 C1371.2,716.0 1354.4,555.0 1374.0,440" fill="none" stroke="#120a0b" stroke-width="8.4" stroke-linecap="round"/><path d="M1374,440 Q1350,415 1325,522" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1332,415 1289,500" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1325,415 1276,471" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1332,415 1289,411" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1350,415 1325,389" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1374,415 1374,381" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1398,415 1423,389" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1416,415 1459,411" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1423,415 1472,471" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1416,415 1459,500" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1398,415 1423,522" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M110,760 L115.2,604.0 L97.0,500 M115.2,604.0 L149.0,513.0" stroke="#120a0b" stroke-width="6.5" fill="none"/><g fill="#120a0b"><ellipse cx="92" cy="492" rx="44" ry="29"/><ellipse cx="144" cy="487" rx="39" ry="26"/><ellipse cx="118" cy="461" rx="39" ry="29"/><ellipse cx="71" cy="513" rx="26" ry="16"/><ellipse cx="162" cy="516" rx="23" ry="16"/></g>
-</svg><div class="boot-dust"></div></div>
-  <div class="boot-sky"></div>
-  <div class="boot-in">
-    <div class="plate big" aria-label="Poway Automobile Online">
-      <span class="plate-script">Poway</span>
-      <span class="plate-main">AUTOMOBILE</span>
-      <span class="plate-foot">ONLINE · 92064</span>
-      <span class="plate-sticker">PW</span>
-      <span class="ver-stamp" id="verstamp"></span>
+  <div class="boot-art" aria-hidden="true"></div>
+  <header class="boot-top">
+    <div class="mark big" role="img" aria-label="Poway Automobile Online"><span class="mark-script">Poway</span><span class="mark-sub">Automobile Online</span></div>
+    <p class="boot-tag">Sun. Dust. Opportunity.</p>
+  </header>
+  <footer class="boot-bottom">
+    <div class="boot-left">
+      <div id="boottip" class="boot-tip"></div>
+      <div class="boot-status"><span class="boot-label">Loading</span><span id="loadmsg" class="boot-msg">Starting the engine…</span></div>
+      <div class="road" aria-hidden="true"><div class="road-fill" id="loadfill"></div><div class="road-car" id="loadcar"></div></div>
+      <button class="mbtn primary boot-go" id="bootgo" hidden>Enter Poway <kbd>Enter</kbd></button>
     </div>
-    <div class="road" aria-hidden="true"><div class="road-fill" id="loadfill"></div><div class="road-car" id="loadcar"></div></div>
-    <div id="loadmsg" class="boot-msg">Starting the engine…</div>
-    <div id="boottip" class="boot-tip"></div>
-    <button class="mbtn primary boot-go" id="bootgo" hidden>Enter Poway <kbd>Enter</kbd></button>
-  </div>
+    <div class="boot-right"><span class="boot-place">Poway, CA</span><span class="ver-stamp" id="verstamp"></span></div>
+  </footer>
 </div>
 
 <!-- main menu -->
 <div id="menu" hidden>
   <img class="brand-mark menu-mark" data-brand="assets/brand/favicon.png" alt="" hidden>
   <div class="menu-col">
-    <div class="plate" aria-label="Poway Automobile Online">
-      <span class="plate-script">Poway</span><span class="plate-main">AUTOMOBILE</span><span class="plate-foot">ONLINE · 92064</span><span class="plate-sticker">PW</span>
-    </div>
+    <div class="mark" role="img" aria-label="Poway Automobile Online"><span class="mark-script">Poway</span><span class="mark-sub">Automobile Online</span></div>
     <nav class="mnav" id="mnav">
       <button class="mbtn primary" data-go="online">Play online <small id="onlinesub">Pick a server</small></button>
       <button class="mbtn" data-go="career">Career <small id="careersub">Levels, skills, leaderboards</small></button>
@@ -599,7 +581,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 <div id="chat" hidden><div id="chatlog"></div><form id="chatform" hidden><input id="chatin" maxlength="160" placeholder="Say something · Enter to send · Esc to close" autocomplete="off"></form></div>
 <div id="plist" class="hud" hidden></div>
 <div id="pause"><div class="panel">
-  <div class="plate small" aria-hidden="true"><span class="plate-script">Poway</span><span class="plate-main">PAUSED</span><span class="plate-foot" id="pausesrv">FREE ROAM</span><span class="plate-sticker">PW</span></div>
+  <div class="mark small" aria-hidden="true"><span class="mark-script">Paused</span><span class="mark-sub" id="pausesrv">FREE ROAM</span></div>
   <div class="mnav row">
     <button class="mbtn primary small" id="resume">Resume</button>
     <button class="mbtn small" id="pchar">Character</button>
@@ -9386,7 +9368,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   keepAll();
   console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
   worldReady = true; DL.on = false; last = performance.now(); performance.mark('pao:ready'); // marks for tools/packs/order.js
-  SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
+  SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
   loadLater(); startCareer();
 })().catch(err => { SHELL.bootFail('Failed to build the world: ' + err.message); console.error(err); });

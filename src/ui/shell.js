@@ -45,13 +45,14 @@ export function bootProgress(frac, msg) {
 }
 function nextTip() { const t = $('boottip'); t.style.opacity = 0; setTimeout(() => { t.textContent = TIPS[tipI++ % TIPS.length]; t.style.opacity = 1; }, 350); }
 export function bootDone(msg) {
-  bootProgress(1, msg); clearInterval(tipTimer);
+  bootProgress(1, msg); clearInterval(tipTimer); bootLabel('Ready');
   const go = $('bootgo'); go.hidden = false; go.focus();
   const enter = () => { removeEventListener('keydown', key); $('boot').classList.add('out'); setTimeout(() => { $('boot').hidden = true; }, 650); showMenu(); };
   const key = e => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); enter(); } };
   go.onclick = enter; addEventListener('keydown', key);
 }
-export function bootFail(msg) { $('loadmsg').textContent = msg; clearInterval(tipTimer); }
+export function bootFail(msg) { $('loadmsg').textContent = msg; clearInterval(tipTimer); bootLabel('Stopped'); }
+function bootLabel(t) { const l = document.querySelector('#boot .boot-label'); if (l) l.textContent = t; } // the caption beside the status
 
 // ---------------------------------------------------------------- main menu
 export function showMenu(scr) {

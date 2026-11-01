@@ -8,6 +8,20 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.11.0: Golden Hour (2026-11-01)
+
+- **A new look for every screen** (`src/ui/sunset.css`, replacing the leather-and-wood western skin): golden hour over
+  Poway seen through smoked glass. Dark plum glass panels with a thin sunset line along the top, buttons as slim pills
+  (the main action a sunlit one), the main menu as a list of plain type with the sunset line marking where you are,
+  thin switches and sliders, glass notes in the HUD, and money, speed and the street name without heavy outlines.
+  The wild west stays in the type: WASTED and BUSTED in a slab wanted-poster face, a spur-rowel cursor.
+- **The wordmark:** a brush-script "Poway" over "AUTOMOBILE ONLINE" replaces the licence plate on the loading screen,
+  the menu and the pause card.
+- **The loading screen is a painting:** a muscle car on the coast road at sundown, palms, the pier and the mountains,
+  pushing in slowly while the world loads. The wordmark top left, "Sun. Dust. Opportunity." top right, the tip, what's
+  loading and a thin glowing progress line bottom left, "Poway, CA" and the version bottom right. The menu sits over
+  the same painting.
+
 ## 0.10.2 (2026-10-31)
 
 - **319 real cars on the streets** (`src/sf.js`): every car the streets make for themselves is now one of 319 models
