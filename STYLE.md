@@ -112,6 +112,14 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - **Shops:** flat behind a parapet. Strip malls (long and shallow) carry a clay tile mansard on the street side, or a
   painted metal canopy, or canvas awnings over the storefront bays, and some a raised parapet over the middle. Small pads
   get a tile mansard all round, or a low clay hip roof.
+- **Storefronts:** every store the map puts in a shopping centre has its own bay on its real building, on the wall
+  nearest where the map puts it (never a party wall), sized by its trade (`src/world/shops.js`): aluminium or bronze
+  mullions, a kickplate, a transom, a single or double door with push bars and the hours on the glass, the sign
+  (channel letters, or a lit cabinet with gooseneck lamps; a chain's parody mark), an awning in the sign's colour or a
+  lit soffit, and through the glass the trade's own room. The trade dresses the front: a patio with a rail and
+  umbrellas, bistro tables and a bike rack, a menu A-frame, a barber pole, an ATM, an ice chest, carts, produce bins,
+  window neon. The rest of a centre's fronts take made-up local tenants and the odd vacancy, never a real business's
+  name. No hand-built shop box stands over the map's own buildings.
 - **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it,
   the nearest counting most), wherever the street is; never a wall another building stands against; with no lot mapped,
   the long wall facing the most open ground. A supercenter: stucco, tilt-up or concrete panels over a split-face block

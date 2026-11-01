@@ -636,7 +636,7 @@ import { createSkyEnv } from './src/skyenv.js';
 import { createCascades } from './src/cascades.js';
 import { createComposer, procSongs } from './src/audio/composer.js';
 import { createSfx2 } from './src/audio/sfx2.js';
-import { buildPlaza, PLAZA_CENTER } from './src/world/plaza.js';
+import { planShops, buildShops, shopRoles, PLAZA_CENTER } from './src/world/shops.js';
 import { buildClub } from './src/world/club.js'; // the Velvet Javelina, by the plaza's club strip: the one building you can walk into
 import { createPower } from './src/world/power.js';
 import { boatModel as buildBoat } from './src/world/boatmodels.js';
@@ -653,7 +653,7 @@ import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, stor
 import * as MAPKIT from './src/ui/mapkit.js';
 import { setGroundTint, setGroundLand, setPoolHoles, setPadCuts, TRACK_U, SHORE_U } from './src/nature/ground.js';
 import { createPads, clipRect } from './src/world/pads.js';
-import { brandLogo } from './src/world/plazas/brands.js';
+import { brandLogo, brandKeyOf } from './src/world/plazas/brands.js';
 import { createTracks } from './src/world/tracks.js';
 import { updateBeacons } from './src/online/beacons.js';
 import { createOuter } from './src/world/outer.js';
@@ -2201,7 +2201,7 @@ const TRIM_C = ['#f2efe6', '#f2efe6', '#e8e2d2', '#6b4e3a', '#4a4440'].map(c => 
 function buildingGeom(B, ch) {
   const { b, flat, base, top, cx, cz, big, wallC, matIdx, roofC, photo } = B, kind = b[1], rs = b[3], n = flat.length / 2;
   const gbs0 = new Map(chunkGBs(ch).map(g => [g, g.p.length / 3]));
-  const ground = B.ground ?? base + 0.6, F = { ground, style: B.style ?? STYLE.shop, floors: B.floors || 1, roles: B.roles || (B.roles = wallRoles(flat, B.lotWall ?? -1)), seed: B.seed ?? 0.5, fi: B.yard ? B.yard.fi : -1, gar: B.yard && B.yard.gar };
+  const ground = B.ground ?? base + 0.6, F = { ground, style: B.style ?? STYLE.shop, floors: B.floors || 1, roles: B.roles || (B.roles = shopRoles(B, wallRoles(flat, B.lotWall ?? -1))), seed: B.seed ?? 0.5, fi: B.yard ? B.yard.fi : -1, gar: B.yard && B.yard.gar };
   if (SURF && B.plan && !B.genFail) { try { genBuilding(B, ch, F); } catch (e) { B.genFail = true; console.warn('[bldgen] drawn the old way:', B.i, e); return buildingGeom(B, ch); } B.ranges = []; for (const g of chunkGBs(ch)) { const a = gbs0.get(g) || 0, e = g.p.length / 3; if (e > a) B.ranges.push([g, a, e]); } B.drawn = true; return; }
   // houses, apartments and sheds: walls to the ceiling, a pitched roof over them (src/world/roofs.js)
   const pitched = SURF && (F.style === STYLE.house || F.style === STYLE.apartment || F.style === STYLE.shed);
@@ -2311,6 +2311,7 @@ function genBuilding(B, ch, F) {
   if (arr) { slot.L = skinL; if (P.wains) F.wains = { h: P.wains.h, L: WA.id(P.wains.skin), c: hex(0xffffff).multiplyScalar(0.9 + P.r2 * 0.1) }; }
   const homey = P.type === TYPE.house || P.type === TYPE.garage || P.type === TYPE.row || P.type === TYPE.apartment; // their openings are cut into the wall
   F.recess = homey ? { win: P.trim && P.trim.win === 'stucco' ? 0.24 : 0.13, alcove: !!(P.trim && P.trim.alcove) } : null; F.ent2 = !!(P.box && P.box.entries === 2);
+  const roles0 = F.roles; if (B.shopWalls) { F.roles = Uint8Array.from(F.roles); for (const i of B.shopWalls) F.roles[i] = 0; } // a shopping centre's storefronts are real (src/world/shops.js): the shader, the kit and the awnings leave those walls plain
   const S = walls(ch, flat, base, wallTop, wallCs, matIdx, F), fr = wallFrames(flat), roles = F.roles, vt = wallTop - g, kit = [];
   const upper = split ? upperBands(slot, flat, F, S, split, wallTop, wallCs, g) : null; // the wing's upper storey
   F.wains = null; F.recess = null;
@@ -2366,7 +2367,7 @@ function genBuilding(B, ch, F) {
     }
     if (eave > 0) { if (arr) slot0.L = trimL; eaveSlab(ch, fr, top, eave, roofG, rcol, TRIM); if (arr) slot0.L = matIdx === 0 ? skinL : keep[1]; }
     if (P.mansard) { // a skirt of clay tile on the street walls (all round a small pad), hiding the parapet
-      const all = P.type === TYPE.shop, E = []; for (const f of fr) if ((all || roles[f.i] === 1) && f.len > 0.3) E.push([f.ax, f.az, f.ax + f.tx * f.len, f.az + f.tz * f.len, f.ox, f.oz]);
+      const all = P.type === TYPE.shop, E = []; for (const f of fr) if ((all || roles0[f.i] === 1) && f.len > 0.3) E.push([f.ax, f.az, f.ax + f.tx * f.len, f.az + f.tz * f.len, f.ox, f.oz]);
       const M_ = mansard(E, lip + 0.3, P.mansard * 0.7, P.mansard), mc = hex(0xffffff).multiplyScalar(0.84 + P.r3 * 0.2);
       for (const t of M_.roof) tri(ch.roofC, t[0], t[1], t[2], mc, mc, mc, t[3], t[4], t[5], t[6][0], t[6][1], t[6][2]);
       FAC = [1, 100, STYLE.shed, 0]; if (arr) slot0.L = trimL; for (const t of M_.under) tri(ch.wall[0], t[0], t[1], t[2], wallC, wallC, wallC, [t[3][0], t[3][1] + 50], [t[4][0], t[4][1] + 50], [t[5][0], t[5][1] + 50], t[6][0], t[6][1], t[6][2]); FAC = null; if (arr) slot0.L = matIdx === 0 ? skinL : keep[1];
@@ -2723,7 +2724,7 @@ function blastBuildings(x, z, R, by) {
     else if (B.hp < B.hp0 * 0.6 && !B.smoking) { B.smoking = true; FX.plume(B.cx, B.top, B.cz, 25, 0.7); }
   }
 }
-let PLAZA = null; // Carmel Mountain Plaza storefronts (src/world/plaza.js)
+let PLAZA = null, SHOP_PLAN = null; // the shopping centres' storefronts (src/world/shops.js)
 let CLUB = null; // the Velvet Javelina (src/world/club.js)
 let PARK = null; // parking lots, stalls and the cars that use them (src/world/parking.js)
 // how busy a spot is (traffic, full parking lots): the plaza, Poway Road downtown, the civic centre, Poway High on school days
@@ -3825,6 +3826,8 @@ async function buildWorld() {
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
+  { const t0 = performance.now(); SHOP_PLAN = planShops({ BLD, POIS, isRetail: B => B.plan.type === 'shop' || B.plan.type === 'strip' || B.plan.type === 'bigbox', other: (x, z, B) => ROAD_FIT.inside(x, z) && !pip(x, z, B.flat) });
+    console.info('[shops]', SHOP_PLAN.bays.length, 'storefronts in', SHOP_PLAN.centres.length, 'centres,', SHOP_PLAN.bays.filter(b => !b.fill).length, 'of them mapped stores,', Math.round(performance.now() - t0), 'ms'); }
   { const t0 = performance.now(); finishPads(); console.info('[pads]', PADS ? PADS.n : 0, 'terraces on graded lots: planned in', Math.round(PAD_MS), 'ms, added to the terrain in', Math.round(performance.now() - t0), 'ms'); POOL_GRID = null; }
   progress('Digging ' + (D.pools || []).length.toLocaleString() + ' pools…'); await tick();
   { const PL = (D.pools || []).filter(p => !PHS.phsSkip(p[0], p[1])); for (const p of PL) addPool(p); setPoolHoles(THREE, PL); } // PHS has its own; the ground is cut out where each pool is
@@ -5328,9 +5331,9 @@ function initArchWorld() {
     for (const r of [ARCH_WORLD.group, P && P.group]) if (r) { r.traverse(o => { o.updateMatrix(); o.matrixAutoUpdate = false; }); r.updateMatrixWorld(true); }
     if (P && P.doorSystem) for (const d of P.doorSystem.doors) d.leftLeaf.matrixAutoUpdate = d.rightLeaf.matrixAutoUpdate = true;
   }
-  if (WATER && !ARCH_FOUNTAINS) { // a working fountain on a round paved court off the end of three of the plazas (src/world/plazas)
+  if (WATER && !ARCH_FOUNTAINS) { // a working fountain on a round paved court at two of the shopping centres
     ARCH_FOUNTAINS = [];
-    for (const [pcx, pcz, bw] of [[-320, 432, 74], [-2437, -2322, 84], [-4250, -2260, 96]]) {
+    for (const [pcx, pcz, bw] of [[-320, 432, 74], [-4250, -2260, 96]]) { // (the Twin Peaks one stood inside the Target)
       const x = pcx + bw / 2 + 7.5, z = pcz - 3, y = heightAt(pcx, pcz) + 0.17;
       const pad = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.65, 0.08, 48), FOUNTAIN_PAD || (FOUNTAIN_PAD = new THREE.MeshStandardMaterial({ map: TX.concrete, color: 0xf0e2c8, roughness: 0.85 })));
       pad.position.set(x, y + 0.03, z); pad.receiveShadow = true; scene.add(pad); // a court of warm pavers, a step up from the lot
@@ -6803,7 +6806,7 @@ function initExtras() {
     arsenal: player.arsenal, upgrades: save.upgrades, owned, maxOf, stats: weaponStats, notify, sfx, close: closeShop,
     onBuy: (kind, w, k, lv) => { bus.emit('shop:buy', { kind, weapon: w.id, upgrade: k, level: lv }); if (kind === 'buy') player.weapon = WEAPONS.indexOf(w); persist(); } });
   setupDealer(); setupTravel(); setupGarage(); setupCarDealers(); initRegionBanner();
-  try { PLAZA = buildPlaza({ THREE, scene, BLD, POIS, heightAt, addInteract, notify, sfx, hour: () => hour, inCar: () => player.inCar }); } catch (e) { console.warn('plaza:', e); }
+  try { if (SHOP_PLAN) PLAZA = buildShops({ THREE, scene, PLAN: SHOP_PLAN, heightAt, addInteract, notify, sfx, hour: () => hour, inCar: () => player.inCar, brandCanvas: n => { const k = brandKeyOf(n), t = k && brandLogo(THREE, k, 4); return t ? t.image : null; } }); } catch (e) { console.warn('shops:', e); }
   try { CLUB = buildClub({ THREE, scene, heightAt, addPoly: (flat, base, top) => { addPoly(flat, base, top); return polys.length - 1; }, ensureAvatar, makeHuman, animHuman, notify }); } catch (e) { console.warn('club:', e); }
   ACH.initAchievements({ save, persist, bus, sfx, probe: () => {
     const v = player.inCar; return { mph: v ? Math.abs(v.speed || 0) * 2.237 : 0, airT: v && v.air ? v.airT : 0, wanted: police.wanted, inCar: !!v, hour,
@@ -9124,7 +9127,7 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
-window.__gtp = { curb: { cars: curbCars, update: dt => updateCurbParking(dt) }, prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, buildNear: (x, z, r) => buildLazyNear(x, z, r), roofPhoto: i => ({ dark: roofPhotoDark(BLD[i]), colour: roofPhotoColor(BLD[i]) }), stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
+window.__gtp = { curb: { cars: curbCars, update: dt => updateCurbParking(dt) }, prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get PLAZA() { return PLAZA; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, buildNear: (x, z, r) => buildLazyNear(x, z, r), roofPhoto: i => ({ dark: roofPhotoDark(BLD[i]), colour: roofPhotoColor(BLD[i]) }), stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
 const INPUT_KEY = 'pw-auto-online-input';

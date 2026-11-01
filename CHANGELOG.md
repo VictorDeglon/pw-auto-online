@@ -35,6 +35,11 @@ update you ship**, and add an entry here at the same time:
   building stands against.
 - The hand-built Walmart box that overlapped the real Walmart on Poway Road is gone too: the store is the generated
   supercenter, its two entrances signed. So are the hand-built Subway and Great Clips, boxes over shops the map has.
+- **Every shopping centre's stores, on their real buildings:** each of the 275 stores the map names in Poway's centres
+  gets its own storefront where the map puts it, sized and dressed by its trade (glass, mullions, doors, sign or the
+  chain's parody mark, awning or lit soffit, the trade's room through the glass, patios and umbrellas, bike racks, a
+  barber pole, ATMs, ice chests, carts, window neon); the rest of each centre's fronts take made-up local tenants and
+  a few vacancies. The five hand-built plaza shells (over the map's own buildings, Target's among them) are gone.
 
 ## 0.10.0 Up Close (2026-10-31)
 

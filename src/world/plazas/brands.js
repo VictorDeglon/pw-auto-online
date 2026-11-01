@@ -3,6 +3,7 @@
 // drawn at the proportions of the sign they go on, so the lettering is never stretched.
 //   brandLogo(THREE, key, aspect = 4.4) -> CanvasTexture (redrawn once the web fonts arrive)
 //   parodyName(name) -> the parody of a real store name (OpenStreetMap POIs), or the name unchanged
+//   brandKeyOf(name) -> the key of a real store's parody mark here (for brandLogo), or null
 //   BRAND_FONTS: the Google Fonts families these use (index.html loads them)
 const SANS = '"Archivo Black", "Arial Black", sans-serif', KANIT = '"Kanit", "Arial Black", sans-serif', POP = '"Poppins", Arial, sans-serif';
 const SERIF = '"Playfair Display", Georgia, serif', GARA = '"Cormorant Garamond", Georgia, serif', RYE = '"Rye", Georgia, serif', NUNITO = '"Nunito Sans", Arial, sans-serif';
@@ -115,6 +116,12 @@ const NAMES = [
   [/autozone/i, 'AutoZoan'], [/jiffy lube/i, 'Jiffy Loob'], [/\bshell\b/i, 'Shel'], [/chevron/i, 'Chevrun'], [/\barco\b/i, 'Arko'], [/\bmobil\b/i, 'Mobile'], [/^76\b/, '77'],
 ];
 export function parodyName(n) { for (const [re, p] of NAMES) if (re.test(n)) return p; return n; }
+// a real store name -> the key of its parody mark here, if it has one
+const KEYS = [[/\bsubway\b/i, 'subway'], [/starbucks/i, 'starbucks'], [/great clips/i, 'great_clips'], [/\bhabit\b/i, 'habit_burger'], [/board (&|and) brew/i, 'board_and_brew'],
+  [/round table/i, 'round_table_pizza'], [/five guys/i, 'five_guys'], [/jersey mike/i, 'jersey_mikes'], [/wingstop/i, 'wingstop'], [/little caesar/i, 'little_caesars'], [/o'?reilly/i, 'oreilly_auto'],
+  [/outback/i, 'outback'], [/\bike'?s\b/i, 'ikes_sandwiches'], [/wells fargo/i, 'wells_fargo'], [/barnes/i, 'barnes_and_noble'], [/trader joe/i, 'trader_joes'], [/\bulta\b/i, 'ulta_beauty'],
+  [/chipotle/i, 'chipotle'], [/\bcava\b/i, 'cava'], [/panera/i, 'panera_bread'], [/panda express/i, 'panda_express'], [/jamba/i, 'jamba'], [/sport clips/i, 'sport_clips']];
+export function brandKeyOf(n) { for (const [re, k] of KEYS) if (re.test(n)) return k; return null; }
 
 const made = [];
 let fontsReady = false;

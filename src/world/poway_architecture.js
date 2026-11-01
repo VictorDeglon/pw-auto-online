@@ -26,7 +26,6 @@
  *    - Seamless over-the-shoulder interior zoom (2.0m dist) with ceiling and wall collision clamping.
  */
 import * as THREE from 'three';
-import { buildMajorPlazas } from './plazas/plaza_builder.js';
 import { brandLogo } from './plazas/brands.js';
 
 export function createPowayArchitecture(ctx) {
@@ -36,8 +35,7 @@ export function createPowayArchitecture(ctx) {
   group.name = 'PowayArchitectureWorld';
   scene.add(group);
 
-  // Modular Major Plazas Ecosystem (5 Major Plazas across Poway)
-  const majorPlazas = buildMajorPlazas(ctx);
+  const majorPlazas = null; // (the five hand-built plaza shells stood over the map's own buildings: the shops are drawn on those, src/world/shops.js)
 
   // Material Palette
   const canvasTextures = new Map();
