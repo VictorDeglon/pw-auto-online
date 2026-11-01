@@ -61,7 +61,7 @@ export const STREET_MISSIONS = [
     reward: { money: 400, trust: { lucky: 10 } },
     steps: [
       { do: 'talk', lines: [
-        ['lucky', 'Dee showed me a page of that book. Don\'t look at me like that, she wanted a fence\'s opinion. Those are customers, Marco. People who buy stolen SUVs.'],
+        ['lucky', 'Doc showed me a page of that book. Don\'t look at me like that, she wanted a fence\'s opinion. Those are customers, Marco. People who buy stolen SUVs.'],
         ['lucky', 'Rich and careless, and they can\'t call the Sheriff about what\'s in their own house without explaining where it came from.'],
         ['marco', 'You want me to rob Vance\'s customers.'],
         ['lucky', 'I want you to visit them. At night, when the lights are off and the house is empty. Mostly empty. Bring me something nice.'],

@@ -5,9 +5,11 @@
 // Real places are fine; businesses and people here are fictional (docs/roadmap README, legal path).
 export const PLACES = {
   home: { special: 'home', note: 'The Reyes house (fictional), a few streets from Poway High' },
+  phs: { special: 'spawn', note: 'Espola Road, out front of the Poway High stadium (where a new game starts)' },
+  impound: { special: 'sheriff', dx: -35, dz: 30, note: 'The Sheriff\'s impound lot, behind the station' },
   sheriff: { special: 'sheriff', note: 'Poway Sheriff Station (OSM police POI)' },
   oldPoway: { lat: 32.969598, lon: -117.036831, snap: 'sidewalk', note: 'Old Poway Park, Midland Road (depot of the Poway-Midland Railroad)' },
-  deeGarage: { lat: 32.934851, lon: -117.039283, snap: 'sidewalk', note: "Dee's Garage (fictional), Kirkham Way business park" },
+  deeGarage: { lat: 32.934851, lon: -117.039283, snap: 'sidewalk', note: "Doc's Garage (fictional), Kirkham Way business park" },
   vance: { lat: 32.940052, lon: -117.030610, snap: 'road', names: ['Danielson Street'], note: 'Vance Prestige Motors (fictional), Danielson Street' },
   ranch: { lat: 32.942884, lon: -116.986458, snap: 'road', names: ['Sycamore Canyon Road'], note: 'Vance chop-shop ranch (fictional), Sycamore Canyon Road' },
   highValley: { lat: 32.991156, lon: -117.019497, snap: 'road', names: ['High Valley Road'], note: 'Repo SUV driveway, High Valley Road' },
@@ -37,4 +39,7 @@ export const PLACES = {
   hospital: { special: 'hospital', note: 'Palomar Medical Center Poway' },
   // street jobs (src/story/streets.js, crimes.js)
   lucky: { lat: 32.9560, lon: -117.0447, snap: 'sidewalk', names: ['Poway Road'], note: 'Lucky\'s Swap & Loan (fictional), Poway Road' },
+  spur: { lat: 32.9582, lon: -117.0418, snap: 'sidewalk', names: ['Poway Road'], note: 'The Rusty Spur (fictional bar), Poway Road' },
+  pawn: { lat: 32.9626, lon: -117.0355, snap: 'sidewalk', names: ['Poway Road'], note: 'Poway Road Pawn, where Boone sells "antiques" out back' },
+  rattler: { lat: 32.9571, lon: -117.0472, snap: 'sidewalk', names: ['Poway Road'], note: 'Poway Road, where Rattler boosts cars' },
 };

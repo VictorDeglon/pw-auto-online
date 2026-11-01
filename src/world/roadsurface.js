@@ -23,6 +23,7 @@
 
 const CELL = 4;      // raster cell (m); the raster only decides WHICH road a point belongs to, distances are exact
 export const CROWN = 0.02, CURB_H = 0.15, LIFT = 0.0, FLAT = 14, BENCH = 0; // a 2% crown sheds water to the gutters; a real 15 cm curb where the road has one; the walk and the bench behind it sit up at curb height
+const SEGS = 16; // _query: a road longer than this many segments is searched block by block
 const PSTEP = 4, PSIGMA = 20; // long-profile sample spacing and smoothing (m): roads ride over the 12.8 m terrain facets
 
 function segClosest(px, pz, ax, az, bx, bz, out) {
@@ -66,7 +67,7 @@ export class RoadSurface {
     if (opts.defer) this.order = order; // the caller paints them (a few at a time: src/world/outer.js)
     else for (const i of order) this.paint(i);
     this.epoch = opts.epoch || null; this.prov = []; this.hadProv = false; // provisional profiles: the epoch they were built in
-    this._q = { road: -1, d: 0, cx: 0, cz: 0, tx: 0, tz: 0, s: 0 }; this._c = { x: 0, z: 0, t: 0 };
+    this._q = { road: -1, d: 0, cx: 0, cz: 0, tx: 0, tz: 0, s: 0 }; this._c = { x: 0, z: 0, t: 0 }; this._blk = new WeakMap();
   }
   // ---------------------------------------------------------------- junctions
   // Where streets meet (they share a point: OpenStreetMap ways end on each other's middles as often as at each other's
@@ -212,7 +213,19 @@ export class RoadSurface {
     if (gx < 0 || gz < 0 || gx >= this.nx || gz >= this.nz) return null;
     const ri = this.cells[gz * this.nx + gx] - 1; if (ri < 0 || !this.roads[ri]) return null; // (an outer tile's road list can change under its raster)
     const p = this.roads[ri][3], q = out || this._q, c = this._c; let best = 1e9, along = 0, cum = 0;
-    for (let k = 0; k < p.length - 2; k += 2) {
+    if (p.length > 2 * SEGS + 2) { // a long road: only the blocks of segments whose box is nearer than the best so far (same answer)
+      const B = this._blocks(p), bb = B.bb, cs = B.cum; let bk = -1;
+      for (let b = 0, k0 = 0; k0 < p.length - 2; b++, k0 += 2 * SEGS) {
+        const ox = Math.max(bb[b * 4] - x, 0, x - bb[b * 4 + 2]), oz = Math.max(bb[b * 4 + 1] - z, 0, z - bb[b * 4 + 3]);
+        if (ox * ox + oz * oz > best * (1 + 1e-9) + 1e-9) continue;
+        for (let k = k0, k1 = Math.min(p.length - 2, k0 + 2 * SEGS); k < k1; k += 2) {
+          segClosest(x, z, p[k], p[k + 1], p[k + 2], p[k + 3], c);
+          const d = (c.x - x) * (c.x - x) + (c.z - z) * (c.z - z);
+          if (d < best) { best = d; bk = k; q.cx = c.x; q.cz = c.z; along = c.t; }
+        }
+      }
+      if (bk >= 0) { const L = Math.hypot(p[bk + 2] - p[bk], p[bk + 3] - p[bk + 1]); q.tx = (p[bk + 2] - p[bk]) / (L || 1); q.tz = (p[bk + 3] - p[bk + 1]) / (L || 1); along = cs[bk >> 1] + along * L; }
+    } else for (let k = 0; k < p.length - 2; k += 2) {
       segClosest(x, z, p[k], p[k + 1], p[k + 2], p[k + 3], c);
       const d = (c.x - x) * (c.x - x) + (c.z - z) * (c.z - z);
       const L = Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1]);
@@ -222,6 +235,17 @@ export class RoadSurface {
     q.road = ri; q.d = Math.sqrt(best); q.s = along;
     const r = this.roads[ri][2] / 2 + this.sw[ri] + FLAT + this.band;
     return q.d <= r ? q : null;
+  }
+  // a long road's segments in blocks of SEGS, each block's bounding box, and the length along the road at each point
+  // (summed in the same order as _query's own loop, so the answers are the same to the last bit)
+  _blocks(p) {
+    let B = this._blk.get(p); if (B) return B;
+    const nb = Math.ceil((p.length / 2 - 1) / SEGS), bb = new Float64Array(nb * 4), cs = new Float64Array(p.length / 2); let cum = 0;
+    for (let b = 0; b < nb; b++) { let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+      for (let k = b * 2 * SEGS, k1 = Math.min(p.length - 2, k + 2 * SEGS); k <= k1; k += 2) { x0 = Math.min(x0, p[k]); x1 = Math.max(x1, p[k]); z0 = Math.min(z0, p[k + 1]); z1 = Math.max(z1, p[k + 1]); }
+      bb.set([x0, z0, x1, z1], b * 4); }
+    for (let k = 0; k < p.length - 2; k += 2) { cs[k >> 1] = cum; cum += Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1]); }
+    this._blk.set(p, B = { bb, cum: cs }); return B;
   }
   // on (or within margin m of) driveable asphalt
   onAsphalt(x, z, margin = 0) {

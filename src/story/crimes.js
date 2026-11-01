@@ -2,7 +2,7 @@
 // src/police.js: no witness, no stars). Single-player only: none of this runs in an online room.
 //
 // Each kind of crime opens up through the story (the `learn` step, src/story/unlocks.js), never all at once:
-//   shoplifting · pickpocketing · mugging · car theft off driveways (Dee's repo list) · the chop shop · the fence ·
+//   shoplifting · pickpocketing · mugging · car theft off driveways (Doc's repo list) · the chop shop · the fence ·
 //   catalytic converters · burglary (at night) · ATM skimming · store stick-ups · cooler runs · armored trucks ·
 //   protection money · insurance fraud. Murder, assault and carjacking are there from the start.
 // And three abilities: lockpicking (quiet car theft, faster break-ins), intimidation (aim at a witness and they put
@@ -40,11 +40,11 @@ function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Ma
 export const CRIMES = [
   { key: 'core', name: 'Assault, murder, carjacking', how: 'From the start. Only a witness, a deputy or a camera turns them into stars.' },
   { key: 'crime:shoplift', name: 'Shoplifting', how: 'Hold E at a store or gas station door. Goods go to the fence.', from: 'Homecoming (Rosa)' },
-  { key: 'crime:repo', name: 'Car theft off driveways', how: 'Dee\'s repo list: the cars she wants, parked at houses around town. Bring them to her garage.', from: 'Tommy\'s Friend (Dee)' },
-  { key: 'ability:lockpick', name: 'Lockpicking (ability)', how: 'Hold E by a parked car to open it quietly: no alarm, no angry owner. Break-ins go twice as fast.', from: 'Tommy\'s Friend (Dee)' },
+  { key: 'crime:repo', name: 'Car theft off driveways', how: 'Doc\'s repo list: the cars she wants, parked at houses around town. Bring them to her garage.', from: 'Impound (Doc)' },
+  { key: 'ability:lockpick', name: 'Lockpicking (ability)', how: 'Hold E by a parked car to open it quietly: no alarm, no angry owner. Break-ins go twice as fast.', from: 'Wheels (Rattler)' },
   { key: 'crime:pickpocket', name: 'Pickpocketing', how: 'Walk up behind someone, hold E. If they turn around, they shout.', from: 'Lucky Break (Lucky)' },
   { key: 'crime:fence', name: 'The fence', how: 'Lucky buys what you steal, at whatever she\'s paying today.', from: 'Lucky Break (Lucky)' },
-  { key: 'crime:chop', name: 'The chop shop', how: 'Drive any stolen car into Kirkham Auto Salvage. Torque pays by the car.', from: 'Night Shift (Dee)' },
+  { key: 'crime:chop', name: 'The chop shop', how: 'Drive any stolen car into Kirkham Auto Salvage. Torque pays by the car.', from: 'Night Shift (Doc)' },
   { key: 'crime:parts', name: 'Catalytic converters', how: 'Crouch (C) by a parked car, hold E. Loud: anyone close hears the saw.', from: 'Cat Scratch (Lucky)' },
   { key: 'crime:mugging', name: 'Mugging', how: 'Aim a gun at someone up close. They hand it over, then they call.', from: 'Personal Effects (Rosa)' },
   { key: 'crime:burglary', name: 'Burglary', how: 'After 9 PM, dark houses can be broken into. Some of them aren\'t empty.', from: 'Open House (Lucky)' },
@@ -415,7 +415,7 @@ function muggedAI(p, dt) {
   return { speed: 0, mode: 'hands' };
 }
 
-// ------------------------------------------------------------------ places: the fence, the chop shop, Dee's repo list, Nina's coolers
+// ------------------------------------------------------------------ places: the fence, the chop shop, Doc's repo list, Nina's coolers
 const PLACES = {}; let placeIts = false;
 // a story place, moved `along` metres down the sidewalk (so a counter doesn't sit on top of the person who gives the missions there)
 function placeSpot(key, along = 0) {
@@ -434,8 +434,8 @@ function setupPlaces() {
     label: () => { const v = ctx.player.inCar; if (!v.stolen || v.ownedId || v.tommy || v.marco) return 'Torque: "That one\'s yours. I don\'t buy family."'; return `Sell this car to <b>Torque</b> · ${money(chopPrice(v))}`; },
     onUse: () => { const v = ctx.player.inCar; if (!v || !v.stolen || v.ownedId || v.tommy || v.marco) return; if (police.wanted) { ctx.notify('Torque: "Not with the Sheriff on you. Come back clean."', 'red', 3000); return; } const n = chopPrice(v); leaveCar(v); v.remove(); cash(n, 'Torque doesn\'t ask.'); done('chop', { value: n }); ctx.persist(); } });
   if (PLACES.dee) addInteract({ x: PLACES.dee.x, z: PLACES.dee.z, r: 9, when: () => !off() && isUnlocked('crime:repo') && !!ctx.player.inCar && !!ctx.player.inCar.repo && !busy(),
-    label: () => `Hand the repo to <b>Dee</b> · ${money(repoPrice(ctx.player.inCar))}`,
-    onUse: () => { const v = ctx.player.inCar; if (!v || !v.repo) return; if (police.wanted) { ctx.notify('Dee: "Not with the Sheriff on you. I mean it."', 'red', 3000); return; } const n = repoPrice(v), r = S().repo; r.list = r.list.filter(t => t.id !== v.repo); leaveCar(v); v.remove(); cash(n, 'Dee: "Collateral."'); done('repo', { value: n }); ctx.persist(); } });
+    label: () => `Hand the repo to <b>Doc</b> · ${money(repoPrice(ctx.player.inCar))}`,
+    onUse: () => { const v = ctx.player.inCar; if (!v || !v.repo) return; if (police.wanted) { ctx.notify('Doc: "Not with the Sheriff on you. I mean it."', 'red', 3000); return; } const n = repoPrice(v), r = S().repo; r.list = r.list.filter(t => t.id !== v.repo); leaveCar(v); v.remove(); cash(n, 'Doc: "Collateral."'); done('repo', { value: n }); ctx.persist(); } });
   if (PLACES.runs) addInteract({ x: PLACES.runs.x, z: PLACES.runs.z, r: 4, when: () => !off() && isUnlocked('crime:runs') && !RUN && !busy(),
     label: () => '<b>Take a cooler run</b> for Nina',
     onUse: startRun });
@@ -444,7 +444,7 @@ function chopPrice(v) { return Math.round((CHOP[v.type] || 350) * clamp(v.health
 function repoPrice(v) { return Math.round((REPO[v.type] || 600) * clamp(0.4 + v.health / 160, 0.5, 1)); }
 function leaveCar(v) { const P = ctx.player; if (P.inCar !== v) return; P.inCar = null; v.driver = null; P.pos.set(v.pos.x + v.fz * (v.spec.W / 2 + 1), 0, v.pos.z - v.fx * (v.spec.W / 2 + 1)); ctx.collideCircle(P.pos, 0.35); P.pos.y = ctx.heightAt(P.pos.x, P.pos.z); P.rig.g.visible = true; emit('car:exit', { vehicle: v }); }
 
-// Dee's list: three cars, parked at houses around town, whose owners stopped paying her (or so she says)
+// Doc's list: three cars, parked at houses around town, whose owners stopped paying her (or so she says)
 const TINTS = [[0xf2f2f0, 'white'], [0x1b1c1e, 'black'], [0xb8bcc0, 'silver'], [0x8a1c1c, 'red'], [0x23406e, 'blue'], [0x3b4a3a, 'green']];
 function repoList() {
   const r = S().repo;
@@ -464,7 +464,7 @@ function updateRepo(f) {
   if (!isUnlocked('crime:repo')) return;
   for (const t of repoList()) {
     let v = REPOCARS.get(t.id); const d = hyp(t.x - f.x, t.z - f.z);
-    if (v && (v.removed || v.dead)) { if (v.dead) { ctx.notify('Dee: "You wrecked my collateral. That one\'s off the list."', 'red', 3500); S().repo.list = S().repo.list.filter(q => q.id !== t.id); } REPOCARS.delete(t.id); continue; }
+    if (v && (v.removed || v.dead)) { if (v.dead) { ctx.notify('Doc: "You wrecked my collateral. That one\'s off the list."', 'red', 3500); S().repo.list = S().repo.list.filter(q => q.id !== t.id); } REPOCARS.delete(t.id); continue; }
     if (!v && d < 260) { v = new ctx.Vehicle(t.type, t.x, t.z, t.rot, t.tint); v.parked = true; v.mode = 'free'; v.driveway = t.id; v.repo = t.id; v.keep = true; ctx.settleCar(v); REPOCARS.set(t.id, v); }
     else if (v && d > 420 && v !== ctx.player.inCar && !v.stolen) { v.remove(); REPOCARS.delete(t.id); }
   }

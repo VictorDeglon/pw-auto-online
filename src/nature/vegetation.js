@@ -59,6 +59,7 @@ function mergeLod(THREE, root) {
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     geos.push(g.index ? g.toNonIndexed() : g);
     const m = o.material; mats.push(m);
+    if (m.map) m.map.channel = 0; // only `uv` survives the merge: a map left on uv1 builds a program that reads a missing attribute and fails to compile
   });
   if (!geos.length) return null;
   // merge by hand into groups (BufferGeometryUtils is not imported here)

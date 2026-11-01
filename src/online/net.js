@@ -7,27 +7,8 @@
 //   Firebase otherwise (Realtime Database, net-firebase.js), as before.
 // Both export the same interface; ACCOUNT and PRO (accounts, progression, leaderboards) exist only with Nakama.
 import { createLocalNet } from '../games/localroom.js';
-async function nakamaConfig() {
-  const q = new URLSearchParams(location.search).get('nk');
-  if (q === 'firebase') return null;
-  const file = q === 'local' ? 'nakama.local.json' : 'nakama.json';
-  try {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 2500);
-    const r = await fetch(file, { cache: 'no-store', signal: ctl.signal }); clearTimeout(t);
-    if (!r.ok || !/json/.test(r.headers.get('content-type') || '')) return null;
-    const c = await r.json(); return c && c.host && c.key ? c : null;
-  } catch (e) { return null; }
-}
-// a configured game server that doesn't answer (down, or the connection blocks it) means Firebase, so online play
-// never disappears with it
-async function reachable(c) {
-  try {
-    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 5000);
-    const r = await fetch(`${c.ssl ? 'https' : 'http'}://${c.host}:${c.port || (c.ssl ? 443 : 7350)}/healthcheck`, { cache: 'no-store', signal: ctl.signal }); clearTimeout(t);
-    return r.ok;
-  } catch (e) { return false; }
-}
-const CFG = await nakamaConfig(), NK = CFG && await reachable(CFG) ? CFG : null;
+import { probe, reachable } from './nkconfig.js'; // nakama.json and the first healthcheck, started by index.html
+const { cfg: CFG, ok: NK_UP } = await probe(), NK = NK_UP ? CFG : null;
 if (CFG && !NK) console.warn('[net] the game server is not answering: playing online over Firebase only (no accounts, levels or leaderboards this time)');
 const impl = NK ? await import('./net-nakama.js') : await import('./net-firebase.js');
 if (NK) impl.configure(NK);

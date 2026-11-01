@@ -1,0 +1,12 @@
+{
+  "roots": ["poway-data.js", "assets", "data"],
+  "order": "tools/packs/order.json",
+  "packs": [
+    { "name": "boot", "from": "boot", "get": "boot" },
+    { "name": "later", "from": "later", "get": "later" },
+    { "name": "world", "match": ["assets/world/"] },
+    { "name": "humans", "match": ["assets/humans/"] },
+    { "name": "sf", "match": ["assets/sf/"] },
+    { "name": "misc", "match": [""] }
+  ]
+}

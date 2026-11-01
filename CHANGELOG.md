@@ -10,6 +10,82 @@ update you ship**, and add an entry here at the same time:
 
 ## 0.10.1 (2026-10-31)
 
+- **Every shopping centre's stores, on their real buildings:** each of the 275 stores the map names in Poway's centres
+  gets its own storefront where the map puts it, sized and dressed by its trade (glass, mullions, doors, sign or the
+  chain's parody mark, awning or lit soffit, the trade's room through the glass, patios and umbrellas, bike racks, a
+  barber pole, ATMs, ice chests, carts, window neon); the rest of each centre's fronts take made-up local tenants and
+  a few vacancies. The five hand-built plaza shells (over the map's own buildings, Target's among them) are gone.
+- **Walk into the shops:** go up to any storefront and step through its door into the room behind the glass,
+  furnished by the trade to the back wall: booths and counters, espresso bars, barber chairs at their mirrors, nail
+  stations and pedicure thrones, a bank's tellers and glass offices, market aisles and coolers, liquor coolers and wine
+  aisles, weight rooms, yoga and martial-arts studios, offices. A stockroom door at the back, ceiling lights, and the
+  camera stays inside with you.
+- **Parking lots that hold together:** every lot is paved (no more grass and old photo stalls showing through), the
+  drive aisles through it are asphalt (they were drawn as wide concrete driveways), its rows end in curbed planted
+  islands with a tree and a light, lights stand down long rows, a concrete apron crosses the walk where it meets the
+  street, and a strip centre's walk ends in a red fire-lane curb.
+
+## 0.10.0: Outlaws (2026-10-31)
+
+- **Act I, all the way to your first car.** A new game starts on foot, and the story is a run from Poway High to
+  Tommy's gold car that teaches the game as it goes. *Last Ride:* Tommy is waiting out front of the school on Espola
+  Road; a black car with its lights off puts him through the rail at the bend, and its men come back for the witness.
+  *Homecoming:* the memorial at Old Poway Park, where Jericho "the Deacon" Vance of the Iron Mountain Syndicate pulls up
+  in a black SUV and hands Marco his brother's $40,000 debt. *Collections* (a fistfight at the Rusty Spur), *Iron*
+  (bottles on a plank behind Poway Road Pawn), *Wheels* (your first stolen car) and *Impound:* Tommy's car out of the
+  Sheriff's lot at night, past two deputies, into Doc's garage, where the Dust Devils ride again. Offline, Tommy's car
+  no longer waits at the curb: it's the car you earn, and it stays in your garages.
+- **How to play, taught as you go** (`src/story/tips.js`): a card on the left with the key and what it does, shown when
+  a step needs it and gone once you've done it; the journal lists them all. After Impound, texts from the gang
+  introduce calling your car, the gun dealers, courier jobs and car lots, the journal and the banks. Objectives say how
+  far away they are.
+- **Three new cutscenes:** the crash, now out front of Poway High (it used to be at the lake), the memorial, and the
+  founding of the Dust Devils at Doc's Garage. No new traffic drives into a scene, and a scene waits for the garage menu
+  to close.
+- **Western names** for the cast: Tommy "Lightning" Reyes, Marco "the Espola Kid", Doc, Old Hickory, Sgt. "Two-Badge"
+  Kessler, La Gata, El Patrón, Buzzard, the Widow, Hoss, Gunny, Cookie and Sawbones; new in the gang, Boone
+  "Six-Shooter" Calloway and Jesse "Rattler" Ortiz, and the Deacon's undertaker, Cyrus Pike. The porch pirates are gone,
+  and the rail-yard taggers are Los Coyotes prospects.
+- **Outlaw avatars** (`assets/humans/outlaws.json`, CC BY 4.0 models from Sketchfab, credited there and in the README),
+  fitted by `tools/humans/fit_outlaw.py` (Blender) and animated with the Rocketbox clips, re-aimed onto each model's
+  own rest pose when it loads (`src/humans.js`); the fitter also stands up a model exported lying on its back. Seven of
+  them: a new player starts as a cowboy, and Tommy, the Deacon, El Patrón, Pike, Rattler and Boone each have their own.
+  The Deacon's men wear Pike's look or dark clothes. The character editor leaves their hats on.
+- Saves already past the opening get the four new missions marked done and Tommy's car in their garage.
+- **The slender trees have their branches back up close,** and the console has no shader error on load: the near
+  model's branch material tiled its bark on a second UV set that the web LOD no longer carried, so its program failed
+  to compile (`'uv1' : undeclared identifier`) and the branches between the trunk and the leaves weren't drawn. The LOD
+  keeps the set each material's colour map reads (`tools/nature/slim_glb.py`), and the near meshes always read their
+  one UV set (`src/nature/vegetation.js`).
+- **Real cladding on the buildings:** walls are clad in real materials chosen by the neighbourhood's look and the
+  building's type: smooth, sand, lace and aged stucco, plaster, lap siding, board-and-batten, shiplap, red, tan and
+  painted brick, painted and split-face block, tilt-up, concrete panels, corrugated metal. Some street fronts have a
+  stone or brick wainscot with a cap; trim is painted wood. The materials sit in one texture array
+  (`src/world/wallarr.js`: Poly Haven scans plus the generated library from `tools/matpack`), so every wall in a block
+  of town is one mesh: fewer draw calls than before (14-48 % fewer in the views tested).
+- **Real fittings round the windows and doors:** window surrounds by the neighbourhood's look (foam, deep stucco,
+  painted wood, thin dark metal), louvred shutters, wrought-iron rejas on Spanish houses, door casings, garage-door
+  jambs, storefronts framed in aluminium with transoms, gutters and downspouts along the eaves, front porches on posts
+  on ranch houses, cottages and bungalows, and balconies with railings on garden apartments. They are laid out by the
+  same rules as the painted windows (`openings` in `src/world/bldgen.js`), so they sit exactly round them. The small
+  pieces are instanced near you (`src/world/bldkit.js`); a refill now only copies prebuilt matrices.
+- Wainscots sit lower (below the window sills) and their cap stops at doors, garage doors and storefronts.
+- **Houses with depth:** windows and doors are set into the walls with reveals, some front doors in a covered alcove;
+  picture windows on the front, a slider and wide windows out back, small bath windows and blank stretches on the
+  sides; covered patios on posts over the back slider; a weep screed at the foot of stucco walls; vents in gable ends.
+  Gable ends get rake boards and a soffit up the slopes instead of a fascia across them.
+- **Estate houses** on Poway's big lots: cross gables in flat concrete tile, light stucco, white window frames, one or
+  two chimneys, and often a two-storey wing under its own roof (roofed like the rest of the house) with a deck across
+  its gable end.
+- **Solar panels show again** (the ridge's cap tiles had been taken for the sunny slope); arrays go on the sunniest big
+  slope, south then west. Tile roofs with no aerial photo over them are no longer darkened by the tile scan. Chimney
+  chases are a real width and stop 0.7 m past the roof near them.
+- **Big boxes:** doors face the parking lot, not the nearest street; supercenters get two entrances with raised towers,
+  vestibules and canopies, pilasters, accent bands, a block base and bollards; warehouse clubs corrugated metal over a
+  tall block base; the store's mapped name says which (the Poway Walmart now has its grocery and home entrances on its
+  lot), and a mapped store is never drawn as a plain warehouse. Dock seals and bumpers behind.
+- Footprints the map isn't sure about, on quiet residential streets with nothing mapped at the door, are houses, not
+  shops. Brown concrete tile in the aerial photo is no longer read as clay.
 - **Hillside lots are graded:** a house on a slope stands on a level terrace at the height where its driveway meets
   the garage, its side and back yards level with it out to the lot lines (half way to the neighbours, short of a
   street). Where the hill keeps falling or rising behind the house the back yard steps down or up in terraces, up to
@@ -35,58 +111,32 @@ update you ship**, and add an entry here at the same time:
   building stands against.
 - The hand-built Walmart box that overlapped the real Walmart on Poway Road is gone too: the store is the generated
   supercenter, its two entrances signed. So are the hand-built Subway and Great Clips, boxes over shops the map has.
-- **Every shopping centre's stores, on their real buildings:** each of the 275 stores the map names in Poway's centres
-  gets its own storefront where the map puts it, sized and dressed by its trade (glass, mullions, doors, sign or the
-  chain's parody mark, awning or lit soffit, the trade's room through the glass, patios and umbrellas, bike racks, a
-  barber pole, ATMs, ice chests, carts, window neon); the rest of each centre's fronts take made-up local tenants and
-  a few vacancies. The five hand-built plaza shells (over the map's own buildings, Target's among them) are gone.
-- **Walk into the shops:** go up to any storefront and step through its door into the room behind the glass,
-  furnished by the trade to the back wall: booths and counters, espresso bars, barber chairs at their mirrors, nail
-  stations and pedicure thrones, a bank's tellers and glass offices, market aisles and coolers, liquor coolers and wine
-  aisles, weight rooms, yoga and martial-arts studios, offices. A stockroom door at the back, ceiling lights, and the
-  camera stays inside with you.
-- **Parking lots that hold together:** every lot is paved (no more grass and old photo stalls showing through), the
-  drive aisles through it are asphalt (they were drawn as wide concrete driveways), its
-  rows end in curbed planted islands with a tree and a light, lights stand down long rows, a concrete apron crosses the
-  walk where it meets the street, and a strip centre's walk ends in a red fire-lane curb.
-
-## 0.10.0 Up Close (2026-10-31)
-
-- **Houses with depth:** windows and doors are set into the walls with reveals, some front doors in a covered alcove;
-  picture windows on the front, a slider and wide windows out back, small bath windows and blank stretches on the
-  sides; covered patios on posts over the back slider; a weep screed at the foot of stucco walls; vents in gable ends.
-  Gable ends get rake boards and a soffit up the slopes instead of a fascia across them.
-- **Estate houses** on Poway's big lots: cross gables in flat concrete tile, light stucco, white window frames, one or
-  two chimneys, and often a two-storey wing under its own roof (roofed like the rest of the house) with a deck across
-  its gable end.
-- **Solar panels show again** (the ridge's cap tiles had been taken for the sunny slope); arrays go on the sunniest big
-  slope, south then west. Tile roofs with no aerial photo over them are no longer darkened by the tile scan. Chimney
-  chases are a real width and stop 0.7 m past the roof near them.
-- **Big boxes:** doors face the parking lot, not the nearest street; supercenters get two entrances with raised towers,
-  vestibules and canopies, pilasters, accent bands, a block base and bollards; warehouse clubs corrugated metal over a
-  tall block base; the store's mapped name says which (the Poway Walmart now has its grocery and home entrances on its
-  lot), and a mapped store is never drawn as a plain warehouse. Dock seals and bumpers behind.
-- Footprints the map isn't sure about, on quiet residential streets with nothing mapped at the door, are houses, not
-  shops. Brown concrete tile in the aerial photo is no longer read as clay.
-
-## 0.9.4 (2026-10-30)
-
-- **Real fittings round the windows and doors:** window surrounds by the neighbourhood's look (foam, deep stucco,
-  painted wood, thin dark metal), louvred shutters, wrought-iron rejas on Spanish houses, door casings, garage-door
-  jambs, storefronts framed in aluminium with transoms, gutters and downspouts along the eaves, front porches on posts
-  on ranch houses, cottages and bungalows, and balconies with railings on garden apartments. They are laid out by the
-  same rules as the painted windows (`openings` in `src/world/bldgen.js`), so they sit exactly round them. The small
-  pieces are instanced near you (`src/world/bldkit.js`); a refill now only copies prebuilt matrices.
-- Wainscots sit lower (below the window sills) and their cap stops at doors, garage doors and storefronts.
-
-## 0.9.3 (2026-10-30)
-
-- **Real cladding on the buildings:** walls are clad in real materials chosen by the neighbourhood's look and the
-  building's type: smooth, sand, lace and aged stucco, plaster, lap siding, board-and-batten, shiplap, red, tan and
-  painted brick, painted and split-face block, tilt-up, concrete panels, corrugated metal. Some street fronts have a
-  stone or brick wainscot with a cap; trim is painted wood. The materials sit in one texture array
-  (`src/world/wallarr.js`: Poly Haven scans plus the generated library from `tools/matpack`), so every wall in a block
-  of town is one mesh: fewer draw calls than before (14-48 % fewer in the views tested).
+- **The game's files stay on your computer:** the town comes as a few zip files (packs) from the game's own asset
+  server instead of Firebase. On a first visit the loading screen streams the pack it needs (56 MB for the 85 MB of
+  files it loads), a few megabytes per request, each file checked against the manifest and kept as soon as it's in,
+  so a download that gets cut off carries on where it stopped. The county tiles, people and everything else come file
+  by file from their packs as you need them. A service worker keeps them all in the browser: the next visit loads
+  them from disk and downloads nothing, and after an update only the files that changed download again; files no
+  longer used are deleted. When the asset server doesn't answer, the game takes its files from the site as before,
+  and keeps those too. (`sw.js`, `tools/packs/`, `server/assets/`; off until the deploy's `nakama.json` names the
+  server.)
+- **Faster loading:** curb parking checked each of the 67,000 curb spots against every driveway and hydrant in town
+  (about 700 million distance checks), and finding the nearest street, asked a few hundred thousand times while the
+  buildings are raised and all through play, made garbage at every road segment it looked at. Both now look only
+  at what's near: raising the buildings dropped from 7–23 s to about 1 s on a test laptop, and the parking step from
+  1–15 s to a fraction of a second. Road lookups skip the far parts of long roads. The game server check now starts
+  with the page instead of holding up the game's code.
+- **No more shader freezes while you play:** on Windows every new shader program holds the game for a third to
+  two-thirds of a second, and some were still compiled in the middle of a frame, after the loading screen: the shadow
+  versions of things (three builds a separate program to draw each kind of object into the sun's shadow maps, and
+  nothing warmed those), the post-processing passes and the sun dust on the first frame, and things that only appear
+  later: the power-line wires and the docks as you come near them, the marina's boats, the first flight overhead, the
+  first rabbit or hawk, a car or bike model that first drives by after the loading screen, an avatar fetched in the
+  middle of play. Now each of them is built before it can show: the shadow programs with one shadow pass of the new
+  things alone into a tiny stand-in map, the late arrivals from one of each kind on a hidden holder. A program the
+  warm-ups built is kept even when the last thing using it goes (a bike's chain was compiled again every time the last
+  bike left town). Measured in a 30 s drive after loading: from 19-24 programs compiled inside frames to none. Nothing
+  looks different.
 
 ## 0.9.2 (2026-10-30)
 
