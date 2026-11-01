@@ -33,6 +33,8 @@ update you ship**, and add an entry here at the same time:
   big boxes (Walmark, Costko, Trader Moe's; Sprouts green, Ralphs blue...), supermarkets are grocery anchors (Sprouts was
   a tall blank shop), a store's name wins over the café inside it, and a big box's doors never open onto a wall another
   building stands against.
+- The hand-built Walmart box that overlapped the real Walmart on Poway Road is gone too: the store is the generated
+  supercenter, its two entrances signed.
 
 ## 0.10.0 Up Close (2026-10-31)
 

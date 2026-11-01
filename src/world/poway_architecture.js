@@ -8,7 +8,7 @@
  * ZONING & TYPOLOGY:
  * 1. Big-Box Commercial / Industrial Retail (Carmel Mountain & Poway Rd):
  *    - (Target: drawn by the building generator on its real footprint, src/world/bldgen.js.)
- *    - Walmart Supercenter: Blue entry portal, yellow spark logo, pharmacy, grocery aisles, electronics display.
+ *    - (Walmart: drawn by the building generator on its real footprint, src/world/bldgen.js.)
  *    - Costco Wholesale: Industrial corrugated steel, 3D red/blue typography logo, multi-tier pallet racking towers,
  *      food court counter with pizza ovens and wholesale staging.
  *
@@ -57,7 +57,7 @@ export function createPowayArchitecture(ctx) {
 
   // --- Brand Logos (Procedural Canvas Textures) ---
   // the chains' marks, as parodies (./plazas/brands.js): drawn to the shape of what they go on
-  const walmartLogoTex = brandLogo(THREE, 'walmart_mark', 1), costcoLogoTex = brandLogo(THREE, 'costco', 2);
+  const costcoLogoTex = brandLogo(THREE, 'costco', 2);
   const subwayLogoTex = brandLogo(THREE, 'subway', 4), greatClipsLogoTex = brandLogo(THREE, 'great_clips', 4), starbucksLogoTex = brandLogo(THREE, 'starbucks', 1);
 
   // Base Physical Materials
@@ -239,101 +239,8 @@ export function createPowayArchitecture(ctx) {
     });
   }
 
-  // =========================================================================
-  // 3. BIG-BOX COMMERCIAL: WALMART SUPERCENTER (Poway Road)
-  // =========================================================================
-  function buildWalmartStore() {
-    const cx = -247.3, cz = 97.7;
-    const floorY = heightAt(cx, cz);
-    const bW = 88.0, bD = 72.0, bH = 9.2;
-
-    const bGroup = new THREE.Group();
-    bGroup.name = 'Walmart_Supercenter';
-    bGroup.position.set(cx, floorY, cz);
-
-    createCurbSidewalk(bGroup, bW, bD, 0);
-
-    // Polished Floor
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.3, bD), concreteFloorMat);
-    floor.position.y = 0.15;
-    floor.receiveShadow = true;
-    bGroup.add(floor);
-
-    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.3, bD), ceilingGridMat);
-    ceiling.position.y = bH - 0.15;
-    bGroup.add(ceiling);
-
-    // Perimeter Walls
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, 0.6), beigeCommercialWallMat);
-    backWall.position.set(0, bH / 2, bD / 2);
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, bH, bD), beigeCommercialWallMat);
-    leftWall.position.set(-bW / 2, bH / 2, 0);
-    const rightWall = leftWall.clone();
-    rightWall.position.x = bW / 2;
-    bGroup.add(backWall, leftWall, rightWall);
-
-    // Front Wall with Iconic Walmart Blue Entrance Portal
-    const frontL = new THREE.Mesh(new THREE.BoxGeometry(bW * 0.36, bH, 0.6), beigeCommercialWallMat);
-    frontL.position.set(-bW * 0.32, bH / 2, -bD / 2);
-    const frontR = frontL.clone();
-    frontR.position.x = bW * 0.32;
-    bGroup.add(frontL, frontR);
-
-    // Glass Entry Window Wall
-    const glassW = bW * 0.28, glassH = 4.8;
-    const glassMesh = new THREE.Mesh(new THREE.PlaneGeometry(glassW, glassH), seeThroughGlassMat);
-    glassMesh.position.set(0, glassH / 2 + 0.1, -bD / 2 - 0.02);
-    bGroup.add(glassMesh);
-
-    // Signature Blue Portal Arch
-    const bluePortal = new THREE.Mesh(
-      new THREE.BoxGeometry(glassW + 3.0, 2.2, 1.2),
-      new THREE.MeshStandardMaterial({ color: 0x0071dc, roughness: 0.4 })
-    );
-    bluePortal.position.set(0, glassH + 1.2, -bD / 2 - 0.4);
-
-    // 3D Yellow Walmart Spark Logo
-    const sparkMat = new THREE.MeshStandardMaterial({
-      map: walmartLogoTex,
-      emissive: new THREE.Color(0xffc220),
-      emissiveMap: walmartLogoTex,
-      emissiveIntensity: 0.85
-    });
-    const sparkMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 0.2, 24), sparkMat);
-    sparkMesh.rotation.x = Math.PI / 2;
-    sparkMesh.position.set(0, glassH + 2.8, -bD / 2 - 1.1);
-    bGroup.add(bluePortal, sparkMesh);
-
-    // Interior: Grocery Section, Electronics Display, and Checkout Rows
-    for (let c = -12; c <= 12; c += 3.8) {
-      const reg = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.95, 3.8), metalFrameMat);
-      reg.position.set(c, 0.48, -bD * 0.28);
-      bGroup.add(reg);
-    }
-
-    // Electronics TV Wall (Back wall with glowing screens)
-    for (let tx = -20; tx <= 20; tx += 6.5) {
-      const tvScreen = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.8, 2.7),
-        new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 0.95 })
-      );
-      tvScreen.position.set(tx, 3.2, bD / 2 - 0.35);
-      tvScreen.rotation.y = Math.PI;
-      bGroup.add(tvScreen);
-    }
-
-    group.add(bGroup);
-
-    interiorBounds.push({
-      minX: cx - bW / 2 + 0.5,
-      maxX: cx + bW / 2 - 0.5,
-      minZ: cz - bD / 2 + 0.5,
-      maxZ: cz + bD / 2 - 0.5,
-      floorY,
-      ceilY: floorY + bH,
-      name: 'Walmart Supercenter'
-    });
-  }
+  // (the Walmart that stood here, a box over the store's own footprint, is drawn by the building generator: the mapped
+  // Walmart on Poway Road, src/world/bldgen.js BOX_BRANDS)
 
   // =========================================================================
   // 4. STRIP PLAZA SHOP: SUBWAY FAST FOOD RESTAURANT
@@ -684,8 +591,7 @@ export function createPowayArchitecture(ctx) {
       interiorBounds.push(...majorPlazas.interiorBounds);
     }
 
-    // 1. Big-Box Commercial Anchors (Separated from residential!)
-    buildWalmartStore();
+    // 1. Big-Box Commercial Anchors: Target and Walmart are drawn by the building generator on their real footprints
 
     // 2. Strip Plaza Retail & Dining
     buildSubwayStore(-4489.0, -1934.9);    // Carmel Mountain Plaza Strip
