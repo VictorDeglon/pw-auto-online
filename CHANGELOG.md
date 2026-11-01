@@ -92,6 +92,8 @@ update you ship**, and add an entry here at the same time:
   big boxes (Walmark, Costko, Trader Moe's; Sprouts green, Ralphs blue...), supermarkets are grocery anchors (Sprouts was
   a tall blank shop), a store's name wins over the café inside it, and a big box's doors never open onto a wall another
   building stands against.
+- The hand-built Walmart box that overlapped the real Walmart on Poway Road is gone too: the store is the generated
+  supercenter, its two entrances signed.
 - **The game's files stay on your computer:** the town comes as a few zip files (packs) from the game's own asset
   server instead of Firebase. On a first visit the loading screen streams the pack it needs (56 MB for the 85 MB of
   files it loads), a few megabytes per request, each file checked against the manifest and kept as soon as it's in,
