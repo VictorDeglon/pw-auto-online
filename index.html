@@ -1133,6 +1133,7 @@ function showProgress() {
   SHELL.bootProgress(0.02 + 0.6 * DL.shown, DL.total ? `${DL.msg} ${Math.min(99, Math.floor(DL.shown * 100))}% · ${mb(got)} of ${mb(all)} MB` : DL.msg);
 }
 const progTimer = setInterval(() => { if (DL.on) showProgress(); else clearInterval(progTimer); }, 250); // streams move between progress() calls
+if (document.fonts) for (const f of ['400 40px "Anton"', '600 40px "Barlow Condensed"', '700 40px "Barlow Condensed"', '400 40px "Rye"']) document.fonts.load(f).catch(() => null); // the signs' faces (dealers, the auto shop), drawn once: fetched now, long before
 const BOOT_T = { t: performance.now(), msg: 'Starting' }; // the loading screen's steps, timed in the console ([boot])
 function progress(msg) {
   if (!DL.on) return;
@@ -1355,9 +1356,9 @@ function drapeAt(x, z) {
   const g = MESH_READY ? meshAt(x, z) : null;
   return g !== null ? benchOver(x, z, g) : builtAt(x, z);
 }
-function groundTri(gb, ax, az, bx, bz, cx, cz, lift, col, ua, ub, uc) {
+function groundTri(gb, ax, az, bx, bz, cx, cz, lift, col, ua, ub, uc, at = drapeAt) { // at: the ground it lies on
   if ((bz - az) * (cx - ax) - (bx - ax) * (cz - az) < 0) { let t = bx; bx = cx; cx = t; t = bz; bz = cz; cz = t; t = ub; ub = uc; uc = t; }
-  const ay = drapeAt(ax, az) + lift, by = drapeAt(bx, bz) + lift, cy = drapeAt(cx, cz) + lift;
+  const ay = at(ax, az) + lift, by = at(bx, bz) + lift, cy = at(cx, cz) + lift;
   gb.p.push(ax, ay, az, bx, by, bz, cx, cy, cz);
   const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
   let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
@@ -2756,29 +2757,40 @@ function plantsAside(cx, cz, ux, uz, hu, hv) {
   return () => { for (const [sp, i, s] of out) V.unhide(sp, i, s); };
 }
 // a parking lot's asphalt over the photo, cut along the ground mesh's own cells and their diagonals (in the zone's 4 m
-// grid or the town's 12.8 m one), so each piece lies on one flat triangle of the ground and none of it shows through
+// grid or the town's 12.8 m one) and laid on that mesh, so each piece lies on one flat triangle of the ground and none
+// of it shows through. It paves the lot's drive aisles too (the map's service roads, whose own surface can sit under the
+// ground here); only a street keeps its own.
 const _lg = [0, 0];
 const LOT_GRIDS = {
   zone: { to: (x, z) => (zonePx(x, z, _lg), [(_lg[0] - ZONE.core0) / ZCELL, (_lg[1] - ZONE.core0) / ZCELL]), from: (gx, gy) => (zoneInv(ZONE.core0 + gx * ZCELL, ZONE.core0 + gy * ZCELL, _lg), [_lg[0], _lg[1]]) },
   town: { to: (x, z) => (aerPx(x, z, _lg), [_lg[0] / CELLPX, _lg[1] / CELLPX]), from: (gx, gy) => (aerInv(gx * CELLPX, gy * CELLPX, _lg), [_lg[0], _lg[1]]) },
 };
+function lotGround(x, z) { const g = meshAt(x, z); return g !== null ? g : drapeAt(x, z); }
+function onStreet(x, z) { const q = ROADS && ROADS.query(x, z); if (!q) return false; const r = ROADS.roads[q.road]; return r[1] <= 5 && q.d < r[2] / 2 + ROADS.sw[q.road]; } // a street (not a service drive), curb to curb and its walk
 function lotAsphalt(poly) {
   const n = poly.length / 2, pts = []; for (let i = 0; i < n; i++) pts.push(new THREE.Vector2(poly[i * 2], poly[i * 2 + 1]));
   let tris; try { tris = THREE.ShapeUtils.triangulateShape(pts, []); } catch (e) { return; }
+  const T = tris.map(t => t.map(i => [pts[i].x, pts[i].y]));
+  { const M = 4; let a2 = 0; for (let i = 0, j = n - 1; i < n; j = i++) a2 += poly[j * 2] * poly[i * 2 + 1] - poly[i * 2] * poly[j * 2 + 1]; const sg = a2 > 0 ? 1 : -1; // and a margin of 4 m round it: the strips of ground between two lots, or a lot and its drive, paved over
+    const out = i => { const j = (i + 1) % n, dx = poly[j * 2] - poly[i * 2], dz = poly[j * 2 + 1] - poly[i * 2 + 1], L = Math.hypot(dx, dz) || 1; return [sg * dz / L, -sg * dx / L]; }; // the edge from vertex i outward
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n, o = out(i), a = [poly[i * 2], poly[i * 2 + 1]], b = [poly[j * 2], poly[j * 2 + 1]], a1 = [a[0] + o[0] * M, a[1] + o[1] * M], b1 = [b[0] + o[0] * M, b[1] + o[1] * M];
+      T.push(Object.assign([a, b, b1], { edge: 1 }), Object.assign([a, b1, a1], { edge: 1 }));
+      const o0 = out((i + n - 1) % n); if ((o0[0] * o[1] - o0[1] * o[0]) * sg > 0) { const m = [o0[0] + o[0], o0[1] + o[1]], mL = Math.hypot(m[0], m[1]) || 1, a0 = [a[0] + o0[0] * M, a[1] + o0[1] * M], am = [a[0] + m[0] / mL * M, a[1] + m[1] / mL * M]; T.push(Object.assign([a, a0, am], { edge: 1 }), Object.assign([a, am, a1], { edge: 1 })); } } } // the wedge round an outside corner
   const cut = (P, a, b, c) => { const L = [], R = []; for (let k = 0; k < P.length; k++) { const p = P[k], q = P[(k + 1) % P.length], sp = a * p[0] + b * p[1] - c, sq = a * q[0] + b * q[1] - c; // a convex piece either side of a line
     if (sp <= 0) L.push(p); if (sp >= 0) R.push(p); if ((sp < 0 && sq > 0) || (sp > 0 && sq < 0)) { const t = sp / (sp - sq), m = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]; L.push(m); R.push(m); } }
     return [L, R].filter(Q => Q.length >= 3); };
   const span = (P, k) => { let lo = 1e9, hi = -1e9; for (const p of P) { lo = Math.min(lo, p[k]); hi = Math.max(hi, p[k]); } return [lo, hi]; };
-  for (const t of tris) {
-    const cx = (pts[t[0]].x + pts[t[1]].x + pts[t[2]].x) / 3, cz = (pts[t[0]].y + pts[t[1]].y + pts[t[2]].y) / 3, GR = ZMESH && inCore(cx, cz, ZCELL * 2) ? LOT_GRIDS.zone : LOT_GRIDS.town;
-    let pieces = [t.map(i => GR.to(pts[i].x, pts[i].y))];
+  for (const t of T) {
+    const cx = (t[0][0] + t[1][0] + t[2][0]) / 3, cz = (t[0][1] + t[1][1] + t[2][1]) / 3, GR = ZMESH && inCore(cx, cz, ZCELL * 2) ? LOT_GRIDS.zone : LOT_GRIDS.town;
+    let pieces = [t.map(p => GR.to(p[0], p[1]))]; const edge = t.edge;
     for (const k of [0, 1]) { const [lo, hi] = span(pieces.flat(), k), next = []; // the cell lines across, then down
       for (const P of pieces) { let rest = [P]; for (let g = Math.floor(lo) + 1; g < hi; g++) { const out = []; for (const Q of rest) { const [a, b] = span(Q, k); if (a < g && b > g) out.push(...cut(Q, k ? 0 : 1, k ? 1 : 0, g)); else out.push(Q); } rest = out; } next.push(...rest); }
       pieces = next; }
     for (const P of pieces) { // each cell's diagonal (where tri3 splits it), then a fan per piece
       let mx = 0, my = 0; for (const p of P) { mx += p[0]; my += p[1]; } mx /= P.length; my /= P.length; const i = Math.floor(mx), j = Math.floor(my);
-      for (const Q of cut(P, 1, -1, i - j)) { const W = Q.map(p => GR.from(p[0], p[1])); let wx = 0, wz = 0; for (const w of W) { wx += w[0]; wz += w[1]; } wx /= W.length; wz /= W.length; if (offLimits(wx, wz, 0)) continue;
-        const gb = chunkAt(wx, wz).road; for (let k = 1; k < W.length - 1; k++) groundTri(gb, W[0][0], W[0][1], W[k][0], W[k][1], W[k + 1][0], W[k + 1][1], 0.035, [0.74, 0.74, 0.73]); }
+      for (const Q of cut(P, 1, -1, i - j)) { const W = Q.map(p => GR.from(p[0], p[1])); let wx = 0, wz = 0; for (const w of W) { wx += w[0]; wz += w[1]; } wx /= W.length; wz /= W.length; if (W.every(w => onStreet(w[0], w[1])) || (PADS && PADS.at(wx, wz) !== null)) continue;
+        if (edge) { const ys = W.map(w => lotGround(w[0], w[1])); let ext = 0.5; for (const w of W) ext = Math.max(ext, Math.hypot(w[0] - wx, w[1] - wz) * 2); if ((Math.max(...ys) - Math.min(...ys)) / ext > 0.15) continue; } /* the margin paves level ground only, never up a bank */ /* only a piece wholly in a street is left out: one across its edge lies under the street's surface, leaving no strip of ground */
+        const gb = chunkAt(wx, wz).road; for (let k = 1; k < W.length - 1; k++) groundTri(gb, W[0][0], W[0][1], W[k][0], W[k][1], W[k + 1][0], W[k + 1][1], 0.035, [0.74, 0.74, 0.73], undefined, undefined, undefined, lotGround); }
     }
   }
 }
@@ -3441,7 +3453,7 @@ async function plantNature() {
     const grown = await growTrees(THREE, renderer); for (const [k, sp] of grown) NATURE.lib.species.set(k, sp);
   } catch (e) { console.warn('[nature] grown trees', e); }
   try { // scanned shrubs, wild bushes, ice plant, stones and pebbles, dead branches (src/nature/phplants.js, Poly Haven CC0)
-    const NEAR = { shrub: 24, bush: 24, iceplant: 20, pebbles: 14, stone: 20, branches: 14 };
+    const NEAR = { shrub: 24, bush: 24, iceplant: 40, pebbles: 14, stone: 20, branches: 14 }; // ice plant out to 40 m: the banks round the lots read as planted from the street
     const ph = await loadPHPlants(THREE, gltfLoader, renderer); for (const [k, sp] of ph) { sp.near = NEAR[k] ?? 20; NATURE.lib.species.set(k, sp); }
   } catch (e) { console.warn('[nature] scanned plants', e); }
   let rockList = [];
@@ -3532,11 +3544,25 @@ async function plantNature() {
     try {
       NATURE.cover = await buildCoverMap(THREE, { bounds: D.bounds, drawAerial: drawPhoto, roads: D.roads, buildings: D.buildings, houses: D.houses, pools: D.pools || [], areas: D.areas, exclude: [...(window.GTP_NATURE_EXCLUDE || []), ...PLANT_CLEAR] });
       for (const [d, t] of byDistance()) { if (d > NEAR) break; await plantB(t); await show(); }
-      // ice plant on the freeway banks
+      // ice plant on the freeway banks and round the parking lots
       if (NATURE.lib.species.has('iceplant')) { const rr2 = mulberry(808); let ni = 0;
         for (const r of D.roads) { if (r[1] !== 0) continue; const p = r[3]; for (let k = 0; k + 3 < p.length; k += 2) { const ax = p[k], az = p[k + 1], L = Math.hypot(p[k + 2] - ax, p[k + 3] - az); if (L < 1) continue; const tx = (p[k + 2] - ax) / L, tz = (p[k + 3] - az) / L;
           for (let s2 = 0; s2 < L; s2 += 2.6) for (const sg of [-1, 1]) { const o = sg * (r[2] / 2 + 4.5 + rr2() * 10), x = ax + tx * s2 - tz * o, z = az + tz * s2 + tx * o; if (offLimits(x, z, 1) || rr2() < 0.25) continue;
             const lib = NATURE.lib.species.get('iceplant'), IV = lib.variants[0], s3 = (1.6 + rr2() * 1.4) / Math.max(0.2, IV.width); if (V.add('iceplant', x, groundAt(x, z) - 0.05, z, rr2() * TAU, s3, 0, [0.9 + rr2() * 0.15, 0.95, 0.85])) ni++; } } }
+        // and on the banks round the parking lots: the strip between a lot (paved with 4 m round it, lotAsphalt) and its street
+        const bp = { x: 0, z: 0 };
+        for (const ar of D.areas) { if (ar[0] !== 2) continue; const q = ar[1], m = q.length / 2; let a2 = 0; for (let i = 0, j = m - 1; i < m; j = i++) a2 += q[j * 2] * q[i * 2 + 1] - q[i * 2] * q[j * 2 + 1]; if (Math.abs(a2) < 2400) continue; const sg = a2 > 0 ? 1 : -1;
+          for (let i = 0; i < m; i++) { const j = (i + 1) % m, ax = q[i * 2], az = q[i * 2 + 1], L = Math.hypot(q[j * 2] - ax, q[j * 2 + 1] - az); if (L < 1) continue; const tx = (q[j * 2] - ax) / L, tz = (q[j * 2 + 1] - az) / L;
+            for (let s2 = 0; s2 < L; s2 += 2.6) for (const o of [4.6 + rr2() * 3, 8 + rr2() * 6]) { const x = ax + tx * s2 + sg * tz * o, z = az + tz * s2 - sg * tx * o; bp.x = x; bp.z = z;
+              if (offLimits(x, z, 1) || inParkingLot(x, z) || (PADS && PADS.at(x, z) !== null) || collideCircle(bp, 0.8, false)) continue;
+              const lib = NATURE.lib.species.get('iceplant'), IV = lib.variants[0], s3 = (1.6 + rr2() * 1.4) / Math.max(0.2, IV.width); if (V.add('iceplant', x, groundAt(x, z) - 0.05, z, rr2() * TAU, s3, 0, [0.9 + rr2() * 0.15, 0.95, 0.85])) ni++; } } }
+        // and the banks along a shopping centre building's other walls (not its storefronts, src/world/shops.js)
+        for (const B of new Set(SHOP_PLAN ? SHOP_PLAN.bays.map(b => b.B) : [])) { const f = B.flat, m = f.length / 2;
+          for (let i = 0; i < m; i++) { if (B.shopWalls && B.shopWalls.has(i)) continue; const j = (i + 1) % m, ax = f[i * 2], az = f[i * 2 + 1], L = Math.hypot(f[j * 2] - ax, f[j * 2 + 1] - az); if (L < 5) continue;
+            const tx = (f[j * 2] - ax) / L, tz = (f[j * 2 + 1] - az) / L; let nx = tz, nz = -tx; if (pip(ax + tx * L / 2 + nx * 0.5, az + tz * L / 2 + nz * 0.5, f)) { nx = -nx; nz = -nz; }
+            for (let s2 = 1; s2 < L - 1; s2 += 2.6) for (const o of [2.5 + rr2() * 3, 6 + rr2() * 6]) { const x = ax + tx * s2 + nx * o, z = az + tz * s2 + nz * o; bp.x = x; bp.z = z;
+              if (offLimits(x, z, 1) || inParkingLot(x, z) || (PADS && PADS.at(x, z) !== null) || collideCircle(bp, 0.8, false)) continue;
+              const lib = NATURE.lib.species.get('iceplant'), IV = lib.variants[0], s3 = (1.6 + rr2() * 1.4) / Math.max(0.2, IV.width); if (V.add('iceplant', x, groundAt(x, z) - 0.05, z, rr2() * TAU, s3, 0, [0.9 + rr2() * 0.15, 0.95, 0.85])) ni++; } } }
         NATURE.iceplant = ni; await show(); }
     } catch (e) { console.error('[nature] cover map', e); }
   }
@@ -3833,7 +3859,7 @@ function* paveRoadSteps(t, w, p, rd) {
   if (SURF && !curb && t >= 1 && t <= 5 && w >= 5) for (const sg of [1, -1]) for (const q of sideP(sg)) ribbon(ch.path, q, sw + 0.4, sg * (w / 2 + sw / 2 + 0.1), 0.035, [0.9, 0.84, 0.76], sw + 0.4);
   // the asphalt in two halves: the crown along the middle sheds rain to the gutters (src/world/roadsurface.js CROWN)
   const rc = t === 6 ? [0.7, 0.7, 0.7] : [1, 1, 1];
-  let aisle = false; if (t === 6 && Lp < 70) for (let k = 0; k < n * 2 - 1 && !aisle; k++) { const a = k >> 1, b = Math.min(n - 1, a + (k & 1)); aisle = inParkingLot((p[a * 2] + p[b * 2]) / 2, (p[a * 2 + 1] + p[b * 2 + 1]) / 2); } // a drive aisle in a mapped lot, not a driveway
+  let aisle = false; if (t === 6 && Lp < 70) for (let k = 0; k < n * 2 - 1 && !aisle; k++) { const a = k >> 1, b = Math.min(n - 1, a + (k & 1)), x = (p[a * 2] + p[b * 2]) / 2, z = (p[a * 2 + 1] + p[b * 2 + 1]) / 2; aisle = inParkingLot(x, z) || inParkingLot(x + 5, z) || inParkingLot(x - 5, z) || inParkingLot(x, z + 5) || inParkingLot(x, z - 5); } // a drive aisle in a mapped lot, or the drive in to one from the street: asphalt, not a house's concrete driveway
   if (t === 6 && Lp < 70 && !aisle) { // a house's driveway: concrete, laid under the street's walk and gutter so they run across its mouth
     yield; ribbon(ch.side, pA, w, 0, 0.05, [0.8, 0.79, 0.76], 3);
   } else { yield; const lift = t === 6 ? 0.05 : ROAD_TOP; // (service drives and lots under the street they join)
@@ -4010,7 +4036,7 @@ async function buildWorld() {
   progress('Filling in ' + D.houses.length.toLocaleString() + ' houses from the photo…'); await tick();
   count = 0;
   for (const hs of D.houses) { if (PHS.phsSkip(hs[0], hs[1])) continue; addHouse(hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6]); if (++count % 3000 === 0) { progress(`Building houses… ${count.toLocaleString()}`); await tick(); } } // PHS
-  { const t0 = performance.now(); SHOP_PLAN = planShops({ BLD, POIS, heightAt, isRetail: B => B.plan.type === 'shop' || B.plan.type === 'strip' || B.plan.type === 'bigbox', other: (x, z, B) => ROAD_FIT.inside(x, z) && !pip(x, z, B.flat) });
+  { const t0 = performance.now(); SHOP_PLAN = planShops({ BLD, POIS, heightAt, open: (x, z) => inParkingLot(x, z) || offLimits(x, z, 0), isRetail: B => B.plan.type === 'shop' || B.plan.type === 'strip' || B.plan.type === 'bigbox', other: (x, z, B) => ROAD_FIT.inside(x, z) && !pip(x, z, B.flat) });
     console.info('[shops]', SHOP_PLAN.bays.length, 'storefronts in', SHOP_PLAN.centres.length, 'centres,', SHOP_PLAN.bays.filter(b => !b.fill).length, 'of them mapped stores,', Math.round(performance.now() - t0), 'ms'); }
   { const t0 = performance.now(); finishPads(); console.info('[pads]', PADS ? PADS.n : 0, 'terraces on graded lots: planned in', Math.round(PAD_MS), 'ms, added to the terrain in', Math.round(performance.now() - t0), 'ms'); POOL_GRID = null; }
   progress('Digging ' + (D.pools || []).length.toLocaleString() + ' pools…'); await tick();
@@ -7204,7 +7230,7 @@ function garageAt(cx, cz, rot, title, name) {
   const pegs = new THREE.Mesh(new THREE.PlaneGeometry(8, 2.6), AUTOSHOP.peg); pegs.position.set(0, 2.3, SHOP_D - 0.2); pegs.rotation.y = Math.PI; g.add(pegs); box(7, 0.9, 0.8, 0, 0.45, SHOP_D - 0.7, AUTOSHOP.dark); // tool wall and bench
   for (let k = 0; k < 4; k++) for (let r = 0; r < 2; r++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.13, 10, 22), AUTOSHOP.tyre); t.position.set(-SHOP_W + 0.55, 0.6 + r * 0.9, SHOP_D - 2.5 - k * 0.35); t.rotation.y = Math.PI / 2; t.castShadow = true; g.add(t); } // tyre rack
   for (const z of [3.5, 7.5]) box(0.2, 3.6, 0.2, SHOP_W - 1.1, 1.8, z, AUTOSHOP.steel); box(0.18, 0.15, 4.2, SHOP_W - 1.1, 3.5, 5.5, AUTOSHOP.steel); // a two-post lift
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 1.05), new THREE.MeshBasicMaterial({ map: canvasTex(1024, 150, c => { c.fillStyle = '#121418'; c.fillRect(0, 0, 1024, 150); c.fillStyle = '#f0b23a'; c.font = `bold ${name.length > 20 ? 60 : 78}px Arial`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(name.toUpperCase(), 512, 70); c.fillStyle = '#9aa0a8'; c.font = '24px Arial'; c.fillText('PERFORMANCE · PAINT · BODY · LIGHTS', 512, 128); }), toneMapped: false, color: new THREE.Color(1.6, 1.6, 1.6) }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 1.05), new THREE.MeshBasicMaterial({ map: canvasTex(1024, 150, c => { c.fillStyle = '#121418'; c.fillRect(0, 0, 1024, 150); c.fillStyle = '#f0b23a'; c.font = `400 ${name.length > 20 ? 60 : 78}px "Anton", "Barlow Condensed", sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(name.toUpperCase(), 512, 70); c.fillStyle = '#9aa0a8'; c.font = '600 26px "Barlow Condensed", sans-serif'; c.fillText('PERFORMANCE · PAINT · BODY · LIGHTS', 512, 128); }), toneMapped: false, color: new THREE.Color(1.6, 1.6, 1.6) }));
   sign.position.set(0, SHOP_H - 0.65, -0.19); sign.rotation.y = Math.PI; g.add(sign);
   scene.add(g);
   // walls block you; the open front faces the road

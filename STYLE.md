@@ -121,6 +121,10 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   umbrellas, bistro tables and a bike rack, a menu A-frame, a barber pole, an ATM, an ice chest, carts, produce bins,
   window neon. The rest of a centre's fronts take made-up local tenants and the odd vacancy, never a real business's
   name. No hand-built shop box stands over the map's own buildings. A strip centre's walk ends in a red fire-lane curb.
+  A storefront opens only where the ground before it is level with its walk (never onto a bank of earth): a store the
+  map puts by a banked wall moves to the building's level side. Signs are set in real typefaces by trade (scripts for
+  salons and nail bars, serifs for banks and offices, rounded and slab faces for food, heavy sans for stores and gyms;
+  `FACES` in src/world/shops.js), never the browser's plain Arial.
 - **Shop interiors** (`src/world/interiors.js`): walk up to a storefront and its room is built behind the glass, the glass
   turns clear, and you walk in through the door. A ceiling of tiles and light panels, a stockroom wall at the back with
   its door and EXIT light, racks of boxes behind it. The trade furnishes the room to its full depth: a pizza or burger
@@ -131,7 +135,8 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   checkouts; a liquor store's coolers, wine aisles and the till with the lottery sign; a gym's treadmills, benches and
   cable machines; a yoga or dance studio's mats, mirror wall and barre; a martial-arts school's puzzle mats, heavy bags
   and belt rack; an office's reception, waiting chairs and desks. Trees in front don't grow through the walls while
-  you're inside.
+  you're inside. The floor is level with the walk (a step up at the door at most); where the building is cut into a
+  slope the room ends at the hill, and a room too shallow to walk into keeps its painted view.
 - **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it,
   the nearest counting most), wherever the street is; never a wall another building stands against; with no lot mapped,
   the long wall facing the most open ground. A supercenter: stucco, tilt-up or concrete panels over a split-face block
@@ -192,8 +197,9 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   neighbour's house.
 - Main roads with houses backing onto them get tan split-face block walls with pilasters; country roads get white
   ranch fences; estates get stone pillars and open iron gates.
-- **Parking lots** (`src/world/parking.js`): paved in asphalt cut along the ground mesh's own triangles, so no grass or
-  photo shows through; stalls painted; each double row of stalls ends in a curbed bark island with a tree and a light;
+- **Parking lots** (`src/world/parking.js`): paved in asphalt cut along the ground mesh's own triangles and laid on it,
+  with 4 m round each lot, so no grass, photo or strip of ground shows through or between lots; the banks beyond are
+  planted in ice plant; stalls painted; each double row of stalls ends in a curbed bark island with a tree and a light;
   lights down long rows; a concrete apron straight off the curb where a lot meets its street. The drive aisles the map
   draws through a lot are asphalt like the lot, never a house driveway's concrete.
 - Trails are decomposed granite (`SURF.path`): compacted down the middle, loose at ragged edges, stones along them.

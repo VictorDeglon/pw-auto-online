@@ -79,10 +79,16 @@ function place(w, t, width) { // slide a storefront along its wall until it does
 }
 
 // ---- the plan: which store goes on which wall where, and which walls the shader leaves plain
-export function planShops({ BLD, POIS, isRetail, other, heightAt }) {
+export function planShops({ BLD, POIS, isRetail, other, heightAt, open = () => true }) { // open(x, z): a parking lot or a street there
   const blds = BLD.filter(B => B.plan && isRetail(B)), W = new Map(blds.map(B => [B, wallsOf(B)]));
   const front = (B, w) => { // a wall a shop can open onto: no other building right in front of it
     let shut = 0; for (const t of [0.25, 0.5, 0.75]) if (other(w.ax + w.ux * w.L * t + w.nx * 2.5, w.az + w.uz * w.L * t + w.nz * 2.5, B)) shut++; return shut < 2; };
+  const level = (w, c, width) => { // the ground in front of a storefront: level with its walk for 7 m, not a bank rising over the glass (or falling away under the walk)
+    for (const f of [-0.4, 0, 0.4]) { const u = c + f * width, y0 = heightAt(w.ax + w.ux * u + w.nx * 1.2, w.az + w.uz * u + w.nz * 1.2);
+      for (const d of [2.5, 4.5, 7]) { const dy = heightAt(w.ax + w.ux * u + w.nx * d, w.az + w.uz * u + w.nz * d) - y0; if (dy > 0.35 || dy < -1.0) return false; } }
+    return true; };
+  const faces = w => { if (w.faces === undefined) { w.faces = 0; for (const t of [0.25, 0.5, 0.75]) for (const d of [6, 12, 20]) if (open(w.ax + w.ux * w.L * t + w.nx * d, w.az + w.uz * w.L * t + w.nz * d)) w.faces++; } return w.faces; }; // how much lot or street the wall looks onto
+  const placeLevel = (w, t, width) => { const c = place(w, t, width); if (c === null || level(w, c, width)) return c; w.used.pop(); return null; };
   const bays = [], pois = POIS.filter(p => SHOP_TYPES.has(p.type));
   // centres: the stores in them, linked within 150 m; a building belongs to the centre of the stores in or by it
   const grid = new Map(), key = (x, z) => Math.floor(x / 200) * 100000 + Math.floor(z / 200);
@@ -99,21 +105,24 @@ export function planShops({ BLD, POIS, isRetail, other, heightAt }) {
     if (B.plan.type !== 'shop' && B.plan.type !== 'strip') continue; const T = tenants.get(B) || []; if (!T.length && (busy.get(B) || 0) < 2) continue;
     const Wb = W.get(B).filter(w => front(B, w)); if (!Wb.length) continue;
     const used = new Set();
-    for (const { p, cat } of T) { // on the wall nearest where the map puts it
-      let bw = null, bd = 1e9, bt = 0; for (const w of Wb) { const t = Math.max(0, Math.min(w.L, (p.x - w.ax) * w.ux + (p.z - w.az) * w.uz)), d = Math.hypot(p.x - w.ax - w.ux * t, p.z - w.az - w.uz * t); if (d < bd) { bd = d; bw = w; bt = t; } }
-      const width = Math.min(CAT[cat].w, bw.L - 0.6), c = place(bw, bt, width); if (c === null) continue;
+    for (const { p, cat } of T) { // on the wall nearest where the map puts it, where the ground in front is level
+      const ws = Wb.map(w => { const t = Math.max(0, Math.min(w.L, (p.x - w.ax) * w.ux + (p.z - w.az) * w.uz)); return [Math.hypot(p.x - w.ax - w.ux * t, p.z - w.az - w.uz * t) + (faces(w) ? 0 : 30), w, t]; }).sort((a, b) => a[0] - b[0]); // a wall that looks onto a lot or a street before one onto open ground
+      let bw = null, c = null, width = 0; for (const [, w, t] of ws) { width = Math.min(CAT[cat].w, w.L - 0.6); if (width < 3) continue; c = placeLevel(w, t, width); if (c !== null) { bw = w; break; } }
+      if (c === null) continue;
       bays.push({ B, w: bw, c, width, name: parodyName(p.name), real: p.name, cat, type: p.type }); used.add(bw);
     }
     // the rest of a centre building's shop fronts: made-up neighbours, now and then a vacancy
-    const fronts = used.size ? [...used] : [Wb.slice().sort((a, b) => b.L - a.L)[0]];
+    const byLen = Wb.slice().sort((a, b) => (faces(b) > 0) - (faces(a) > 0) || b.L - a.L); // the longest wall onto a lot or a street, with level ground before it
+    const fronts = used.size ? [...used] : [byLen.find(w => level(w, w.L / 2, Math.min(10, w.L - 1))) || byLen[0]];
     for (const w of fronts) {
       let t = 0.3; const r = hash(B.i + ':' + w.i);
       for (let k = 0; t < w.L - 5.5 && k < 40; k++) {
         const gap = w.used.filter(([a]) => a > t - 0.01).sort((a, b) => a[0] - b[0])[0], end = gap ? gap[0] : w.L - 0.3;
         if (end - t < 5.6) { t = gap ? gap[1] : w.L; continue; }
         const f = FILL[(r + k * 7) % FILL.length], vac = ((r >>> (k % 16)) & 7) === 0, width = Math.min(end - t - 0.3, vac ? 7 : CAT[f[0]].w);
-        const c = place(w, t + width / 2 + 0.3, width); if (c === null) break;
-        bays.push({ B, w, c, width, name: vac ? 'For Lease' : f[1], cat: vac ? 'vacant' : f[0], type: 'shop', fill: true }); t = c + width / 2 + 0.3;
+        const c0 = place(w, t + width / 2 + 0.3, width); if (c0 === null) break;
+        if (!level(w, c0, width)) { w.used.pop(); t = c0 + width / 2 + 0.3; continue; } // no shop on a stretch of wall banked up with earth: plain wall there
+        const c = c0; bays.push({ B, w, c, width, name: vac ? 'For Lease' : f[1], cat: vac ? 'vacant' : f[0], type: 'shop', fill: true }); t = c + width / 2 + 0.3;
       }
     }
     if (bays.some(b => b.B === B)) B.shopWalls = new Set(bays.filter(b => b.B === B).map(b => b.w.i));
@@ -172,13 +181,31 @@ function paintRooms(cv) {
     if (k === 'cleaners') { g.strokeStyle = '#777'; g.lineWidth = 3; g.beginPath(); g.moveTo(x0, y0 + S * 0.3); g.lineTo(x0 + S, y0 + S * 0.3); g.stroke(); for (let q = 0; q < 22; q++) { g.fillStyle = `hsl(${(q * 53) % 360},30%,${50 + (q % 3) * 12}%)`; g.fillRect(x0 + S * 0.02 + q * S * 0.044, y0 + S * 0.31, S * 0.035, S * 0.28); } counter(y0 + S * 0.62, '#6a6a6a'); }
     if (k === 'gym') { for (let j = 0; j < 4; j++) { g.fillStyle = '#111'; g.fillRect(x0 + S * (0.08 + j * 0.23), y0 + S * 0.5, S * 0.16, S * 0.12); g.fillStyle = '#c8102e'; g.fillRect(x0 + S * (0.08 + j * 0.23), y0 + S * 0.48, S * 0.16, S * 0.02); } g.fillStyle = '#8fa3b5'; g.fillRect(x0 + S * 0.05, y0 + S * 0.15, S * 0.9, S * 0.25); }
     if (k === 'office') { counter(y0 + S * 0.55, '#c9c2b4'); for (let j = 0; j < 2; j++) chair(x0 + S * (0.15 + j * 0.6), y0 + S * 0.72, '#2a3a4a'); g.fillStyle = '#7a8a6a'; g.fillRect(x0 + S * 0.4, y0 + S * 0.2, S * 0.2, S * 0.18); }
-    if (k === 'vacant') { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y0 + S * 0.62, S, S * 0.38); g.fillStyle = '#fff'; g.font = `700 ${S * 0.08}px Arial`; g.textAlign = 'center'; g.fillText('FOR LEASE', x0 + S / 2, y0 + S * 0.4); g.font = `400 ${S * 0.045}px Arial`; g.fillText('RETAIL · CALL TODAY', x0 + S / 2, y0 + S * 0.47); }
+    if (k === 'vacant') { g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y0 + S * 0.62, S, S * 0.38); g.fillStyle = '#fff'; g.font = `600 ${S * 0.08}px "Oswald", "Barlow Condensed", sans-serif`; g.textAlign = 'center'; g.fillText('FOR LEASE', x0 + S / 2, y0 + S * 0.4); g.font = `400 ${S * 0.045}px Arial`; g.fillText('RETAIL · CALL TODAY', x0 + S / 2, y0 + S * 0.47); }
     g.fillStyle = 'rgba(10,20,30,.18)'; g.fillRect(x0, y0, S, S); // the glass's own tint
     g.restore();
   });
 }
 const roomUV = k => { const i = Math.max(0, ROOMS.indexOf(k)); return [(i % 4) / 4, 1 - (Math.floor(i / 4) + 1) / 4, (i % 4 + 1) / 4, 1 - Math.floor(i / 4) / 4]; };
 
+// a sign's typeface by its trade, from the web fonts index.html loads ({s}: the size); a script face keeps the name's own
+// capitals, the rest are set in capitals. Never the browser's plain Arial.
+const FACES = {
+  script: ['400 {s}px "Pacifico"', '400 {s}px "Lobster"', '400 {s}px "Yellowtail"', 'italic 800 {s}px "Playfair Display"', '700 {s}px "Cormorant Garamond"'],
+  barber: ['400 {s}px "Rye"', '400 {s}px "Anton"', '400 {s}px "Archivo Black"', '400 {s}px "Lobster"'],
+  formal: ['800 {s}px "Playfair Display"', '700 {s}px "Cormorant Garamond"', '800 {s}px "Montserrat"', '700 {s}px "Josefin Sans"'],
+  food: ['400 {s}px "Lilita One"', '400 {s}px "Lobster"', '700 {s}px "Arvo"', 'italic 800 {s}px "Kanit"', '400 {s}px "Anton"', '400 {s}px "Rye"'],
+  treat: ['400 {s}px "Pacifico"', '400 {s}px "Yellowtail"', '400 {s}px "Lilita One"', 'italic 700 {s}px "Lora"', '700 {s}px "Josefin Sans"'],
+  dine: ['700 {s}px "Cormorant Garamond"', 'italic 700 {s}px "Lora"', '800 {s}px "Playfair Display"', '400 {s}px "Lobster"'],
+  store: ['400 {s}px "Archivo Black"', '600 {s}px "Oswald"', '800 {s}px "Montserrat"', '700 {s}px "Poppins"', '400 {s}px "Anton"'],
+  sport: ['italic 800 {s}px "Kanit"', '400 {s}px "Archivo Black"', '400 {s}px "Anton"', '600 {s}px "Oswald"'],
+  pets: ['400 {s}px "Lilita One"', '900 {s}px "Nunito Sans"', '400 {s}px "Pacifico"'],
+  plain: ['700 {s}px "Poppins"', '900 {s}px "Nunito Sans"', '700 {s}px "Josefin Sans"', '800 {s}px "Montserrat"', '600 {s}px "Oswald"', '700 {s}px "Barlow Condensed"'],
+};
+const FACE_OF = { nails: 'script', salon: 'script', spa: 'script', barber: 'barber', bank: 'formal', office: 'formal', pizza: 'food', burger: 'food', wings: 'food', mexican: 'food', sandwich: 'food',
+  sweets: 'treat', cafe: 'treat', asian: 'dine', indian: 'dine', market: 'store', liquor: 'store', pharmacy: 'store', fitness: 'sport', pets: 'pets' };
+const SCRIPT_FACE = /Pacifico|Lobster|Yellowtail|italic.*(Playfair|Lora)/;
+function signFace(cat, h) { const L = FACES[FACE_OF[cat] || 'plain']; return L[(h >>> 21) % L.length]; }
 export function buildShops(o) {
   const { THREE, scene, PLAN, heightAt } = o;
   let roomTex = null; const roomTexture = () => { if (roomTex) return roomTex; const cv = document.createElement('canvas'); cv.width = cv.height = 1024; paintRooms(cv); roomTex = new THREE.CanvasTexture(cv); roomTex.colorSpace = THREE.SRGBColorSpace; roomTex.anisotropy = 4; return roomTex; };
@@ -197,10 +224,11 @@ export function buildShops(o) {
     const items = C.bays.length + (C.cinema ? 3 : 0), rows = Math.ceil((items * 2 + 4) / 4), AH = Math.min(2048, Math.max(256, 1 << Math.ceil(Math.log2(rows * 64))));
     const cv = document.createElement('canvas'); cv.width = 1024; cv.height = AH; const g = cv.getContext('2d'); let slot = 0; const SW = 256, SH = 64, cap = (AH / SH) * 4;
     const draws = []; // the atlas is drawn again once the web fonts are in
-    const sign = (text, bg, fg, style, sub) => { if (slot >= cap) return null; const sx = (slot % 4) * SW, sy = Math.floor(slot / 4) * SH; slot++;
+    const faces = new Set(); // the typefaces this centre's signs use: drawn again once they're loaded
+    const sign = (text, bg, fg, style, sub, face = '700 {s}px "Barlow Condensed"') => { if (slot >= cap) return null; const sx = (slot % 4) * SW, sy = Math.floor(slot / 4) * SH; slot++; faces.add(face.replace('{s}', 40));
       const d = () => { g.clearRect(sx, sy, SW, SH);
         if (style === 'cabinet') { g.fillStyle = bg; g.fillRect(sx, sy, SW, SH); g.fillStyle = 'rgba(255,255,255,.14)'; g.fillRect(sx, sy, SW, 5); }
-        let fs = sub ? 34 : 42; const font = s => `800 ${s}px "Barlow Condensed", "Arial Narrow", Arial`; g.font = font(fs); while (g.measureText(text).width > SW - 18 && fs > 14) { fs -= 2; g.font = font(fs); }
+        let fs = sub || SCRIPT_FACE.test(face) ? 34 : 42; const font = s => face.replace('{s}', s) + ', "Barlow Condensed", sans-serif'; g.font = font(fs); while (g.measureText(text).width > SW - 18 && fs > 14) { fs -= 2; g.font = font(fs); }
         g.textAlign = 'center'; g.textBaseline = 'middle';
         if (style !== 'cabinet') { g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.35)'; g.strokeText(text, sx + SW / 2, sy + (sub ? SH * 0.4 : SH / 2) + 1); }
         g.fillStyle = style === 'cabinet' ? fg : bg; g.fillText(text, sx + SW / 2, sy + (sub ? SH * 0.4 : SH / 2) + 1);
@@ -256,7 +284,8 @@ export function buildShops(o) {
       // the sign: channel letters on the fascia, or a lit cabinet; a brand's own mark where the chain has one
       const pal = cat ? cat.pal : ['#3a3f47'], bg = pal[h % pal.length], style = !cat || (h >>> 5) % 5 < 2 ? 'cabinet' : 'letters';
       const bc = b.cat !== 'vacant' && o.brandCanvas ? o.brandCanvas(b.real || b.name) : null;
-      const uv = bc ? brand(bc) : sign(b.cat === 'vacant' ? 'FOR LEASE' : b.name.toUpperCase(), bg, '#ffffff', style, b.cat === 'vacant' ? 'RETAIL · 2,400 SQ FT' : '');
+      const face = b.cat === 'vacant' ? '600 {s}px "Oswald"' : signFace(b.cat, h);
+      const uv = bc ? brand(bc) : sign(b.cat === 'vacant' ? 'FOR LEASE' : SCRIPT_FACE.test(face) ? b.name : b.name.toUpperCase(), bg, '#ffffff', style, b.cat === 'vacant' ? 'RETAIL · 2,400 SQ FT' : '', face);
       if (uv && signH > 0.45) { const sw = Math.min(width * 0.86, signH * 4 * 0.98); if (style === 'cabinet' || bc) box(B.frame, w, c, 0.1, signY0 + signH / 2, sw + 0.14, signH + 0.12, 0.16, DARK); panel(B.sign, w, c, style === 'cabinet' || bc ? 0.19 : 0.06, signY0 + signH / 2, sw, signH, uv);
         if (style === 'cabinet' && !bc) for (const k of [-1, 0, 1]) { box(B.frame, w, c + k * sw * 0.33, 0.35, signY0 + signH + 0.22, 0.05, 0.05, 0.5, DARK); box(B.frame, w, c + k * sw * 0.33, 0.6, signY0 + signH + 0.12, 0.22, 0.08, 0.14, DARK); } } // gooseneck lamps
       // over the glass: an awning in the sign's colour, or a lit soffit
@@ -300,12 +329,14 @@ export function buildShops(o) {
       box(B.frame, w, mid, 0.12, base + 4.55, 16.4, 0.2, 0.16, ALU); box(B.awning, w, mid, 2.2, base + 5.1, 20, 0.5, 4.4, [0.08, 0.08, 0.09]);
       for (const k of [-9, 9]) box(B.frame, w, mid + k, 4.1, base + 2.4, 0.3, 4.8, 0.3, DARK);
       under(B.light, w, mid, 0.6, 4, base + 4.84, 18, [1, 0.95, 0.85]);
-      const big = sign('AMC', '#c8102e', '#ffffff', 'cabinet'), sub = sign('CARMEL MOUNTAIN 12', '#111418', '#ffffff', 'cabinet', 'TICKETS · IMAX · DOLBY');
+      const big = sign('AMC', '#c8102e', '#ffffff', 'cabinet', null, '400 {s}px "Anton"'), sub = sign('CARMEL MOUNTAIN 12', '#111418', '#ffffff', 'cabinet', 'TICKETS · IMAX · DOLBY', '600 {s}px "Oswald"');
       if (big) panel(B.sign, w, mid, 0.18, base + Math.min(H - 1.2, 8.4), 8, 2, big); if (sub) panel(B.sign, w, mid, 0.18, base + 6.15, 6, 1.5, sub);
       close(Bd, m); const s = { name: 'AMC Carmel Mountain 12', type: 'cinema', cat: 'cinema', x: w.ax + w.ux * mid + w.nx * 3, z: w.az + w.uz * mid + w.nz * 3, B: Bd }; stores.push(s); C.stores = (C.stores || []).concat(s);
     }
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { for (const d of draws) d(); tex.needsUpdate = true; });
+    const redraw = () => { for (const d of draws) d(); tex.needsUpdate = true; };
+    if (document.fonts && document.fonts.load) Promise.all([...faces].map(f => document.fonts.load(f).catch(() => null))).then(redraw); // fetched now if no page text has used them yet
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
     setTimeout(() => { for (const d of draws) d(); tex.needsUpdate = true; }, 4000); // (the parody marks redraw once their fonts are in)
     const signMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.12, transparent: true, alphaTest: 0.35 });
     const neonMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });

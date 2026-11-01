@@ -21,9 +21,14 @@ export function createInteriors(o) {
 
   function build(store) {
     const b = store.bay, w = b.w, r = rng(b.h || 7);
-    const W = b.width - 0.12, D = Math.max(6, Math.min(b.depth - 0.4, 28)), u0 = b.c - W / 2;
-    // the floor: level, never under the ground inside (a step at the door where the lot slopes)
-    let fy = b.base; for (const fu of [0.1, 0.5, 0.9]) for (const fv of [0.15, 0.5, 0.9]) fy = Math.max(fy, heightAt(w.ax + w.ux * (u0 + W * fu) - w.nx * (GLASS_BACK + D * fv), w.az + w.uz * (u0 + W * fu) - w.nz * (GLASS_BACK + D * fv)) + 0.03);
+    const W = b.width - 0.12, u0 = b.c - W / 2;
+    // the floor: level with the walk at the door. Where the building is cut into a slope the room ends at the hill (its
+    // back wall a retaining wall), never a floor raised to the ground behind it.
+    let D = Math.max(6, Math.min(b.depth - 0.4, 28)); const ground = v => Math.max(...[0.05, 0.5, 0.95].map(fu => heightAt(w.ax + w.ux * (u0 + W * fu) - w.nx * (GLASS_BACK + v), w.az + w.uz * (u0 + W * fu) - w.nz * (GLASS_BACK + v))));
+    let gmax = -1e9; for (let v = 0.5; v < D; v += 0.5) gmax = Math.max(gmax, ground(v));
+    const fy = Math.min(b.base + 0.35, Math.max(b.base, gmax + 0.03)); // over the ground inside, up a step at the door at most
+    for (let v = 1; v < D; v += 0.5) if (ground(v) > fy - 0.02) { D = v - 0.3; break; }
+    if (D < 4) return null; // too shallow to walk into: the painted room stays
     const H = Math.max(3.0, Math.min(4.2, b.top - fy - 0.5)), back = D * (b.cat === 'market' || b.cat === 'pharmacy' ? 0.86 : 0.74); // the stockroom behind
     // room space: x along the storefront from its left end, z inward from the glass, y up from the floor
     const P = (x, z, y) => [w.ax + w.ux * (u0 + x) - w.nx * (GLASS_BACK + z), fy + y, w.az + w.uz * (u0 + x) - w.nz * (GLASS_BACK + z)];
@@ -85,7 +90,7 @@ export function createInteriors(o) {
   }
   const local = (R, x, z) => { const dx = x - R.w.ax, dz = z - R.w.az, u = dx * R.w.ux + dz * R.w.uz - R.u0, v = -(dx * R.w.nx + dz * R.w.nz) - GLASS_BACK; return [u, v]; };
   const inRoom = (R, x, z, m = 0) => { const [u, v] = local(R, x, z); return u > -m && u < R.W + m && v > -0.2 - m && v < R.D + m; };
-  let t = 0;
+  let t = 0; const shallow = new Set(); // stores whose building is cut into the hill too close behind the glass
   return {
     update(px, pz, onFoot) {
       for (const R of open) { const ins = inRoom(R, px, pz, 0.3); // while you're inside, the trees whose crowns reach through its walls step aside
@@ -93,9 +98,9 @@ export function createInteriors(o) {
       if ((t -= 1) > 0) return; t = 8;
       for (let i = open.length - 1; i >= 0; i--) { const R = open[i]; if (Math.hypot(px - R.store.x, pz - R.store.z) > 34 && !inRoom(R, px, pz, 1)) { close(R); open.splice(i, 1); } }
       if (!onFoot) return;
-      let best = null, bd = 16; for (const s of SHOPS.stores) { if (!s.bay || s.B.dead || !s.bay.C || !s.bay.C.built) continue; const d = Math.hypot(px - s.x, pz - s.z); if (d < bd && !open.some(R => R.store === s)) { bd = d; best = s; } }
+      let best = null, bd = 16; for (const s of SHOPS.stores) { if (!s.bay || s.B.dead || !s.bay.C || !s.bay.C.built || shallow.has(s)) continue; const d = Math.hypot(px - s.x, pz - s.z); if (d < bd && !open.some(R => R.store === s)) { bd = d; best = s; } }
       if (!best) return; if (open.length >= 2) { const far = open.slice().sort((a, b) => Math.hypot(px - b.store.x, pz - b.store.z) - Math.hypot(px - a.store.x, pz - a.store.z))[0]; if (inRoom(far, px, pz, 1)) return; close(far); open.splice(open.indexOf(far), 1); }
-      try { open.push(build(best)); } catch (e) { console.warn('[interiors]', best.name, e); }
+      try { const R = build(best); if (R) open.push(R); else shallow.add(best); } catch (e) { shallow.add(best); console.warn('[interiors]', best.name, e); }
     },
     floorAt(x, z) { for (const R of open) if (inRoom(R, x, z)) return R.fy; return null; },
     roomAt(x, z) { for (const R of open) if (inRoom(R, x, z)) return R; return null; },

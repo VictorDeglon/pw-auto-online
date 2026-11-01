@@ -20,10 +20,17 @@ update you ship**, and add an entry here at the same time:
   stations and pedicure thrones, a bank's tellers and glass offices, market aisles and coolers, liquor coolers and wine
   aisles, weight rooms, yoga and martial-arts studios, offices. A stockroom door at the back, ceiling lights, and the
   camera stays inside with you.
-- **Parking lots that hold together:** every lot is paved (no more grass and old photo stalls showing through), the
-  drive aisles through it are asphalt (they were drawn as wide concrete driveways), its rows end in curbed planted
-  islands with a tree and a light, lights stand down long rows, a concrete apron crosses the walk where it meets the
-  street, and a strip centre's walk ends in a red fire-lane curb.
+- **Parking lots that hold together:** every lot is paved to its edges and a little beyond (no more grass, old photo
+  stalls or strips of bare ground showing through or between lots), the drive aisles through it and the drives in
+  from the street are asphalt (they were drawn as wide concrete driveways), the banks round it are planted in ice
+  plant, its rows end in curbed planted islands with a tree and a light, lights stand down long rows, a concrete apron
+  crosses the walk where it meets the street, and a strip centre's walk ends in a red fire-lane curb.
+- **Storefronts face level ground:** shops no longer open onto banks of earth (110 of them did); a store moves to the
+  side of its building that faces the lot. Rooms keep their floor at the door's level instead of rising to the hill
+  behind the building (one was 2.4 m up).
+- **Signs in real typefaces:** each shop's sign is set by its trade (a script for a salon or nail bar, a serif for a
+  bank, a rounded or slab face for a taco shop or pizzeria, a heavy face for a market or gym), and the For Lease
+  boards, the car dealers' signs and the auto shop's sign are no longer plain Arial.
 
 ## 0.10.0: Outlaws (2026-10-31)
 
