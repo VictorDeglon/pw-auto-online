@@ -1,4 +1,4 @@
-{"v":1,"id":"09456813031b","packs":[{"n":"boot","f":"boot-1ed8b492961b.zip","s":72969395,"get":"boot"},{"n":"later","f":"later-b15110520fe9.zip","s":79202409,"get":"later"},{"n":"world","f":"world-10fc067ceb7c.zip","s":146418150,"get":"lazy"},{"n":"humans","f":"humans-62ff861a11fc.zip","s":31678431,"get":"lazy"},{"n":"sf","f":"sf-08e084a82d72.zip","s":303733484,"get":"lazy"},{"n":"misc","f":"misc-7b09b5754954.zip","s":59574495,"get":"lazy"}],
+{"v":1,"id":"586b6d4d803f","packs":[{"n":"boot","f":"boot-1ed8b492961b.zip","s":72969395,"get":"boot"},{"n":"later","f":"later-b15110520fe9.zip","s":79202409,"get":"later"},{"n":"world","f":"world-10fc067ceb7c.zip","s":146418150,"get":"lazy"},{"n":"humans","f":"humans-62ff861a11fc.zip","s":31678431,"get":"lazy"},{"n":"sf","f":"sf-08e084a82d72.zip","s":303733484,"get":"lazy"},{"n":"misc","f":"misc-497301a23510.zip","s":59741807,"get":"lazy"}],
 "files":{
 "assets/models.js":[0,46,750305,3628408,8,"f9cd5d280f13"],
 "poway-data.js":[0,750394,4345268,13096597,8,"a707bb90d1cb"],
@@ -5692,4 +5692,5 @@
 "assets/roofs.jpg":[5,56655883,2744236,2744236,0,"bbe63f050954"],
 "assets/tex/bark_brown_01_diff.jpg":[5,59400182,20630,20630,0,"5b5dedd08178"],
 "assets/tex/dry_ground_01_diff.jpg":[5,59420875,84130,84130,0,"2a9d4f5cb7c4"],
-"assets/tex/sparse_grass_diff.jpg":[5,59505067,60626,60626,0,"6e1b459fd302"]}}
+"assets/tex/sparse_grass_diff.jpg":[5,59505067,60626,60626,0,"6e1b459fd302"],
+"assets/ui/sunset-drive.webp":[5,59565750,167182,167182,0,"3a895ba1ca21"]}}
