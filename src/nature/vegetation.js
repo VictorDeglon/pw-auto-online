@@ -242,6 +242,21 @@ export class Vegetation {
     this.last.t = 1e9; // re-gather the near meshes next frame
     return out;
   }
+  // put back a plant hide() took out, at its scale s (a shop's room you stood in, its street tree's canopy through the wall)
+  unhide(species, i, s) {
+    const a = this.inst.get(species); if (!a) return; a.s[i] = s;
+    const m = this.meshes && this.meshes.get(species); if (m) { const at = m.geometry.attributes.iSV; at.array[i * 2] = s; at.addUpdateRange(i * 2, 1); at.needsUpdate = true; }
+    this.last.t = 1e9;
+  }
+  // the plants standing within r of (x, z) as [species, index, scale, crown width], from the cells flush() filed them in
+  around(x, z, r) {
+    const C = this.opts.cell, out = [];
+    for (let gx = Math.floor((x - r) / C); gx <= Math.floor((x + r) / C); gx++) for (let gz = Math.floor((z - r) / C); gz <= Math.floor((z + r) / C); gz++) {
+      const c = this.grid.get(gx * 100000 + gz); if (!c) continue;
+      for (let k = 0; k < c.length; k += 2) { const sp = this.order[c[k]], a = this.inst.get(sp), i = c[k + 1]; if (!a.s[i] || Math.hypot(a.x[i] - x, a.z[i] - z) > r) continue; const V = this.lib.species.get(sp).variants; out.push([sp, i, a.s[i], (V[a.v[i]] || V[0]).width * a.s[i], a.x[i], a.z[i]]); }
+    }
+    return out;
+  }
   // one plant as a standalone object at the origin (its own near mesh: same model, materials, size, turn and tint), so a
   // tree a car knocks over falls as the tree you saw. Call before hide(). null when the species has no near mesh.
   standalone(species, i) {

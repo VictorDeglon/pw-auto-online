@@ -3,7 +3,11 @@
 // off; later someone walks back, backs out and drives away into traffic.
 //   const PARK = createParking(hooks)   PARK.build(areas)   PARK.update(dt, focus)   PARK.stalls
 // hooks: { THREE, paint(x, z, tx, tz, len, wid), onRoad(x, z, m), blocked(x, z, r), nearestRoad(x, z), heightAt,
-//          spawnParked(x, z, rot, stall), traffic(near), makeDriverWalk(v, stall), toRail(v), vehicles(), cap, busy(x, z), hour() }
+//          spawnParked(x, z, rot, stall), traffic(near), makeDriverWalk(v, stall), toRail(v), vehicles(), cap, busy(x, z), hour(),
+//          surface(poly) (the lot's asphalt), island(x, z, ux, uz, len, wid) (a curbed planter), tree(x, z, rnd), pole(x, z),
+//          drive(x0, z0, x1, z1, wid) (the apron from the street into the lot) }
+// Each lot is paved; each double row of stalls ends in a curbed, planted island with a tree and a light at each end,
+// lights stand down the long rows, and a concrete apron crosses the walk where cars come in from the street.
 const SW = 2.7, SD = 5.4, AISLE = 7, MODULE = SD * 2 + AISLE;
 
 function pip(x, z, f) { let ins = false; const n = f.length / 2; for (let i = 0, j = n - 1; i < n; j = i++) { const xi = f[i * 2], zi = f[i * 2 + 1], xj = f[j * 2], zj = f[j * 2 + 1]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins; } return ins; }
@@ -20,8 +24,10 @@ export function createParking(H) {
     const vx = -uz, vz = ux; let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9;
     for (let i = 0; i < n; i++) { const u = poly[i * 2] * ux + poly[i * 2 + 1] * uz, v = poly[i * 2] * vx + poly[i * 2 + 1] * vz; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
     const lot = { li, poly, ux, uz, vx, vz, stalls: [], cx: 0, cz: 0, entry: null }; let cn = 0;
-    const P = (u, v) => [u * ux + v * vx, u * uz + v * vz];
+    const P = (u, v) => [u * ux + v * vx, u * uz + v * vz], R = rng(li * 7919 + 13), inLot = (u, v) => { const [x, z] = P(u, v); return pip(x, z, poly) && !H.onRoad(x, z, 0.5) && !H.blocked(x, z, 0.8); };
+    if (H.surface) H.surface(poly);
     for (let v = v0 + 0.5; v + SD <= v1; v += MODULE) {
+      let ra = 1e9, rb = -1e9; // the module's stalls along u, both rows: its ends get islands
       for (const side of [0, 1]) { // the two back-to-back rows of this module; cars nose toward the shared back line
         const vr = v + side * SD, aisleV = side ? vr + SD + AISLE / 2 : vr - AISLE / 2;
         for (let u = u0 + 1; u + SW <= u1 - 1; u += SW) {
@@ -32,7 +38,7 @@ export function createParking(H) {
           const face = side ? -1 : 1; // the direction (along v) the car faces when parked: nose in, toward the back line
           const [ax, az] = P(cu, side ? vr + SD + AISLE / 2 : vr - AISLE / 2);
           const st = { lot, x: cx, z: cz, rot: Math.atan2(vx * face, vz * face), ax, az, car: null, busyT: 0, i: stalls.length };
-          stalls.push(st); lot.stalls.push(st); cn++; lot.cx += cx; lot.cz += cz;
+          stalls.push(st); lot.stalls.push(st); cn++; lot.cx += cx; lot.cz += cz; ra = Math.min(ra, u); rb = Math.max(rb, u + SW);
           const k = gkey(cx, cz); (grid.get(k) || grid.set(k, []).get(k)).push(st);
           // the painted stall: a side line on each edge, plus the back line drawn once per row below
           const [lx, lz] = P(u, cv); H.paint(lx, lz, vx, vz, SD, 0.12);
@@ -40,10 +46,17 @@ export function createParking(H) {
         const [bx, bz] = P((u0 + u1) / 2, side ? vr + SD : vr); // the row's back line (where noses meet)
         if (lot.stalls.length) H.paint(bx, bz, ux, uz, u1 - u0 - 2, 0.12);
       }
+      if (rb > ra && H.island) { // its ends: a curbed island across both rows, a tree and a light in each; lights down a long row
+        const vm = v + SD, len = SD * 2 - 0.6;
+        for (const ue of [ra - 1.0, rb + 1.0]) if (inLot(ue, v + 0.5) && inLot(ue, v + SD * 2 - 0.5)) { const [ix, iz] = P(ue, vm); H.island(ix, iz, vx, vz, len, 1.7); if (H.tree) H.tree(...P(ue, vm - SD * 0.45), R); if (H.pole) H.pole(...P(ue, vm + SD * 0.55)); }
+        if (H.pole) for (let u = ra + 30; u < rb - 15; u += 32) { const [px, pz] = P(u, vm); H.pole(px, pz); }
+      }
     }
     if (!cn) return;
     lot.cx /= cn; lot.cz /= cn;
     const rd = H.nearestRoad(lot.cx, lot.cz); if (rd) lot.entry = rd; // where cars come in from the street
+    if (rd && H.drive) { let nx = -rd.tz, nz = rd.tx; if (nx * (lot.cx - rd.x) + nz * (lot.cz - rd.z) < 0) { nx = -nx; nz = -nz; } // the apron in: straight off the curb, across the walk, where the lot meets its street
+      let e = 2; for (; e < 12; e += 1) if (pip(rd.x + nx * e, rd.z + nz * e, poly)) break; if (e < 12) H.drive(rd.x, rd.z, rd.x + nx * (e + 1), rd.z + nz * (e + 1), 8.5); }
     lots.push(lot);
   }
   const api = {

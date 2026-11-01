@@ -71,7 +71,8 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   - red curbs before stops, at hydrants and at signals
   - yellow loading zones by shops; white passenger zones at schools
   - street sweeping signs on curbed residential streets
-  - no furniture, lamps or plants in the road or in parking lots
+  - no furniture, lamps or plants in the road, nor loose in parking lots: a lot's own lights stand on concrete bases
+    at its row ends and down long rows, its trees in curbed islands
 - People walk only where there's a sidewalk or trail. The crowd wears everyday clothes; uniforms only where they work.
 - Surfaces are scanned PBR (assets/pbr, CC0) with wear: grime at the foot of walls, streaks under sills, patched
   asphalt, stained slabs.
@@ -119,7 +120,18 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   lit soffit, and through the glass the trade's own room. The trade dresses the front: a patio with a rail and
   umbrellas, bistro tables and a bike rack, a menu A-frame, a barber pole, an ATM, an ice chest, carts, produce bins,
   window neon. The rest of a centre's fronts take made-up local tenants and the odd vacancy, never a real business's
-  name. No hand-built shop box stands over the map's own buildings.
+  name. No hand-built shop box stands over the map's own buildings. A strip centre's walk ends in a red fire-lane curb.
+- **Shop interiors** (`src/world/interiors.js`): walk up to a storefront and its room is built behind the glass, the glass
+  turns clear, and you walk in through the door. A ceiling of tiles and light panels, a stockroom wall at the back with
+  its door and EXIT light, racks of boxes behind it. The trade furnishes the room to its full depth: a pizza or burger
+  place's booths and tables up to the counter and menu boards with the kitchen behind; a café's bar, espresso machine
+  and pastry case; a barber's chairs at mirrors down both walls and the waiting row by the window; a nail salon's
+  pedicure thrones down one wall and manicure tables with lamps and polish, the polish wall at the back; a bank's
+  teller line, queue rope, bankers' glass offices, check desk, armchairs and ATM; a market's gondolas, coolers and
+  checkouts; a liquor store's coolers, wine aisles and the till with the lottery sign; a gym's treadmills, benches and
+  cable machines; a yoga or dance studio's mats, mirror wall and barre; a martial-arts school's puzzle mats, heavy bags
+  and belt rack; an office's reception, waiting chairs and desks. Trees in front don't grow through the walls while
+  you're inside.
 - **Big boxes and warehouses:** a big box's doors face its parking lot (the long wall with the most lot in front of it,
   the nearest counting most), wherever the street is; never a wall another building stands against; with no lot mapped,
   the long wall facing the most open ground. A supercenter: stucco, tilt-up or concrete panels over a split-face block
@@ -180,6 +192,10 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   neighbour's house.
 - Main roads with houses backing onto them get tan split-face block walls with pilasters; country roads get white
   ranch fences; estates get stone pillars and open iron gates.
+- **Parking lots** (`src/world/parking.js`): paved in asphalt cut along the ground mesh's own triangles, so no grass or
+  photo shows through; stalls painted; each double row of stalls ends in a curbed bark island with a tree and a light;
+  lights down long rows; a concrete apron straight off the curb where a lot meets its street. The drive aisles the map
+  draws through a lot are asphalt like the lot, never a house driveway's concrete.
 - Trails are decomposed granite (`SURF.path`): compacted down the middle, loose at ragged edges, stones along them.
 - Ground never shows bare and flat: lawns are dense, wild ground is grass, bushes in clumped stands, pebbles and stones;
   lawn and garden edges fray and lawns have worn patches.

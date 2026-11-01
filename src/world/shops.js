@@ -12,7 +12,9 @@
 //   const PLAN = planShops({ BLD, POIS, isRetail(B), other(x, z, B) })     sets B.shopWalls (footprint edge indices)
 //   const SHOPS = buildShops({ THREE, scene, PLAN, heightAt, addInteract, notify, sfx, hour, inCar, brandCanvas })
 //   SHOPS.update(focus, night)   SHOPS.onCollapse(B)   SHOPS.onRepair(B)   SHOPS.stores   SHOPS.bays (for interiors)
-//   bay: { name, cat, B, w (wall), c (centre along it), width, base, top, depth (into the building), x, z (its door) }
+//   bay: { name, cat, B, w (wall), c (centre along it), width, base, top, gh (glass height), gw, dc, dw (door centre and
+//          width along the wall), depth (into the building), x, z (in front of its door) }   B.shopHoles: the openings
+//   SHOPS.paintedGlass(bay, show): the painted room on the glass on or off (src/world/interiors.js opens the real one)
 import { parodyName } from './plazas/brands.js';
 export const PLAZA_CENTER = { x: -4300, z: -2350 };
 const AMC_AT = { x: -4110, z: -2763 }; // Carmel Mountain's cinema, the tall 6,600 m2 box at the south end of the plaza
@@ -77,7 +79,7 @@ function place(w, t, width) { // slide a storefront along its wall until it does
 }
 
 // ---- the plan: which store goes on which wall where, and which walls the shader leaves plain
-export function planShops({ BLD, POIS, isRetail, other }) {
+export function planShops({ BLD, POIS, isRetail, other, heightAt }) {
   const blds = BLD.filter(B => B.plan && isRetail(B)), W = new Map(blds.map(B => [B, wallsOf(B)]));
   const front = (B, w) => { // a wall a shop can open onto: no other building right in front of it
     let shut = 0; for (const t of [0.25, 0.5, 0.75]) if (other(w.ax + w.ux * w.L * t + w.nx * 2.5, w.az + w.uz * w.L * t + w.nz * 2.5, B)) shut++; return shut < 2; };
@@ -109,13 +111,19 @@ export function planShops({ BLD, POIS, isRetail, other }) {
       for (let k = 0; t < w.L - 5.5 && k < 40; k++) {
         const gap = w.used.filter(([a]) => a > t - 0.01).sort((a, b) => a[0] - b[0])[0], end = gap ? gap[0] : w.L - 0.3;
         if (end - t < 5.6) { t = gap ? gap[1] : w.L; continue; }
-        const f = FILL[(r + k * 7) % FILL.length], vac = ((r >> (k % 16)) & 7) === 0, width = Math.min(end - t - 0.3, vac ? 7 : CAT[f[0]].w);
+        const f = FILL[(r + k * 7) % FILL.length], vac = ((r >>> (k % 16)) & 7) === 0, width = Math.min(end - t - 0.3, vac ? 7 : CAT[f[0]].w);
         const c = place(w, t + width / 2 + 0.3, width); if (c === null) break;
         bays.push({ B, w, c, width, name: vac ? 'For Lease' : f[1], cat: vac ? 'vacant' : f[0], type: 'shop', fill: true }); t = c + width / 2 + 0.3;
       }
     }
     if (bays.some(b => b.B === B)) B.shopWalls = new Set(bays.filter(b => b.B === B).map(b => b.w.i));
   }
+  // each bay's ground, glass, door: the same numbers the storefront is built from, so the wall opens just behind its glass
+  for (const b of bays) { const { w, c, width } = b, Bd = b.B, h = hash(b.name + Bd.i), cat = b.cat === 'vacant' ? null : CAT[b.cat];
+    b.base = heightAt(w.ax + w.ux * c + w.nx * 1.2, w.az + w.uz * c + w.nz * 1.2) + 0.02; b.top = Math.min(Bd.top, b.base + Math.max(4.2, Bd.top - Bd.base));
+    b.gh = Math.max(2.6, Math.min(3.15, b.top - b.base - 1.3)); b.gw = width - 0.3;
+    const pair = width >= 8 || (cat && (b.cat === 'bank' || b.cat === 'market' || b.cat === 'pharmacy')); b.dw = pair ? 1.9 : 1.0; b.dc = c + (pair ? 0 : (h & 1 ? -1 : 1) * Math.min(b.gw / 2 - 0.8, 1.2)); b.h = h;
+    let a = Bd.shopHoles; if (!a) Bd.shopHoles = a = new Map(); let L = a.get(w.i); if (!L) a.set(w.i, L = []); L.push({ u0: c - b.gw / 2, u1: c + b.gw / 2, y0: b.base, y1: b.base + b.gh + 0.12 }); }
   // the cinema at Carmel Mountain
   const amc = blds.filter(B => Math.hypot(B.cx - AMC_AT.x, B.cz - AMC_AT.z) < 60).sort((a, b) => Math.hypot(a.cx - AMC_AT.x, a.cz - AMC_AT.z) - Math.hypot(b.cx - AMC_AT.x, b.cz - AMC_AT.z))[0];
   let cinema = null;
@@ -226,25 +234,27 @@ export function buildShops(o) {
 
     const ALU = [0.72, 0.74, 0.76], BRONZE = [0.24, 0.2, 0.17], DARK = [0.08, 0.08, 0.09], WOOD = [0.42, 0.29, 0.18], WHITE = [0.94, 0.93, 0.9], GREEN = [0.2, 0.36, 0.2];
     for (const b of C.bays) {
-      const { w, c, width } = b, Bd = b.B, base = heightAt(w.ax + w.ux * c + w.nx * 1.2, w.az + w.uz * c + w.nz * 1.2) + 0.02, H = Bd.top - Bd.base, top = Math.min(Bd.top, base + Math.max(4.2, H));
-      const cat = b.cat === 'vacant' ? null : CAT[b.cat], h = hash(b.name + Bd.i), m = mark();
-      const gh = Math.max(2.6, Math.min(3.15, top - base - 1.3)), aw = cat && ((h >> 7) % 100) / 100 < cat.aw && top - (base + gh + 1.0) >= 0.75; // an awning over the glass where the sign still fits above it, else a lit soffit
-      const fr = (h >> 3) % 3 === 0 ? BRONZE : ALU, signY0 = base + gh + (aw ? 1.0 : 0.35), signH = Math.min(1.1, top - 0.15 - signY0);
-      b.base = base; b.top = top; b.depth = w.depth; b.x = w.ax + w.ux * c + w.nx * 1.4; b.z = w.az + w.uz * c + w.nz * 1.4; b.gh = gh;
+      const { w, c, width } = b, Bd = b.B, base = b.base, top = b.top;
+      const cat = b.cat === 'vacant' ? null : CAT[b.cat], h = b.h, m = mark();
+      const gh = b.gh, aw = cat && ((h >>> 7) % 100) / 100 < cat.aw && top - (base + gh + 1.0) >= 0.75; // an awning over the glass where the sign still fits above it, else a lit soffit
+      const fr = (h >>> 3) % 3 === 0 ? BRONZE : ALU, signY0 = base + gh + (aw ? 1.0 : 0.35), signH = Math.min(1.1, top - 0.15 - signY0);
+      b.depth = w.depth; b.x = w.ax + w.ux * b.dc + w.nx * 1.4; b.z = w.az + w.uz * b.dc + w.nz * 1.4; b.C = C; b.savedGlass = null;
+      // the walk in front: a concrete slab with a curb at its edge, a step down to the lot; a strip centre's curb is painted red (the fire lane)
+      box(B.prop, w, c, 1.85, base - 0.14, width + 0.62, 0.3, 3.7, [0.8, 0.79, 0.76]); box(B.prop, w, c, 3.62, base - 0.13, width + 0.62, 0.3, 0.16, C.bays.length >= 3 ? [0.62, 0.14, 0.12] : [0.88, 0.87, 0.84]);
       // the glass: a kickplate, the panes (the trade's room behind them), mullions every 1.5 m or so, a transom bar, the head
-      const gw = width - 0.3, np = Math.max(2, Math.round(gw / 1.6)), room = roomUV(cat ? cat.room : 'vacant');
+      const gw = b.gw, np = Math.max(2, Math.round(gw / 1.6)), room = roomUV(cat ? cat.room : 'vacant'), g0 = B.glass.length / 11;
       box(B.frame, w, c, 0.1, base + 0.2, gw, 0.4, 0.12, fr);
       panel(B.glass, w, c, 0.08, base + 0.4 + (gh - 0.4) / 2, gw, gh - 0.4, room);
       for (let k = 0; k <= np; k++) box(B.frame, w, c - gw / 2 + k * gw / np, 0.12, base + gh / 2, 0.09, gh, 0.14, fr);
       box(B.frame, w, c, 0.12, base + 2.3, gw, 0.08, 0.14, fr); box(B.frame, w, c, 0.12, base + gh + 0.05, gw + 0.1, 0.12, 0.16, fr);
       // the door: a single or a pair, darker glass, a push bar, a pull, the closer above, the hours on the glass
-      const pair = width >= 8 || (cat && (b.cat === 'bank' || b.cat === 'market' || b.cat === 'pharmacy')), dw = pair ? 1.9 : 1.0, dc = c + (pair ? 0 : (h & 1 ? -1 : 1) * Math.min(gw / 2 - 0.8, 1.2));
-      box(B.frame, w, dc, 0.14, base + 1.11, dw + 0.12, 2.22, 0.06, fr); panel(B.glass, w, dc, 0.18, base + 1.12, dw - 0.14, 2.06, room);
+      const pair = b.dw > 1.5, dw = b.dw, dc = b.dc;
+      box(B.frame, w, dc, 0.14, base + 1.11, dw + 0.12, 2.22, 0.06, fr); panel(B.glass, w, dc, 0.18, base + 1.12, dw - 0.14, 2.06, room); b.glass = [g0, B.glass.length / 11]; // (the painted glass gives way to the real room: src/world/interiors.js)
       for (const s of pair ? [-1, 1] : [h & 2 ? -1 : 1]) { box(B.frame, w, dc + s * dw * 0.25, 0.24, base + 1.02, dw * 0.38, 0.045, 0.05, ALU); box(B.frame, w, dc + s * dw * 0.06, 0.25, base + 1.2, 0.035, 0.42, 0.04, ALU); }
       box(B.frame, w, dc, 0.2, base + 2.28, Math.min(0.45, dw * 0.4), 0.07, 0.07, DARK);
       if (b.cat !== 'vacant') panel(B.prop, w, dc + (pair ? 0.5 : 0.25), 0.19, base + 1.6, 0.22, 0.28, null, [0.96, 0.96, 0.96]); // the hours decal
       // the sign: channel letters on the fascia, or a lit cabinet; a brand's own mark where the chain has one
-      const pal = cat ? cat.pal : ['#3a3f47'], bg = pal[h % pal.length], style = !cat || (h >> 5) % 5 < 2 ? 'cabinet' : 'letters';
+      const pal = cat ? cat.pal : ['#3a3f47'], bg = pal[h % pal.length], style = !cat || (h >>> 5) % 5 < 2 ? 'cabinet' : 'letters';
       const bc = b.cat !== 'vacant' && o.brandCanvas ? o.brandCanvas(b.real || b.name) : null;
       const uv = bc ? brand(bc) : sign(b.cat === 'vacant' ? 'FOR LEASE' : b.name.toUpperCase(), bg, '#ffffff', style, b.cat === 'vacant' ? 'RETAIL · 2,400 SQ FT' : '');
       if (uv && signH > 0.45) { const sw = Math.min(width * 0.86, signH * 4 * 0.98); if (style === 'cabinet' || bc) box(B.frame, w, c, 0.1, signY0 + signH / 2, sw + 0.14, signH + 0.12, 0.16, DARK); panel(B.sign, w, c, style === 'cabinet' || bc ? 0.19 : 0.06, signY0 + signH / 2, sw, signH, uv);
@@ -257,16 +267,16 @@ export function buildShops(o) {
         for (const s of [-1, 1]) quad(B.awning, P(c + s * width / 2, 0.05, ay + 0.55), P(c + s * width / 2, ad, ay), P(c + s * width / 2, ad, ay - 0.28), P(c + s * width / 2, 0.05, ay), [w.ux * s, 0, w.uz * s], null, ac.map(v => v * 0.75)); }
       else { box(B.frame, w, c, 0.55, base + gh + 0.22, width, 0.12, 1.0, [0.86, 0.85, 0.82]); under(B.light, w, c, 0.15, 0.95, base + gh + 0.155, width - 0.4, [1, 0.95, 0.85]); }
       // the window neon
-      if (cat && cat.neon && (h >> 9) % 3 !== 0) { const nc = ['#ff2d55', '#ff3b30', '#ff9500', '#34c759', '#00c7ff', '#bf5af2'][(h >> 11) % 6], nu = neonUV(cat.neon, nc); if (nu) panel(B.neon, w, c + (dc > c ? -1 : 1) * Math.min(gw / 2 - 0.9, 1.6), 0.03, base + 1.75, 1.3, 0.33, nu); }
+      if (cat && cat.neon && (h >>> 9) % 3 !== 0) { const nc = ['#ff2d55', '#ff3b30', '#ff9500', '#34c759', '#00c7ff', '#bf5af2'][(h >>> 11) % 6], nu = neonUV(cat.neon, nc); if (nu) panel(B.neon, w, c + (dc > c ? -1 : 1) * Math.min(gw / 2 - 0.9, 1.6), 0.03, base + 1.75, 1.3, 0.33, nu); }
       // the trade's things out front
       const out = cat ? cat.out : [], wd = w.nx, sgn = dc > c ? -1 : 1;
       if (out.includes('patio') || out.includes('bistro') || out.includes('umbrellas')) { // tables and chairs on the walk, umbrellas over some
-        const n = Math.max(1, Math.min(3, Math.floor((width - 2.2) / 2.4))), tc = out.includes('bistro') ? DARK : (h >> 13) % 2 ? WHITE : DARK;
+        const n = Math.max(1, Math.min(3, Math.floor((width - 2.2) / 2.4))), tc = out.includes('bistro') ? DARK : (h >>> 13) % 2 ? WHITE : DARK;
         for (let k = 0; k < n; k++) { const tt = Math.max(c - width / 2 + 0.9, Math.min(c + width / 2 - 0.9, c - sgn * width / 2 + sgn * (1.2 + k * 2.3)));
           if (Math.abs(tt - dc) < 1.3) continue; const dd = 2.2;
           box(B.prop, w, tt, dd, base + 0.74, 0.75, 0.04, 0.75, tc); box(B.prop, w, tt, dd, base + 0.36, 0.06, 0.72, 0.06, DARK);
           for (const [ox, oz, r] of [[-0.62, 0, 0], [0.62, 0, Math.PI]]) { box(B.prop, w, tt + ox, dd + oz, base + 0.45, 0.42, 0.04, 0.42, tc); box(B.prop, w, tt + ox + (r ? 0.2 : -0.2), dd, base + 0.72, 0.04, 0.5, 0.4, tc); for (const lx of [-0.17, 0.17]) for (const lz of [-0.17, 0.17]) box(B.prop, w, tt + ox + lx, dd + lz, base + 0.22, 0.03, 0.44, 0.03, DARK); }
-          if (out.includes('umbrellas') || (out.includes('patio') && (h >> (15 + k)) & 1)) { box(B.prop, w, tt, dd, base + 1.25, 0.04, 2.5, 0.04, WHITE); cone('prop', w, tt, dd, base + 2.15, base + 2.55, 1.15, rgb(pal[(h + k) % pal.length])); } }
+          if (out.includes('umbrellas') || (out.includes('patio') && (h >>> (15 + k)) & 1)) { box(B.prop, w, tt, dd, base + 1.25, 0.04, 2.5, 0.04, WHITE); cone('prop', w, tt, dd, base + 2.15, base + 2.55, 1.15, rgb(pal[(h + k) % pal.length])); } }
         if (out.includes('patio') && width >= 7) for (let k = 0; k <= 4; k++) { const tt = c - width / 2 + 0.3 + k * (width - 0.6) / 4; box(B.prop, w, tt, 3.2, base + 0.45, 0.05, 0.9, 0.05, DARK); } // the patio's rail posts
         if (out.includes('patio') && width >= 7) { box(B.prop, w, c, 3.2, base + 0.88, width - 0.6, 0.04, 0.04, DARK); box(B.prop, w, c, 3.2, base + 0.5, width - 0.6, 0.03, 0.03, DARK); }
       }
@@ -278,8 +288,8 @@ export function buildShops(o) {
       if (out.includes('carts')) { const tt = c - sgn * (width / 2 - 1.2); for (let k = 0; k < 6; k++) { box(B.prop, w, tt, 1.0 + k * 0.32, base + 0.75, 0.55, 0.45, 0.85, [0.6, 0.62, 0.65]); box(B.prop, w, tt, 1.0 + k * 0.32, base + 0.35, 0.5, 0.06, 0.8, DARK); } }
       if (out.includes('produce')) for (let k = 0; k < 3; k++) { const tt = c + sgn * (1.6 + k * 1.1); if (Math.abs(tt - dc) < 1.2) continue; box(B.prop, w, tt, 0.9, base + 0.4, 0.9, 0.8, 0.7, WOOD); box(B.prop, w, tt, 0.9, base + 0.84, 0.85, 0.1, 0.65, [[0.85, 0.15, 0.1], [0.95, 0.65, 0.1], [0.35, 0.6, 0.15]][k]); }
       if (out.includes('bench')) { const tt = c - sgn * (width / 2 - 1.4); box(B.prop, w, tt, 1.6, base + 0.45, 1.6, 0.06, 0.45, WOOD); for (const s of [-0.7, 0.7]) box(B.prop, w, tt + s, 1.6, base + 0.22, 0.06, 0.44, 0.4, DARK); }
-      if ((h >> 17) % 3 === 0) { const tt = c + (h & 1 ? 1 : -1) * (width / 2 - 0.25); box(B.prop, w, tt, 1.1, base + 0.45, 0.5, 0.9, 0.5, [0.32, 0.3, 0.27]); box(B.prop, w, tt, 1.1, base + 0.93, 0.56, 0.06, 0.56, DARK); } // a trash can
-      if (b.cat !== 'vacant' && (h >> 19) % 2 === 0) { const tt = c + (h & 4 ? 1 : -1) * (width / 2 - 0.5); box(B.prop, w, tt, 0.6, base + 0.3, 0.7, 0.6, 0.7, [0.55, 0.42, 0.3]); box(B.prop, w, tt, 0.6, base + 0.68, 0.62, 0.18, 0.62, GREEN); } // a planter
+      if ((h >>> 17) % 3 === 0) { const tt = c + (h & 1 ? 1 : -1) * (width / 2 - 0.25); box(B.prop, w, tt, 1.1, base + 0.45, 0.5, 0.9, 0.5, [0.32, 0.3, 0.27]); box(B.prop, w, tt, 1.1, base + 0.93, 0.56, 0.06, 0.56, DARK); } // a trash can
+      if (b.cat !== 'vacant' && (h >>> 19) % 2 === 0) { const tt = c + (h & 4 ? 1 : -1) * (width / 2 - 0.5); box(B.prop, w, tt, 0.6, base + 0.3, 0.7, 0.6, 0.7, [0.55, 0.42, 0.3]); box(B.prop, w, tt, 0.6, base + 0.68, 0.62, 0.18, 0.62, GREEN); } // a planter
       close(Bd, m);
       const s = { name: b.name, type: b.cat === 'vacant' ? 'vacant' : b.type, cat: b.cat, x: b.x, z: b.z, B: Bd, bay: b }; stores.push(s); C.stores = (C.stores || []).concat(s);
     }
@@ -332,5 +342,11 @@ export function buildShops(o) {
       for (const k in r) { if (k === 'saved') continue; for (const [C, a, e] of r[k]) { const m = C.built && C.built.meshes[k]; if (!m) continue; const pos = m.geometry.attributes.position; r.saved.push([m, a, pos.array.slice(a * 3, e * 3)]); for (let i = a; i < e; i++) pos.setXYZ(i, 0, -1000, 0); pos.needsUpdate = true; } }
     },
     onRepair(Bd) { const r = ranges.get(Bd); if (!r || !r.saved) return; for (const [m, a, arr] of r.saved) { m.geometry.attributes.position.array.set(arr, a * 3); m.geometry.attributes.position.needsUpdate = true; } r.saved = null; },
+    paintedGlass(b, show) { // a bay's painted room on (closed) or off (its real room is open behind clear glass)
+      const m = b.C && b.C.built && b.C.built.meshes.glass; if (!m || !b.glass) return; const pos = m.geometry.attributes.position, [a, e] = b.glass;
+      if (!show) { if (b.savedGlass) return; b.savedGlass = pos.array.slice(a * 3, e * 3); for (let i = a; i < e; i++) pos.setXYZ(i, 0, -1000, 0); }
+      else { if (!b.savedGlass) return; pos.array.set(b.savedGlass, a * 3); b.savedGlass = null; }
+      pos.needsUpdate = true;
+    },
   };
 }

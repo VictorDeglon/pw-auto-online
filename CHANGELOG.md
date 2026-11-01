@@ -40,6 +40,15 @@ update you ship**, and add an entry here at the same time:
   chain's parody mark, awning or lit soffit, the trade's room through the glass, patios and umbrellas, bike racks, a
   barber pole, ATMs, ice chests, carts, window neon); the rest of each centre's fronts take made-up local tenants and
   a few vacancies. The five hand-built plaza shells (over the map's own buildings, Target's among them) are gone.
+- **Walk into the shops:** go up to any storefront and step through its door into the room behind the glass,
+  furnished by the trade to the back wall: booths and counters, espresso bars, barber chairs at their mirrors, nail
+  stations and pedicure thrones, a bank's tellers and glass offices, market aisles and coolers, liquor coolers and wine
+  aisles, weight rooms, yoga and martial-arts studios, offices. A stockroom door at the back, ceiling lights, and the
+  camera stays inside with you.
+- **Parking lots that hold together:** every lot is paved (no more grass and old photo stalls showing through), the
+  drive aisles through it are asphalt (they were drawn as wide concrete driveways), its
+  rows end in curbed planted islands with a tree and a light, lights stand down long rows, a concrete apron crosses the
+  walk where it meets the street, and a strip centre's walk ends in a red fire-lane curb.
 
 ## 0.10.0 Up Close (2026-10-31)
 
