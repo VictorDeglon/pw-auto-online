@@ -13,9 +13,7 @@
  *      food court counter with pizza ovens and wholesale staging.
  *
  * 2. Strip Plaza Retail & Dining:
- *    - Subway: Yellow & green illuminated logo, refrigerated glass sandwich prep counter with sneeze guard,
- *      menu boards, dining booths, beverage dispenser.
- *    - Great Clips: Bright blue logo with shears, hydraulic salon chairs, full-length vanity mirrors, styling products.
+ *    - (Subway, Great Clips: their shops are the map's own buildings, drawn by the building generator.)
  *    - Starbucks / Cafe: Round siren medallion, dual espresso machines, glass pastry showcase, bistro seating.
  *
  * 3. Residential Houses (Green Valley, Midland, High Valley, Silverwood):
@@ -58,7 +56,6 @@ export function createPowayArchitecture(ctx) {
   // --- Brand Logos (Procedural Canvas Textures) ---
   // the chains' marks, as parodies (./plazas/brands.js): drawn to the shape of what they go on
   const costcoLogoTex = brandLogo(THREE, 'costco', 2);
-  const subwayLogoTex = brandLogo(THREE, 'subway', 4), greatClipsLogoTex = brandLogo(THREE, 'great_clips', 4), starbucksLogoTex = brandLogo(THREE, 'starbucks', 1);
 
   // Base Physical Materials
   const concreteFloorMat = new THREE.MeshStandardMaterial({ color: 0x8e8d88, roughness: 0.4, metalness: 0.1 });
@@ -242,217 +239,8 @@ export function createPowayArchitecture(ctx) {
   // (the Walmart that stood here, a box over the store's own footprint, is drawn by the building generator: the mapped
   // Walmart on Poway Road, src/world/bldgen.js BOX_BRANDS)
 
-  // =========================================================================
-  // 4. STRIP PLAZA SHOP: SUBWAY FAST FOOD RESTAURANT
-  // =========================================================================
-  function buildSubwayStore(cx, cz) {
-    const floorY = heightAt(cx, cz);
-    const bW = 12.0, bD = 14.0, bH = 4.2;
-
-    const bGroup = new THREE.Group();
-    bGroup.name = 'Subway_Store';
-    bGroup.position.set(cx, floorY, cz);
-
-    createCurbSidewalk(bGroup, bW, bD, 0);
-
-    // Ceramic Tile Flooring
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.25, bD), tileFloorMat);
-    floor.position.y = 0.125;
-    floor.receiveShadow = true;
-    bGroup.add(floor);
-
-    // Ceiling with Downlights
-    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.25, bD), plasterWallMat);
-    ceiling.position.y = bH - 0.125;
-    bGroup.add(ceiling);
-
-    // Perimeter Enclosure Walls
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, 0.3), plasterWallMat);
-    backWall.position.set(0, bH / 2, bD / 2);
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, bH, bD), plasterWallMat);
-    leftWall.position.set(-bW / 2, bH / 2, 0);
-    const rightWall = leftWall.clone();
-    rightWall.position.x = bW / 2;
-    bGroup.add(backWall, leftWall, rightWall);
-
-    // Front Storefront: Transparent Glass Wall (See-Through into the Restaurant!)
-    const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(bW - 0.4, bH - 0.8), seeThroughGlassMat);
-    frontGlass.position.set(0, (bH - 0.8) / 2 + 0.2, -bD / 2 - 0.02);
-
-    // Green Canvas Sun Awning
-    const awning = new THREE.Mesh(
-      new THREE.BoxGeometry(bW + 0.4, 0.35, 1.4),
-      new THREE.MeshStandardMaterial({ color: 0x005a36, roughness: 0.8 })
-    );
-    awning.position.set(0, bH - 0.3, -bD / 2 - 0.6);
-    awning.rotation.x = 0.22;
-    bGroup.add(frontGlass, awning);
-
-    // Illuminated 3D Subway Logo Sign above Entrance
-    const logoMat = new THREE.MeshStandardMaterial({
-      map: subwayLogoTex,
-      emissive: new THREE.Color(0xffffff),
-      emissiveMap: subwayLogoTex,
-      emissiveIntensity: 0.9,
-      roughness: 0.25
-    });
-    const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), logoMat);
-    logoMesh.position.set(0, bH + 0.65, -bD / 2 - 0.1);
-    logoMesh.rotation.y = Math.PI; // a plane faces +z: turn it to the street (-z)
-    bGroup.add(logoMesh);
-
-    // --- FURNISHED INTERIOR ---
-    // 1. Refrigerated Sandwich Prep Counter with Sneeze Guard
-    const prepCounter = new THREE.Mesh(new THREE.BoxGeometry(5.8, 1.05, 1.3), stainlessSteelMat);
-    prepCounter.position.set(-1.8, 0.52, 1.2);
-
-    const sneezeGuard = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 0.55), seeThroughGlassMat);
-    sneezeGuard.position.set(-1.8, 1.35, 0.6);
-    sneezeGuard.rotation.x = 0.25;
-
-    // Overhead Menu Boards
-    const menuMat = new THREE.MeshStandardMaterial({ color: 0x14532d, emissive: 0x166534, emissiveIntensity: 0.7 });
-    const menuBoard = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.85, 0.08), menuMat);
-    menuBoard.position.set(-1.8, bH - 1.2, 2.5);
-    menuBoard.rotation.x = 0.1;
-    bGroup.add(prepCounter, sneezeGuard, menuBoard);
-
-    // 2. Dining Booths & Tables along right wall
-    const boothMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 }); // Subway green vinyl
-    for (let bz = -bD * 0.32; bz <= bD * 0.15; bz += 3.2) {
-      // Table
-      const table = new THREE.Mesh(
-        new THREE.BoxGeometry(1.6, 0.85, 1.1),
-        new THREE.MeshStandardMaterial({ color: 0xca8a04, roughness: 0.4 })
-      );
-      table.position.set(bW / 2 - 1.8, 0.42, bz);
-
-      // Seats (two facing benches)
-      const seatF = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.95, 0.45), boothMat);
-      seatF.position.set(bW / 2 - 1.8, 0.48, bz - 0.85);
-      const seatB = seatF.clone();
-      seatB.position.z = bz + 0.85;
-      bGroup.add(table, seatF, seatB);
-    }
-
-    // 3. Beverage Fountain Station
-    const sodaDispenser = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 1.5, 0.8),
-      stainlessSteelMat
-    );
-    sodaDispenser.position.set(-bW / 2 + 1.2, 0.75, -bD * 0.15);
-    bGroup.add(sodaDispenser);
-
-    // Interior Warm Lighting
-
-    group.add(bGroup);
-
-    interiorBounds.push({
-      minX: cx - bW / 2 + 0.3,
-      maxX: cx + bW / 2 - 0.3,
-      minZ: cz - bD / 2 + 0.3,
-      maxZ: cz + bD / 2 - 0.3,
-      floorY,
-      ceilY: floorY + bH,
-      name: 'Subway Restaurant'
-    });
-  }
-
-  // =========================================================================
-  // 5. STRIP PLAZA SHOP: GREAT CLIPS HAIR SALON
-  // =========================================================================
-  function buildGreatClipsStore(cx, cz) {
-    const floorY = heightAt(cx, cz);
-    const bW = 11.0, bD = 13.0, bH = 4.2;
-
-    const bGroup = new THREE.Group();
-    bGroup.name = 'GreatClips_Salon';
-    bGroup.position.set(cx, floorY, cz);
-
-    createCurbSidewalk(bGroup, bW, bD, 0);
-
-    const floor = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.25, bD), tileFloorMat);
-    floor.position.y = 0.125;
-    floor.receiveShadow = true;
-    bGroup.add(floor);
-
-    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(bW, 0.25, bD), plasterWallMat);
-    ceiling.position.y = bH - 0.125;
-    bGroup.add(ceiling);
-
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, 0.3), plasterWallMat);
-    backWall.position.set(0, bH / 2, bD / 2);
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.3, bH, bD), plasterWallMat);
-    leftWall.position.set(-bW / 2, bH / 2, 0);
-    const rightWall = leftWall.clone();
-    rightWall.position.x = bW / 2;
-    bGroup.add(backWall, leftWall, rightWall);
-
-    // Front Window with See-Through Glass
-    const frontGlass = new THREE.Mesh(new THREE.PlaneGeometry(bW - 0.4, bH - 0.8), seeThroughGlassMat);
-    frontGlass.position.set(0, (bH - 0.8) / 2 + 0.2, -bD / 2 - 0.02);
-    bGroup.add(frontGlass);
-
-    // Great Clips Illuminated Blue Sign
-    const signMat = new THREE.MeshStandardMaterial({
-      map: greatClipsLogoTex,
-      emissive: new THREE.Color(0x38bdf8),
-      emissiveMap: greatClipsLogoTex,
-      emissiveIntensity: 0.85
-    });
-    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.35), signMat);
-    signMesh.position.set(0, bH + 0.7, -bD / 2 - 0.1);
-    signMesh.rotation.y = Math.PI; // a plane faces +z: turn it to the street (-z)
-    bGroup.add(signMesh);
-
-    // --- FURNISHED INTERIOR: Styling Stations & Barber Chairs ---
-    const mirrorMat = new THREE.MeshStandardMaterial({ color: 0xecfdf5, metalness: 0.95, roughness: 0.05 });
-    const chairMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.3 }); // Black leather chair
-
-    for (let sx = -bW * 0.32; sx <= bW * 0.32; sx += 3.2) {
-      // Full-Length Styling Mirror on Back Wall
-      const mirror = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.2), mirrorMat);
-      mirror.position.set(sx, 2.2, bD / 2 - 0.16);
-      mirror.rotation.y = Math.PI;
-
-      // Vanity Counter with Styling Tools
-      const vanity = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.85, 0.8), stainlessSteelMat);
-      vanity.position.set(sx, 0.42, bD / 2 - 0.55);
-
-      // Hydraulic Swivel Barber Chair
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.45, 0.08, 16), stainlessSteelMat);
-      base.position.set(sx, 0.04, bD / 2 - 2.1);
-
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.2, 0.85), chairMat);
-      seat.position.set(sx, 0.65, bD / 2 - 2.1);
-
-      const backRest = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.75, 0.15), chairMat);
-      backRest.position.set(sx, 1.05, bD / 2 - 2.5);
-
-      bGroup.add(mirror, vanity, base, seat, backRest);
-    }
-
-    // Front Waiting Area: Reception Counter & Bench
-    const bench = new THREE.Mesh(
-      new THREE.BoxGeometry(4.2, 0.45, 0.7),
-      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.5 })
-    );
-    bench.position.set(-bW * 0.22, 0.22, -bD * 0.28);
-    bGroup.add(bench);
-
-
-    group.add(bGroup);
-
-    interiorBounds.push({
-      minX: cx - bW / 2 + 0.3,
-      maxX: cx + bW / 2 - 0.3,
-      minZ: cz - bD / 2 + 0.3,
-      maxZ: cz + bD / 2 - 0.3,
-      floorY,
-      ceilY: floorY + bH,
-      name: 'Great Clips Salon'
-    });
-  }
+  // (the Subway and Great Clips that stood here were boxes over shops the map already has: the Carmel Mountain strip and
+  // the Twin Peaks plaza next to Target; those buildings are drawn by the building generator)
 
   // =========================================================================
   // 6. RESIDENTIAL HOMES AROUND POWAY (Furnished, Spacious, To Scale)
@@ -592,10 +380,6 @@ export function createPowayArchitecture(ctx) {
     }
 
     // 1. Big-Box Commercial Anchors: Target and Walmart are drawn by the building generator on their real footprints
-
-    // 2. Strip Plaza Retail & Dining
-    buildSubwayStore(-4489.0, -1934.9);    // Carmel Mountain Plaza Strip
-    buildGreatClipsStore(-2384.9, -2215.2); // Community Plaza
 
     // 3. Residential Neighborhoods (Villas, Ranches, Modern Estates)
     // Green Valley Villas

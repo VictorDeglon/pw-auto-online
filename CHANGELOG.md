@@ -34,7 +34,7 @@ update you ship**, and add an entry here at the same time:
   a tall blank shop), a store's name wins over the café inside it, and a big box's doors never open onto a wall another
   building stands against.
 - The hand-built Walmart box that overlapped the real Walmart on Poway Road is gone too: the store is the generated
-  supercenter, its two entrances signed.
+  supercenter, its two entrances signed. So are the hand-built Subway and Great Clips, boxes over shops the map has.
 
 ## 0.10.0 Up Close (2026-10-31)
 
