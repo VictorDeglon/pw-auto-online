@@ -21,6 +21,21 @@ update you ship**, and add an entry here at the same time:
   made solid.
 - **Credits** on the menu: every model with its title, its maker and its licence, with a search box (also in
   `assets/sf/CREDITS.md`).
+- **Each car its own top speed and pull** (`tools/sketchfab/speeds.mjs`), from what the real one does: an Aventador
+  tops out near 150 mph, a Civic near 90, a Model T at 42. Body-shop upgrades build on the car's own numbers, and police
+  cruisers are never slower than the old police car.
+- **Tyre marks, smoke and dust that everyone sees** (`src/fx/skids.js`): rubber on the road and white smoke where tyres
+  slide (a drift, the handbrake, a hard stop, a burnout), dust kicked up off the pavement. Another player's car lays the
+  same from their own game's slide, sent with their car.
+- **Other players' cars move like cars:** their front wheels steer as they steer, the wheels turn with their speed
+  (backwards in reverse), their lamps light at night, and they roll ruts in the beach sand.
+- **Players show up at once:** someone joining appears straight away in a stand-in look until their own avatar has
+  downloaded (a slow or stalled download from the asset host used to keep them invisible); anyone the room knows about
+  that this screen missed is added within seconds; and a kept sign-in the server no longer accepts is renewed instead
+  of failing the join.
+- **Wheels on the road:** each new car's wheels turn about their own centre (some models' wheels swung down through the
+  asphalt) and never rest below the ground, and wheels that aren't round don't spin. At Poway High, cars and people
+  stand on the campus's own paving and paths instead of the terrain a few cm under them.
 
 ## 0.10.1 (2026-10-31)
 

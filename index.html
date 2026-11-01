@@ -674,6 +674,7 @@ import { initNetTraffic, updateNetTraffic, NETTRAFFIC, netCarHit, netCarTake } f
 import { initNetPeds, updateNetPeds, NETPEDS, netPedHit } from './src/online/peds.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
+import { createSkids } from './src/fx/skids.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
 import { createSky } from './src/sky.js';
 import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } from './src/aircraft.js';
@@ -987,7 +988,10 @@ let ROADS = null; // src/world/roadsurface.js: the built surface (crowned asphal
 // 12.8 m triangles only approximate); before that, the road bed / terrain the mesh is built from
 let MESH_READY = false;
 const ROAD_TOP = 0.06; // asphalt sits cleanly above the road bed mesh to prevent ground poke-through
-function heightAt(x, z) {
+function heightAt(x, z) { // ... and on the Poway High campus, its own draped ground where that stands higher (src/phs.js)
+  const h = heightAt0(x, z), p = PHS.groundAt(x, z); return p !== null && p > h ? p : h;
+}
+function heightAt0(x, z) {
   if (x > ARENA_X0) return arenaGround(x, z); // the crew-garage worlds, far east of town (src/games)
   if (ROADS && ROADS.onRoad(x, z, 0.2)) return builtAt(x, z) + ROAD_TOP;
   if (MESH_READY) { const g = meshAt(x, z); if (g !== null) return benchOver(x, z, g); }
@@ -4590,6 +4594,7 @@ class Particles {
 const smoke = new Particles(700, false), fire = new Particles(500, true);
 const NUKE_FX = createNukeFX(THREE, scene, { potato: 0.35, low: 0.55, medium: 0.8, high: 1, ultra: 1 }[GFX.id] || 0.8); // the nuke's flash, shockwave and mushroom cloud (src/fx/nuke.js)
 const FX = createFX({ THREE, scene, camera, heightAt: (x, z) => heightAt(x, z), smoke, fire, quality: { potato: 0.35, low: 0.6, medium: 1, high: 1.2, ultra: 1.5 }[GFX.id] || 1 }); // src/fx/fx.js
+const SKIDS = createSkids(THREE, scene, { max: GFX.id === 'potato' ? 800 : 3000 }); // tyre marks (src/fx/skids.js), laid by wheelFx
 function blood(x, y, z, n = 10, dir) { // droplets; with a direction (the bullet's) most of them spray out the far side
   for (let i = 0; i < n; i++) { const k = dir && i < n * 0.7 ? rand(3, 7) : 0, r = rand(0.35, 0.6);
     smoke.emit(x, y, z, (dir ? dir.x * k : 0) + rand(-2, 2), (dir ? dir.y * k : 0) + rand(0, 3), (dir ? dir.z * k : 0) + rand(-2, 2), rand(0.1, 0.3), rand(0.5, 1), r, 0.015, 0.015, 0, 12); }
@@ -4971,7 +4976,13 @@ function sfTemplate(name) {
   for (const nm of ['wheel-front-left', 'wheel-front-right', 'wheel-back-left', 'wheel-back-right']) {
     const w = src.getObjectByName(nm); if (!w) continue;
     w.getWorldPosition(v); const mesh = sfMerge(w, v);
-    wheels.push({ x: v.x * k, y: v.y * k, z: v.z * k, front: nm.includes('front'), right: nm.includes('right'), mesh, scale: [k, k, k] });
+    // spun about the tyre's own centre: some models' wheel nodes sit off the hub, and turning there the wheel orbited
+    // down through the road; and its bottom never below the ground
+    const bb = new THREE.Box3().setFromObject(mesh), c = bb.getCenter(new THREE.Vector3()), r = (bb.max.y - bb.min.y) / 2;
+    for (const o of mesh.children) o.geometry.translate(-c.x, -c.y, -c.z);
+    const hub = v.clone().add(c); if (hub.y - r < 0.01) hub.y = r + 0.01;
+    let far = 0; for (const o of mesh.children) { const p = o.geometry.attributes.position; for (let i = 0; i < p.count; i++) far = Math.max(far, Math.hypot(p.getY(i), p.getZ(i))); }
+    wheels.push({ x: hub.x * k, y: hub.y * k, z: hub.z * k, front: nm.includes('front'), right: nm.includes('right'), mesh, scale: [k, k, k], still: far > r * 1.12 }); // not round (a fender or a brake in with it): spun, it would cut through the road
   }
   const out = new THREE.Group(), root = new THREE.Group(); root.add(body); out.add(root);
   const t = { body: out, wheels, L: e.L * k, W: e.W * k, H: e.H * k, wr: (e.r || 0.34) * k, dim: { sf: e.id } };
@@ -5128,7 +5139,7 @@ function buildCar(type, tint, model, wealth) {
   for (const w of T.wheels) {
     const piv = new THREE.Group(); piv.position.set(w.x, w.y, w.z); g.add(piv);
     const wm = w.mesh.clone(); wm.scale.set(w.scale[0], w.scale[1], w.scale[2]); if (w.spinFlip) wm.rotation.y += Math.PI;
-    wm.traverse(o => { if (o.isMesh) o.castShadow = !sf; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front });
+    wm.traverse(o => { if (o.isMesh) o.castShadow = !sf; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front, still: !!w.still });
   }
   let bars = null;
   if (type === 'police' && !sf) { // the Cop model's own light bar flashes; green Sheriff door bands
@@ -5142,10 +5153,19 @@ function buildCar(type, tint, model, wealth) {
   return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true };
 }
 const vehicles = [];
+// a car's stock numbers: its kind's (CAR), or a Sketchfab car's own top speed and pull (tools/sketchfab/speeds.mjs), so an
+// Aventador runs away from a Civic. Police cruisers never drop below the police car's, or nobody gets caught.
+function carBase(type, model) {
+  const b = CAR[type], e = model && model.startsWith('sf-') && SF.byId(model.slice(3));
+  if (!b || !e || !e.v) return b;
+  const cop = type === 'police';
+  return { ...b, vmax: cop ? Math.max(b.vmax, e.v) : e.v, acc: cop ? Math.max(b.acc, e.ac) : e.ac };
+}
 class Vehicle {
   constructor(type, x, z, rotY, tint, model) {
     this.type = type; this.spec = Object.assign({}, CAR[type]); this.tint = tint || pick(TWO.has(type) ? TWO_COLORS[type] : CAR_TINTS);
     this.m = buildCar(type, this.tint, model, model ? undefined : (() => { try { return zoneHere(x, z).wealth; } catch (e) { return 0.5; } })()); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    const b = carBase(type, this.m.model); this.spec.vmax = b.vmax; this.spec.acc = b.acc;
     this.pos = new THREE.Vector3(x, heightAt(x, z), z); this.rotY = rotY; this.pitch = 0; this.roll = 0;
     this.vel = new THREE.Vector2(0, 0); this.speed = 0; this.steer = 0; this.health = 100; this.mode = 'free';
     this.driver = null; this.agent = null; this.isCop = type === 'police'; this.siren = false; this.dead = false; this.burn = 0;
@@ -5162,6 +5182,7 @@ class Vehicle {
     const old = this.m; scene.remove(old.g); if (old.model && old.model.startsWith('sf-')) SF.drop(old.model.slice(3));
     for (const m of old.allMats) disposeSoon(m); old.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
     this.m = buildCar(this.type, this.tint, model); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    const b = carBase(this.type, model); this.spec.vmax = b.vmax; this.spec.acc = b.acc;
     this.m.g.position.copy(old.g.position); this.m.g.quaternion.copy(old.g.quaternion);
   }
 }
@@ -5334,6 +5355,15 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
   if (brake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 22 * (v.brakeMul || 1) * dt); // brakes upgrade (src/carmods.js)
   vf -= vf * (0.015 + 0.0003 * Math.abs(vf)) * dt * (down ? 0.8 : 3); // rolling + aero drag (light when bombing down a mountain)
   if (!throttle) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 1.6 * dt);
+  { // what the tyres are doing, for the marks, smoke and dust (wheelFx; sent to other players with the car): the rear
+    // sliding out (a drift, the handbrake), all four locked in a hard stop, the rear spinning up from a standstill
+    const avf = Math.abs(vf), avs = Math.abs(vs), me = v.driver === 'player'; let sk = 0, k = 0;
+    if (avs > 3 && avf > 4) { sk |= 1; k = (avs - 3) / 6; if (avs > 7) sk |= 2; }
+    if (hand && avf > 3) { sk |= 1; k = Math.max(k, 0.6); }
+    if (me && brake && avf > 9) { sk |= 3; k = Math.max(k, (avf - 9) / 14); }
+    if (me && throttle > 0.9 && vf > -0.5 && vf < 6 && s.acc >= 12) { sk |= 1; k = Math.max(k, 0.8 - vf / 10); }
+    v.skid = weather.wet > 0.5 ? 0 : sk; v.skidK = Math.min(1, k);
+  }
   const grip = (hand ? 1.1 : 9) * (1 - 0.5 * weather.wet) * (v.gripMul || 1) * (hp < 0.4 ? 0.6 + hp : 1) * (v.onRoad === false ? 0.7 : 1) * (v.tireMul || 1); // gripMul < 1: tires shredded by a spike strip; dirt slides more
   vs *= Math.exp(-grip * dt);
   if (hand) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 6 * dt);
@@ -5343,9 +5373,28 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
   const nfx = Math.sin(v.rotY), nfz = Math.cos(v.rotY), nsx = nfz, nsz = -nfx;
   v.vel.set(nfx * vf + nsx * vs, nfz * vf + nsz * vs);
   v.pos.x += v.vel.x * dt; v.pos.z += v.vel.y * dt; v.speed = vf;
-  if (hand && Math.abs(vs) > 4 && Math.random() < 0.6) smoke.emit(v.pos.x - nfx * 2, v.pos.y + 0.3, v.pos.z - nfz * 2, rand(-.5, .5), 0.5, rand(-.5, .5), 0.8, 1.2, 0.8, 0.8, 0.8, 1.5);
-  if (Math.abs(vs) > 5 && weather.wet < 0.3 && Math.random() < Math.min(0.9, Math.abs(vs) * 0.035) && hyp(v.pos.x - camera.position.x, v.pos.z - camera.position.z) < 160 && ROADS && !ROADS.onAsphalt(v.pos.x, v.pos.z, 0.3))
-    smoke.emit(v.pos.x - nfx * 2.1 + rand(-.6, .6), v.pos.y + 0.25, v.pos.z - nfz * 2.1 + rand(-.6, .6), rand(-.6, .6), rand(.3, .9), rand(-.6, .6), 1.1, 2.2, 0.66, 0.56, 0.42, 2.4, 0.04); // dust off the dirt
+}
+// a car's tyres on the ground, every frame, for every car near you (yours, the traffic, other players'): rubber laid on
+// the asphalt and white smoke where they slide, dust kicked up behind them off the pavement. key: the car's own (a
+// Vehicle, or another player's id); speed: forward, signed; mask: which tyres slide (1 rear, 2 front); k: how hard.
+const _wfx = []; let WFX_N = 0;
+function wheelFx(key, m, x, y, z, yaw, speed, mask, k, dt) {
+  const c = camera.position; if ((x - c.x) ** 2 + (z - c.z) ** 2 > 150 * 150 || !ROADS || x > ARENA_X0) { if (m._fxOn) { for (let i = 0; i < 4; i++) SKIDS.lift(key + i); m._fxOn = false; } return; }
+  m._fxOn = true;
+  const fx = Math.sin(yaw), fz = Math.cos(yaw), sx = fz, sz = -fx, as = Math.abs(speed), L = m.L || 4.5, W = m.W || 1.8;
+  let n = 0; // the tyres: where the car's own wheels sit, or its four corners
+  for (const w of m.wheels) if (n < 4) { const p = w.piv.position; _wfx[n++] = [p.x, p.z, w.front]; }
+  if (n < 4) { n = 4; _wfx[0] = [W * 0.42, L * 0.32, true]; _wfx[1] = [-W * 0.42, L * 0.32, true]; _wfx[2] = [W * 0.42, -L * 0.32, false]; _wfx[3] = [-W * 0.42, -L * 0.32, false]; }
+  const paved = ROADS.onRoad(x, z, 0.5) || (PADS && PADS.at(x, z) !== null) || PHS.groundAt(x, z) !== null, tw = clamp(W * 0.12, 0.18, 0.32);
+  for (let i = 0; i < n; i++) {
+    const [lx, lz, front] = _wfx[i], wx = x + fx * lz + sx * lx, wz = z + fz * lz + sz * lx;
+    if (paved && as > 1.2 && mask & (front ? 2 : 1)) {
+      SKIDS.mark(key + i, wx, heightAt(wx, wz), wz, tw, k);
+      if (!front && k > 0.35 && Math.random() < dt * 14 * k) smoke.emit(wx, y + 0.25, wz, rand(-.5, .5), rand(.4, 1), rand(-.5, .5), 0.7, 1.4, 0.82, 0.82, 0.82, 1.8); // tyre smoke
+    } else SKIDS.lift(key + i);
+    if (!paved && !front && as > 4 && weather.wet < 0.3 && Math.random() < dt * Math.min(9, as * 0.35 + (mask ? 6 : 0))) // dust off the dirt, thicker in a slide
+      smoke.emit(wx + rand(-.3, .3), y + 0.2, wz + rand(-.3, .3), -fx * as * 0.08 + rand(-.6, .6), rand(.3, .9), -fz * as * 0.08 + rand(-.6, .6), 1, 2.2, 0.66, 0.56, 0.42, 2.4, 0.04);
+  }
 }
 const _wn = { x: 0, z: 0, px: 0, pz: 0 };
 function carHitWorld(v) {
@@ -6333,6 +6382,12 @@ function updateSand(dt) {
       if (onSand(x, z)) { sand++; if (P[k * 2] === P[k * 2]) TRACKS.tyre(P[k * 2], P[k * 2 + 1], x, z, Math.min(0.32, v.spec.W * 0.12)); } P[k * 2] = x; P[k * 2 + 1] = z; }
     if (sand) v.vel.multiplyScalar(Math.max(0, 1 - dt * 0.35 * sand / 4)); // ~ a third of the speed lost each second, flat out in deep sand
   }
+  for (const rem of REMOTES.values()) { // other players' cars roll ruts too (no drag: their own game slows them)
+    const car = rem.car, g = car && car.g.position; if (!g || Math.abs(g.x - player.pos.x) > 90 || Math.abs(g.z - player.pos.z) > 90) { if (rem) rem._trk = null; continue; }
+    const yaw = car.g.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), L = (car.L || 4.5) * 0.32, W = (car.W || 1.8) * 0.42, P = rem._trk || (rem._trk = new Float32Array(8).fill(NaN));
+    for (let k = 0; k < 4; k++) { const a = k < 2 ? L : -L, b = k % 2 ? W : -W, x = g.x + fx * a + fz * b, z = g.z + fz * a - fx * b;
+      if (onSand(x, z) && P[k * 2] === P[k * 2]) TRACKS.tyre(P[k * 2], P[k * 2 + 1], x, z, Math.min(0.32, (car.W || 1.8) * 0.12)); P[k * 2] = x; P[k * 2 + 1] = z; }
+  }
   const feet = (o, x, z, yaw) => { if (o._fx === undefined) { o._fx = x; o._fz = z; o._fl = false; } const d = Math.hypot(x - o._fx, z - o._fz); if (d > 0.72) { if (d < 3 && onSand(x, z)) TRACKS.foot(x, z, yaw, o._fl = !o._fl); o._fx = x; o._fz = z; } };
   if (!player.inCar && player.air <= 0.01) feet(player, player.pos.x, player.pos.z, player.rotY);
   for (const p of peds) if (!p.removed && Math.abs(p.pos.x - player.pos.x) < 70 && Math.abs(p.pos.z - player.pos.z) < 70) feet(p, p.pos.x, p.pos.z, p.rotY || 0);
@@ -7287,7 +7342,7 @@ scene.add(TUNE.light); // the underglow's one real light, on the car you drive (
 let GARAGE = null, garageOpen = false;
 function garageList() { return save.garage || (save.garage = []); }
 function ownedEntry(id) { return garageList().find(e => e.id === id); }
-function applyMods(v, e) { TUNE.applyPerf(v, e.base || CAR[v.type], e.mods || {}); TUNE.applyLook(v, e); } // e.base: a dealer car's own (trim) numbers
+function applyMods(v, e) { TUNE.applyPerf(v, e.base || carBase(v.type, v.m.model), e.mods || {}); TUNE.applyLook(v, e); } // e.base: a dealer car's own (trim) numbers
 const applyLook = (t, look) => TUNE.applyLook(t, look); // other players' cars (src/online/remote.js)
 
 function spawnOwned(e, x, z, rot) {
@@ -8241,7 +8296,8 @@ function updateVehicles(dt) {
     _cog.set(0, hc, 0).applyEuler(g.rotation); g.position.set(v.pos.x - _cog.x, v.pos.y + hc - _cog.y, v.pos.z - _cog.z);
     const fsp = v.mode === 'rail' ? v.speed : v.vel.x * v.fx + v.vel.y * v.fz;
     v.wheelRot = (v.wheelRot + fsp * dt / (v.m.wr || 0.34)) % TAU; // spec has no wr: dividing by it made every wheel NaN, so none drew
-    for (const w of v.m.wheels) { w.w.rotation.x = v.wheelRot; if (w.front) w.piv.rotation.y = v.steer * 0.5; }
+    for (const w of v.m.wheels) { if (!w.still) w.w.rotation.x = v.wheelRot; if (w.front) w.piv.rotation.y = v.steer * 0.5; }
+    if (!v.m.two && !v.air) wheelFx(v.wfxKey || (v.wfxKey = 'v' + (++WFX_N) + ':'), v.m, v.pos.x, v.pos.y, v.pos.z, v.rotY, fsp, v.driver ? v.skid || 0 : 0, v.skidK || 0, dt);
     NIGHTL.carLights(v.m, v.driver && !v.dead ? nightAmount : 0); // lights on while someone drives it
     if (v.m.bars) { const on = v.siren && Math.floor(simTime * 6) % 2 === 0; v.m.bars[0].material.color.setHex(v.siren ? (on ? 0xff2020 : 0x300000) : 0x400000); v.m.bars[1].material.color.setHex(v.siren ? (!on ? 0x2050ff : 0x000830) : 0x000a40); }
   }
@@ -9201,7 +9257,7 @@ function tick(rdt) {
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
   { const tL = performance.now(); updateLazy(worldHold ? 30 : Math.max(0.5, Math.min(bgBudget(lazyQueue.length > 6 ? 6 : 4), (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5))); STREAM_MS += usedOut + performance.now() - tL; } PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); updateNetPeds(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
-  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); sfLod(); if ((sfTickT += dt) > 1) { sfTickT = 0; SF.tick(performance.now()); sfSwap(); } if (!GAMES.inside) { const f = focusPos(); sfPlacer().update(f.x, f.z, dt); } updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
+  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); sfLod(); SKIDS.update(simTime); if ((sfTickT += dt) > 1) { sfTickT = 0; SF.tick(performance.now()); sfSwap(); } if (!GAMES.inside) { const f = focusPos(); sfPlacer().update(f.x, f.z, dt); } updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
   MILITARY.update(dt);
   GANG.update(dt);
@@ -9289,7 +9345,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
-  Object.assign(ctx, { SF, releaseCar: m => { if (m && m.model && m.model.startsWith('sf-')) SF.drop(m.model.slice(3)); }, sfCarFor: (type, id) => { // the room's car number picks the same Sketchfab car in every game (src/online/traffic.js)
+  Object.assign(ctx, { SF, wheelFx, carLights: m => NIGHTL.carLights(m, nightAmount), releaseCar: m => { if (m && m.model && m.model.startsWith('sf-')) SF.drop(m.model.slice(3)); }, sfCarFor: (type, id) => { // the room's car number picks the same Sketchfab car in every game (src/online/traffic.js)
     const list = SF.cars.filter(e => e.t === type), h = Math.sin(id * 12.9898) * 43758.5453, r = h - Math.floor(h); if (!list.length || r > SF_SHARE) return null;
     const e = list[Math.floor(r / SF_SHARE * list.length) % list.length]; if (SF.get(e.id)) return 'sf-' + e.id; SF.load(e.id); return null; } });
   if (/[?&]dbg\b/.test(location.search)) { window.__ctx = ctx; window.__sfp = sfPlacer; window.__club = () => CLUB; } // for poking at the game from the console while testing
@@ -9529,7 +9585,7 @@ function netState() {
   const v = player.inCar, p = v ? v.pos : player.pos;
   return { x: p.x, y: p.y, z: p.z, r: v ? v.rotY : player.rotY, spd: _spd, hp: player.health, w: player.weapon > 0 ? WEAPONS[player.weapon].id : '',
     aim: !!(player.weapon > 0 && (player.aiming || mouseDown)), dead: player.dead ? (player.deadKind === 'busted' ? 2 : 1) : 0, shots: player.shots || 0,
-    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead, pt: v.partsKey || '' } : null, ride: player.ride ? player.ride.id : null,
+    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead, pt: v.partsKey || '', st: v.steer || 0, sk: v.skid || 0, k: v.skidK || 0, f: v.speed || 0 } : null, ride: player.ride ? player.ride.id : null,
     air: JET.on && JET.m ? { k: 'fighter', q: JET.m.quaternion.toArray() } : FLY.craft ? { k: FLY.craft.type === 'boat' ? 'boat:' + FLY.craft.kind : FLY.craft.kind, q: FLY.craft.g.quaternion.toArray() }
       : player.inPlane && currentPlane() ? { k: { prop: 'trainer', jet: 'bizjet', fighter: 'fighter' }[currentPlane().type] || 'cessna', q: currentPlane().model.quaternion.toArray() } : null };
 }

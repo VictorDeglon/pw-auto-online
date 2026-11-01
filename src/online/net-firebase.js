@@ -258,7 +258,8 @@ function pack(st) {
   const o = { x: q(st.x), y: q(st.y), z: q(st.z), r: q(st.r), v: q(st.spd || 0), h: Math.round(st.hp ?? 100), w: st.w || '', d: st.dead || 0 };
   if (st.aim) o.a = 1;
   if (st.shots) o.sh = st.shots % 1000;
-  if (st.car) { o.c = st.car.type; o.ct = st.car.tint; o.cm = st.car.model || ''; o.cp = q(st.car.p || 0); o.cl = q(st.car.rl || 0); o.cd = st.car.dead ? 1 : 0; }
+  if (st.car) { o.c = st.car.type; o.ct = st.car.tint; o.cm = st.car.model || ''; o.cp = q(st.car.p || 0); o.cl = q(st.car.rl || 0); o.cd = st.car.dead ? 1 : 0;
+    o.cs = q(st.car.st || 0); o.cf = q(st.car.f || 0); o.ck = (st.car.sk & 3) | (Math.round(Math.min(1, st.car.k || 0) * 7) << 2); } // steering, forward speed, the tyres (sliding which / how hard)
   if (st.ride) o.rd = String(st.ride).slice(0, 40); // riding as a passenger in that player's car
   if (st.car && st.car.pt) o.cx = String(st.car.pt).slice(0, 240); // body-shop parts
   if (st.air) { o.ak = String(st.air.k).slice(0, 16); o.aq = st.air.q.map(v => Math.round(v * 1000) / 1000); } // flying: which aircraft, and its attitude
@@ -278,7 +279,7 @@ export function sendState(st, skin) {
 export function unpack(p) {
   if (!p) return null;
   return { x: p.x, y: p.y ?? 0, z: p.z, r: p.r || 0, spd: p.v || 0, hp: p.h ?? 100, w: p.w || '', aim: !!p.a, dead: p.d || 0, shots: p.sh || 0,
-    car: p.c ? { type: p.c, tint: p.ct, model: p.cm || null, p: p.cp || 0, rl: p.cl || 0, dead: !!p.cd, pt: typeof p.cx === 'string' ? p.cx : '' } : null, ride: typeof p.rd === 'string' ? p.rd : null,
+    car: p.c ? { type: p.c, tint: p.ct, model: p.cm || null, p: p.cp || 0, rl: p.cl || 0, st: +p.cs || 0, f: typeof p.cf === 'number' ? p.cf : null, sk: (p.ck | 0) & 3, k: ((p.ck | 0) >> 2) / 7, dead: !!p.cd, pt: typeof p.cx === 'string' ? p.cx : '' } : null, ride: typeof p.rd === 'string' ? p.rd : null,
     air: typeof p.ak === 'string' && Array.isArray(p.aq) && p.aq.length === 4 ? { k: p.ak, q: p.aq } : null };
 }
 

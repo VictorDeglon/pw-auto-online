@@ -44,15 +44,22 @@ async function add(d) {
   await spawnPed(rem);
   rem.building = false;
   if (R.get(d.id) !== rem) { despawn(rem); return; } // left (or was re-added) while loading
+  if (rem.again) { rem.again = false; reskin(rem); } // their avatar came in while the stand-in was being made
   ctx.notify(`<b style="color:${rem.color}">${esc(shownName(rem.name, rem.id, rem.skin))}</b> is in town.`, '', 3500);
 }
-async function spawnPed(rem) { // keeps the old body (if any) on screen until the new one is ready
+// keeps the old body (if any) on screen until the new one is ready. Someone who just arrived shows at once: if their
+// avatar isn't loaded here yet (a download from the asset host can take a while, or stall) they're a stand-in until
+// it is, then their own look (reskin); wait: a skin change, where the old body stays up meanwhile
+async function spawnPed(rem, wait) {
   const { THREE } = ctx;
   let avatar = rem.skin && HUMANS.ready && !RESERVED.has(splitSkin(rem.skin).avatar) ? rem.skin : null; // nobody online can wear a story character's skin (their look rides along: src/wardrobe.js)
-  if (avatar && !(await ensureAvatar(avatar))) avatar = null;
+  if (avatar && !HUMANS.proto.has(splitSkin(avatar).avatar)) {
+    if (wait) { if (!(await ensureAvatar(avatar))) avatar = null; }
+    else { const want = avatar; avatar = null; ensureAvatar(want).then(ok => { if (ok && R.get(rem.id) === rem && rem.skin === want) reskin(rem); }); }
+  }
   const p = new ctx.Ped(rem.st.x, rem.st.z, { remote: true, look: { kind: 'civ', avatar, gun: false } });
-  if (ctx.renderer && ctx.renderer.compileAsync) { // compile the new body's shaders off the frame before it shows (a skin swap used to hitch)
-    p.rig.g.visible = false; await ctx.renderer.compileAsync(p.rig.g, ctx.camera, ctx.scene).catch(() => { }); p.rig.g.visible = true;
+  if (ctx.renderer && ctx.renderer.compileAsync) { // compile the new body's shaders off the frame before it shows (a skin swap used to hitch); never waits long
+    p.rig.g.visible = false; await Promise.race([ctx.renderer.compileAsync(p.rig.g, ctx.camera, ctx.scene).catch(() => { }), new Promise(r => setTimeout(r, 2500))]); p.rig.g.visible = true;
   }
   p.remote = rem; p.keep = true; p.isCop = false; p.personality = 'normal'; p.money = 0; p.health = 100;
   p.pos.y = rem.st.y; p.rotY = rem.st.r;
@@ -68,10 +75,15 @@ function update(d) {
   if (st.ride === NET.uid && was !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(shownName(d.n || rem.name, rem.id, rem.skin))}</b> hopped in.`, '', 2500);
   else if (was === NET.uid && st.ride !== NET.uid) ctx.notify(`<b style="color:${rem.color}">${esc(shownName(d.n || rem.name, rem.id, rem.skin))}</b> got out.`, '', 2000);
   rem.st = st; rem.lastT = performance.now(); rem.name = d.n;
-  if (d.s && d.s !== rem.skin && !rem.building) { // they changed skin: rebuild the body
-    rem.skin = d.s; rem.building = true; const old = rem.ped;
-    spawnPed(rem).then(() => { rem.building = false; if (old) { old.remote = null; old.remove(); } if (R.get(rem.id) !== rem) despawn(rem); });
-  }
+  if (d.s && d.s !== rem.skin && !rem.building) { rem.skin = d.s; reskin(rem); } // they changed skin: rebuild the body
+}
+function reskin(rem) {
+  if (rem.building) { rem.again = true; return; }
+  rem.building = true; const old = rem.ped;
+  spawnPed(rem, true).then(() => {
+    rem.building = false; if (old && old !== rem.ped) { old.remote = null; old.remove(); }
+    if (R.get(rem.id) !== rem) despawn(rem); else if (rem.again) { rem.again = false; reskin(rem); }
+  });
 }
 function despawn(rem) {
   if (rem.ped) { rem.ped.remote = null; rem.ped.remove(); rem.ped = null; }
@@ -96,8 +108,10 @@ function remoteAI(p, dt) {
 
 // every frame: dead / alive, cars, visibility, shots
 let _ap = null, _aq = null;
+let syncT = 0;
 export function updateRemotes(dt) {
   if (!_ap) { _ap = new ctx.THREE.Vector3(); _aq = new ctx.THREE.Quaternion(); }
+  if ((syncT += dt) > 3) { syncT = 0; for (const [id, v] of NET.players) if (!R.has(id) && v.p && (v.g || '') === NET.world) add({ id, ...v }); } // anyone in the room we somehow never drew
   const { THREE, camera } = ctx, cam = camera.position;
   for (const rem of R.values()) {
     const p = rem.ped; if (!p || rem.building) continue;
@@ -145,8 +159,14 @@ export function updateRemotes(dt) {
       g.position.lerp(p.pos, 1 - Math.exp(-dt * LERP)); if (p.pos.distanceToSquared(g.position) > 1600) { g.position.copy(p.pos); rem.car.vx = rem.car.vz = 0; }
       else if (dt > 0) { const k2 = 1 - Math.exp(-dt * 8); rem.car.vx = (rem.car.vx || 0) + ((g.position.x - ox) / dt - (rem.car.vx || 0)) * k2; rem.car.vz = (rem.car.vz || 0) + ((g.position.z - oz) / dt - (rem.car.vz || 0)) * k2; } // how the car moves as drawn: crashes go by this
       g.rotation.set(st.car.p, p.rotY, st.car.rl, 'YXZ');
-      rem.wheel = (rem.wheel || 0) + (st.spd * dt) / (rem.car.wr || 0.35);
-      for (const w of rem.car.wheels) w.w.rotation.x = rem.wheel;
+      // their wheels turn with their speed (backwards in reverse), the front ones steer as they steer, their lamps
+      // light at night, and their tyres lay the same marks and dust as yours (index.html wheelFx)
+      const fwd = st.car.f !== null && st.car.f !== undefined ? st.car.f : st.spd, k8 = 1 - Math.exp(-dt * 10);
+      rem.wheel = ((rem.wheel || 0) + (fwd * dt) / (rem.car.wr || 0.35)) % (Math.PI * 2);
+      rem.steer = (rem.steer || 0) + ((st.car.st || 0) - (rem.steer || 0)) * k8;
+      for (const w of rem.car.wheels) { if (!w.still) w.w.rotation.x = rem.wheel; if (w.front) w.piv.rotation.y = rem.steer * 0.5; }
+      if (ctx.carLights) ctx.carLights(rem.car);
+      if (ctx.wheelFx && show && !st.car.dead) ctx.wheelFx('r' + rem.id + ':', rem.car, g.position.x, g.position.y, g.position.z, p.rotY, fwd, st.car.sk || 0, st.car.k || 0, dt);
     } else if (!rem.air && rem.tag && rem.tag.parent !== p.rig.g) p.rig.g.add(rem.tag);
     // their shots: tracer from the gun along their heading
     if ((st.shots || 0) !== rem.shots) {

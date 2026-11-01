@@ -18,6 +18,8 @@
 //   loadPHS(ctx)          after buildWorld: place + ground-conform the GLB, colliders, doors/gates, zones
 //   updatePHS(dt, pos)    every frame: door/gate animation, zone notices, "press E" hint, far-away culling
 //   interactPHS(pos)      E key: open/close the nearest door or gate (true if one toggled)
+//   groundAt(x, z)        the campus's own ground (draped cover and paving) at a point, or null: index.html heightAt
+//                         stands cars and people on it instead of the terrain a few cm under it
 // ctx: { THREE, scene, gltfLoader, heightAt, addPoly, notify, LAT0, LON0, KX, KZ, aniso? }
 
 const GLB_URL = new URL('../assets/phs/phs.glb', import.meta.url).href;
@@ -76,6 +78,40 @@ export async function initPHS(ctx) {
   } catch (e) {
     console.warn('PHS: campus disabled:', e); S.M = S.poly = S.bb = null; return false;
   }
+}
+// the draped ground as a half-metre height grid (the highest layer at each cell's centre), built once after draping
+const CELL = 0.5;
+function groundGrid(THREE, meshes) {
+  const v = new THREE.Vector3(), sets = []; let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const m of meshes) {
+    m.updateMatrixWorld(true); const p = m.geometry.attributes.position, W = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(m.matrixWorld); W[i * 3] = v.x; W[i * 3 + 1] = v.y; W[i * 3 + 2] = v.z;
+      if (v.x < x0) x0 = v.x; if (v.x > x1) x1 = v.x; if (v.z < z0) z0 = v.z; if (v.z > z1) z1 = v.z;
+    }
+    sets.push([W, m.geometry.index ? m.geometry.index.array : null, p.count]);
+  }
+  if (!(x1 > x0)) return;
+  const nx = Math.ceil((x1 - x0) / CELL) + 1, nz = Math.ceil((z1 - z0) / CELL) + 1, G = new Float32Array(nx * nz).fill(NaN);
+  for (const [W, ix, n] of sets) {
+    const tris = ix ? ix.length / 3 : n / 3;
+    for (let t = 0; t < tris; t++) {
+      const a = (ix ? ix[t * 3] : t * 3) * 3, b = (ix ? ix[t * 3 + 1] : t * 3 + 1) * 3, c = (ix ? ix[t * 3 + 2] : t * 3 + 2) * 3;
+      const ax = W[a], az = W[a + 2], bx = W[b], bz = W[b + 2], cx = W[c], cz = W[c + 2], d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz); if (Math.abs(d) < 1e-9) continue;
+      const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - x0) / CELL)), i1 = Math.min(nx - 1, Math.floor((Math.max(ax, bx, cx) - x0) / CELL));
+      const j0 = Math.max(0, Math.ceil((Math.min(az, bz, cz) - z0) / CELL)), j1 = Math.min(nz - 1, Math.floor((Math.max(az, bz, cz) - z0) / CELL));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const px = x0 + i * CELL, pz = z0 + j * CELL, l1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / d, l2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / d, l3 = 1 - l1 - l2;
+        if (l1 < -1e-6 || l2 < -1e-6 || l3 < -1e-6) continue;
+        const y = l1 * W[a + 1] + l2 * W[b + 1] + l3 * W[c + 1], k = j * nx + i; if (!(G[k] >= y)) G[k] = y;
+      }
+    }
+  }
+  S.grid = { x0, z0, x1, z1, nx, nz, G };
+}
+export function groundAt(x, z) {
+  const g = S.grid; if (!g || x < g.x0 || x > g.x1 || z < g.z0 || z > g.z1) return null;
+  const y = g.G[Math.round((z - g.z0) / CELL) * g.nx + Math.round((x - g.x0) / CELL)]; return y === y ? y : null;
 }
 export function phsSkip(x, z) {
   const b = S.bb; return !!b && x >= b[0] && x <= b[2] && z >= b[1] && z <= b[3] && pip(x, z, S.poly);
@@ -143,6 +179,8 @@ export async function loadPHS(ctx) {
         for (const m of meshes) ground.set(m, tier);
       }
     }
+
+    groundGrid(THREE, [...ground.keys()]); // the cover, the paving, and the paths and paint on them (a campus path stands up to 20 cm over the terrain)
 
     // ---- materials and shadows (the game has no environment map: tame metals so they don't render black)
     const tuned = new Set(), tierMats = new Map();
