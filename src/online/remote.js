@@ -75,7 +75,7 @@ function update(d) {
 }
 function despawn(rem) {
   if (rem.ped) { rem.ped.remote = null; rem.ped.remove(); rem.ped = null; }
-  if (rem.car) { ctx.scene.remove(rem.car.g); rem.car = null; }
+  if (rem.car) { ctx.scene.remove(rem.car.g); if (ctx.releaseCar) ctx.releaseCar(rem.car); rem.car = null; }
   if (rem.air) { ctx.scene.remove(rem.air.g); rem.air = null; }
 }
 function removeRemote(id) { const rem = R.get(id); if (!rem) return; R.delete(id); if (!rem.building) despawn(rem); }
@@ -108,9 +108,10 @@ export function updateRemotes(dt) {
     if (p.state === 'dead') p.timer = 0; // never cleaned up as a corpse
     if (p.state === 'fly' || p.state === 'down' || p.state === 'flee' || p.state === 'fight' || p.state === 'idle') p.state = 'walk';
     // driving: a car body at their position; the person hidden inside
-    const key = st.car ? `${st.car.type}|${st.car.tint}|${st.car.model || ''}|${st.car.pt || ''}` : '';
+    const sfWait = st.car && st.car.model && st.car.model.startsWith('sf-') && ctx.SF && !ctx.SF.get(st.car.model.slice(3)); // their Sketchfab car isn't loaded here yet: a stand-in, rebuilt once it is
+    const key = st.car ? `${st.car.type}|${st.car.tint}|${st.car.model || ''}|${st.car.pt || ''}${sfWait ? '|wait' : ''}` : '';
     if (key !== rem.carKey) {
-      if (rem.car) { ctx.scene.remove(rem.car.g); rem.car = null; }
+      if (rem.car) { ctx.scene.remove(rem.car.g); if (ctx.releaseCar) ctx.releaseCar(rem.car); rem.car = null; }
       if (st.car && ctx.CAR[st.car.type]) {
         rem.car = ctx.buildCar(st.car.type, st.car.tint, st.car.model || undefined); ctx.scene.add(rem.car.g); rem.car.g.position.copy(p.pos);
         if (st.car.pt && ctx.applyLook) try { ctx.applyLook({ m: rem.car, spec: { L: rem.car.L, W: rem.car.W, H: rem.car.H }, tint: st.car.tint }, ctx.lookOf(st.car.pt)); } catch (e) { console.warn('[remote] look', e); } // their paint, lights and parts (src/carmods.js)

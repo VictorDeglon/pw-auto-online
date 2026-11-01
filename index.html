@@ -210,6 +210,7 @@ body.scoped #cross{opacity:.5}
 #bigmap .legend{position:absolute;left:20px;top:calc(16px + env(safe-area-inset-top,0px));font:600 16px/1.4 var(--ui);color:var(--dim);pointer-events:none;text-shadow:0 1px 2px #000}
 #mapclose{position:absolute;right:20px;top:calc(16px + env(safe-area-inset-top,0px));font-size:22px;padding:10px 20px 8px}
 #bigmap .legend b{font:400 34px/1 var(--display);color:var(--paper);display:block;letter-spacing:.02em}
+.credits{max-height:62vh;overflow:auto;font:500 14px/1.45 var(--ui);color:var(--dim)}.credits h3{margin:16px 0 4px;font:700 15px var(--ui);color:#fff;text-transform:uppercase;letter-spacing:.06em}.credits ul{margin:0;padding-left:18px}.credits a{color:#e9e4d6}.credits .creditfind{width:100%;margin:12px 0 0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#fff;font:500 15px var(--ui)}
 .keys{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:5px 12px;font:600 16px/1.3 var(--ui);color:var(--dim);align-items:baseline}
 .keys kbd{font:700 15px var(--ui);color:var(--paper);background:var(--ink-2);border:1px solid #333a42;border-bottom-width:3px;padding:1px 7px;border-radius:3px;text-align:center;white-space:nowrap}
 #prompt{left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font:600 18px/1 var(--ui);letter-spacing:.04em;background:rgba(14,16,19,.86);padding:9px 14px 8px;border-left:4px solid var(--gold);text-shadow:none;white-space:nowrap}
@@ -481,6 +482,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <button class="mbtn" data-go="achievements">Achievements <small id="achsub">0 / 30</small></button>
       <button class="mbtn" data-go="settings">Settings <small id="gfxsub">Graphics</small></button>
       <button class="mbtn" data-go="controls">Controls</button>
+      <button class="mbtn" data-go="credits">Credits <small>Every model and who made it</small></button>
     </nav>
     <button class="linkbtn" id="newgame" hidden>Reset offline progress</button>
     <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0), Quaternius (CC0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY 3.0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
@@ -538,6 +540,11 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <div class="row look"><span>Weather</span><div class="seg wrap" id="skywx"></div></div>
     </div>
     <div class="row"><button class="mbtn primary small" id="gfxapply" hidden>Apply and reload</button></div>
+  </section>
+
+  <section class="screen" id="scr-credits" hidden>
+    <header><h2>Credits</h2><p>The places, models, textures and music in the game, and the people who made them.</p></header>
+    <div class="credits" id="creditlist"></div>
   </section>
 
   <section class="screen" id="scr-controls" hidden>
@@ -621,13 +628,16 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     if (src.includes('favicon')) for (const l of document.querySelectorAll('link[rel=icon],link[rel=apple-touch-icon]')) l.href = url; }); });
 })();
 </script>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/DRACOLoader.js":"sha384-Zn3pTNJ722NF9zqpZbdlhMmvTPdvPd7g26Fk2XTtcckK8IgVQVmcNlo0a/s2J8la","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
 <script>import('./src/online/nkconfig.js').then(m => m.probe()).catch(() => { }); // the game server check, alongside everything else (src/online/net.js waits for it); after the import map, which has to come before any module</script>
 <script type="module">
 import * as THREE from 'three';
 import { rollLightLoops } from './src/lightloops.js';
 import { BG, bgBudget } from './src/budget.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { createSF } from './src/sf.js'; // the Sketchfab models: catalogue, loading on demand, credits
+import { createSfPlacer } from './src/world/sfplace.js'; // ...and where the street furniture, park things and people at work go
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
 import { loadGround, groundPatch, groundStandIn, setGround } from './src/nature/ground.js';
@@ -701,6 +711,7 @@ import { createParking } from './src/world/parking.js';
 import { regionAt, sectorAt, SECTOR, REGIONS, initRegionBanner, updateRegion } from './src/world/regions.js';
 import * as SHOP from './src/ui/shop.js';
 import { createCheats } from './src/ui/cheats.js';
+import { renderCredits } from './src/ui/credits.js';
 import { DEALER_SKINS, RESERVED } from './src/reserved.js';
 import { createWheel, ICONS as WICONS } from './src/ui/wheel.js';
 import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
@@ -851,7 +862,15 @@ const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa ? G
 // second, so every compile and warm-up draw aims at a target like the post chain's.
 const AIM_RT = new THREE.WebGLRenderTarget(1, 1);
 function aimed(f) { const prev = renderer.getRenderTarget(), swap = POST.level > 0 && !prev; if (swap) renderer.setRenderTarget(AIM_RT); try { return f(); } finally { if (swap) renderer.setRenderTarget(prev); } }
-{ const c = renderer.compile.bind(renderer), ca = renderer.compileAsync.bind(renderer); renderer.compile = (...a) => aimed(() => c(...a)); renderer.compileAsync = (...a) => aimed(() => ca(...a)); }
+// A material disposed while compileAsync waits on it throws inside three (in a timer, uncaught) and that compile never
+// settles, so what's thrown away during a compile is disposed once none is running (disposeSoon).
+let compiling = 0; const laterDispose = [];
+function disposeSoon(m) { if (compiling) laterDispose.push(m); else m.dispose(); }
+{ const c = renderer.compile.bind(renderer), ca = renderer.compileAsync.bind(renderer); renderer.compile = (...a) => aimed(() => c(...a));
+  renderer.compileAsync = (...a) => {
+    compiling++; let open = true; const done = () => { if (!open) return; open = false; if (--compiling === 0) for (const m of laterDispose.splice(0)) m.dispose(); };
+    const p = aimed(() => ca(...a)); p.then(done, done); setTimeout(done, 30000); return p;
+  }; }
 const fitHud = () => document.documentElement.style.setProperty('--hs', Math.max(0.6, Math.min(1, innerWidth / 1440, innerHeight / 860)).toFixed(3)); // the corner HUD's scale (#topright, #street, ...)
 fitHud();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); fitHud(); });
@@ -1142,6 +1161,12 @@ function progress(msg) {
   DL.msg = msg; showProgress();
 }
 const texLoader = new THREE.TextureLoader(), gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/')); // the Sketchfab models' meshes are Draco-packed
+const SF = createSF(gltfLoader, { onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge)
+  const t = carProto.get('sf-' + id); carProto.delete('sf-' + id); if (!t) return;
+  for (const root of [t.body, ...t.wheels.map(w => w.mesh)]) root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.name === 'Plain') o.material.dispose(); } });
+} });
+const SF_WARM = SF.warm(['sedan', 'suv', 'pickup', 'sports', 'van', 'police'], 3); // a few of each kind of car fetched alongside the world, for the first traffic
 // a 1x1 stand-in so a material compiles with its map from the start and the real image can be swapped in later
 function holdTex(hex) {
   const t = new THREE.DataTexture(new Uint8Array([(hex >> 16) & 255, (hex >> 8) & 255, hex & 255, 255]), 1, 1);
@@ -4893,8 +4918,116 @@ const CAR_DIMS = {
 for (const d of Object.values(CAR_DIMS)) for (const k of ['L', 'W', 'H', 'r']) if (typeof d[k] === 'number') d[k] *= CAR_SCALE;
 const wreckMat = new THREE.MeshStandardMaterial({ color: 0x262422, roughness: 1 });
 const carProto = new Map(); // model name -> { body: Group template, wheels: [{x,y,z,front,right}], L, W, h }
+// Sketchfab cars (src/sf.js, tools/sketchfab/fit.py): real size in metres, standing on y = 0, +z forward; a 'body' node
+// and, when the fitter found them, four 'wheel-…' nodes centred on their hubs (else the wheels stay in the body)
+// A Sketchfab body comes in dozens of pieces, a draw call (and a shadow one) each: one mesh per material instead, and the
+// plain parts (no texture, nothing see-through or lit) in vertex-coloured meshes, metal and not. Geometry ends up in a
+// frame at `origin` with the world's axes.
+function sfMerge(node, origin) {
+  const groups = new Map(), M = new THREE.Matrix4(), inv = new THREE.Matrix4().makeTranslation(-origin.x, -origin.y, -origin.z);
+  node.updateMatrixWorld(true);
+  node.traverse(o => {
+    if (!o.isMesh || Array.isArray(o.material) || !o.geometry.attributes.position) return;
+    const m = o.material, nm = m.name || '';
+    const plain = !(nm === 'Body' || /^(Glass|Headlight|TailLight)_/.test(nm)) && !m.map && !m.normalMap && !m.transparent && !m.alphaTest && !m.vertexColors && !(m.emissive && m.emissive.getHex());
+    const key = plain ? `plain${m.metalness > 0.5 ? 'M' : ''}${m.side}` : m;
+    const g = o.geometry.clone(); M.multiplyMatrices(inv, o.matrixWorld); g.applyMatrix4(M); g.morphAttributes = {};
+    if (!g.attributes.normal) g.computeVertexNormals();
+    if (!g.index) g.setIndex([...Array(g.attributes.position.count).keys()]);
+    if (M.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } } // a mirrored part: keep its faces facing out
+    if (plain) {
+      for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+      const n = g.attributes.position.count, c = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { c[i * 3] = m.color.r; c[i * 3 + 1] = m.color.g; c[i * 3 + 2] = m.color.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    }
+    if (!groups.has(key)) groups.set(key, { m, plain, geos: [], rough: 0 });
+    const G = groups.get(key); G.geos.push(g); G.rough += m.roughness ?? 0.6;
+  });
+  const out = new THREE.Group();
+  for (const [key, G] of groups) {
+    const keep = new Set(Object.keys(G.geos[0].attributes)); for (const g of G.geos) for (const k of [...keep]) if (!g.attributes[k]) keep.delete(k);
+    for (const g of G.geos) for (const k of Object.keys(g.attributes)) if (!keep.has(k)) g.deleteAttribute(k);
+    let mat = G.m;
+    if (G.plain) { mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: G.rough / G.geos.length, metalness: key.includes('M') ? 0.8 : 0.05, side: G.m.side }); mat.name = 'Plain'; }
+    const geo = G.geos.length > 1 ? BGU.mergeGeometries(G.geos, false) : G.geos[0];
+    for (const g of geo ? [geo] : G.geos) out.add(new THREE.Mesh(g, mat)); // pieces that won't merge stay apart
+  }
+  // the shell (the paint, the glass and anything nearly as big as the car) is what's seen from afar and what casts the
+  // shadow; the rest (cabin, badges, plates, trim) is detail, drawn only near the camera (sfLod)
+  const box = new THREE.Box3().setFromObject(out), size = box.getSize(new THREE.Vector3()).length(), b = new THREE.Box3();
+  for (const mesh of out.children) {
+    const nm = mesh.material.name || '', shell = nm === 'Body' || /^Glass_/.test(nm) || b.setFromObject(mesh).getSize(new THREE.Vector3()).length() >= 0.7 * size;
+    mesh.userData.detail = !shell; mesh.userData.noShadow = !shell || !!mesh.material.transparent;
+  }
+  return out;
+}
+function sfTemplate(name) {
+  const e = SF.byId(name.slice(3)), src = SF.get(name.slice(3)); if (!e || !src) return null;
+  src.updateMatrixWorld(true);
+  const k = CAR_SCALE, body = new THREE.Group(), wheels = [], v = new THREE.Vector3();
+  const bb = sfMerge(src.getObjectByName('body') || src, new THREE.Vector3());
+  body.add(bb); body.scale.setScalar(k);
+  for (const nm of ['wheel-front-left', 'wheel-front-right', 'wheel-back-left', 'wheel-back-right']) {
+    const w = src.getObjectByName(nm); if (!w) continue;
+    w.getWorldPosition(v); const mesh = sfMerge(w, v);
+    wheels.push({ x: v.x * k, y: v.y * k, z: v.z * k, front: nm.includes('front'), right: nm.includes('right'), mesh, scale: [k, k, k] });
+  }
+  const out = new THREE.Group(), root = new THREE.Group(); root.add(body); out.add(root);
+  const t = { body: out, wheels, L: e.L * k, W: e.W * k, H: e.H * k, wr: (e.r || 0.34) * k, dim: { sf: e.id } };
+  carProto.set(name, t); return t;
+}
+// their own materials stay, except that the paint takes the car's colour, the glass is the game's and the lamps light up
+function sfMaterial(src, nm, tint) {
+  if (nm === 'Body') {
+    const m = new THREE.MeshPhysicalMaterial({ map: src.map || null, normalMap: src.normalMap || null, roughness: SKYENV ? 0.38 : 0.32, metalness: SKYENV ? 0.3 : 0.35, clearcoat: 1, clearcoatRoughness: SKYENV ? 0.03 : 0.08, envMapIntensity: SKYENV ? 1 : 1.1 });
+    m.userData.base = new THREE.Color(1, 1, 1); m.color = m.userData.base.clone().multiply(hex(tint)); return m;
+  }
+  if (/^Glass_/.test(nm)) return SKYENV ? new THREE.MeshPhysicalMaterial({ color: 0x0a0d10, roughness: 0.02, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.01, envMapIntensity: 1.3, transparent: true, opacity: 0.86 })
+    : new THREE.MeshPhysicalMaterial({ color: 0x101418, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6, transparent: true, opacity: 0.86 });
+  const m = src.clone(); if (/^Headlight_/.test(nm)) m.userData.lamp = 'head'; else if (/^TailLight_/.test(nm)) m.userData.lamp = 'tail';
+  if (m.transmission) m.transmission = 0; // a see-through material has three.js draw the whole scene once more, for every frame it's in view
+  return m;
+}
+let sfTickT = 0; // SF.tick (src/sf.js) runs once a second from the frame
+let SFP = null; // src/world/sfplace.js, made on the first frame (it needs the road graph)
+const _sfp = { x: 0, z: 0 };
+const _sfFr = new THREE.Frustum(), _sfPV = new THREE.Matrix4(), _sfBall = new THREE.Sphere();
+function sfSwap() { // stock bodies made before the Sketchfab cars were in: traded for one where the camera isn't looking, two a second
+  _sfPV.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); _sfFr.setFromProjectionMatrix(_sfPV);
+  let n = 0;
+  for (const v of vehicles) {
+    const md = v.m && v.m.model;
+    if (!md || md.startsWith('sf-') || !CAR[v.type] || CAR[v.type].proc || v === player.inCar || v.ownedId || v.keep || v.mission || v.story || v.partsKey || v.isCop || v.dead || v.burn || v.dentTotal) continue;
+    if (v.driver !== 'ai' && !(v.parked && !v.driver)) continue;
+    _sfBall.center.copy(v.pos); _sfBall.radius = Math.max(3, v.spec.L);
+    if (_sfFr.intersectsSphere(_sfBall) && v.pos.distanceTo(camera.position) < 220) continue;
+    let w = 0.5; try { w = zoneHere(v.pos.x, v.pos.z).wealth; } catch (e) { }
+    const e = SF.pickCar(v.type, w); if (!e) continue;
+    v.rebody('sf-' + e.id); if (++n >= 2) break;
+  }
+}
+const SF_DETAIL_M = 70, SF_WHEELS_M = 160; // a Sketchfab car's cabin, badges and trim show (and its shell casts a shadow) within this, its wheels within that
+function sfLod() {
+  const c = camera.position;
+  for (const v of vehicles) {
+    const m = v.m; if (!m || !m.detail) continue;
+    const d2 = (v.pos.x - c.x) ** 2 + (v.pos.z - c.z) ** 2, near = d2 < (m.near ? SF_DETAIL_M + 8 : SF_DETAIL_M) ** 2, wheels = d2 < SF_WHEELS_M ** 2; // a little slack, so it doesn't flicker at the line
+    if (near !== m.near) { m.near = near; for (const o of m.detail) o.visible = near; for (const o of m.shell) o.castShadow = near; }
+    if (wheels !== m.wheelsOn) { m.wheelsOn = wheels; for (const w of m.wheels) w.piv.visible = wheels; }
+  }
+}
+function sfPlacer() {
+  return SFP || (SFP = createSfPlacer({ THREE, scene, SF, edges, egrid, EG, ckey, edgePos, zoneHere, heightAt, pois: POIS, nearSignal, nearestEdge, pip,
+    areasNear: (x0, z0, x1, z1) => mapAreas.filter(A => { for (let i = 0; i < A.p.length; i += 2) if (A.p[i] >= x0 - 300 && A.p[i] <= x1 + 300 && A.p[i + 1] >= z0 - 300 && A.p[i + 1] <= z1 + 300) return true; return false; }),
+    addPoly: (flat, base, top) => { addPoly(flat, base, top); return polys.length - 1; },
+    dropPoly: i => { const P = polys[i]; if (P) { P.dead = true; P.gone = true; } },
+    blocked: (x, z, r) => { _sfp.x = x; _sfp.z = z; return !!collideCircle(_sfp, r, false); }, onRoad: (x, z, m) => offLimits(x, z, m), plaza: PLAZA_CENTER || null }));
+}
+const SF_SHARE = 1; // of the cars a street makes for itself, this many are Sketchfab cars (a stock body only stands in while none of that type is loaded yet, and for kinds with none, like buses)
 function carTemplate(name) {
   if (carProto.has(name)) return carProto.get(name);
+  if (name.startsWith('sf-')) return sfTemplate(name);
   const dim = CAR_DIMS[name] || { L: 4.8, W: 1.9, H: 1.5, r: 0.34 };
   const src = MODELS[dim.src || name]; if (!src) return null;
   src.updateMatrixWorld(true);
@@ -4953,18 +5086,24 @@ function carTemplate(name) {
   const t = { body: out, wheels: tw, L: dim.L, W: dim.W, H: dim.H, wr: wr || dim.r, dim };
   carProto.set(name, t); return t;
 }
-function buildCar(type, tint, model) {
+function buildCar(type, tint, model, wealth) {
   if (CAR[type] && CAR[type].proc) { const m = buildTwoWheeler(THREE, CAR[type].proc, tint); scene.add(m.g); return m; }
-  const spec = CAR[type]; const name = model && spec.model.includes(model) ? model : pick(spec.model); const T = carTemplate(name); const g = new THREE.Group();
+  const spec = CAR[type], sfHere = model && model.startsWith('sf-') && SF.get(model.slice(3));
+  if (model && model.startsWith('sf-') && !sfHere) SF.load(model.slice(3)); // not loaded yet: a stand-in this time
+  let name = model && (spec.model.includes(model) || sfHere) ? model : null;
+  if (!name && !model && Math.random() < SF_SHARE) { const e = SF.pickCar(type, wealth ?? 0.5); if (e) name = 'sf-' + e.id; }
+  let T = carTemplate(name || (name = pick(spec.model))); if (!T) T = carTemplate(name = pick(spec.model)); const g = new THREE.Group();
+  if (name.startsWith('sf-')) SF.use(name.slice(3)); // held while this body exists: whoever throws it away calls releaseCar (Vehicle.remove does)
   const mats = new Map();
   const body = T.body.clone(true);
-  const q = !!T.dim.src;
+  const q = !!T.dim.src, sf = !!T.dim.sf;
   body.traverse(o => {
     if (!o.isMesh) return;
     if (!mats.has(o.material)) {
       const src = o.material, nm = src.name || '';
       let m;
-      if (!q || /^Body/.test(nm)) { // car paint: clear-coated. With the sky map (Medium and up) the coat is glassier: it mirrors the sky
+      if (sf) m = sfMaterial(src, nm, tint);
+      else if (!q || /^Body/.test(nm)) { // car paint: clear-coated. With the sky map (Medium and up) the coat is glassier: it mirrors the sky
         const fixed = q && T.dim.fixed != null && nm === 'Body';
         m = new THREE.MeshPhysicalMaterial({ map: src.map || null, color: q ? 0xffffff : src.color, roughness: SKYENV ? 0.38 : 0.32, metalness: SKYENV ? 0.3 : 0.35, clearcoat: 1, clearcoatRoughness: SKYENV ? 0.03 : 0.08, envMapIntensity: SKYENV ? 1 : 1.1 });
         if (nm === 'BodyLower') { m.color.set(0x2a2b2d); m.clearcoat = 0.3; }
@@ -4981,17 +5120,18 @@ function buildCar(type, tint, model) {
       else m = new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.7 });
       m.name = nm; mats.set(src, m);
     }
-    o.material = mats.get(o.material); o.castShadow = true;
+    o.material = mats.get(o.material); o.castShadow = !(sf && o.userData.noShadow);
   });
   g.add(body);
+  const detail = [], shell = []; if (sf) body.traverse(o => { if (o.userData.detail) detail.push(o); else if (o.isMesh && o.castShadow) shell.push(o); });
   const wheels = [];
   for (const w of T.wheels) {
     const piv = new THREE.Group(); piv.position.set(w.x, w.y, w.z); g.add(piv);
     const wm = w.mesh.clone(); wm.scale.set(w.scale[0], w.scale[1], w.scale[2]); if (w.spinFlip) wm.rotation.y += Math.PI;
-    wm.traverse(o => { if (o.isMesh) o.castShadow = true; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front });
+    wm.traverse(o => { if (o.isMesh) o.castShadow = !sf; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front });
   }
   let bars = null;
-  if (type === 'police') { // the Cop model's own light bar flashes; green Sheriff door bands
+  if (type === 'police' && !sf) { // the Cop model's own light bar flashes; green Sheriff door bands
     const red = [...mats.values()].find(m => /PoliceLightRed/.test(m.name)), blue = [...mats.values()].find(m => /PoliceLightBlue/.test(m.name));
     if (red && blue) bars = [{ material: red }, { material: blue }];
     const band = new THREE.MeshStandardMaterial({ color: 0x1f4a2c, roughness: 0.4, metalness: 0.2 });
@@ -4999,13 +5139,13 @@ function buildCar(type, tint, model) {
   }
   const beam = headlightBeam(THREE, T.L, T.W); g.add(beam); // the pool of its headlights on the road, at night
   scene.add(g);
-  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name };
+  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true };
 }
 const vehicles = [];
 class Vehicle {
   constructor(type, x, z, rotY, tint, model) {
     this.type = type; this.spec = Object.assign({}, CAR[type]); this.tint = tint || pick(TWO.has(type) ? TWO_COLORS[type] : CAR_TINTS);
-    this.m = buildCar(type, this.tint, model); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    this.m = buildCar(type, this.tint, model, model ? undefined : (() => { try { return zoneHere(x, z).wealth; } catch (e) { return 0.5; } })()); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
     this.pos = new THREE.Vector3(x, heightAt(x, z), z); this.rotY = rotY; this.pitch = 0; this.roll = 0;
     this.vel = new THREE.Vector2(0, 0); this.speed = 0; this.steer = 0; this.health = 100; this.mode = 'free';
     this.driver = null; this.agent = null; this.isCop = type === 'police'; this.siren = false; this.dead = false; this.burn = 0;
@@ -5017,7 +5157,13 @@ class Vehicle {
     vehicles.push(this);
   }
   get fx() { return Math.sin(this.rotY); } get fz() { return Math.cos(this.rotY); }
-  remove() { if (this.ownedId) lostOwned(this); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) m.dispose(); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
+  remove() { if (this.ownedId) lostOwned(this); if (!this.removed && this.m.model && this.m.model.startsWith('sf-')) SF.drop(this.m.model.slice(3)); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) disposeSoon(m); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
+  rebody(model) { // a new body on the same car, where it stands (sfSwap: a stock body traded for a Sketchfab car)
+    const old = this.m; scene.remove(old.g); if (old.model && old.model.startsWith('sf-')) SF.drop(old.model.slice(3));
+    for (const m of old.allMats) disposeSoon(m); old.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
+    this.m = buildCar(this.type, this.tint, model); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    this.m.g.position.copy(old.g.position); this.m.g.quaternion.copy(old.g.quaternion);
+  }
 }
 function carCircles(v) { const o = v.spec.L / 2 - v.spec.W / 2; return [v.pos.x + v.fx * o, v.pos.z + v.fz * o, v.pos.x - v.fx * o, v.pos.z - v.fz * o]; }
 // for car-on-car hits: a chain of overlapping circles nose to tail (two circles leave a gap mid-body: 7 m on a bus)
@@ -9055,7 +9201,7 @@ function tick(rdt) {
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
   { const tL = performance.now(); updateLazy(worldHold ? 30 : Math.max(0.5, Math.min(bgBudget(lazyQueue.length > 6 ? 6 : 4), (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5))); STREAM_MS += usedOut + performance.now() - tL; } PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); updateNetPeds(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
-  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
+  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); sfLod(); if ((sfTickT += dt) > 1) { sfTickT = 0; SF.tick(performance.now()); sfSwap(); } if (!GAMES.inside) { const f = focusPos(); sfPlacer().update(f.x, f.z, dt); } updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
   MILITARY.update(dt);
   GANG.update(dt);
@@ -9143,7 +9289,10 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
-  if (/[?&]dbg\b/.test(location.search)) { window.__ctx = ctx; window.__club = () => CLUB; } // for poking at the game from the console while testing
+  Object.assign(ctx, { SF, releaseCar: m => { if (m && m.model && m.model.startsWith('sf-')) SF.drop(m.model.slice(3)); }, sfCarFor: (type, id) => { // the room's car number picks the same Sketchfab car in every game (src/online/traffic.js)
+    const list = SF.cars.filter(e => e.t === type), h = Math.sin(id * 12.9898) * 43758.5453, r = h - Math.floor(h); if (!list.length || r > SF_SHARE) return null;
+    const e = list[Math.floor(r / SF_SHARE * list.length) % list.length]; if (SF.get(e.id)) return 'sf-' + e.id; SF.load(e.id); return null; } });
+  if (/[?&]dbg\b/.test(location.search)) { window.__ctx = ctx; window.__sfp = sfPlacer; window.__club = () => CLUB; } // for poking at the game from the console while testing
   Object.assign(ctx, { applyLook, lookOf: k => TUNE.lookOf(k), garageAt, garageSite, boatModel, CAR_TINTS,
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
     heightAt, los, rayBuildings, collideCircle, addPoly, nearestEdge, edgePos, laneSample, laneOff, walkOff, agentFromNearest, advance, endNode,
@@ -9166,6 +9315,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   GAMES.init(); // crew garages in Poway, and their worlds when you go in (src/games)
   restoreSave();
   const sp0 = focusPos(); await loadRoofPhotos().catch(e => console.warn('[roofs]', e)); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
+  await Promise.race([SF_WARM, new Promise(r => setTimeout(r, 3000))]); // the first Sketchfab cars (src/sf.js), so the first traffic is made of them
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Uploading textures…'); await uploadInSteps(scene.children, f => { DL.msg = `Uploading textures… ${Math.round(f * 100)}%`; showProgress(); });
@@ -9481,7 +9631,8 @@ onNet('traffic:on', on => { // our own traffic makes way for the room's (parked 
 initWorld({
   focus: () => focusPos(), peds: () => peds, vehicles: () => vehicles, playerCar: () => player.inCar, notify,
   avatarIndex: a => a || '', avatarName: a => a || null, carTypeIndex: t => Object.keys(CAR).indexOf(t), carTypeName: i => Object.keys(CAR)[i] || null,
-  modelIndex: (t, m) => Math.max(0, CAR[t].model.indexOf(m)), modelName: (t, i) => CAR[t].model[i] || CAR[t].model[0],
+  modelIndex: (t, m) => { if (m && m.startsWith('sf-')) { const i = SF.cars.findIndex(e => 'sf-' + e.id === m); if (i >= 0) return 1000 + i; } return Math.max(0, CAR[t].model.indexOf(m)); }, // 1000 + n: the nth Sketchfab car (src/sf.js)
+  modelName: (t, i) => { if (i >= 1000) { const e = SF.cars[i - 1000]; if (e) return 'sf-' + e.id; } return CAR[t].model[i] || CAR[t].model[0]; },
   makePuppetPed: (x, z, avatar, cop) => { const p = new Ped(x, z, { look: cop ? { kind: 'police', avatar, gun: true, skin: '#b07a55', shirt: '#b8a77a', sleeve: '#b8a77a', pants: '#2c4430', hat: '#2c4430' } : { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; if (avatar && p.rig.avatar !== avatar) reskinWhenLoaded(p, avatar); return p; }, // the leader's exact person: load their avatar if we haven't
   makePuppetCar: (type, x, z, r, tint, model) => { const v = new Vehicle(type, x, z, r, tint, model); v.keep = true; v.mode = 'puppet'; settleCar(v); return v; },
   settle: (v, dt) => settleCar(v, dt), wreck: v => wreckCar(v),
@@ -9501,7 +9652,7 @@ initWorld({
 });
 SHELL.initShell({
   THREE, gfx: GFX, ready: () => worldReady, state: () => netState(),
-  startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin, cheat: t => CHEAT.handle(t),
+  startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin, cheat: t => CHEAT.handle(t), credits: el => renderCredits(el, SF),
   closet: { money: () => save.money, spend: n => { if (save.money < n) return false; save.money -= n; persist(); sfx.cash && sfx.cash(); return true; }, // the wardrobe (src/wardrobe.js)
     ach: id => !!(save.ach && save.ach[id]), level: () => (PROG.me && PROG.me.lvl) || 0, wardrobe: () => save.wardrobe || (save.wardrobe = { owned: {}, look: '' }), persist },
   voices: () => voices, setVoices: on => { voices = on; persist(); },

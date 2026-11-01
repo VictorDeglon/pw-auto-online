@@ -19,7 +19,7 @@ export function initNetTraffic() {
 
 function make(id, ty, ti, md, x, z, r) {
   const type = TYPES[ty] || 'sedan', spec = ctx.CAR[type]; if (!spec) return null;
-  const model = spec.model[(md | 0) % spec.model.length], tint = ctx.CAR_TINTS[(ti | 0) % ctx.CAR_TINTS.length];
+  const model = (ctx.sfCarFor && ctx.sfCarFor(type, id)) || spec.model[(md | 0) % spec.model.length], tint = ctx.CAR_TINTS[(ti | 0) % ctx.CAR_TINTS.length]; // its Sketchfab car once that's loaded here, else the stock one
   const v = new ctx.Vehicle(type, x, z, r, tint, model);
   v.net = id; v.mode = 'net'; v.driver = 'ai'; v.keep = true; v.snaps = []; ctx.settleCar(v);
   return v;

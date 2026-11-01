@@ -60,7 +60,7 @@ export function showMenu(scr) {
 }
 export function hideMenu() { $('menu').hidden = true; closeChar(); if (unwatch) { unwatch(); unwatch = null; } screen = null; }
 function open(name) {
-  for (const id of ['online', 'career', 'character', 'achievements', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
+  for (const id of ['online', 'career', 'character', 'achievements', 'settings', 'controls', 'credits']) { const e = $('scr-' + id); if (e) e.hidden = id !== name; }
   for (const b of document.querySelectorAll('#mnav [data-go]')) b.classList.toggle('on', b.dataset.go === name);
   if (screen === 'character' && name !== 'character') closeChar();
   if (screen === 'career' && name !== 'career') closeCareer();
@@ -71,6 +71,7 @@ function open(name) {
   if (name === 'career') openCareer();
   if (name === 'settings') openSettings();
   if (name === 'achievements') renderAchievements($('achgrid'));
+  if (name === 'credits' && H && H.credits) H.credits($('creditlist'));
   achSub();
 }
 export function achSub() { const e = $('achsub'); if (e) e.textContent = `${achievementCount()} / ${ACHIEVEMENTS.length}`; }

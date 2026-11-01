@@ -229,6 +229,20 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - Beaches have surf rental shacks by the towers, boards stuck in the sand, boards on car roofs in the beach towns.
 - Sand is soft: ruts and footprints, fading over a couple of minutes.
 
+## Sketchfab models (`src/sf.js`, `src/world/sfplace.js`, `assets/sf`)
+
+- Found and fitted by `tools/sketchfab/` (real size, standing on the ground, the front to +z) and credited on the
+  menu's Credits screen and in `assets/sf/CREDITS.md`. CC0, CC BY, CC BY-SA and CC BY-NC only, so no ads or paid
+  items while BY-NC models are in the game. No game or film rips, no real people, no brand storefronts.
+- Cars: every car a street makes for itself, nicer ones where the money is (the old built-in bodies only stand in
+  while a model loads, and for kinds with no Sketchfab car, like buses). They keep their own materials except the
+  paint (it takes the car's colour, clear-coated), the glass (the game's) and the lamps (lit at night).
+- The rest fills in what the code doesn't build or grow: street furniture by neighbourhood, people at work by their
+  door (uniforms only there), everyday people standing about where it's busy, the club strip's doormen and crowd, a
+  place's own vehicle (fire truck, ambulance, school bus), garden plants (citrus, olive, bird of paradise, agave,
+  yucca, prickly pear). Never palms, gums, live oaks or cypress (grown in code), and nothing the beach code already
+  lays out (umbrellas, towels, boards).
+
 ## The club (`src/world/club.js`)
 
 - The Velvet Javelina, a cabaret lounge on open ground by the Carmel Mountain Plaza club strip: dark stucco, the name

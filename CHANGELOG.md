@@ -8,6 +8,20 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.10.2 (2026-10-31)
+
+- **319 real cars on the streets** (`src/sf.js`): every car the streets make for themselves is now one of 319 models
+  from Sketchfab, at real size, from beaters to exotics. Cheaper cars where the money is thin and nicer ones where it
+  isn't; police cruisers for the police. Each keeps its own look except the paint (it takes the car's colour), the
+  glass and the lamps, lit at night. A few of each kind come in with the loading screen, the old built-in bodies
+  only stand in until a model has loaded and are swapped for one out of sight, and buses keep their own. A model loads
+  when a car needs it and is let go once none does, so the streets turn over every few minutes. To keep the frame
+  rate, each car is drawn in as few pieces as its textures allow and its textures are cut to 512 px, only cars near
+  you show their cabins and badges and cast shadows, and see-through parts that made the whole scene draw twice are
+  made solid.
+- **Credits** on the menu: every model with its title, its maker and its licence, with a search box (also in
+  `assets/sf/CREDITS.md`).
+
 ## 0.10.1 (2026-10-31)
 
 - **Every shopping centre's stores, on their real buildings:** each of the 275 stores the map names in Poway's centres
