@@ -11,8 +11,8 @@
 
 import { pointInPoly } from '../world/treeFilter.js';
 
-export const TREE_SPECIES = new Set(['oak', 'olive', 'scruboak', 'slender', 'cypress', 'jacaranda', 'eucalyptus', 'palm_fan', 'palm_date', 'palm_queen', 'pepper', 'bottlebrush', 'citrus']);
-const FALLBACK = { bottlebrush: 'olive', citrus: 'olive', cypress: 'slender', eucalyptus: 'slender', palm_fan: 'slender', palm_date: 'olive', palm_queen: 'palm_fan', opuntia: 'sage', yucca: 'sage', agave: 'sage', scruboak: 'chapbig', chapbig: 'chap', chap: 'sage', sage: 'scruboak' }; // the scrub oak scan stands in for chaparral and sage until those are baked
+export const TREE_SPECIES = new Set(['oak', 'olive', 'scruboak', 'slender', 'cypress', 'jacaranda', 'eucalyptus', 'palm_fan', 'palm_date', 'palm_queen', 'pepper', 'citrus']);
+const FALLBACK = { bottlebrush: 'shrub', citrus: 'olive', cypress: 'slender', eucalyptus: 'slender', palm_fan: 'slender', palm_date: 'olive', palm_queen: 'palm_fan', opuntia: 'sage', yucca: 'sage', agave: 'sage', scruboak: 'chapbig', chapbig: 'chap', chap: 'sage', sage: 'scruboak' }; // the scrub oak scan stands in for chaparral and sage until those are baked
 // albedo tints: the scans are a touch greener than Poway in the dry season; chaparral reads dark olive, sage grey
 const TINT = {
   oak: [0.74, 0.80, 0.66], olive: [0.96, 0.98, 0.92], scruboak: [0.72, 0.76, 0.62], slender: [0.9, 0.92, 0.82], cypress: [0.86, 0.90, 0.80],
@@ -21,10 +21,10 @@ const TINT = {
   chapbig: [0.95, 1.0, 0.82], chap: [0.66, 0.71, 0.56], // the laurel sumac scan is dark already; the lemonade berry one bright sage: [0.98, 0.95, 0.86], opuntia: [1, 1, 1], yucca: [1, 1, 1], agave: [1, 1, 1],
 };
 // max height (m) a species is allowed to reach when scaled to fit the photo canopy
-const MAXH = { bottlebrush: 9, citrus: 6, oak: 16, olive: 9, scruboak: 6, slender: 12, cypress: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, palm_queen: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
+const MAXH = { bottlebrush: 2.5, citrus: 6, oak: 16, olive: 9, scruboak: 6, slender: 12, cypress: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, palm_queen: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
 const MINS = { sage: 1.3, chap: 1.0 }; // the scans of these are small; never shrink them further
 // mature heights (m): a street tree here is usually full grown; the photo's canopy can understate it
-const MINH = { bottlebrush: 5, citrus: 3.5, eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 7, cypress: 9, scruboak: 3 };
+const MINH = { citrus: 3.5, eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 7, cypress: 9, scruboak: 3 };
 
 // palms grow to their species' height, whatever the model's own: Mexican fan palms tower over the houses
 const PALMH = { palm_fan: [10, 22], palm_date: [7, 13], palm_queen: [8, 13] };
@@ -80,7 +80,7 @@ export function plantOne(D, i, r, ctx, veg, rnd) {
   if (area === 6) sp = pickW(rnd, [['eucalyptus', 6], ['oak', 3], ['scruboak', 1]]);              // groves (kind 2 is parking: nothing grows there)
   else if (urban || area === 1 || area === 3) {                                                     // planted
     if (kind === 3) sp = pickW(rnd, [['chap', 5], ['olive', 2], ['slender', 1], ['agave', 1]]);
-    else if (kind === 0) sp = pickW(rnd, [['olive', 18], ['jacaranda', 14], ['slender', 8], ['palm_fan', 18], ['pepper', 12], ['oak', 10], ['scruboak', 6], ['eucalyptus', 6], ['palm_date', 6], ['palm_queen', 7], ['bottlebrush', 9], ['citrus', 6]]);
+    else if (kind === 0) sp = pickW(rnd, [['olive', 18], ['jacaranda', 14], ['slender', 8], ['palm_fan', 18], ['pepper', 12], ['oak', 10], ['scruboak', 6], ['eucalyptus', 6], ['palm_date', 6], ['palm_queen', 7], ['citrus', 6]]);
     else sp = pickW(rnd, [['oak', 24], ['jacaranda', 16], ['eucalyptus', 26], ['pepper', 14], ['scruboak', 6], ['olive', 6], ['palm_fan', 8]]);
   } else {                                                                                          // wild
     const v = ctx.valley(x, z); ctx.slopeAt(x, z, sl); const steep = Math.hypot(sl[0], sl[1]);

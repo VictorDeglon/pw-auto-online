@@ -27,8 +27,10 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - **World palette:** stucco creams and tans, terracotta and concrete tile, grey sidewalks, mid-grey sun-bleached
   asphalt, golden wild oats, olive chaparral, tan decomposed granite, warm granite boulders. Wild ground is never
   blue-grey (`src/nature/ground.js` warms it). Jacarandas are in leaf, not purple, except in late spring. Trees and
-  shrubs are scans where a good one exists (`assets/nature`, Poly Haven), grown in code where not (palms, gums,
-  peppers, live oaks, cypress).
+  shrubs are real models where a good one exists: Poly Haven scans (olive, scrub oak, jacaranda, chaparral, garden
+  shrubs) and Sketchfab's PlantCatalog and others (Mexican and California fan palms, Canary Island date palms, slender
+  date palms for the queen palms, an oak, Italian cypress, bottlebrush, lemon and orange, spineless yucca, prickly
+  pear; `assets/nature/CREDITS.md`), grown in code where not (gums, peppers). Palms stand at their species' height.
 
 ## UI (`src/ui/sunset.css`)
 

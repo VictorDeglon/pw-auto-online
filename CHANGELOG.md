@@ -8,6 +8,14 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.12.1 (2026-11-03)
+
+- **More real trees and plants:** Canary Island date palms, slender date palms for the queen palms, a broad oak and
+  Italian cypress, lemon and orange trees in town and yards, bottlebrush among the shrubs along house fronts,
+  spineless yuccas in front yards and among the chaparral with prickly pear, all from Sketchfab (PlantCatalog by
+  e-on software, massive-graphisme, ElectroNick; CC BY 4.0, credited in `assets/nature/CREDITS.md` and the menu). A
+  fourth Mexican fan palm joins the street palms. Only the gums and pepper trees are still grown in code.
+
 ## 0.12.0: Wild Oats (2026-11-03)
 
 - **The aerial photo is painted over:** the ground no longer shows the photo anywhere, near or far (its cars,

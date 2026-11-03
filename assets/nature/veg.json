@@ -268,11 +268,27 @@
      "width": 3.946
     },
     {
-     "name": "palm_fan_c",
-     "lod": "lod/palm_fan_c.glb",
+     "name": "palm_fan_b",
+     "lod": "lod/palm_fan_b.glb",
      "block": [
       1,
       0
+     ],
+     "center": [
+      0.0,
+      7.0192,
+      -0.0
+     ],
+     "radius": 7.1367,
+     "height": 14.038,
+     "width": 3.923
+    },
+    {
+     "name": "palm_fan_c",
+     "lod": "lod/palm_fan_c.glb",
+     "block": [
+      0,
+      1
      ],
      "center": [
       0.0,
@@ -287,7 +303,7 @@
      "name": "palm_fan_d",
      "lod": "lod/palm_fan_d.glb",
      "block": [
-      0,
+      1,
       1
      ],
      "center": [
@@ -298,6 +314,318 @@
      "radius": 5.5167,
      "height": 10.712,
      "width": 5.716
+    }
+   ]
+  },
+  "palm_date": {
+   "atlas": "imp/palm_date",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    2,
+    1
+   ],
+   "variants": [
+    {
+     "name": "palm_date_a",
+     "lod": "lod/palm_date_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      8.0518,
+      -0.0
+     ],
+     "radius": 8.1983,
+     "height": 16.104,
+     "width": 8.091
+    },
+    {
+     "name": "palm_date_b",
+     "lod": "lod/palm_date_b.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      0.0,
+      7.8388,
+      -0.0
+     ],
+     "radius": 7.9658,
+     "height": 15.678,
+     "width": 7.895
+    }
+   ]
+  },
+  "palm_queen": {
+   "atlas": "imp/palm_queen",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    2,
+    1
+   ],
+   "variants": [
+    {
+     "name": "palm_queen_a",
+     "lod": "lod/palm_queen_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      9.6675,
+      -0.0
+     ],
+     "radius": 9.79,
+     "height": 19.335,
+     "width": 7.029
+    },
+    {
+     "name": "palm_queen_b",
+     "lod": "lod/palm_queen_b.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      0.0,
+      4.3026,
+      -0.0
+     ],
+     "radius": 4.4725,
+     "height": 8.605,
+     "width": 6.36
+    }
+   ]
+  },
+  "oak": {
+   "atlas": "imp/oak",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    1,
+    1
+   ],
+   "variants": [
+    {
+     "name": "oak_a",
+     "lod": "lod/oak_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      4.5,
+      -0.0
+     ],
+     "radius": 5.693,
+     "height": 9.0,
+     "width": 10.319
+    }
+   ]
+  },
+  "cypress": {
+   "atlas": "imp/cypress",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    1,
+    1
+   ],
+   "variants": [
+    {
+     "name": "cypress_a",
+     "lod": "lod/cypress_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      2.6537,
+      -0.0
+     ],
+     "radius": 2.6914,
+     "height": 5.307,
+     "width": 1.66
+    }
+   ]
+  },
+  "bottlebrush": {
+   "atlas": "imp/bottlebrush",
+   "G": 8,
+   "cell": 128,
+   "blocks": [
+    2,
+    1
+   ],
+   "variants": [
+    {
+     "name": "bottlebrush_a",
+     "lod": "lod/bottlebrush_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      0.5015,
+      -0.0
+     ],
+     "radius": 0.7016,
+     "height": 1.003,
+     "width": 1.273
+    },
+    {
+     "name": "bottlebrush_b",
+     "lod": "lod/bottlebrush_b.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      0.0,
+      0.6829,
+      -0.0
+     ],
+     "radius": 0.9366,
+     "height": 1.366,
+     "width": 1.718
+    }
+   ]
+  },
+  "citrus": {
+   "atlas": "imp/citrus",
+   "G": 8,
+   "cell": 128,
+   "blocks": [
+    2,
+    1
+   ],
+   "variants": [
+    {
+     "name": "citrus_a",
+     "lod": "lod/citrus_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      1.0886,
+      -0.0
+     ],
+     "radius": 1.4473,
+     "height": 2.177,
+     "width": 2.486
+    },
+    {
+     "name": "citrus_b",
+     "lod": "lod/citrus_b.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      0.0,
+      1.2942,
+      -0.0
+     ],
+     "radius": 1.7576,
+     "height": 2.588,
+     "width": 3.237
+    }
+   ]
+  },
+  "opuntia": {
+   "atlas": "imp/opuntia",
+   "G": 8,
+   "cell": 128,
+   "blocks": [
+    2,
+    1
+   ],
+   "variants": [
+    {
+     "name": "opuntia_a",
+     "lod": "lod/opuntia_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      0.4939,
+      -0.0
+     ],
+     "radius": 0.8279,
+     "height": 0.988,
+     "width": 1.13
+    },
+    {
+     "name": "opuntia_b",
+     "lod": "lod/opuntia_b.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      -0.0,
+      0.7893,
+      -0.0
+     ],
+     "radius": 1.2014,
+     "height": 1.579,
+     "width": 1.964
+    }
+   ]
+  },
+  "yucca": {
+   "atlas": "imp/yucca",
+   "G": 8,
+   "cell": 128,
+   "blocks": [
+    2,
+    1
+   ],
+   "variants": [
+    {
+     "name": "yucca_a",
+     "lod": "lod/yucca_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      1.0373,
+      -0.0
+     ],
+     "radius": 1.1388,
+     "height": 2.075,
+     "width": 1.45
+    },
+    {
+     "name": "yucca_b",
+     "lod": "lod/yucca_b.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      0.0,
+      1.7852,
+      -0.0
+     ],
+     "radius": 1.8325,
+     "height": 3.57,
+     "width": 2.419
     }
    ]
   }

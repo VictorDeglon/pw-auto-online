@@ -7,11 +7,11 @@
 # Each model is first made a clean, centred source (fit_plant.py, tris 0), so the impostor and the near mesh line up.
 set -u
 RAW=$1; OUT=$2; HERE=$(cd "$(dirname "$0")" && pwd); mkdir -p "$OUT/src" "$OUT/imp" "$OUT/lod" "$OUT/log"
-# variant uid near_tris [near_tex] [impostor_cell]: palms keep 256 px textures near (their fronds are 10-20 m up, and a
+# variant uid near_tris [near_tex] [impostor_cell] [height_m: for a model not in metres]: palms keep 256 px textures near (their fronds are 10-20 m up, and a
 # PlantCatalog palm has twenty-odd materials), shrubs bake 128 px impostor views (they're small on screen)
 one() {
   local f="$RAW/sf-$2.glb"; [ -f "$f" ] || { echo "missing $1 ($2)"; return; }
-  [ -f "$OUT/src/$1.glb" ] || blender -b --python "$HERE/fit_plant.py" -- "$f" "$OUT/src/$1.glb" 0 1024 > "$OUT/log/src_$1.log" 2>&1
+  [ -f "$OUT/src/$1.glb" ] || blender -b --python "$HERE/fit_plant.py" -- "$f" "$OUT/src/$1.glb" 0 1024 "${6:-0}" > "$OUT/log/src_$1.log" 2>&1
   [ -f "$OUT/lod/$1.glb" ] || blender -b --python "$HERE/fit_plant.py" -- "$OUT/src/$1.glb" "$OUT/lod/$1.glb" "$3" "${4:-512}" > "$OUT/log/lod_$1.log" 2>&1
   [ -f "$OUT/imp/$1_alb.png" ] || blender -b --python "$HERE/bake_impostor.py" -- "$OUT/src/$1.glb" "$OUT/imp/$1" '*' "${5:-192}" > "$OUT/log/imp_$1.log" 2>&1
   echo "$1 $(grep -h 'source tris' "$OUT/log/src_$1.log") $(grep -h 'final tris' "$OUT/log/lod_$1.log") $(grep -c wrote "$OUT/log/imp_$1.log") images"; }
@@ -23,7 +23,7 @@ one palm_date_a 2b4a6b2b78164048a7fde77c7387735d 20000 256 192 # Canary Island d
 one palm_date_b 53cb8ec923ec431bb8884479c4570ecb 20000 256 192
 one palm_queen_a a8706e6ce8f94f26a97329c2f7610384 16000 256 192 # date palm (Phoenix dactylifera), slender: for the queen palms
 one palm_queen_b 28fb3114ae82495e859ae3cfda213d19 16000 256 192
-one oak_a 3dc59560f2d24345bdbe65c44636453b 18000 512 192 # a broad, gnarled oak (massive-graphism)
+one oak_a 3dc59560f2d24345bdbe65c44636453b 18000 512 192 9 # a broad, gnarled oak (massive-graphisme), modelled in millimetres
 one cypress_a 249d8cb553a8469e9d645713f8e96ed1 12000 512 192 # Italian cypress (ElectroNick)
 one bottlebrush_a 3c3f5fd64a584b838deeabd204b0dbc3 10000 384 128 # Callistemon laevis, PlantCatalog
 one bottlebrush_b 9e7c67d7a5c641ad8e9621719d0bacac 12000 384 128 # Callistemon rigidus
