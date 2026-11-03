@@ -646,7 +646,7 @@ import { updateInteract, useInteract, addInteract } from './src/interact.js';
 import { steerTo } from './src/drive.js';
 import { HUMANS, loadHumans, loadCrowd, makeHuman, animHuman, pickAvatar, holdWeapon, ensureAvatar, setPlayerAvatar, splitSkin, loadSwim, ragdoll, freeHuman, plantFeet, ride } from './src/humans.js';
 import { buildTwoWheeler, TWO_COLORS } from './src/twowheel.js';
-import { loadGfx, makeScaler } from './src/gfx.js';
+import { loadGfx, makeScaler, makeGovernor } from './src/gfx.js';
 import { NET, HOME, on as onNet, sendState, sendHit, feed as netFeed, sendEvent, setRuin, connectHome, serverNow } from './src/online/net.js';
 import { WORLD, initWorld, updateWorld, resetWorld, puppetAI, puppetHurt, puppetCarDamage, claimPuppetCar } from './src/online/world.js';
 import { createCarMods } from './src/carmods.js';
@@ -826,6 +826,13 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 $('view').appendChild(renderer.domElement);
 const scene = new THREE.Scene();
+// The scene never moves. In three r160 a scene that updates its own matrix forces EVERY descendant to recompute its world
+// matrix every frame (updateMatrixWorld passes `force` down, and `matrixWorldAutoUpdate = false` is ignored once it is
+// set): ~17,000 matrix products a frame. Without it, subtrees marked static (chunks, street furniture, hidden people) are
+// skipped and everything else updates as before.
+scene.matrixAutoUpdate = false;
+// street furniture cells (kitCells): one root that never moves, so thousands of instanced meshes cost no matrix work
+const KIT_CELLS = [], KIT_ROOT = new THREE.Group(); KIT_ROOT.name = 'kit-cells'; KIT_ROOT.matrixAutoUpdate = false; KIT_ROOT.matrixWorldAutoUpdate = false; scene.add(KIT_ROOT);
 scene.fog = new THREE.Fog(0xbfd4e6, 300, 1500);
 const ATM = GFX.atmos ? createAtmosphere(THREE) : null; // Medium and up: height fog + aerial perspective in every material (src/atmos.js)
 { // the version: the loading screen's stamp and a line under the menu (src/version.js, CHANGELOG.md)
@@ -858,6 +865,9 @@ const fitHud = () => document.documentElement.style.setProperty('--hs', Math.max
 fitHud();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); fitHud(); });
 const MAXANISO = renderer.capabilities.getMaxAnisotropy();
+renderer.domElement.addEventListener('webglcontextlost', () => { // streamed chunks hold most of their vertex data on the GPU only (dropArray): hidden, they rebuild once the context is back
+  for (const ch of chunks.values()) { const L = ch.lazy; if (!L || !L.built) continue; for (const m of L.meshes) m.visible = false; L.dirty = true; }
+});
 
 const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x8a7b5a, 0.9); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
@@ -1148,9 +1158,13 @@ function progress(msg) {
 }
 const texLoader = new THREE.TextureLoader(), gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/')); // the Sketchfab models' meshes are Draco-packed
+{ // no model comes in see-through: a material with transmission makes three draw the whole scene once more, every frame it's in view
+  const parse = gltfLoader.parse.bind(gltfLoader);
+  gltfLoader.parse = (data, path, onLoad, onError) => parse(data, path, g => { g.scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) if (m.transmission) m.transmission = 0; }); onLoad(g); }, onError);
+}
 const SF = createSF(gltfLoader, { onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge)
   const t = carProto.get('sf-' + id); carProto.delete('sf-' + id); if (!t) return;
-  for (const root of [t.body, ...t.wheels.map(w => w.mesh)]) root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.name === 'Plain') o.material.dispose(); } });
+  for (const root of [t.body, ...t.wheels.map(w => w.mesh)]) root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.name === 'Plain' || o.material.userData.own) o.material.dispose(); } });
 } });
 const SF_WARM = SF.warm(['sedan', 'suv', 'pickup', 'sports', 'van', 'police'], 3); // a few of each kind of car fetched alongside the world, for the first traffic
 // a 1x1 stand-in so a material compiles with its map from the start and the real image can be swapped in later
@@ -1163,10 +1177,14 @@ function loadTex(url, srgb = true, repeat = true) {
   loadState.total++;
   return fetchBlobURL(url)
     .then(src => new Promise((res, rej) => texLoader.load(src, t => { URL.revokeObjectURL(src); res(t); }, undefined, e => { URL.revokeObjectURL(src); rej(e); })))
+    .then(decoded)
     .then(t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = Math.min(8, MAXANISO); return t; },
       e => { console.warn('[load]', url, e && e.message || e); return null; })
     .finally(() => { loadState.done++; progress('Loading textures…'); });
 }
+// decode the image now, off the main thread (img.decode): otherwise the browser decodes it inside whichever frame first
+// uploads the texture, a JPEG or WebP of a few megapixels at a time (most of a texture's upload cost)
+function decoded(t) { const im = t && t.image; return im && im.decode ? im.decode().then(() => t, () => t) : t; }
 function loadImage(url) {
   loadState.total++;
   return fetchBlobURL(url)
@@ -1323,18 +1341,19 @@ async function loadAssets() {
 // ============================================================ geometry builder
 // a growable Float32Array with the push and length of the plain array it replaced: the town's meshes are millions of
 // numbers, and plain arrays (grown a boxed number at a time, then copied into the GPU buffers) were most of a chunk's build
-class FBuf {
-  constructor() { this.a = new Float32Array(768); this.length = 0; }
+const NO_F32 = new Float32Array(0);
+class FBuf { // a growable Float32Array; most of a chunk's ~25 builders stay empty, so nothing is allocated until the first push
+  constructor() { this.a = NO_F32; this.length = 0; }
   push() {
     const n = arguments.length, l = this.length;
-    if (l + n > this.a.length) { const b = new Float32Array(Math.max(this.a.length * 2, l + n)); b.set(this.a); this.a = b; }
+    if (l + n > this.a.length) { const b = new Float32Array(Math.max(this.a.length * 2, l + n, 768)); b.set(this.a); this.a = b; }
     const a = this.a; for (let i = 0; i < n; i++) a[l + i] = arguments[i]; this.length = l + n;
   }
   array() { return this.a.slice(0, this.length); }
 }
 class GB {
   constructor(uv, fac) { this.p = new FBuf(); this.n = new FBuf(); this.c = new FBuf(); this.uv = uv ? new FBuf() : null; this.f = fac ? new FBuf() : null; this.m = fac && WALLARR ? new FBuf() : null; this.L = 0; } // m: the wall-array layer per vertex (L: the one new triangles get) // f: facade data per vertex (src/world/surfaces.js)
-  mesh(mat, shadow = true) {
+  mesh(mat, shadow = true, free = false) { // free: only the position stays in memory once it's on the GPU (see dropArray)
     if (!this.p.length) return null;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.p.array(), 3));
@@ -1344,11 +1363,17 @@ class GB {
     if (this.f) g.setAttribute('fac', new THREE.BufferAttribute(this.f.array(), 4));
     if (this.m) g.setAttribute('aWL', new THREE.BufferAttribute(this.m.array(), 1));
     g.computeBoundingSphere();
+    if (free) for (const k in g.attributes) if (k !== 'position') g.attributes[k].onUpload(dropArray);
     const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix();
-    this._mesh = m; this.p = this.n = this.c = this.uv = this.m = null; // buildings keep vertex ranges into this mesh (collapse)
+    this._mesh = m; this.p = this.n = this.c = this.uv = this.f = this.m = null; // buildings keep vertex ranges into this mesh (collapse); the builders' own copies go
     return m;
   }
 }
+// A streamed chunk's meshes are thrown away whole (dropLazy, or a rebuild), never re-uploaded, and only their positions
+// are read back (a collapsing building's vertices): the normals, colours, uvs and facade data are dropped from memory
+// once they're on the GPU (that was ~80% of the town's geometry in JS, 300-550 MB within the view). After a lost
+// WebGL context the chunks rebuild from their data (see 'webglcontextlost').
+function dropArray() { this.array = null; }
 // triangle whose winding is flipped so its normal agrees with the hint (hx,hy,hz)
 function tri(gb, a, b, c, ca, cb, cc, ua, ub, uc, hx, hy, hz) {
   const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
@@ -3185,6 +3210,33 @@ function buildStreetKit() {
     }
   }
 }
+// Street furniture is thousands of identical little things (hydrants, utility pedestals, mailboxes, lamps, sign poles).
+// One InstancedMesh for the whole town is "in view" from everywhere (its bounding sphere is the town), so every copy was
+// drawn every frame, shadow pass included: the 3,662 hydrants alone were 1.15M triangles twice a frame. They're grouped
+// into 160 m cells instead, an InstancedMesh per part per cell: frustum culling works per cell, cells past `far` metres
+// aren't drawn and only cells near you cast shadows (updateKitCells). parts: [{ geo, mat, cast, night }] (night: drawn
+// only after dark); place(i, j, meshes) sets instance j of every part for spot i. Returns, for each spot, [meshes, j].
+// The distances scale with the preset's GFX.lod.
+function kitCells(name, n, xOf, zOf, parts, place, far, shadowFar) {
+  const cells = new Map(), C = 160, where = new Array(n);
+  for (let i = 0; i < n; i++) { const k = Math.floor(xOf(i) / C) * 100003 + Math.floor(zOf(i) / C); let c = cells.get(k); if (!c) cells.set(k, c = []); c.push(i); }
+  for (const ids of cells.values()) {
+    const meshes = parts.map(P => { const m = new THREE.InstancedMesh(P.geo, P.mat, ids.length); m.name = name; m.castShadow = !!P.cast; m.receiveShadow = true; m.matrixAutoUpdate = false; m.userData.cast = !!P.cast; m.userData.night = !!P.night; return m; });
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    ids.forEach((i, j) => { place(i, j, meshes); where[i] = [meshes, j]; const x = xOf(i), z = zOf(i); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); });
+    for (const m of meshes) { m.instanceMatrix.needsUpdate = true; m.computeBoundingSphere(); KIT_ROOT.add(m); }
+    KIT_CELLS.push({ meshes, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, r: Math.hypot(x1 - x0, z1 - z0) / 2, far, sh: shadowFar, on: null, shOn: null, night: null });
+  }
+  return where;
+}
+function updateKitCells(fx, fz) { // with the chunk visibility pass, twice a second
+  const night = M.lampGlow.opacity > 0.005, k = GFX.lod;
+  for (const c of KIT_CELLS) {
+    const d = Math.max(0, Math.hypot(c.cx - fx, c.cz - fz) - c.r), on = d < c.far * k, sh = d < c.sh * k;
+    if (on === c.on && sh === c.shOn && night === c.night) continue; c.on = on; c.shOn = sh; c.night = night;
+    for (const m of c.meshes) { m.visible = on && (!m.userData.night || night); m.castShadow = m.userData.cast && sh; }
+  }
+}
 function buildKitMeshes() {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s1 = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   const col = (g, c) => { const n = g.attributes.position.count, a = new Float32Array(n * 3), cc = hex(c); for (let i = 0; i < n; i++) a.set([cc.r, cc.g, cc.b], i * 3); g.setAttribute('color', new THREE.BufferAttribute(a, 3)); for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color'].includes(k)) g.deleteAttribute(k); return g.index ? g.toNonIndexed() : g; };
@@ -3197,10 +3249,11 @@ function buildKitMeshes() {
     col(new THREE.CylinderGeometry(0.065, 0.065, 0.12, 8).rotateX(Math.PI / 2).translate(0, 0.48, 0.15), 0xf0f0ea),
     col(new THREE.CylinderGeometry(0.045, 0.045, 0.1, 8).rotateZ(Math.PI / 2).translate(0.15, 0.5, 0), 0xf0f0ea), col(new THREE.CylinderGeometry(0.045, 0.045, 0.1, 8).rotateZ(Math.PI / 2).translate(-0.15, 0.5, 0), 0xf0f0ea)]);
   const box = BGU.mergeGeometries([col(new THREE.BoxGeometry(0.62, 0.1, 0.5).translate(0, 0.05, 0), 0xa8a59c), col(new THREE.BoxGeometry(0.5, 1.05, 0.38).translate(0, 0.6, 0), 0x41593d), col(new THREE.BoxGeometry(0.54, 0.05, 0.42).translate(0, 1.14, 0), 0x3a5036)]);
-  for (const [key, g, r] of [['hyd', hyd, 0.22], ['box', box, 0.32]]) {
-    const L = kitSpots[key], n = L.length / 3; if (!n) continue; const im = new THREE.InstancedMesh(g, mat, n);
-    for (let i = 0; i < n; i++) { const x = L[i * 3], z = L[i * 3 + 1], y = heightAt(x, z); q.setFromAxisAngle(up, L[i * 3 + 2]); m4.compose(v.set(x, y, z), q, s1); im.setMatrixAt(i, m4); addPoly([x - r, z - r, x + r, z - r, x + r, z + r, x - r, z + r], y, y + (key === 'hyd' ? 0.9 : 1.2)); }
-    im.castShadow = true; im.receiveShadow = true; im.computeBoundingSphere(); im.name = 'kit-' + key; scene.add(im);
+  for (const [key, g, r, far] of [['hyd', hyd, 0.22, 240], ['box', box, 0.32, 200]]) {
+    const L = kitSpots[key], n = L.length / 3; if (!n) continue;
+    kitCells('kit-' + key, n, i => L[i * 3], i => L[i * 3 + 1], [{ geo: g, mat, cast: true }], (i, j, [im]) => {
+      const x = L[i * 3], z = L[i * 3 + 1], y = heightAt(x, z); q.setFromAxisAngle(up, L[i * 3 + 2]); m4.compose(v.set(x, y, z), q, s1); im.setMatrixAt(j, m4); addPoly([x - r, z - r, x + r, z - r, x + r, z + r, x - r, z + r], y, y + (key === 'hyd' ? 0.9 : 1.2));
+    }, far, 90);
   }
   console.info('[street kit]', kitSpots.hyd.length / 3, 'hydrants,', kitSpots.box.length / 3, 'pedestals');
 }
@@ -3302,10 +3355,9 @@ function buildSigns() {
   roadEndKit();
   const sm = signGB.mesh(M.sign, true); if (sm) { scene.add(sm); SIGNMESH = sm; }
   const n = signPoles.length / 4; const poleG = new THREE.CylinderGeometry(0.03, 0.033, 1, 8).translate(0, 0.5, 0);
-  const poles = new THREE.InstancedMesh(poleG, M.pole, n); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3();
-  for (let i = 0; i < n; i++) { m4.compose(v.set(signPoles[i * 4], signPoles[i * 4 + 1], signPoles[i * 4 + 2]), q, s.set(1, signPoles[i * 4 + 3], 1)); poles.setMatrixAt(i, m4); }
-  poles.computeBoundingSphere(); scene.add(poles); SIGNPOLE = poles;
-  for (let i = 0; i < n; i++) addProp({ kind: 'sign', x: signPoles[i * 4], z: signPoles[i * 4 + 2], h: signPoles[i * 4 + 3], i, alive: true });
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), v = new THREE.Vector3();
+  const where = kitCells('sign-poles', n, i => signPoles[i * 4], i => signPoles[i * 4 + 2], [{ geo: poleG, mat: M.pole }], (i, j, [poles]) => { m4.compose(v.set(signPoles[i * 4], signPoles[i * 4 + 1], signPoles[i * 4 + 2]), q, s.set(1, signPoles[i * 4 + 3], 1)); poles.setMatrixAt(j, m4); }, 420, 0);
+  for (let i = 0; i < n; i++) addProp({ kind: 'sign', x: signPoles[i * 4], z: signPoles[i * 4 + 2], h: signPoles[i * 4 + 3], i: where[i][1], inst: where[i][0], core: true, alive: true });
 }
 
 // ---------------- models
@@ -3916,17 +3968,17 @@ function* paveRoadSteps(t, w, p, rd) {
 function meshChunk(ch, grp) { const out = { lod: [] }; for (const _ of meshChunkSteps(ch, grp, out)); return out; }
 function* meshChunkSteps(ch, grp, out) { // one mesh per step (the outer tiles spread them over frames)
   const lod = out.lod;
-  if (ch.wall[0].b) { const m = ch.wall[0].b.mesh(M.wallArr, true); if (m) grp.add(m); yield; } // every wall material in one mesh (the wall array)
-  else for (let i = 0; i < ch.wall.length; i++) { const m = ch.wall[i].mesh(M.walls[i], true); if (m) grp.add(m); yield; }
-  ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true); if (m) grp.add(m); }); ch.roofP = null;
-  { const m = ch.facade.mesh(M.facade, false); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.facade = null; }
-  if (ch.awn) { const m = ch.awn.mesh(M.awning, true); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.awn = null; } // shop awnings and canopies: small, so only near
+  if (ch.wall[0].b) { const m = ch.wall[0].b.mesh(M.wallArr, true, out.free); if (m) grp.add(m); yield; } // every wall material in one mesh (the wall array)
+  else for (let i = 0; i < ch.wall.length; i++) { const m = ch.wall[i].mesh(M.walls[i], true, out.free); if (m) grp.add(m); yield; }
+  ch.roofP.forEach((gb, i) => { const m = gb.mesh(M.roofPhoto[i], true, out.free); if (m) grp.add(m); }); ch.roofP = null;
+  { const m = ch.facade.mesh(M.facade, false, out.free); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.facade = null; }
+  if (ch.awn) { const m = ch.awn.mesh(M.awning, true, out.free); if (m) { m.userData.lod = 1; lod.push(m); grp.add(m); } ch.awn = null; } // shop awnings and canopies: small, so only near
   for (const [key, mat, sh] of [['roofC', M.roofClay, true], ['roofT', M.roofTile || M.roofClay, true], ['roofB', M.roofBitumen || M.roofFlat, true], ['roofS', M.roofShingle, true], ['roofF', M.roofFlat, true], ['side', M.side, false], ['road', M.road, false], ['line', M.line, false], ['water', M.water, false], ['pool', M.pool, false], ['poolWall', M.poolWall, false], ['coping', M.coping, false]]) {
-    const m = ch[key].mesh(mat, sh); if (m) { if (LOD_KEYS.has(key)) { m.userData.lod = 1; lod.push(m); } grp.add(m); } ch[key] = null; yield;
+    const m = ch[key].mesh(mat, sh, out.free); if (m) { if (LOD_KEYS.has(key)) { m.userData.lod = 1; lod.push(m); } grp.add(m); } ch[key] = null; yield;
   }
-  for (const [gi, gb] of ch.apron) { const m = gb.mesh(M.terrain[gi] || M.outer, false); if (m) { m.receiveShadow = true; grp.add(m); } } ch.apron = null;
-  if (SURF) for (const [key, mat] of [['trail', SURF.trail], ['path', SURF.path], ['wood', SURF.wood], ['hedge', SURF.hedge]]) { const m = ch[key].mesh(mat, key !== 'trail' && key !== 'path'); if (m) { m.receiveShadow = true; grp.add(m); } ch[key] = null; }
-  for (const [gi, gb] of ch.roofGs) { const mat = M.terrain[gi]; const m = gb.mesh(mat ? new THREE.MeshStandardMaterial({ map: mat.map, roughness: 0.95 }) : M.roofShingle, true); if (m) grp.add(m); }
+  for (const [gi, gb] of ch.apron) { const m = gb.mesh(M.terrain[gi] || M.outer, false, out.free); if (m) { m.receiveShadow = true; grp.add(m); } } ch.apron = null;
+  if (SURF) for (const [key, mat] of [['trail', SURF.trail], ['path', SURF.path], ['wood', SURF.wood], ['hedge', SURF.hedge]]) { const m = ch[key].mesh(mat, key !== 'trail' && key !== 'path', out.free); if (m) { m.receiveShadow = true; grp.add(m); } ch[key] = null; }
+  for (const [gi, gb] of ch.roofGs) { const mat = M.terrain[gi]; const m = gb.mesh(mat ? new THREE.MeshStandardMaterial({ map: mat.map, roughness: 0.95 }) : M.roofShingle, true, out.free); if (m) grp.add(m); }
   ch.wall = null; ch.roofGs = null;
 }
 async function buildWorld() {
@@ -4123,14 +4175,11 @@ async function buildWorld() {
     const armG = new THREE.CylinderGeometry(0.04, 0.05, 1.8, 5).rotateX(Math.PI / 2).translate(0, 7, 0.9);
     const headG = new THREE.BoxGeometry(0.35, 0.14, 0.9).translate(0, 7, 1.6);
     const glowG = new THREE.PlaneGeometry(12, 12).rotateX(-Math.PI / 2).translate(0, 0.2, 1.6);
-    const poles = new THREE.InstancedMesh(BGU.mergeGeometries([poleG, armG]), M.pole, n), heads = new THREE.InstancedMesh(headG, M.lampHead, n), glows = new THREE.InstancedMesh(glowG, M.lampGlow, n);
-    for (let i = 0; i < n; i++) {
+    const where = kitCells('lamps', n, i => lampSpots[i * 3], i => lampSpots[i * 3 + 1], [{ geo: BGU.mergeGeometries([poleG, armG]), mat: M.pole, cast: true }, { geo: headG, mat: M.lampHead }, { geo: glowG, mat: M.lampGlow, night: true }], (i, j, meshes) => {
       q.setFromAxisAngle(up, lampSpots[i * 3 + 2]); const x = lampSpots[i * 3], z = lampSpots[i * 3 + 1]; m4.compose(v.set(x, heightAt(x, z), z), q, s.set(1, 1, 1));
-      poles.setMatrixAt(i, m4); heads.setMatrixAt(i, m4); glows.setMatrixAt(i, m4);
-    }
-    for (let i = 0; i < n; i++) addProp({ kind: 'lamp', x: lampSpots[i * 3], z: lampSpots[i * 3 + 1], rot: lampSpots[i * 3 + 2], i, inst: [poles, heads, glows], alive: true });
-    poles.castShadow = true; poles.computeBoundingSphere(); heads.computeBoundingSphere(); glows.computeBoundingSphere();
-    scene.add(poles, heads, glows); CORE_LAMPS = [poles, heads, glows];
+      for (const m of meshes) m.setMatrixAt(j, m4);
+    }, 700, 110); // 7 m poles read from a long way off (and their heads light up at night)
+    for (let i = 0; i < n; i++) addProp({ kind: 'lamp', x: lampSpots[i * 3], z: lampSpots[i * 3 + 1], rot: lampSpots[i * 3 + 2], i: where[i][1], inst: where[i][0], alive: true });
   }
   // ---- traffic signals: Caltrans mast arms, 12" heads with flashing-yellow-arrow lefts, countdown ped heads, lit
   // street-name signs, video detection cameras, controller cabinets, limit lines and crosswalks (src/signals.js)
@@ -4153,7 +4202,7 @@ function* buildLazy(L) {
   for (const m of L.medians) paveMedian(m);
   L.phase = 'buildings'; for (const B of L.blds) { if (B.dead || B.gone) { B.drawn = false; continue; } buildingGeom(B, lc); if (due()) { CHUNK_SINK = null; yield; CHUNK_SINK = lc; } }
   CHUNK_SINK = null;
-  L.phase = 'meshes'; const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [] })) if (due()) yield;
+  L.phase = 'meshes'; const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [], free: true })) if (due()) yield;
   const old = L.meshes; L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
   for (const m of old) { L.ch.group.remove(m); m.geometry.dispose(); } // a rebuild: the old meshes go only now
   L.built = true; L.dirty = false; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
@@ -4191,12 +4240,12 @@ async function buildLazyNear(x, z, r = Math.min(GFX.view + 200, 800)) {
 }
 // far from Poway (out in the county), the core's town-wide meshes (300k plant impostors, every lamp and sign, the
 // signals, the grass) aren't drawn at all; its chunks already hide by distance (updateChunkVisibility)
-let CORE_LAMPS = null, coreFar = false, coreFarT = 0;
+let coreFar = false, coreFarT = 0;
 function cullCore(dt) {
   if ((coreFarT -= dt) > 0) return; coreFarT = 0.5;
   const f = focusPos(), far = Math.hypot(Math.max(B.minx - f.x, 0, f.x - B.maxx), Math.max(B.minz - f.z, 0, f.z - B.maxz)) > GFX.view + 400;
   if (far === coreFar) return; coreFar = far;
-  const wide = [...(CORE_LAMPS || []), SIGNMESH, SIGNPOLE, SIGNALS && SIGNALS.group];
+  const wide = [KIT_ROOT, SIGNMESH, SIGNALS && SIGNALS.group];
   if (NATURE.veg && NATURE.veg.meshes) wide.push(...NATURE.veg.meshes.values());
   if (NATURE.gc) for (const L of NATURE.gc.layers) wide.push(L.mesh);
   for (const m of wide) if (m) m.visible = !far;
@@ -4505,10 +4554,10 @@ function buildMailboxes() {
   const n = mailboxSpots.length / 3; if (!n) return; const s0 = new THREE.Vector3(0, 0, 0);
   const post = new THREE.CylinderGeometry(0.05, 0.05, 1.05, 6).translate(0, 0.52, 0);
   const box = new THREE.BoxGeometry(0.22, 0.24, 0.5).translate(0, 1.17, 0);
-  const posts = new THREE.InstancedMesh(post, M.post, n), boxes = new THREE.InstancedMesh(box, M.mailbox, n);
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-  for (let i = 0; i < n; i++) { const x = mailboxSpots[i * 3], z = mailboxSpots[i * 3 + 1]; q.setFromAxisAngle(up, mailboxSpots[i * 3 + 2]); m4.compose(v.set(x, heightAt(x, z), z), q, signOk(x, z) ? s : s0); posts.setMatrixAt(i, m4); boxes.setMatrixAt(i, m4); }
-  posts.castShadow = boxes.castShadow = true; posts.computeBoundingSphere(); boxes.computeBoundingSphere(); scene.add(posts, boxes);
+  kitCells('mailboxes', n, i => mailboxSpots[i * 3], i => mailboxSpots[i * 3 + 1], [{ geo: post, mat: M.post, cast: true }, { geo: box, mat: M.mailbox, cast: true }], (i, j, [posts, boxes]) => {
+    const x = mailboxSpots[i * 3], z = mailboxSpots[i * 3 + 1]; q.setFromAxisAngle(up, mailboxSpots[i * 3 + 2]); m4.compose(v.set(x, heightAt(x, z), z), q, signOk(x, z) ? s : s0); posts.setMatrixAt(j, m4); boxes.setMatrixAt(j, m4);
+  }, 200, 80);
 }
 let SIGNALS = null;
 // the skin picker's turntable has its own WebGL context: while it's up the world keeps simulating but isn't drawn (the
@@ -4535,6 +4584,7 @@ function updateChunkVisibility(fx, fz) {
     for (const m of ch.group.children) { if (m.userData.lod) m.visible = near; if (m.userData.cast === undefined) m.userData.cast = m.castShadow; m.castShadow = m.userData.cast && sh; }
   }
   CHUNK_STATS.shown = shown; CHUNK_STATS.detail = detail;
+  updateKitCells(fx, fz);
 }
 const CHUNK_STATS = { shown: 0, detail: 0 };
 
@@ -4938,6 +4988,7 @@ function sfMerge(node, origin) {
     for (const g of G.geos) for (const k of Object.keys(g.attributes)) if (!keep.has(k)) g.deleteAttribute(k);
     let mat = G.m;
     if (G.plain) { mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: G.rough / G.geos.length, metalness: key.includes('M') ? 0.8 : 0.05, side: G.m.side }); mat.name = 'Plain'; }
+    else if (mat.transmission) { mat = mat.clone(); mat.transmission = 0; mat.userData.own = true; } // see-through glass makes three draw the whole scene once more, every frame it's in view (a wheel node can carry a lamp's glass: wheels skip sfMaterial)
     const geo = G.geos.length > 1 ? BGU.mergeGeometries(G.geos, false) : G.geos[0];
     for (const g of geo ? [geo] : G.geos) out.add(new THREE.Mesh(g, mat)); // pieces that won't merge stay apart
   }
@@ -4949,6 +5000,72 @@ function sfMerge(node, origin) {
     mesh.userData.detail = !shell; mesh.userData.noShadow = !shell || !!mesh.material.transparent;
   }
   return out;
+}
+// Far away a Sketchfab car is drawn in two pieces instead of 11-30: its paint, and everything else (glass, trim, lamps,
+// tyres) merged into one vertex-coloured mesh, each textured part taking its texture's average colour (sfLod).
+const SF_FAR_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2 }); SF_FAR_MAT.name = 'SFFar';
+const _texMean = new WeakMap();
+function texMean(t) { // a texture's average colour (linear), from an 8x8 copy of its image
+  if (!t || !t.image) return null; let c = _texMean.get(t); if (c) return c; c = new THREE.Color(0.5, 0.5, 0.5);
+  try { const cv = document.createElement('canvas'); cv.width = cv.height = 8; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(t.image, 0, 0, 8, 8);
+    const d = g.getImageData(0, 0, 8, 8).data; let r = 0, gg = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 32) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; n++; }
+    if (n) c.setRGB(r / n / 255, gg / n / 255, b / n / 255, THREE.SRGBColorSpace); } catch (e) { }
+  _texMean.set(t, c); return c;
+}
+function sfFar(bb, wheels, k) {
+  const parts = [], col = new THREE.Color(), GLASS = new THREE.Color(0x1c2228);
+  for (const mesh of bb.children) { const nm = mesh.material.name || ''; if (nm === 'Body' || (mesh.userData.detail && !/^(Headlight|TailLight)_/.test(nm))) continue; parts.push([mesh.geometry, mesh.material, 0, 0, 0]); } // the cabin and badges aren't seen from there
+  for (const w of wheels) w.mesh.traverse(o => { if (o.isMesh) parts.push([o.geometry, o.material, w.x / k, w.y / k, w.z / k]); });
+  let nv = 0, ni = 0; for (const [g] of parts) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  if (!nv) return null;
+  const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), C = new Uint8Array(nv * 3), I = nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni);
+  let o = 0, oi = 0;
+  for (const [g, m, tx, ty, tz] of parts) {
+    const pa = g.attributes.position, na = g.attributes.normal, ca = g.attributes.color, n = pa.count, nm = m.name || '';
+    if (/^Glass_/.test(nm)) col.copy(GLASS); else { col.copy(m.color || col.setRGB(1, 1, 1)); const t = texMean(m.map); if (t) col.multiply(t); }
+    for (let i = 0; i < n; i++) {
+      P[(o + i) * 3] = pa.getX(i) + tx; P[(o + i) * 3 + 1] = pa.getY(i) + ty; P[(o + i) * 3 + 2] = pa.getZ(i) + tz;
+      if (na) { N[(o + i) * 3] = na.getX(i); N[(o + i) * 3 + 1] = na.getY(i); N[(o + i) * 3 + 2] = na.getZ(i); }
+      const r = ca ? ca.getX(i) * col.r : col.r, gg = ca ? ca.getY(i) * col.g : col.g, b = ca ? ca.getZ(i) * col.b : col.b;
+      C[(o + i) * 3] = Math.min(255, r * 255 + 0.5); C[(o + i) * 3 + 1] = Math.min(255, gg * 255 + 0.5); C[(o + i) * 3 + 2] = Math.min(255, b * 255 + 0.5);
+    }
+    if (g.index) { const ix = g.index.array; for (let i = 0; i < ix.length; i++) I[oi + i] = ix[i] + o; oi += ix.length; } else { for (let i = 0; i < n; i++) I[oi + i] = o + i; oi += n; }
+    o += n;
+  }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(C, 3, true)); geo.setIndex(new THREE.BufferAttribute(I, 1)); geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, SF_FAR_MAT); mesh.name = 'sf-far'; mesh.visible = false; mesh.castShadow = false; mesh.userData.far = true; mesh.userData.noShadow = true;
+  return mesh;
+}
+// Further still (SF_PROXY_M, about 20 px long) a car is a proxy of ~100 triangles lofted from its own profile: ten
+// slices along its length, each its height and width, a paint band below the glass line and a dark band above, dark
+// boxes for the tyres. Vertex colours times the car's paint (its own material, so a respray follows).
+function sfProxy(bb, wheels, k) {
+  const S = 10, V = new THREE.Vector3(); let z0 = 1e9, z1 = -1e9, glass = 1e9, y0 = 1e9;
+  const shell = bb.children.filter(m => !m.userData.detail);
+  for (const m of shell) { const p = m.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const z = p.getZ(i), y = p.getY(i); if (z < z0) z0 = z; if (z > z1) z1 = z; if (y < y0) y0 = y; } if (/^Glass_/.test(m.material.name || '')) for (let i = 0; i < p.count; i++) glass = Math.min(glass, p.getY(i)); }
+  if (!(z1 > z0)) return null;
+  const top = new Float32Array(S).fill(-1e9), half = new Float32Array(S), low = new Float32Array(S).fill(1e9);
+  for (const m of shell) { const p = m.geometry.attributes.position; for (let i = 0; i < p.count; i++) { V.fromBufferAttribute(p, i); const j = Math.min(S - 1, Math.floor((V.z - z0) / (z1 - z0) * S)); if (V.y > top[j]) top[j] = V.y; if (V.y < low[j]) low[j] = V.y; const ax = Math.abs(V.x); if (ax > half[j]) half[j] = ax; } }
+  for (let j = 0; j < S; j++) if (top[j] < -1e8) { top[j] = j ? top[j - 1] : y0 + 0.5 / k; half[j] = j ? half[j - 1] : 0.8 / k; low[j] = j ? low[j - 1] : y0; }
+  const H = Math.max(...top) - y0; if (glass > 1e8) glass = y0 + H * 0.6; const clear = y0 + H * 0.18;
+  const pos = [], colr = [], quad = (a, b, c, d, cl) => { for (const q of [a, b, c, a, c, d]) { pos.push(q[0], q[1], q[2]); colr.push(cl, cl, cl); } };
+  const ring = j => { const z = z0 + (z1 - z0) * Math.min(1, Math.max(0, (j - 0.5) / (S - 1))), jj = Math.min(S - 1, j), w = half[jj], t = top[jj], b = Math.max(low[jj], clear), g = Math.min(t, glass);
+    return [[-w, b, z], [-w, g, z], [-w * 0.82, t, z], [w * 0.82, t, z], [w, g, z], [w, b, z]]; };
+  const R = []; for (let j = 0; j <= S; j++) R.push(ring(j)); R[0].forEach(q => q[2] = z0); R[S].forEach(q => q[2] = z1);
+  const PAINT = 1, GL = 0.1, TYRE = 0.03;
+  for (let j = 0; j < S; j++) { const a = R[j], b = R[j + 1];
+    quad(a[0], b[0], b[1], a[1], PAINT); quad(b[5], a[5], a[4], b[4], PAINT); // the sides below the glass line
+    quad(a[1], b[1], b[2], a[2], GL); quad(b[4], a[4], a[3], b[3], GL); // the glass (or nothing, where the hood is below the line)
+    quad(a[2], b[2], b[3], a[3], PAINT); } // the roof, hood and trunk lid
+  for (const [r, c] of [[R[0], PAINT], [R[S], PAINT]]) { const back = r === R[0]; const f = (q0, q1, q2, q3) => back ? quad(q0, q1, q2, q3, c) : quad(q3, q2, q1, q0, c); f(r[0], r[1], r[4], r[5]); f(r[1], r[2], r[3], r[4]); } // the ends
+  for (const w of wheels) { const x = w.x / k, y = w.y / k, z = w.z / k, rr = Math.max(0.2 / k, y - y0), hw = 0.12 / k, sx = x > 0 ? 1 : -1, xo = x + sx * hw * 0.2;
+    const P = (dx, dy, dz) => [xo + dx, y + dy, z + dz];
+    if (sx < 0) quad(P(-hw, -rr, -rr), P(-hw, -rr, rr), P(-hw, rr, rr), P(-hw, rr, -rr), TYRE); else quad(P(hw, rr, -rr), P(hw, rr, rr), P(hw, -rr, rr), P(hw, -rr, -rr), TYRE); quad(P(-hw, rr, -rr), P(-hw, rr, rr), P(hw, rr, rr), P(hw, rr, -rr), TYRE);
+    quad(P(-hw, -rr, rr), P(hw, -rr, rr), P(hw, rr, rr), P(-hw, rr, rr), TYRE); quad(P(hw, -rr, -rr), P(-hw, -rr, -rr), P(-hw, rr, -rr), P(hw, rr, -rr), TYRE); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3)); geo.computeVertexNormals(); geo.computeBoundingSphere();
+  const mesh = new THREE.Mesh(geo, SF_FAR_MAT); mesh.name = 'sf-proxy'; mesh.visible = false; mesh.castShadow = false; mesh.userData.proxy = true; mesh.userData.noShadow = true;
+  return mesh;
 }
 function sfTemplate(name) {
   const e = SF.byId(name.slice(3)), src = SF.get(name.slice(3)); if (!e || !src) return null;
@@ -4967,6 +5084,8 @@ function sfTemplate(name) {
     let far = 0; for (const o of mesh.children) { const p = o.geometry.attributes.position; for (let i = 0; i < p.count; i++) far = Math.max(far, Math.hypot(p.getY(i), p.getZ(i))); }
     wheels.push({ x: hub.x * k, y: hub.y * k, z: hub.z * k, front: nm.includes('front'), right: nm.includes('right'), mesh, scale: [k, k, k], still: far > r * 1.12 }); // not round (a fender or a brake in with it): spun, it would cut through the road
   }
+  const fm = sfFar(bb, wheels, k); if (fm) body.add(fm); // in the same frame as bb (the body's scale applies to both)
+  const px = sfProxy(bb, wheels, k); if (px) body.add(px);
   const out = new THREE.Group(), root = new THREE.Group(); root.add(body); out.add(root);
   const t = { body: out, wheels, L: e.L * k, W: e.W * k, H: e.H * k, wr: (e.r || 0.34) * k, dim: { sf: e.id } };
   carProto.set(name, t); return t;
@@ -5001,14 +5120,26 @@ function sfSwap() { // stock bodies made before the Sketchfab cars were in: trad
     v.rebody('sf-' + e.id); if (++n >= 2) break;
   }
 }
-const SF_DETAIL_M = 70, SF_WHEELS_M = 160; // a Sketchfab car's cabin, badges and trim show (and its shell casts a shadow) within this, its wheels within that
+// A Sketchfab car by distance (levels): 0 all of it, its shell casting a shadow; 1 past SF_DETAIL_M its cabin, badges and
+// trim go; 2 past SF_FAR_M its paint and the merged rest (sfFar); 3 past SF_PROXY_M the proxy (sfProxy). Past VEH_FAR_M a
+// car is a few pixels in the haze and isn't drawn at all (two-wheelers sooner). Longer on stronger presets.
+const SF_DETAIL_M = 70, SF_FAR_M = 110, SF_PROXY_M = 170, VEH_FAR_M = 560, TWO_FAR_M = 170, SF_LVL = [SF_DETAIL_M, 0, 0]; // all but the first times GFX.lod
+function sfLevel(m, lvl) {
+  const far = lvl === 2 && !!m.far, prox = lvl === 3 && !!m.proxy, rest = !far && !prox; // a car without a far mesh or a proxy keeps its shell
+  for (const o of m.detail) o.visible = lvl === 0;
+  for (const o of m.shell) { o.castShadow = lvl === 0; o.visible = m.paint.includes(o) ? !prox : rest; }
+  if (m.far) m.far.visible = far; if (m.proxy) m.proxy.visible = prox;
+  for (const w of m.wheels) w.piv.visible = lvl <= 1 || (rest && lvl === 2);
+}
 function sfLod() {
-  const c = camera.position;
+  const c = camera.position, k = GFX.lod; SF_LVL[1] = SF_FAR_M * k; SF_LVL[2] = SF_PROXY_M * k;
   for (const v of vehicles) {
-    const m = v.m; if (!m || !m.detail) continue;
-    const d2 = (v.pos.x - c.x) ** 2 + (v.pos.z - c.z) ** 2, near = d2 < (m.near ? SF_DETAIL_M + 8 : SF_DETAIL_M) ** 2, wheels = d2 < SF_WHEELS_M ** 2; // a little slack, so it doesn't flicker at the line
-    if (near !== m.near) { m.near = near; for (const o of m.detail) o.visible = near; for (const o of m.shell) o.castShadow = near; }
-    if (wheels !== m.wheelsOn) { m.wheelsOn = wheels; for (const w of m.wheels) w.piv.visible = wheels; }
+    const m = v.m; if (!m) continue;
+    const d2 = (v.pos.x - c.x) ** 2 + (v.pos.z - c.z) ** 2, gone = v !== player.inCar && d2 > ((m.two ? TWO_FAR_M : VEH_FAR_M) * k) ** 2;
+    if (gone === m.g.visible) m.g.visible = m.g.matrixWorldAutoUpdate = !gone; // (and out of the matrix pass while hidden)
+    if (gone || !m.detail) continue;
+    const d = Math.sqrt(d2); let lvl = 0; for (let k = 0; k < 3; k++) if (d > SF_LVL[k] - (m.lvl > k ? 8 : 0)) lvl = k + 1; // a little slack, so it doesn't flicker at the line
+    if (lvl !== m.lvl) { m.lvl = lvl; sfLevel(m, lvl); }
   }
 }
 function sfPlacer() {
@@ -5091,8 +5222,11 @@ function buildCar(type, tint, model, wealth) {
   const mats = new Map();
   const body = T.body.clone(true);
   const q = !!T.dim.src, sf = !!T.dim.sf;
+  let far = null, proxy = null; const paint = [];
   body.traverse(o => {
     if (!o.isMesh) return;
+    if (o.userData.far) { far = o; return; } // shared material and geometry (sfFar)
+    if (o.userData.proxy) { proxy = o; const pm = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.25 }); pm.userData.base = new THREE.Color(1, 1, 1); pm.color = pm.userData.base.clone().multiply(hex(tint)); pm.name = 'proxy'; o.material = pm; mats.set(pm, pm); return; } // its own paint (sfProxy)
     if (!mats.has(o.material)) {
       const src = o.material, nm = src.name || '';
       let m;
@@ -5117,7 +5251,7 @@ function buildCar(type, tint, model, wealth) {
     o.material = mats.get(o.material); o.castShadow = !(sf && o.userData.noShadow);
   });
   g.add(body);
-  const detail = [], shell = []; if (sf) body.traverse(o => { if (o.userData.detail) detail.push(o); else if (o.isMesh && o.castShadow) shell.push(o); });
+  const detail = [], shell = []; if (sf) body.traverse(o => { if (o.userData.detail) detail.push(o); else if (o.isMesh && o.castShadow) { shell.push(o); if (o.material.name === 'Body') paint.push(o); } });
   const wheels = [];
   for (const w of T.wheels) {
     const piv = new THREE.Group(); piv.position.set(w.x, w.y, w.z); g.add(piv);
@@ -5133,7 +5267,7 @@ function buildCar(type, tint, model, wealth) {
   }
   const beam = headlightBeam(THREE, T.L, T.W); g.add(beam); // the pool of its headlights on the road, at night
   scene.add(g);
-  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true };
+  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true, far: sf && paint.length ? far : null, proxy: sf ? proxy : null, paint, lvl: 0 };
 }
 const vehicles = [];
 // a car's stock numbers: its kind's (CAR), or a Sketchfab car's own top speed and pull (tools/sketchfab/speeds.mjs), so an
@@ -6311,6 +6445,7 @@ function carType(x, z) { const Z = x === undefined ? null : zoneHere(x, z); if (
 // arterials get more cars than residential streets. any = initial fill (no view / heading constraints).
 const SPAWN_P = [0.5, 1, 0.9, 0.7, 0.4, 0.28];
 const _frus = new THREE.Frustum(), _fm = new THREE.Matrix4(), _fs = new THREE.Sphere(new THREE.Vector3(), 4);
+const PED_SHADOW_M = 55; // people cast shadows within this (times GFX.lod)
 function inView(x, z) { _fs.center.set(x, heightAt(x, z) + 1, z); return _frus.intersectsSphere(_fs); }
 function spawnTraffic(px, pz, rmin, rmax, any) {
   let ne = null; const ic = player.inCar, cs = ic ? ic.vel.length() : 0, fx = cs > 3 ? ic.vel.x / cs : -Math.sin(cam.yaw), fz = cs > 3 ? ic.vel.y / cs : -Math.cos(cam.yaw);
@@ -7256,9 +7391,8 @@ function fellProp(p, dx, dz, fromNet) {
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 7, 6).translate(0, 3.5, 0), M.pole); const head = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.14, 0.9).translate(0, 7, 0.9), M.lampHead);
     g.add(pole, head); g.rotation.y = p.rot; tone(140, 0.3, 'triangle', 0.3 * volAt(p.x, p.z), 60);
   } else { // sign post: the pole and its sign fold over
-    if (p.inst) p.inst.forEach(m => { m.setMatrixAt(p.i, ZERO4); m.instanceMatrix.needsUpdate = true; }); // an outer tile's stop sign
-    else { if (SIGNPOLE) { SIGNPOLE.setMatrixAt(p.i, ZERO4); SIGNPOLE.instanceMatrix.needsUpdate = true; }
-    hideSignFaces(p.x, p.z); }
+    if (p.inst) p.inst.forEach(m => { m.setMatrixAt(p.i, ZERO4); m.instanceMatrix.needsUpdate = true; }); // its pole's cell (or an outer tile's stop sign)
+    if (p.core) hideSignFaces(p.x, p.z);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, p.h, 6).translate(0, p.h / 2, 0), M.pole); const face = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.03).translate(0, p.h - 0.35, 0), new THREE.MeshStandardMaterial({ color: 0xd9d4c8 }));
     g.add(pole, face); tone(900, 0.08, 'square', 0.2 * volAt(p.x, p.z));
   }
@@ -7297,7 +7431,7 @@ function carHitProps(v) {
   }
 }
 // sign faces live in one merged mesh: squash the ones around a broken pole
-let SIGNPOLE = null, SIGNMESH = null; const signFaces = []; // [cx, cz, firstVertex]
+let SIGNMESH = null; const signFaces = []; // [cx, cz, firstVertex]
 function hideSignFaces(x, z) {
   if (!SIGNMESH) return; const pos = SIGNMESH.geometry.attributes.position; let hit = false;
   for (const f of signFaces) if (f[3] && Math.hypot(f[0] - x, f[1] - z) < 2.6) { for (let k = 0; k < 6; k++) pos.setY(f[2] + k, -9999); f[3] = 0; hit = true; }
@@ -8529,6 +8663,7 @@ function updatePeds(dt) {
     p.pos.y = heightAt(p.pos.x, p.pos.z) + (p.state === 'fly' ? p.air : 0);
     p.rig.g.position.copy(p.pos); p.rig.g.rotation.y = p.rotY;
     if (!p.remote) { _fs.center.set(p.pos.x, p.pos.y + 1, p.pos.z); p.rig.g.visible = dP < GFX.pedDraw && _frus.intersectsSphere(_fs); } // entity culling
+    { const sh = dP < PED_SHADOW_M * GFX.lod, R = p.rig; if (R._sh !== sh) { R._sh = sh; if (!R._ms) { R._ms = []; R.g.traverse(o => { if (o.isMesh) { o.userData.cast0 = o.castShadow; R._ms.push(o); } }); } for (const o of R._ms) o.castShadow = sh && o.userData.cast0; } } // a person's shadow only near you (a skinned body per shadow draw)
     if (dP < 120 && p.rig.g.visible) {
       const lying = p.state === 'dead' || p.state === 'down';
       if (!(lying && p.posed)) animRig(p.rig, speed, dt, lying ? null : mode); // a body that's down holds its heap: no clip resets it
@@ -9192,15 +9327,27 @@ function updateHud(dt) {
 // ============================================================ main loop
 let last = performance.now(), saveT = 10, sigT = 0, orbit = 0, repT = 0, visT = 0;
 let STREAM_MS = 0; // what this frame's streaming took (src/budget.js gives it what the rest of the frame leaves)
+// ?brick=N (testing): a computer N times slower. Each frame's own work is stretched by spinning for (N - 1) times as long
+// (the loads between frames run at full speed), on the Potato preset unless ?gfx says otherwise (src/gfx.js).
+const BRICK = Math.max(0, +new URLSearchParams(location.search).get('brick') || 0);
+let LATER_DONE = false; // loadLater's steps are all in (until then the frames carry the loading, not the machine's pace)
+// the tier follows the machine while you play (src/gfx.js makeGovernor): what can change at once when it steps down
+const govern = makeGovernor(GFX, scaleStep, P => {
+  TRAFFIC_N = P.traffic; NATURE.U.uFar.value = P.veg;
+  const sz = P.shadows || 512; if (sun.castShadow && sun.shadow.mapSize.x > sz) { sun.shadow.mapSize.set(sz, sz); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } } // (turning shadows off would rebuild every shader)
+  updateChunkVisibility(focusPos().x, focusPos().z);
+}, label => notify(`Graphics set to <b>${label}</b> to keep the game smooth on this computer. You can change it in Settings.`, '', 5000));
 function frame(now) {
   requestAnimationFrame(frame); PROF.gap(now); PROF.start(); const fT0 = performance.now(); STREAM_MS = 0;
-  const rdt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // rAF time can be a hair behind performance.now() on the first frame: a negative step blew up the suspension
+  const raw = (now - last) / 1000, rdt = Math.max(0, Math.min(0.05, raw)); last = now; // rAF time can be a hair behind performance.now() on the first frame: a negative step blew up the suspension
   tick(rdt);
   { // music: the theme on the main menu and the pause screen, the exploring songs on foot when nothing else is playing
     const menuUp = !$('menu').hidden || paused;
     MUSIC.theme(menuUp); MUSIC.explore(running && !menuUp && !player.inCar && !player.inPlane && !(police.wanted > 0) && !player.dead); MUSIC.update(rdt);
   }
+  if (BRICK > 1 && worldReady) { const until = performance.now() + (performance.now() - fT0) * (BRICK - 1); while (performance.now() < until) { } }
   if (worldReady) BG.frame(performance.now() - fT0, STREAM_MS);
+  if (worldReady && LATER_DONE && running && !paused && $('menu').hidden) govern(raw, (performance.now() - fT0) / 1000, STREAM_MS > 8);
   PROF.end();
 }
 const MUSIC = createMusic();
@@ -9405,7 +9552,7 @@ async function loadLater() {
   await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
   await step('power lines', loadPower);
   await step('harbor', loadHarbor);
-  console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's'); performance.mark('pao:later');
+  console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's'); performance.mark('pao:later'); LATER_DONE = true;
 }
 // ---- power lines (src/world/power.js): the mapped transmission lines and the street lines laid along the roads; every
 // pole and tower foot is solid, and the wooden poles snap when a car hits them hard enough (props, kind 'upole')

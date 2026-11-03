@@ -16,7 +16,7 @@ export const IGN = 'fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.0671105
 export async function loadVegetation(THREE, gltfLoader, renderer, base = 'assets/nature/') {
   const man = await (await fetch(base + 'veg.json')).json();
   const texLoader = new THREE.TextureLoader();
-  const tex = (url, srgb) => texLoader.loadAsync(url).then(t => {
+  const tex = (url, srgb) => texLoader.loadAsync(url).then(t => t.image && t.image.decode ? t.image.decode().then(() => t, () => t) : t).then(t => { // decoded off the main thread now, not in the frame that uploads it
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4;
     t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; return t;
   });
@@ -25,16 +25,24 @@ export async function loadVegetation(THREE, gltfLoader, renderer, base = 'assets
   // them from the moment they're in (Vegetation picks them up)
   await Promise.all(Object.entries(man.species).map(async ([name, sp]) => {
     const [alb, nrm] = await Promise.all([tex(base + sp.atlas + '_alb.webp', true), tex(base + sp.atlas + '_nrm.webp', false)]);
-    const rec = { name, ...sp, alb, nrm, lods: sp.variants.map(() => null), hasLod: sp.variants.some(v => v.lod) };
+    const rec = { name, ...sp, alb, nrm, lods: sp.variants.map(() => null), hasLod: sp.variants.some(v => v.lod), imps: [] };
+    let pending = sp.variants.filter(v => v.lod).length, failed = 0;
     sp.variants.forEach((v, i) => { if (v.lod) gltfLoader.loadAsync(base + v.lod).then(g => {
       const lod = mergeLod(THREE, g.scene); // its textures go up now, not in the frame that first draws it
       if (lod) for (const m of lod.mats) if (m && m.map) try { renderer.initTexture(m.map); } catch (e) { }
-      rec.lods[i] = lod; }).catch(() => { }); });
+      rec.lods[i] = lod; if (!lod) failed++; }).catch(e => { failed++; console.warn('[veg] near model failed:', v.lod, e && e.message || e); })
+      .finally(() => { if (--pending === 0 && failed && !rec.lods.some(l => l)) noNear(rec); }); });
     species.set(name, rec);
   }));
   return { THREE, species };
 }
 
+// a species whose near models all failed keeps its impostors at every distance (they hide inside the near radius, where
+// the near mesh takes over: without one the plants vanished as you came up to them)
+function noNear(rec) {
+  rec.hasLod = false;
+  for (const m of rec.imps) { m.uniforms.uNear = { value: 0 }; m.uniforms.uBand = { value: 1e-3 }; }
+}
 // flatten a GLB scene into one geometry with material groups
 function mergeLod(THREE, root) {
   root.updateMatrixWorld(true);
@@ -168,6 +176,7 @@ function impostorMaterial(THREE, sp, U) {
     uAlb: { value: sp.alb }, uNrm: { value: sp.nrm }, uVar: { value: uVar }, uBlk: { value: uBlk },
     uBlocks: { value: new THREE.Vector2(sp.blocks[0], sp.blocks[1]) }, uG: { value: sp.G }, uTrans: { value: sp.trans ?? 0.18 }, uPremul: { value: sp.premul ? 1 : 0 },
   });
+  if (sp.imps) sp.imps.push(m);
   return m;
 }
 
@@ -362,6 +371,7 @@ export class Vegetation {
         m.instanceColor.setXYZ(j, a.t[i * 3], a.t[i * 3 + 1], a.t[i * 3 + 2]);
       });
       m.count = l.length; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true;
+      if (l.length) m.layers.enable(0); else m.layers.disable(0); // an empty one stays out of both passes (three would still bind its program and uniforms to draw zero plants)
     }
   }
   update(dt, camera, sun, hemi) {

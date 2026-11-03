@@ -3,12 +3,14 @@
 // partition, furnished the way its trade furnishes a room (src/world/shops.js says the trade): a pizza place's counter,
 // oven, menus and booths; a café's espresso bar and pastry case; a barber's chairs and mirrors; a nail salon's pedicure
 // thrones and polish wall; a bank's teller line; a market's stocked aisles and checkouts; a liquor store's coolers; a
-// gym's racks; an office's desks. Its walls stop you, its floor is level, and the camera keeps inside it. Two stores at
-// most are open at once; one closes again when you've walked off.
+// gym's racks; an office's desks. Its walls stop you, its floor is level, and the camera keeps inside it. A room is only
+// built when you're on foot at its door (OPEN_M), two stores at most are open at once, and one closes again (its meshes
+// and collision freed) once you've walked CLOSE_M off.
 //   const INT = createInteriors({ THREE, scene, SHOPS, heightAt, addPoly, polys, poly(B) })
 //   INT.update(px, pz, onFoot)   INT.floorAt(x, z) -> the floor's height in an open store, or null
 //   INT.roomAt(x, z) -> the open store you're in, or null   INT.clampCam(room, v3)   INT.isOpen(store)
 const GLASS_BACK = 0.3; // the room starts just behind the storefront's glass (the wall's thickness)
+const OPEN_M = 7, CLOSE_M = 15; // a room is built when you come within OPEN_M of its storefront, and goes past CLOSE_M
 
 function rng(seed) { let s = seed >>> 0 || 1; return () => (s = Math.imul(s ^ (s >>> 15), 2246822507) ^ Math.imul(s ^ (s >>> 13), 3266489909), ((s ^= s >>> 16) >>> 0) / 4294967296); }
 
@@ -96,9 +98,9 @@ export function createInteriors(o) {
       for (const R of open) { const ins = inRoom(R, px, pz, 0.3); // while you're inside, the trees whose crowns reach through its walls step aside
         if (ins && !R.aside) R.aside = o.plantsAside ? o.plantsAside(R.rc[0], R.rc[2], R.w.ux, R.w.uz, R.W / 2, R.D / 2) : () => {}; else if (!ins && R.aside) { R.aside(); R.aside = null; } }
       if ((t -= 1) > 0) return; t = 8;
-      for (let i = open.length - 1; i >= 0; i--) { const R = open[i]; if (Math.hypot(px - R.store.x, pz - R.store.z) > 34 && !inRoom(R, px, pz, 1)) { close(R); open.splice(i, 1); } }
+      for (let i = open.length - 1; i >= 0; i--) { const R = open[i]; if (Math.hypot(px - R.store.x, pz - R.store.z) > CLOSE_M && !inRoom(R, px, pz, 1)) { close(R); open.splice(i, 1); } }
       if (!onFoot) return;
-      let best = null, bd = 16; for (const s of SHOPS.stores) { if (!s.bay || s.B.dead || !s.bay.C || !s.bay.C.built || shallow.has(s)) continue; const d = Math.hypot(px - s.x, pz - s.z); if (d < bd && !open.some(R => R.store === s)) { bd = d; best = s; } }
+      let best = null, bd = OPEN_M; for (const s of SHOPS.stores) { if (!s.bay || s.B.dead || !s.bay.C || !s.bay.C.built || shallow.has(s)) continue; const d = Math.hypot(px - s.x, pz - s.z); if (d < bd && !open.some(R => R.store === s)) { bd = d; best = s; } }
       if (!best) return; if (open.length >= 2) { const far = open.slice().sort((a, b) => Math.hypot(px - b.store.x, pz - b.store.z) - Math.hypot(px - a.store.x, pz - a.store.z))[0]; if (inRoom(far, px, pz, 1)) return; close(far); open.splice(open.indexOf(far), 1); }
       try { const R = build(best); if (R) open.push(R); else shallow.add(best); } catch (e) { shallow.add(best); console.warn('[interiors]', best.name, e); }
     },

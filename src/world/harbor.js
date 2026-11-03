@@ -185,7 +185,7 @@ export async function createHarbor(THREE, scene, o) {
       if ((cx - last.x) ** 2 + (cz - last.z) ** 2 < 25 * 25 && ++last.t < 120) return; last.x = cx; last.z = cz; last.t = 0;
       for (const g of groups.values()) { let nd = 0, nl = 0;
         for (const b of g.list) { const d2 = (b.x - cx) ** 2 + (b.z - cz) ** 2; if (d2 < NEAR * NEAR) { for (const im of g.det) im.setMatrixAt(nd, b.m); nd++; } else if (d2 < FAR * FAR && g.low) g.low.setMatrixAt(nl++, b.m); }
-        for (const im of g.det) { im.count = nd; im.instanceMatrix.needsUpdate = true; } if (g.low) { g.low.count = nl; g.low.instanceMatrix.needsUpdate = true; } }
+        for (const im of g.det) { im.count = nd; im.instanceMatrix.needsUpdate = true; im.visible = nd > 0; } if (g.low) { g.low.count = nl; g.low.instanceMatrix.needsUpdate = true; g.low.visible = nl > 0; } } // none in range: not drawn (zero instances still cost a draw in each pass)
       let built = 0;
       for (const [k, c] of cells) { const d = Math.hypot(c.cx - cx, c.cz - cz);
         if (d < BUILD && !c.meshes && built < 2) { c.meshes = buildCell(THREE, c, mats, scene, rng(k)); built++; }

@@ -591,7 +591,7 @@ export async function createPower(THREE, scene, o) {
         if (BROKEN.has(s.id)) continue; const d2 = (s.x - cx) ** 2 + (s.z - cz) ** 2; if (d2 >= f2 || !ensure(s)) continue;
         if (d2 < n2 && nd < M.det.instanceMatrix.count) M.det.setMatrixAt(nd++, s.m); else if (d2 < f2) M.low.setMatrixAt(nl++, s.m);
       }
-      M.det.count = nd; M.low.count = nl; M.det.instanceMatrix.needsUpdate = M.low.instanceMatrix.needsUpdate = true;
+      M.det.count = nd; M.low.count = nl; M.det.instanceMatrix.needsUpdate = M.low.instanceMatrix.needsUpdate = true; M.det.visible = nd > 0; M.low.visible = nl > 0; // none in range: not drawn
     }
     const gx = Math.floor(cx / WC), gz = Math.floor(cz / WC), R = Math.ceil(WR / WC);
     const want = new Set();

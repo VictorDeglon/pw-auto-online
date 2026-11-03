@@ -92,6 +92,11 @@ for mi, m in enumerate(J['meshes']):
 
 # materials: no normal maps (no tangents either)
 for mt in J.get('materials', []): mt.pop('normalTexture', None)
+# texture slots inside material extensions (KHR_materials_specular's specularColorTexture, ...) go too: the game uses
+# none of them, and one left pointing at a texture dropped below makes three's GLTFLoader throw on the whole file
+for mt in J.get('materials', []):
+    for ext in mt.get('extensions', {}).values():
+        for k in [k for k in ext if k.endswith('Texture')]: ext.pop(k)
 # textures and images still referenced (the material slots Blender writes)
 def tex_refs(mt):
     pbr = mt.get('pbrMetallicRoughness', {})

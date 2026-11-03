@@ -12,6 +12,7 @@
 // Beyond ~500 m the textures give way to the same layers' colours (far off, dark wild ground takes the colour of the
 // chaparral on it). Outside the photo coverage ("outer hills") the same layers are driven by procedural chaparral /
 // grassland patches instead of the photo.
+import { imagePixels } from '../pixels.js';
 
 export const GROUND_LAYERS = ['soil', 'dry', 'lawn', 'litter', 'rock', 'sand'];
 // linear mean colour of each layer (tools/nature/pack_ground.py), used to turn a layer into a photo-tinted detail
@@ -19,11 +20,9 @@ const MEANS = { soil: [0.2968, 0.1629, 0.0735], dry: [0.0525, 0.0676, 0.0102], l
 const TILE = [2.6, 1.6, 1.4, 1.8, 3.4, 2.4]; // metres per texture repeat
 
 async function loadArray(THREE, renderer, url, layers, srgb) {
-  const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; });
+  const img = await imagePixels(url); // decoded and read back in a worker (src/pixels.js)
   const w = img.width, h = img.height / layers;
-  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-  const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
-  const data = new Uint8Array(g.getImageData(0, 0, img.width, img.height).data.buffer);
+  const data = new Uint8Array(img.data.buffer);
   const t = new THREE.DataArrayTexture(data, w, h, layers);
   t.format = THREE.RGBAFormat; t.type = THREE.UnsignedByteType;
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;

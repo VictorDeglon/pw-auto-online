@@ -106,7 +106,7 @@ export function createTrailers(THREE, scene, spots, o = {}) {
     count: spots.length,
     update(camera) {
       const cx = camera.position.x, cz = camera.position.z; if ((cx - last.x) ** 2 + (cz - last.z) ** 2 < 20 * 20 && ++last.t < 90) return; last.x = cx; last.z = cz; last.t = 0;
-      for (const g of groups.values()) { let n = 0; for (const s of g.list) if ((s.x - cx) ** 2 + (s.z - cz) ** 2 < R * R) { for (const im of g.ims) im.setMatrixAt(n, s.m); n++; } for (const im of g.ims) { im.count = n; im.instanceMatrix.needsUpdate = true; } }
+      for (const g of groups.values()) { let n = 0; for (const s of g.list) if ((s.x - cx) ** 2 + (s.z - cz) ** 2 < R * R) { for (const im of g.ims) im.setMatrixAt(n, s.m); n++; } for (const im of g.ims) { im.count = n; im.instanceMatrix.needsUpdate = true; im.visible = n > 0; } } // none near: not drawn at all (zero instances still cost a draw in each pass)
     },
   };
 }
