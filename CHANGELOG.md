@@ -8,7 +8,7 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
-## 0.12.0 Wild Oats (2026-11-03)
+## 0.12.0: Wild Oats (2026-11-03)
 
 - **The aerial photo is painted over:** the ground no longer shows the photo anywhere, near or far (its cars,
   shadows, treetops and smears are gone). The photo only decides what lies where; each ground is drawn in its own
@@ -26,6 +26,49 @@ update you ship**, and add an entry here at the same time:
   and grow to their species' height (10-22 m). The tools that fit them (`tools/nature/bake_sf.sh`, `fit_plant.py`)
   are ready for the date palms, oak, cypress, bottlebrush, citrus, yucca and prickly pear chosen to follow; until
   those arrive, the bottlebrush and citrus planted in town and yards stand in as olives.
+
+## 0.11.0: Golden Hour (2026-11-01)
+
+- **A new look for every screen** (`src/ui/sunset.css`, replacing the leather-and-wood western skin): golden hour over
+  Poway seen through smoked glass. Dark plum glass panels with a thin sunset line along the top, buttons as slim pills
+  (the main action a sunlit one), the main menu as a list of plain type with the sunset line marking where you are,
+  thin switches and sliders, glass notes in the HUD, and money, speed and the street name without heavy outlines.
+  The wild west stays in the type: WASTED and BUSTED in a slab wanted-poster face, a spur-rowel cursor.
+- **The wordmark:** a brush-script "Poway" over "AUTOMOBILE ONLINE" replaces the licence plate on the loading screen,
+  the menu and the pause card.
+- **The loading screen is a painting:** a muscle car on the coast road at sundown, palms, the pier and the mountains,
+  pushing in slowly while the world loads. The wordmark top left, "Sun. Dust. Opportunity." top right, the tip, what's
+  loading and a thin glowing progress line bottom left, "Poway, CA" and the version bottom right. The menu sits over
+  the same painting.
+
+## 0.10.2 (2026-10-31)
+
+- **319 real cars on the streets** (`src/sf.js`): every car the streets make for themselves is now one of 319 models
+  from Sketchfab, at real size, from beaters to exotics. Cheaper cars where the money is thin and nicer ones where it
+  isn't; police cruisers for the police. Each keeps its own look except the paint (it takes the car's colour), the
+  glass and the lamps, lit at night. A few of each kind come in with the loading screen, the old built-in bodies
+  only stand in until a model has loaded and are swapped for one out of sight, and buses keep their own. A model loads
+  when a car needs it and is let go once none does, so the streets turn over every few minutes. To keep the frame
+  rate, each car is drawn in as few pieces as its textures allow and its textures are cut to 512 px, only cars near
+  you show their cabins and badges and cast shadows, and see-through parts that made the whole scene draw twice are
+  made solid.
+- **Credits** on the menu: every model with its title, its maker and its licence, with a search box (also in
+  `assets/sf/CREDITS.md`).
+- **Each car its own top speed and pull** (`tools/sketchfab/speeds.mjs`), from what the real one does: an Aventador
+  tops out near 150 mph, a Civic near 90, a Model T at 42. Body-shop upgrades build on the car's own numbers, and police
+  cruisers are never slower than the old police car.
+- **Tyre marks, smoke and dust that everyone sees** (`src/fx/skids.js`): rubber on the road and white smoke where tyres
+  slide (a drift, the handbrake, a hard stop, a burnout), dust kicked up off the pavement. Another player's car lays the
+  same from their own game's slide, sent with their car.
+- **Other players' cars move like cars:** their front wheels steer as they steer, the wheels turn with their speed
+  (backwards in reverse), their lamps light at night, and they roll ruts in the beach sand.
+- **Players show up at once:** someone joining appears straight away in a stand-in look until their own avatar has
+  downloaded (a slow or stalled download from the asset host used to keep them invisible); anyone the room knows about
+  that this screen missed is added within seconds; and a kept sign-in the server no longer accepts is renewed instead
+  of failing the join.
+- **Wheels on the road:** each new car's wheels turn about their own centre (some models' wheels swung down through the
+  asphalt) and never rest below the ground, and wheels that aren't round don't spin. At Poway High, cars and people
+  stand on the campus's own paving and paths instead of the terrain a few cm under them.
 
 ## 0.10.1 (2026-10-31)
 

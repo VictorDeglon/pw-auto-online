@@ -61,10 +61,10 @@ window.PAO_DATA = PACKS.ready.then(() => {
 <link rel="apple-touch-icon" href="assets/brand/favicon.png">
 <meta property="og:title" content="Poway Automobile Online">
 <meta property="og:image" content="assets/brand/logo.png">
-<meta name="theme-color" content="#0b1222">
+<meta name="theme-color" content="#1a1220">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Rye&family=Yellowtail&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=Mr+Dafoe&family=Ultra&family=Yellowtail&display=swap">
 <!-- the plaza shops' sign typefaces (src/world/plazas/brands.js) -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Kanit:ital,wght@1,800&family=Poppins:wght@600;700&family=Playfair+Display:ital,wght@0,800;1,800&family=Cormorant+Garamond:wght@700&family=Nunito+Sans:wght@800;900&family=Lilita+One&family=Montserrat:wght@800&family=Arvo:wght@700&family=Josefin+Sans:wght@700&family=Pacifico&family=Lobster&family=Lora:ital,wght@1,700&family=Oswald:wght@600&display=swap">
 <style>
@@ -210,6 +210,7 @@ body.scoped #cross{opacity:.5}
 #bigmap .legend{position:absolute;left:20px;top:calc(16px + env(safe-area-inset-top,0px));font:600 16px/1.4 var(--ui);color:var(--dim);pointer-events:none;text-shadow:0 1px 2px #000}
 #mapclose{position:absolute;right:20px;top:calc(16px + env(safe-area-inset-top,0px));font-size:22px;padding:10px 20px 8px}
 #bigmap .legend b{font:400 34px/1 var(--display);color:var(--paper);display:block;letter-spacing:.02em}
+.credits{max-height:62vh;overflow:auto;font:500 14px/1.45 var(--ui);color:var(--dim)}.credits h3{margin:16px 0 4px;font:700 15px var(--ui);color:#fff;text-transform:uppercase;letter-spacing:.06em}.credits ul{margin:0;padding-left:18px}.credits a{color:#e9e4d6}.credits .creditfind{width:100%;margin:12px 0 0;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#fff;font:500 15px var(--ui)}
 .keys{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:5px 12px;font:600 16px/1.3 var(--ui);color:var(--dim);align-items:baseline}
 .keys kbd{font:700 15px var(--ui);color:var(--paper);background:var(--ink-2);border:1px solid #333a42;border-bottom-width:3px;padding:1px 7px;border-radius:3px;text-align:center;white-space:nowrap}
 #prompt{left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);font:600 18px/1 var(--ui);letter-spacing:.04em;background:rgba(14,16,19,.86);padding:9px 14px 8px;border-left:4px solid var(--gold);text-shadow:none;white-space:nowrap}
@@ -399,7 +400,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 @media (max-width:680px){#menu{grid-template-columns:1fr} .charwrap{grid-template-columns:1fr}}
 @media (max-height:640px){.menu-col{gap:14px} .plate:not(.big) .plate-script{font-size:30px} .plate:not(.big) .plate-main{font-size:40px} .mbtn{padding:9px 18px 8px;font-size:22px} .mnav{gap:6px}}
 </style>
-<link rel="stylesheet" href="src/ui/western.css">
+<link rel="stylesheet" href="src/ui/sunset.css">
 
 <div id="view"></div>
 <div id="vignette" class="hud"></div>
@@ -434,45 +435,27 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 
 <!-- boot: the loading screen while Poway is built -->
 <div id="boot">
-  <img class="brand-mark boot-mark" data-brand="assets/brand/logo.png" alt="" hidden>
-  <div class="boot-scene" aria-hidden="true"><svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
-<defs><linearGradient id="bsky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b1028"/><stop offset=".32" stop-color="#4d2246"/><stop offset=".56" stop-color="#b23d3f"/><stop offset=".72" stop-color="#ee7b33"/><stop offset=".86" stop-color="#ffc25a"/></linearGradient>
-<radialGradient id="bsun"><stop offset="0" stop-color="#fff3bf"/><stop offset=".6" stop-color="#ffc64d"/><stop offset="1" stop-color="#f6922f"/></radialGradient>
-<radialGradient id="bglow"><stop offset="0" stop-color="#ffd27a" stop-opacity=".55"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient>
-<clipPath id="bsunclip"><circle cx="800" cy="610" r="175"/></clipPath></defs>
-<rect width="1600" height="900" fill="url(#bsky)"/>
-<circle cx="800" cy="610" r="520" fill="url(#bglow)"/>
-<g class="boot-rays" fill="#ffe2a0" opacity=".13"><polygon points="800,610 2199,561 2199,659"/><polygon points="800,610 2164,925 2139,1019"/><polygon points="800,610 2036,1267 1987,1352"/><polygon points="800,610 1824,1565 1755,1634"/><polygon points="800,610 1542,1797 1457,1846"/><polygon points="800,610 1209,1949 1115,1974"/><polygon points="800,610 849,2009 751,2009"/><polygon points="800,610 485,1974 391,1949"/><polygon points="800,610 143,1846 58,1797"/><polygon points="800,610 -155,1634 -224,1565"/><polygon points="800,610 -387,1352 -436,1267"/><polygon points="800,610 -539,1019 -564,925"/><polygon points="800,610 -599,659 -599,561"/><polygon points="800,610 -564,295 -539,201"/><polygon points="800,610 -436,-47 -387,-132"/><polygon points="800,610 -224,-345 -155,-414"/><polygon points="800,610 58,-577 143,-626"/><polygon points="800,610 391,-729 485,-754"/><polygon points="800,610 751,-789 849,-789"/><polygon points="800,610 1115,-754 1209,-729"/><polygon points="800,610 1457,-626 1542,-577"/><polygon points="800,610 1755,-414 1824,-345"/><polygon points="800,610 1987,-132 2036,-47"/><polygon points="800,610 2139,201 2164,295"/></g>
-<g clip-path="url(#bsunclip)"><circle cx="800" cy="610" r="175" fill="url(#bsun)"/><rect x="620" y="630" width="360" height="4.0" fill="#ee7b33"/><rect x="620" y="656" width="360" height="6.4" fill="#ee7b33"/><rect x="620" y="682" width="360" height="8.8" fill="#ee7b33"/><rect x="620" y="708" width="360" height="11.2" fill="#ee7b33"/><rect x="620" y="734" width="360" height="13.6" fill="#ee7b33"/><rect x="620" y="760" width="360" height="16.0" fill="#ee7b33"/></g>
-<path class="boot-far" d="M0,900 L0,464 L33,447 L67,481 L100,458 L133,500 L167,502 L200,516 L233,536 L267,545 L300,549 L333,551 L367,538 L400,528 L433,504 L467,492 L500,482 L533,478 L567,485 L600,486 L633,461 L667,459 L700,500 L733,512 L767,528 L800,537 L833,547 L867,552 L900,548 L933,538 L967,525 L1000,515 L1033,493 L1067,471 L1100,467 L1133,445 L1167,472 L1200,473 L1233,488 L1267,487 L1300,501 L1333,516 L1367,541 L1400,545 L1433,553 L1467,551 L1500,541 L1533,533 L1567,515 L1600,500 L1600,900 Z" fill="#6e2a43" opacity=".9"/>
-<g class="boot-mid"><path d="M0,900 L0,584 L44,579 L89,586 L133,604 L178,610 L222,626 L267,628 L311,633 L356,630 L400,621 L444,608 L489,608 L533,584 L578,573 L622,571 L667,558 L711,564 L756,555 L800,587 L844,591 L889,603 L933,618 L978,621 L1022,628 L1067,631 L1111,630 L1156,626 L1200,611 L1244,597 L1289,589 L1333,587 L1378,575 L1422,564 L1467,575 L1511,574 L1556,577 L1600,598 L1600,900 Z" fill="#3b1729"/><g fill="#3b1729"><ellipse cx="1396" cy="577" rx="19" ry="14"/><ellipse cx="1592" cy="579" rx="12" ry="8"/><ellipse cx="295" cy="630" rx="18" ry="13"/><ellipse cx="835" cy="589" rx="9" ry="6"/><ellipse cx="1321" cy="591" rx="21" ry="15"/><ellipse cx="1311" cy="591" rx="16" ry="12"/><ellipse cx="1177" cy="628" rx="13" ry="9"/><ellipse cx="490" cy="610" rx="21" ry="15"/><ellipse cx="404" cy="623" rx="18" ry="13"/><ellipse cx="1076" cy="633" rx="11" ry="8"/><ellipse cx="388" cy="632" rx="11" ry="8"/><ellipse cx="312" cy="635" rx="10" ry="7"/><ellipse cx="920" cy="605" rx="15" ry="11"/><ellipse cx="105" cy="588" rx="11" ry="8"/></g></g>
-<path d="M0,900 L0,710 L80,715 L160,717 L240,717 L320,714 L400,710 L480,709 L560,706 L640,697 L720,696 L800,687 L880,688 L960,683 L1040,692 L1120,700 L1200,696 L1280,704 L1360,712 L1440,715 L1520,717 L1600,717 L1600,900 Z" fill="#1c0d10"/>
-<polygon points="786,648 814,648 1320,900 280,900" fill="#120a0b"/><line class="boot-dash" x1="800" y1="650" x2="800" y2="900" stroke="#f2c35a" stroke-width="5" opacity=".7"/><line x1="765" y1="650" x2="765" y2="642" stroke="#120a0b" stroke-width="1.0"/><line x1="742" y1="662" x2="742" y2="651" stroke="#120a0b" stroke-width="1.3"/><line x1="706" y1="680" x2="706" y2="666" stroke="#120a0b" stroke-width="1.6"/><line x1="660" y1="704" x2="660" y2="685" stroke="#120a0b" stroke-width="2.1"/><line x1="605" y1="731" x2="605" y2="707" stroke="#120a0b" stroke-width="2.6"/><line x1="543" y1="763" x2="543" y2="732" stroke="#120a0b" stroke-width="3.3"/><line x1="473" y1="798" x2="473" y2="760" stroke="#120a0b" stroke-width="4.0"/><line x1="397" y1="836" x2="397" y2="791" stroke="#120a0b" stroke-width="4.7"/><line x1="314" y1="878" x2="314" y2="824" stroke="#120a0b" stroke-width="5.6"/><line x1="827" y1="652" x2="827" y2="608" stroke="#120a0b" stroke-width="2.7"/><line x1="821" y1="611" x2="833" y2="611" stroke="#120a0b" stroke-width="2.0"/><line x1="862" y1="669" x2="862" y2="607" stroke="#120a0b" stroke-width="3.9"/><line x1="853" y1="612" x2="870" y2="612" stroke="#120a0b" stroke-width="2.8"/><line x1="913" y1="694" x2="913" y2="607" stroke="#120a0b" stroke-width="5.1"/><line x1="900" y1="613" x2="925" y2="613" stroke="#120a0b" stroke-width="3.6"/><line x1="977" y1="726" x2="977" y2="606" stroke="#120a0b" stroke-width="6.3"/><line x1="961" y1="614" x2="994" y2="614" stroke="#120a0b" stroke-width="4.4"/><line x1="1054" y1="763" x2="1054" y2="604" stroke="#120a0b" stroke-width="7.5"/><line x1="1032" y1="615" x2="1076" y2="615" stroke="#120a0b" stroke-width="5.2"/><line x1="1141" y1="806" x2="1141" y2="603" stroke="#120a0b" stroke-width="8.7"/><line x1="1113" y1="617" x2="1170" y2="617" stroke="#120a0b" stroke-width="6.0"/><line x1="1239" y1="853" x2="1239" y2="601" stroke="#120a0b" stroke-width="9.9"/><line x1="1203" y1="619" x2="1274" y2="619" stroke="#120a0b" stroke-width="6.8"/><path d="M822,611 Q838,618 854,612 M854,612 Q878,619 902,613 M902,613 Q933,620 963,614 M963,614 Q999,622 1035,615 M1035,615 Q1076,623 1117,617 M1117,617 Q1163,625 1208,619 " fill="none" stroke="#120a0b" stroke-width="1.6"/><path d="M832,611 Q851,618 869,612 M869,612 Q896,619 923,613 M923,613 Q958,620 992,614 M992,614 Q1033,622 1073,615 M1073,615 Q1119,623 1166,617 M1166,617 Q1217,625 1269,619 " fill="none" stroke="#120a0b" stroke-width="1.6"/>
-<path d="M250,900 C262.8,692.0 243.6,510.0 266.0,380" fill="none" stroke="#120a0b" stroke-width="9.6" stroke-linecap="round"/><path d="M266,380 Q238,351 210,473" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q218,351 169,449" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q210,351 154,415" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q218,351 169,346" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q238,351 210,322" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q266,351 266,313" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q294,351 322,322" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q314,351 363,346" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q322,351 378,415" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q314,351 363,449" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M266,380 Q294,351 322,473" fill="none" stroke="#120a0b" stroke-width="8.0" stroke-linecap="round"/><path d="M390,880 C398.8,728.0 385.6,595.0 401.0,500" fill="none" stroke="#120a0b" stroke-width="6.6" stroke-linecap="round"/><path d="M401,500 Q382,480 362,564" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q368,480 334,547" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q362,480 324,524" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q368,480 334,477" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q382,480 362,460" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q401,480 401,454" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q420,480 440,460" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q434,480 468,477" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q440,480 478,524" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q434,480 468,547" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M401,500 Q420,480 440,564" fill="none" stroke="#120a0b" stroke-width="5.5" stroke-linecap="round"/><path d="M1360,900 C1371.2,716.0 1354.4,555.0 1374.0,440" fill="none" stroke="#120a0b" stroke-width="8.4" stroke-linecap="round"/><path d="M1374,440 Q1350,415 1325,522" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1332,415 1289,500" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1325,415 1276,471" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1332,415 1289,411" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1350,415 1325,389" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1374,415 1374,381" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1398,415 1423,389" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1416,415 1459,411" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1423,415 1472,471" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1416,415 1459,500" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M1374,440 Q1398,415 1423,522" fill="none" stroke="#120a0b" stroke-width="7.0" stroke-linecap="round"/><path d="M110,760 L115.2,604.0 L97.0,500 M115.2,604.0 L149.0,513.0" stroke="#120a0b" stroke-width="6.5" fill="none"/><g fill="#120a0b"><ellipse cx="92" cy="492" rx="44" ry="29"/><ellipse cx="144" cy="487" rx="39" ry="26"/><ellipse cx="118" cy="461" rx="39" ry="29"/><ellipse cx="71" cy="513" rx="26" ry="16"/><ellipse cx="162" cy="516" rx="23" ry="16"/></g>
-</svg><div class="boot-dust"></div></div>
-  <div class="boot-sky"></div>
-  <div class="boot-in">
-    <div class="plate big" aria-label="Poway Automobile Online">
-      <span class="plate-script">Poway</span>
-      <span class="plate-main">AUTOMOBILE</span>
-      <span class="plate-foot">ONLINE · 92064</span>
-      <span class="plate-sticker">PW</span>
-      <span class="ver-stamp" id="verstamp"></span>
+  <div class="boot-art" aria-hidden="true"></div>
+  <header class="boot-top">
+    <div class="mark big" role="img" aria-label="Poway Automobile Online"><span class="mark-script">Poway</span><span class="mark-sub">Automobile Online</span></div>
+    <p class="boot-tag">Sun. Dust. Opportunity.</p>
+  </header>
+  <footer class="boot-bottom">
+    <div class="boot-left">
+      <div id="boottip" class="boot-tip"></div>
+      <div class="boot-status"><span class="boot-label">Loading</span><span id="loadmsg" class="boot-msg">Starting the engine…</span></div>
+      <div class="road" aria-hidden="true"><div class="road-fill" id="loadfill"></div><div class="road-car" id="loadcar"></div></div>
+      <button class="mbtn primary boot-go" id="bootgo" hidden>Enter Poway <kbd>Enter</kbd></button>
     </div>
-    <div class="road" aria-hidden="true"><div class="road-fill" id="loadfill"></div><div class="road-car" id="loadcar"></div></div>
-    <div id="loadmsg" class="boot-msg">Starting the engine…</div>
-    <div id="boottip" class="boot-tip"></div>
-    <button class="mbtn primary boot-go" id="bootgo" hidden>Enter Poway <kbd>Enter</kbd></button>
-  </div>
+    <div class="boot-right"><span class="boot-place">Poway, CA</span><span class="ver-stamp" id="verstamp"></span></div>
+  </footer>
 </div>
 
 <!-- main menu -->
 <div id="menu" hidden>
   <img class="brand-mark menu-mark" data-brand="assets/brand/favicon.png" alt="" hidden>
   <div class="menu-col">
-    <div class="plate" aria-label="Poway Automobile Online">
-      <span class="plate-script">Poway</span><span class="plate-main">AUTOMOBILE</span><span class="plate-foot">ONLINE · 92064</span><span class="plate-sticker">PW</span>
-    </div>
+    <div class="mark" role="img" aria-label="Poway Automobile Online"><span class="mark-script">Poway</span><span class="mark-sub">Automobile Online</span></div>
     <nav class="mnav" id="mnav">
       <button class="mbtn primary" data-go="online">Play online <small id="onlinesub">Pick a server</small></button>
       <button class="mbtn" data-go="career">Career <small id="careersub">Levels, skills, leaderboards</small></button>
@@ -481,6 +464,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <button class="mbtn" data-go="achievements">Achievements <small id="achsub">0 / 30</small></button>
       <button class="mbtn" data-go="settings">Settings <small id="gfxsub">Graphics</small></button>
       <button class="mbtn" data-go="controls">Controls</button>
+      <button class="mbtn" data-go="credits">Credits <small>Every model and who made it</small></button>
     </nav>
     <button class="linkbtn" id="newgame" hidden>Reset offline progress</button>
     <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0), Quaternius (CC0). Palms: PlantCatalog by e-on software, via Sketchfab (CC BY 4.0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY 3.0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
@@ -540,6 +524,11 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     <div class="row"><button class="mbtn primary small" id="gfxapply" hidden>Apply and reload</button></div>
   </section>
 
+  <section class="screen" id="scr-credits" hidden>
+    <header><h2>Credits</h2><p>The places, models, textures and music in the game, and the people who made them.</p></header>
+    <div class="credits" id="creditlist"></div>
+  </section>
+
   <section class="screen" id="scr-controls" hidden>
     <header><h2>Controls</h2><p>Keyboard and mouse.</p></header>
     <div class="keys">
@@ -592,7 +581,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
 <div id="chat" hidden><div id="chatlog"></div><form id="chatform" hidden><input id="chatin" maxlength="160" placeholder="Say something · Enter to send · Esc to close" autocomplete="off"></form></div>
 <div id="plist" class="hud" hidden></div>
 <div id="pause"><div class="panel">
-  <div class="plate small" aria-hidden="true"><span class="plate-script">Poway</span><span class="plate-main">PAUSED</span><span class="plate-foot" id="pausesrv">FREE ROAM</span><span class="plate-sticker">PW</span></div>
+  <div class="mark small" aria-hidden="true"><span class="mark-script">Paused</span><span class="mark-sub" id="pausesrv">FREE ROAM</span></div>
   <div class="mnav row">
     <button class="mbtn primary small" id="resume">Resume</button>
     <button class="mbtn small" id="pchar">Character</button>
@@ -621,13 +610,16 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
     if (src.includes('favicon')) for (const l of document.querySelectorAll('link[rel=icon],link[rel=apple-touch-icon]')) l.href = url; }); });
 })();
 </script>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"},"integrity":{"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js":"sha384-61S/Nu32S3E5+n+KpCOTb2eRYps6fVKm+9Gz1QBvSePFthb46f063Aa/qe/lykFZ","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/GLTFLoader.js":"sha384-oxY9vSeh7Mrt5WmhN8xfWoDRnmoW9krEiRBY7vJKaK90jMUidM0fhbUwcblpBgTu","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/loaders/DRACOLoader.js":"sha384-Zn3pTNJ722NF9zqpZbdlhMmvTPdvPd7g26Fk2XTtcckK8IgVQVmcNlo0a/s2J8la","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js":"sha384-jHGXS4+FuVOBnZkNme2ury3Ccg5DWDLYK22xX/WGdZCZsjRM4J+3n6Qc4CXx1Hjf","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/SkeletonUtils.js":"sha384-oipDsNi7yyq1H7gmTrR5wzMQeLavOwnYqWjajKnOmxVTgtE3xmr06+oQL1OOuXLI","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/environments/RoomEnvironment.js":"sha384-ZGqh+dJjt6z9NHsWYYt+TPDFj8y+2If7naI6a6AkkyNZyH51CVS3HTWFh0njp4k6","https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js":"sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"}}</script>
 <script>import('./src/online/nkconfig.js').then(m => m.probe()).catch(() => { }); // the game server check, alongside everything else (src/online/net.js waits for it); after the import map, which has to come before any module</script>
 <script type="module">
 import * as THREE from 'three';
 import { rollLightLoops } from './src/lightloops.js';
 import { BG, bgBudget } from './src/budget.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { createSF } from './src/sf.js'; // the Sketchfab models: catalogue, loading on demand, credits
+import { createSfPlacer } from './src/world/sfplace.js'; // ...and where the street furniture, park things and people at work go
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
 import { loadGround, groundPatch, groundStandIn, setGround, GROUND_RELIEF } from './src/nature/ground.js';
@@ -664,6 +656,7 @@ import { initNetTraffic, updateNetTraffic, NETTRAFFIC, netCarHit, netCarTake } f
 import { initNetPeds, updateNetPeds, NETPEDS, netPedHit } from './src/online/peds.js';
 import * as SHELL from './src/ui/shell.js';
 import { createFX } from './src/fx/fx.js';
+import { createSkids } from './src/fx/skids.js';
 import { createNukeFX, WAVE_SPEED as NUKE_WAVE_SPEED } from './src/fx/nuke.js';
 import { createSky } from './src/sky.js';
 import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } from './src/aircraft.js';
@@ -701,6 +694,7 @@ import { createParking } from './src/world/parking.js';
 import { regionAt, sectorAt, SECTOR, REGIONS, initRegionBanner, updateRegion } from './src/world/regions.js';
 import * as SHOP from './src/ui/shop.js';
 import { createCheats } from './src/ui/cheats.js';
+import { renderCredits } from './src/ui/credits.js';
 import { DEALER_SKINS, RESERVED } from './src/reserved.js';
 import { createWheel, ICONS as WICONS } from './src/ui/wheel.js';
 import { storyUnlocked, initStory, updateStory, storyMapMarks, storyTarget, storyJournal, abandonMission, storyBusy, storySkip, storyDebug } from './src/story/story.js';
@@ -851,7 +845,15 @@ const POST = createPost(THREE, renderer, camera, postLevel(), { msaa: GFX.aa ? G
 // second, so every compile and warm-up draw aims at a target like the post chain's.
 const AIM_RT = new THREE.WebGLRenderTarget(1, 1);
 function aimed(f) { const prev = renderer.getRenderTarget(), swap = POST.level > 0 && !prev; if (swap) renderer.setRenderTarget(AIM_RT); try { return f(); } finally { if (swap) renderer.setRenderTarget(prev); } }
-{ const c = renderer.compile.bind(renderer), ca = renderer.compileAsync.bind(renderer); renderer.compile = (...a) => aimed(() => c(...a)); renderer.compileAsync = (...a) => aimed(() => ca(...a)); }
+// A material disposed while compileAsync waits on it throws inside three (in a timer, uncaught) and that compile never
+// settles, so what's thrown away during a compile is disposed once none is running (disposeSoon).
+let compiling = 0; const laterDispose = [];
+function disposeSoon(m) { if (compiling) laterDispose.push(m); else m.dispose(); }
+{ const c = renderer.compile.bind(renderer), ca = renderer.compileAsync.bind(renderer); renderer.compile = (...a) => aimed(() => c(...a));
+  renderer.compileAsync = (...a) => {
+    compiling++; let open = true; const done = () => { if (!open) return; open = false; if (--compiling === 0) for (const m of laterDispose.splice(0)) m.dispose(); };
+    const p = aimed(() => ca(...a)); p.then(done, done); setTimeout(done, 30000); return p;
+  }; }
 const fitHud = () => document.documentElement.style.setProperty('--hs', Math.max(0.6, Math.min(1, innerWidth / 1440, innerHeight / 860)).toFixed(3)); // the corner HUD's scale (#topright, #street, ...)
 fitHud();
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); fitHud(); });
@@ -968,7 +970,10 @@ let ROADS = null; // src/world/roadsurface.js: the built surface (crowned asphal
 // 12.8 m triangles only approximate); before that, the road bed / terrain the mesh is built from
 let MESH_READY = false;
 const ROAD_TOP = 0.06; // asphalt sits cleanly above the road bed mesh to prevent ground poke-through
-function heightAt(x, z) {
+function heightAt(x, z) { // ... and on the Poway High campus, its own draped ground where that stands higher (src/phs.js)
+  const h = heightAt0(x, z), p = PHS.groundAt(x, z); return p !== null && p > h ? p : h;
+}
+function heightAt0(x, z) {
   if (x > ARENA_X0) return arenaGround(x, z); // the crew-garage worlds, far east of town (src/games)
   if (ROADS && ROADS.onRoad(x, z, 0.2)) return builtAt(x, z) + ROAD_TOP;
   if (MESH_READY) { const g = meshAt(x, z); if (g !== null) return benchOver(x, z, g); }
@@ -1142,6 +1147,12 @@ function progress(msg) {
   DL.msg = msg; showProgress();
 }
 const texLoader = new THREE.TextureLoader(), gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/')); // the Sketchfab models' meshes are Draco-packed
+const SF = createSF(gltfLoader, { onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge)
+  const t = carProto.get('sf-' + id); carProto.delete('sf-' + id); if (!t) return;
+  for (const root of [t.body, ...t.wheels.map(w => w.mesh)]) root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.name === 'Plain') o.material.dispose(); } });
+} });
+const SF_WARM = SF.warm(['sedan', 'suv', 'pickup', 'sports', 'van', 'police'], 3); // a few of each kind of car fetched alongside the world, for the first traffic
 // a 1x1 stand-in so a material compiles with its map from the start and the real image can be swapped in later
 function holdTex(hex) {
   const t = new THREE.DataTexture(new Uint8Array([(hex >> 16) & 255, (hex >> 8) & 255, hex & 255, 255]), 1, 1);
@@ -4566,6 +4577,7 @@ class Particles {
 const smoke = new Particles(700, false), fire = new Particles(500, true);
 const NUKE_FX = createNukeFX(THREE, scene, { potato: 0.35, low: 0.55, medium: 0.8, high: 1, ultra: 1 }[GFX.id] || 0.8); // the nuke's flash, shockwave and mushroom cloud (src/fx/nuke.js)
 const FX = createFX({ THREE, scene, camera, heightAt: (x, z) => heightAt(x, z), smoke, fire, quality: { potato: 0.35, low: 0.6, medium: 1, high: 1.2, ultra: 1.5 }[GFX.id] || 1 }); // src/fx/fx.js
+const SKIDS = createSkids(THREE, scene, { max: GFX.id === 'potato' ? 800 : 3000 }); // tyre marks (src/fx/skids.js), laid by wheelFx
 function blood(x, y, z, n = 10, dir) { // droplets; with a direction (the bullet's) most of them spray out the far side
   for (let i = 0; i < n; i++) { const k = dir && i < n * 0.7 ? rand(3, 7) : 0, r = rand(0.35, 0.6);
     smoke.emit(x, y, z, (dir ? dir.x * k : 0) + rand(-2, 2), (dir ? dir.y * k : 0) + rand(0, 3), (dir ? dir.z * k : 0) + rand(-2, 2), rand(0.1, 0.3), rand(0.5, 1), r, 0.015, 0.015, 0, 12); }
@@ -4894,8 +4906,122 @@ const CAR_DIMS = {
 for (const d of Object.values(CAR_DIMS)) for (const k of ['L', 'W', 'H', 'r']) if (typeof d[k] === 'number') d[k] *= CAR_SCALE;
 const wreckMat = new THREE.MeshStandardMaterial({ color: 0x262422, roughness: 1 });
 const carProto = new Map(); // model name -> { body: Group template, wheels: [{x,y,z,front,right}], L, W, h }
+// Sketchfab cars (src/sf.js, tools/sketchfab/fit.py): real size in metres, standing on y = 0, +z forward; a 'body' node
+// and, when the fitter found them, four 'wheel-…' nodes centred on their hubs (else the wheels stay in the body)
+// A Sketchfab body comes in dozens of pieces, a draw call (and a shadow one) each: one mesh per material instead, and the
+// plain parts (no texture, nothing see-through or lit) in vertex-coloured meshes, metal and not. Geometry ends up in a
+// frame at `origin` with the world's axes.
+function sfMerge(node, origin) {
+  const groups = new Map(), M = new THREE.Matrix4(), inv = new THREE.Matrix4().makeTranslation(-origin.x, -origin.y, -origin.z);
+  node.updateMatrixWorld(true);
+  node.traverse(o => {
+    if (!o.isMesh || Array.isArray(o.material) || !o.geometry.attributes.position) return;
+    const m = o.material, nm = m.name || '';
+    const plain = !(nm === 'Body' || /^(Glass|Headlight|TailLight)_/.test(nm)) && !m.map && !m.normalMap && !m.transparent && !m.alphaTest && !m.vertexColors && !(m.emissive && m.emissive.getHex());
+    const key = plain ? `plain${m.metalness > 0.5 ? 'M' : ''}${m.side}` : m;
+    const g = o.geometry.clone(); M.multiplyMatrices(inv, o.matrixWorld); g.applyMatrix4(M); g.morphAttributes = {};
+    if (!g.attributes.normal) g.computeVertexNormals();
+    if (!g.index) g.setIndex([...Array(g.attributes.position.count).keys()]);
+    if (M.determinant() < 0) { const ix = g.index.array; for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; } } // a mirrored part: keep its faces facing out
+    if (plain) {
+      for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+      const n = g.attributes.position.count, c = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { c[i * 3] = m.color.r; c[i * 3 + 1] = m.color.g; c[i * 3 + 2] = m.color.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+    }
+    if (!groups.has(key)) groups.set(key, { m, plain, geos: [], rough: 0 });
+    const G = groups.get(key); G.geos.push(g); G.rough += m.roughness ?? 0.6;
+  });
+  const out = new THREE.Group();
+  for (const [key, G] of groups) {
+    const keep = new Set(Object.keys(G.geos[0].attributes)); for (const g of G.geos) for (const k of [...keep]) if (!g.attributes[k]) keep.delete(k);
+    for (const g of G.geos) for (const k of Object.keys(g.attributes)) if (!keep.has(k)) g.deleteAttribute(k);
+    let mat = G.m;
+    if (G.plain) { mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: G.rough / G.geos.length, metalness: key.includes('M') ? 0.8 : 0.05, side: G.m.side }); mat.name = 'Plain'; }
+    const geo = G.geos.length > 1 ? BGU.mergeGeometries(G.geos, false) : G.geos[0];
+    for (const g of geo ? [geo] : G.geos) out.add(new THREE.Mesh(g, mat)); // pieces that won't merge stay apart
+  }
+  // the shell (the paint, the glass and anything nearly as big as the car) is what's seen from afar and what casts the
+  // shadow; the rest (cabin, badges, plates, trim) is detail, drawn only near the camera (sfLod)
+  const box = new THREE.Box3().setFromObject(out), size = box.getSize(new THREE.Vector3()).length(), b = new THREE.Box3();
+  for (const mesh of out.children) {
+    const nm = mesh.material.name || '', shell = nm === 'Body' || /^Glass_/.test(nm) || b.setFromObject(mesh).getSize(new THREE.Vector3()).length() >= 0.7 * size;
+    mesh.userData.detail = !shell; mesh.userData.noShadow = !shell || !!mesh.material.transparent;
+  }
+  return out;
+}
+function sfTemplate(name) {
+  const e = SF.byId(name.slice(3)), src = SF.get(name.slice(3)); if (!e || !src) return null;
+  src.updateMatrixWorld(true);
+  const k = CAR_SCALE, body = new THREE.Group(), wheels = [], v = new THREE.Vector3();
+  const bb = sfMerge(src.getObjectByName('body') || src, new THREE.Vector3());
+  body.add(bb); body.scale.setScalar(k);
+  for (const nm of ['wheel-front-left', 'wheel-front-right', 'wheel-back-left', 'wheel-back-right']) {
+    const w = src.getObjectByName(nm); if (!w) continue;
+    w.getWorldPosition(v); const mesh = sfMerge(w, v);
+    // spun about the tyre's own centre: some models' wheel nodes sit off the hub, and turning there the wheel orbited
+    // down through the road; and its bottom never below the ground
+    const bb = new THREE.Box3().setFromObject(mesh), c = bb.getCenter(new THREE.Vector3()), r = (bb.max.y - bb.min.y) / 2;
+    for (const o of mesh.children) o.geometry.translate(-c.x, -c.y, -c.z);
+    const hub = v.clone().add(c); if (hub.y - r < 0.01) hub.y = r + 0.01;
+    let far = 0; for (const o of mesh.children) { const p = o.geometry.attributes.position; for (let i = 0; i < p.count; i++) far = Math.max(far, Math.hypot(p.getY(i), p.getZ(i))); }
+    wheels.push({ x: hub.x * k, y: hub.y * k, z: hub.z * k, front: nm.includes('front'), right: nm.includes('right'), mesh, scale: [k, k, k], still: far > r * 1.12 }); // not round (a fender or a brake in with it): spun, it would cut through the road
+  }
+  const out = new THREE.Group(), root = new THREE.Group(); root.add(body); out.add(root);
+  const t = { body: out, wheels, L: e.L * k, W: e.W * k, H: e.H * k, wr: (e.r || 0.34) * k, dim: { sf: e.id } };
+  carProto.set(name, t); return t;
+}
+// their own materials stay, except that the paint takes the car's colour, the glass is the game's and the lamps light up
+function sfMaterial(src, nm, tint) {
+  if (nm === 'Body') {
+    const m = new THREE.MeshPhysicalMaterial({ map: src.map || null, normalMap: src.normalMap || null, roughness: SKYENV ? 0.38 : 0.32, metalness: SKYENV ? 0.3 : 0.35, clearcoat: 1, clearcoatRoughness: SKYENV ? 0.03 : 0.08, envMapIntensity: SKYENV ? 1 : 1.1 });
+    m.userData.base = new THREE.Color(1, 1, 1); m.color = m.userData.base.clone().multiply(hex(tint)); return m;
+  }
+  if (/^Glass_/.test(nm)) return SKYENV ? new THREE.MeshPhysicalMaterial({ color: 0x0a0d10, roughness: 0.02, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.01, envMapIntensity: 1.3, transparent: true, opacity: 0.86 })
+    : new THREE.MeshPhysicalMaterial({ color: 0x101418, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6, transparent: true, opacity: 0.86 });
+  const m = src.clone(); if (/^Headlight_/.test(nm)) m.userData.lamp = 'head'; else if (/^TailLight_/.test(nm)) m.userData.lamp = 'tail';
+  if (m.transmission) m.transmission = 0; // a see-through material has three.js draw the whole scene once more, for every frame it's in view
+  return m;
+}
+let sfTickT = 0; // SF.tick (src/sf.js) runs once a second from the frame
+let SFP = null; // src/world/sfplace.js, made on the first frame (it needs the road graph)
+const _sfp = { x: 0, z: 0 };
+const _sfFr = new THREE.Frustum(), _sfPV = new THREE.Matrix4(), _sfBall = new THREE.Sphere();
+function sfSwap() { // stock bodies made before the Sketchfab cars were in: traded for one where the camera isn't looking, two a second
+  _sfPV.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); _sfFr.setFromProjectionMatrix(_sfPV);
+  let n = 0;
+  for (const v of vehicles) {
+    const md = v.m && v.m.model;
+    if (!md || md.startsWith('sf-') || !CAR[v.type] || CAR[v.type].proc || v === player.inCar || v.ownedId || v.keep || v.mission || v.story || v.partsKey || v.isCop || v.dead || v.burn || v.dentTotal) continue;
+    if (v.driver !== 'ai' && !(v.parked && !v.driver)) continue;
+    _sfBall.center.copy(v.pos); _sfBall.radius = Math.max(3, v.spec.L);
+    if (_sfFr.intersectsSphere(_sfBall) && v.pos.distanceTo(camera.position) < 220) continue;
+    let w = 0.5; try { w = zoneHere(v.pos.x, v.pos.z).wealth; } catch (e) { }
+    const e = SF.pickCar(v.type, w); if (!e) continue;
+    v.rebody('sf-' + e.id); if (++n >= 2) break;
+  }
+}
+const SF_DETAIL_M = 70, SF_WHEELS_M = 160; // a Sketchfab car's cabin, badges and trim show (and its shell casts a shadow) within this, its wheels within that
+function sfLod() {
+  const c = camera.position;
+  for (const v of vehicles) {
+    const m = v.m; if (!m || !m.detail) continue;
+    const d2 = (v.pos.x - c.x) ** 2 + (v.pos.z - c.z) ** 2, near = d2 < (m.near ? SF_DETAIL_M + 8 : SF_DETAIL_M) ** 2, wheels = d2 < SF_WHEELS_M ** 2; // a little slack, so it doesn't flicker at the line
+    if (near !== m.near) { m.near = near; for (const o of m.detail) o.visible = near; for (const o of m.shell) o.castShadow = near; }
+    if (wheels !== m.wheelsOn) { m.wheelsOn = wheels; for (const w of m.wheels) w.piv.visible = wheels; }
+  }
+}
+function sfPlacer() {
+  return SFP || (SFP = createSfPlacer({ THREE, scene, SF, edges, egrid, EG, ckey, edgePos, zoneHere, heightAt, pois: POIS, nearSignal, nearestEdge, pip,
+    areasNear: (x0, z0, x1, z1) => mapAreas.filter(A => { for (let i = 0; i < A.p.length; i += 2) if (A.p[i] >= x0 - 300 && A.p[i] <= x1 + 300 && A.p[i + 1] >= z0 - 300 && A.p[i + 1] <= z1 + 300) return true; return false; }),
+    addPoly: (flat, base, top) => { addPoly(flat, base, top); return polys.length - 1; },
+    dropPoly: i => { const P = polys[i]; if (P) { P.dead = true; P.gone = true; } },
+    blocked: (x, z, r) => { _sfp.x = x; _sfp.z = z; return !!collideCircle(_sfp, r, false); }, onRoad: (x, z, m) => offLimits(x, z, m), plaza: PLAZA_CENTER || null }));
+}
+const SF_SHARE = 1; // of the cars a street makes for itself, this many are Sketchfab cars (a stock body only stands in while none of that type is loaded yet, and for kinds with none, like buses)
 function carTemplate(name) {
   if (carProto.has(name)) return carProto.get(name);
+  if (name.startsWith('sf-')) return sfTemplate(name);
   const dim = CAR_DIMS[name] || { L: 4.8, W: 1.9, H: 1.5, r: 0.34 };
   const src = MODELS[dim.src || name]; if (!src) return null;
   src.updateMatrixWorld(true);
@@ -4954,18 +5080,24 @@ function carTemplate(name) {
   const t = { body: out, wheels: tw, L: dim.L, W: dim.W, H: dim.H, wr: wr || dim.r, dim };
   carProto.set(name, t); return t;
 }
-function buildCar(type, tint, model) {
+function buildCar(type, tint, model, wealth) {
   if (CAR[type] && CAR[type].proc) { const m = buildTwoWheeler(THREE, CAR[type].proc, tint); scene.add(m.g); return m; }
-  const spec = CAR[type]; const name = model && spec.model.includes(model) ? model : pick(spec.model); const T = carTemplate(name); const g = new THREE.Group();
+  const spec = CAR[type], sfHere = model && model.startsWith('sf-') && SF.get(model.slice(3));
+  if (model && model.startsWith('sf-') && !sfHere) SF.load(model.slice(3)); // not loaded yet: a stand-in this time
+  let name = model && (spec.model.includes(model) || sfHere) ? model : null;
+  if (!name && !model && Math.random() < SF_SHARE) { const e = SF.pickCar(type, wealth ?? 0.5); if (e) name = 'sf-' + e.id; }
+  let T = carTemplate(name || (name = pick(spec.model))); if (!T) T = carTemplate(name = pick(spec.model)); const g = new THREE.Group();
+  if (name.startsWith('sf-')) SF.use(name.slice(3)); // held while this body exists: whoever throws it away calls releaseCar (Vehicle.remove does)
   const mats = new Map();
   const body = T.body.clone(true);
-  const q = !!T.dim.src;
+  const q = !!T.dim.src, sf = !!T.dim.sf;
   body.traverse(o => {
     if (!o.isMesh) return;
     if (!mats.has(o.material)) {
       const src = o.material, nm = src.name || '';
       let m;
-      if (!q || /^Body/.test(nm)) { // car paint: clear-coated. With the sky map (Medium and up) the coat is glassier: it mirrors the sky
+      if (sf) m = sfMaterial(src, nm, tint);
+      else if (!q || /^Body/.test(nm)) { // car paint: clear-coated. With the sky map (Medium and up) the coat is glassier: it mirrors the sky
         const fixed = q && T.dim.fixed != null && nm === 'Body';
         m = new THREE.MeshPhysicalMaterial({ map: src.map || null, color: q ? 0xffffff : src.color, roughness: SKYENV ? 0.38 : 0.32, metalness: SKYENV ? 0.3 : 0.35, clearcoat: 1, clearcoatRoughness: SKYENV ? 0.03 : 0.08, envMapIntensity: SKYENV ? 1 : 1.1 });
         if (nm === 'BodyLower') { m.color.set(0x2a2b2d); m.clearcoat = 0.3; }
@@ -4982,17 +5114,18 @@ function buildCar(type, tint, model) {
       else m = new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.7 });
       m.name = nm; mats.set(src, m);
     }
-    o.material = mats.get(o.material); o.castShadow = true;
+    o.material = mats.get(o.material); o.castShadow = !(sf && o.userData.noShadow);
   });
   g.add(body);
+  const detail = [], shell = []; if (sf) body.traverse(o => { if (o.userData.detail) detail.push(o); else if (o.isMesh && o.castShadow) shell.push(o); });
   const wheels = [];
   for (const w of T.wheels) {
     const piv = new THREE.Group(); piv.position.set(w.x, w.y, w.z); g.add(piv);
     const wm = w.mesh.clone(); wm.scale.set(w.scale[0], w.scale[1], w.scale[2]); if (w.spinFlip) wm.rotation.y += Math.PI;
-    wm.traverse(o => { if (o.isMesh) o.castShadow = true; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front });
+    wm.traverse(o => { if (o.isMesh) o.castShadow = !sf; }); piv.add(wm); wheels.push({ piv, w: wm, front: w.front, still: !!w.still });
   }
   let bars = null;
-  if (type === 'police') { // the Cop model's own light bar flashes; green Sheriff door bands
+  if (type === 'police' && !sf) { // the Cop model's own light bar flashes; green Sheriff door bands
     const red = [...mats.values()].find(m => /PoliceLightRed/.test(m.name)), blue = [...mats.values()].find(m => /PoliceLightBlue/.test(m.name));
     if (red && blue) bars = [{ material: red }, { material: blue }];
     const band = new THREE.MeshStandardMaterial({ color: 0x1f4a2c, roughness: 0.4, metalness: 0.2 });
@@ -5000,13 +5133,22 @@ function buildCar(type, tint, model) {
   }
   const beam = headlightBeam(THREE, T.L, T.W); g.add(beam); // the pool of its headlights on the road, at night
   scene.add(g);
-  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name };
+  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true };
 }
 const vehicles = [];
+// a car's stock numbers: its kind's (CAR), or a Sketchfab car's own top speed and pull (tools/sketchfab/speeds.mjs), so an
+// Aventador runs away from a Civic. Police cruisers never drop below the police car's, or nobody gets caught.
+function carBase(type, model) {
+  const b = CAR[type], e = model && model.startsWith('sf-') && SF.byId(model.slice(3));
+  if (!b || !e || !e.v) return b;
+  const cop = type === 'police';
+  return { ...b, vmax: cop ? Math.max(b.vmax, e.v) : e.v, acc: cop ? Math.max(b.acc, e.ac) : e.ac };
+}
 class Vehicle {
   constructor(type, x, z, rotY, tint, model) {
     this.type = type; this.spec = Object.assign({}, CAR[type]); this.tint = tint || pick(TWO.has(type) ? TWO_COLORS[type] : CAR_TINTS);
-    this.m = buildCar(type, this.tint, model); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    this.m = buildCar(type, this.tint, model, model ? undefined : (() => { try { return zoneHere(x, z).wealth; } catch (e) { return 0.5; } })()); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    const b = carBase(type, this.m.model); this.spec.vmax = b.vmax; this.spec.acc = b.acc;
     this.pos = new THREE.Vector3(x, heightAt(x, z), z); this.rotY = rotY; this.pitch = 0; this.roll = 0;
     this.vel = new THREE.Vector2(0, 0); this.speed = 0; this.steer = 0; this.health = 100; this.mode = 'free';
     this.driver = null; this.agent = null; this.isCop = type === 'police'; this.siren = false; this.dead = false; this.burn = 0;
@@ -5018,7 +5160,14 @@ class Vehicle {
     vehicles.push(this);
   }
   get fx() { return Math.sin(this.rotY); } get fz() { return Math.cos(this.rotY); }
-  remove() { if (this.ownedId) lostOwned(this); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) m.dispose(); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
+  remove() { if (this.ownedId) lostOwned(this); if (!this.removed && this.m.model && this.m.model.startsWith('sf-')) SF.drop(this.m.model.slice(3)); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) disposeSoon(m); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
+  rebody(model) { // a new body on the same car, where it stands (sfSwap: a stock body traded for a Sketchfab car)
+    const old = this.m; scene.remove(old.g); if (old.model && old.model.startsWith('sf-')) SF.drop(old.model.slice(3));
+    for (const m of old.allMats) disposeSoon(m); old.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
+    this.m = buildCar(this.type, this.tint, model); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
+    const b = carBase(this.type, model); this.spec.vmax = b.vmax; this.spec.acc = b.acc;
+    this.m.g.position.copy(old.g.position); this.m.g.quaternion.copy(old.g.quaternion);
+  }
 }
 function carCircles(v) { const o = v.spec.L / 2 - v.spec.W / 2; return [v.pos.x + v.fx * o, v.pos.z + v.fz * o, v.pos.x - v.fx * o, v.pos.z - v.fz * o]; }
 // for car-on-car hits: a chain of overlapping circles nose to tail (two circles leave a gap mid-body: 7 m on a bus)
@@ -5189,6 +5338,15 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
   if (brake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 22 * (v.brakeMul || 1) * dt); // brakes upgrade (src/carmods.js)
   vf -= vf * (0.015 + 0.0003 * Math.abs(vf)) * dt * (down ? 0.8 : 3); // rolling + aero drag (light when bombing down a mountain)
   if (!throttle) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 1.6 * dt);
+  { // what the tyres are doing, for the marks, smoke and dust (wheelFx; sent to other players with the car): the rear
+    // sliding out (a drift, the handbrake), all four locked in a hard stop, the rear spinning up from a standstill
+    const avf = Math.abs(vf), avs = Math.abs(vs), me = v.driver === 'player'; let sk = 0, k = 0;
+    if (avs > 3 && avf > 4) { sk |= 1; k = (avs - 3) / 6; if (avs > 7) sk |= 2; }
+    if (hand && avf > 3) { sk |= 1; k = Math.max(k, 0.6); }
+    if (me && brake && avf > 9) { sk |= 3; k = Math.max(k, (avf - 9) / 14); }
+    if (me && throttle > 0.9 && vf > -0.5 && vf < 6 && s.acc >= 12) { sk |= 1; k = Math.max(k, 0.8 - vf / 10); }
+    v.skid = weather.wet > 0.5 ? 0 : sk; v.skidK = Math.min(1, k);
+  }
   const grip = (hand ? 1.1 : 9) * (1 - 0.5 * weather.wet) * (v.gripMul || 1) * (hp < 0.4 ? 0.6 + hp : 1) * (v.onRoad === false ? 0.7 : 1) * (v.tireMul || 1); // gripMul < 1: tires shredded by a spike strip; dirt slides more
   vs *= Math.exp(-grip * dt);
   if (hand) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 6 * dt);
@@ -5198,9 +5356,28 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
   const nfx = Math.sin(v.rotY), nfz = Math.cos(v.rotY), nsx = nfz, nsz = -nfx;
   v.vel.set(nfx * vf + nsx * vs, nfz * vf + nsz * vs);
   v.pos.x += v.vel.x * dt; v.pos.z += v.vel.y * dt; v.speed = vf;
-  if (hand && Math.abs(vs) > 4 && Math.random() < 0.6) smoke.emit(v.pos.x - nfx * 2, v.pos.y + 0.3, v.pos.z - nfz * 2, rand(-.5, .5), 0.5, rand(-.5, .5), 0.8, 1.2, 0.8, 0.8, 0.8, 1.5);
-  if (Math.abs(vs) > 5 && weather.wet < 0.3 && Math.random() < Math.min(0.9, Math.abs(vs) * 0.035) && hyp(v.pos.x - camera.position.x, v.pos.z - camera.position.z) < 160 && ROADS && !ROADS.onAsphalt(v.pos.x, v.pos.z, 0.3))
-    smoke.emit(v.pos.x - nfx * 2.1 + rand(-.6, .6), v.pos.y + 0.25, v.pos.z - nfz * 2.1 + rand(-.6, .6), rand(-.6, .6), rand(.3, .9), rand(-.6, .6), 1.1, 2.2, 0.66, 0.56, 0.42, 2.4, 0.04); // dust off the dirt
+}
+// a car's tyres on the ground, every frame, for every car near you (yours, the traffic, other players'): rubber laid on
+// the asphalt and white smoke where they slide, dust kicked up behind them off the pavement. key: the car's own (a
+// Vehicle, or another player's id); speed: forward, signed; mask: which tyres slide (1 rear, 2 front); k: how hard.
+const _wfx = []; let WFX_N = 0;
+function wheelFx(key, m, x, y, z, yaw, speed, mask, k, dt) {
+  const c = camera.position; if ((x - c.x) ** 2 + (z - c.z) ** 2 > 150 * 150 || !ROADS || x > ARENA_X0) { if (m._fxOn) { for (let i = 0; i < 4; i++) SKIDS.lift(key + i); m._fxOn = false; } return; }
+  m._fxOn = true;
+  const fx = Math.sin(yaw), fz = Math.cos(yaw), sx = fz, sz = -fx, as = Math.abs(speed), L = m.L || 4.5, W = m.W || 1.8;
+  let n = 0; // the tyres: where the car's own wheels sit, or its four corners
+  for (const w of m.wheels) if (n < 4) { const p = w.piv.position; _wfx[n++] = [p.x, p.z, w.front]; }
+  if (n < 4) { n = 4; _wfx[0] = [W * 0.42, L * 0.32, true]; _wfx[1] = [-W * 0.42, L * 0.32, true]; _wfx[2] = [W * 0.42, -L * 0.32, false]; _wfx[3] = [-W * 0.42, -L * 0.32, false]; }
+  const paved = ROADS.onRoad(x, z, 0.5) || (PADS && PADS.at(x, z) !== null) || PHS.groundAt(x, z) !== null, tw = clamp(W * 0.12, 0.18, 0.32);
+  for (let i = 0; i < n; i++) {
+    const [lx, lz, front] = _wfx[i], wx = x + fx * lz + sx * lx, wz = z + fz * lz + sz * lx;
+    if (paved && as > 1.2 && mask & (front ? 2 : 1)) {
+      SKIDS.mark(key + i, wx, heightAt(wx, wz), wz, tw, k);
+      if (!front && k > 0.35 && Math.random() < dt * 14 * k) smoke.emit(wx, y + 0.25, wz, rand(-.5, .5), rand(.4, 1), rand(-.5, .5), 0.7, 1.4, 0.82, 0.82, 0.82, 1.8); // tyre smoke
+    } else SKIDS.lift(key + i);
+    if (!paved && !front && as > 4 && weather.wet < 0.3 && Math.random() < dt * Math.min(9, as * 0.35 + (mask ? 6 : 0))) // dust off the dirt, thicker in a slide
+      smoke.emit(wx + rand(-.3, .3), y + 0.2, wz + rand(-.3, .3), -fx * as * 0.08 + rand(-.6, .6), rand(.3, .9), -fz * as * 0.08 + rand(-.6, .6), 1, 2.2, 0.66, 0.56, 0.42, 2.4, 0.04);
+  }
 }
 const _wn = { x: 0, z: 0, px: 0, pz: 0 };
 function carHitWorld(v) {
@@ -6188,6 +6365,12 @@ function updateSand(dt) {
       if (onSand(x, z)) { sand++; if (P[k * 2] === P[k * 2]) TRACKS.tyre(P[k * 2], P[k * 2 + 1], x, z, Math.min(0.32, v.spec.W * 0.12)); } P[k * 2] = x; P[k * 2 + 1] = z; }
     if (sand) v.vel.multiplyScalar(Math.max(0, 1 - dt * 0.35 * sand / 4)); // ~ a third of the speed lost each second, flat out in deep sand
   }
+  for (const rem of REMOTES.values()) { // other players' cars roll ruts too (no drag: their own game slows them)
+    const car = rem.car, g = car && car.g.position; if (!g || Math.abs(g.x - player.pos.x) > 90 || Math.abs(g.z - player.pos.z) > 90) { if (rem) rem._trk = null; continue; }
+    const yaw = car.g.rotation.y, fx = Math.sin(yaw), fz = Math.cos(yaw), L = (car.L || 4.5) * 0.32, W = (car.W || 1.8) * 0.42, P = rem._trk || (rem._trk = new Float32Array(8).fill(NaN));
+    for (let k = 0; k < 4; k++) { const a = k < 2 ? L : -L, b = k % 2 ? W : -W, x = g.x + fx * a + fz * b, z = g.z + fz * a - fx * b;
+      if (onSand(x, z) && P[k * 2] === P[k * 2]) TRACKS.tyre(P[k * 2], P[k * 2 + 1], x, z, Math.min(0.32, (car.W || 1.8) * 0.12)); P[k * 2] = x; P[k * 2 + 1] = z; }
+  }
   const feet = (o, x, z, yaw) => { if (o._fx === undefined) { o._fx = x; o._fz = z; o._fl = false; } const d = Math.hypot(x - o._fx, z - o._fz); if (d > 0.72) { if (d < 3 && onSand(x, z)) TRACKS.foot(x, z, yaw, o._fl = !o._fl); o._fx = x; o._fz = z; } };
   if (!player.inCar && player.air <= 0.01) feet(player, player.pos.x, player.pos.z, player.rotY);
   for (const p of peds) if (!p.removed && Math.abs(p.pos.x - player.pos.x) < 70 && Math.abs(p.pos.z - player.pos.z) < 70) feet(p, p.pos.x, p.pos.z, p.rotY || 0);
@@ -7142,7 +7325,7 @@ scene.add(TUNE.light); // the underglow's one real light, on the car you drive (
 let GARAGE = null, garageOpen = false;
 function garageList() { return save.garage || (save.garage = []); }
 function ownedEntry(id) { return garageList().find(e => e.id === id); }
-function applyMods(v, e) { TUNE.applyPerf(v, e.base || CAR[v.type], e.mods || {}); TUNE.applyLook(v, e); } // e.base: a dealer car's own (trim) numbers
+function applyMods(v, e) { TUNE.applyPerf(v, e.base || carBase(v.type, v.m.model), e.mods || {}); TUNE.applyLook(v, e); } // e.base: a dealer car's own (trim) numbers
 const applyLook = (t, look) => TUNE.applyLook(t, look); // other players' cars (src/online/remote.js)
 
 function spawnOwned(e, x, z, rot) {
@@ -8096,7 +8279,8 @@ function updateVehicles(dt) {
     _cog.set(0, hc, 0).applyEuler(g.rotation); g.position.set(v.pos.x - _cog.x, v.pos.y + hc - _cog.y, v.pos.z - _cog.z);
     const fsp = v.mode === 'rail' ? v.speed : v.vel.x * v.fx + v.vel.y * v.fz;
     v.wheelRot = (v.wheelRot + fsp * dt / (v.m.wr || 0.34)) % TAU; // spec has no wr: dividing by it made every wheel NaN, so none drew
-    for (const w of v.m.wheels) { w.w.rotation.x = v.wheelRot; if (w.front) w.piv.rotation.y = v.steer * 0.5; }
+    for (const w of v.m.wheels) { if (!w.still) w.w.rotation.x = v.wheelRot; if (w.front) w.piv.rotation.y = v.steer * 0.5; }
+    if (!v.m.two && !v.air) wheelFx(v.wfxKey || (v.wfxKey = 'v' + (++WFX_N) + ':'), v.m, v.pos.x, v.pos.y, v.pos.z, v.rotY, fsp, v.driver ? v.skid || 0 : 0, v.skidK || 0, dt);
     NIGHTL.carLights(v.m, v.driver && !v.dead ? nightAmount : 0); // lights on while someone drives it
     if (v.m.bars) { const on = v.siren && Math.floor(simTime * 6) % 2 === 0; v.m.bars[0].material.color.setHex(v.siren ? (on ? 0xff2020 : 0x300000) : 0x400000); v.m.bars[1].material.color.setHex(v.siren ? (!on ? 0x2050ff : 0x000830) : 0x000a40); }
   }
@@ -9056,7 +9240,7 @@ function tick(rdt) {
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
   { const tL = performance.now(); updateLazy(worldHold ? 30 : Math.max(0.5, Math.min(bgBudget(lazyQueue.length > 6 ? 6 : 4), (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5))); STREAM_MS += usedOut + performance.now() - tL; } PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); updateNetPeds(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
-  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
+  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); sfLod(); SKIDS.update(simTime); if ((sfTickT += dt) > 1) { sfTickT = 0; SF.tick(performance.now()); sfSwap(); } if (!GAMES.inside) { const f = focusPos(); sfPlacer().update(f.x, f.z, dt); } updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
   MILITARY.update(dt);
   GANG.update(dt);
@@ -9146,7 +9330,10 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
     mine.mine = true; mine.tommy = true; settleCar(mine); // Tommy's car (src/story)
   } else if (spawnPt.car) { const c = spawnPt.car, mine = new Vehicle('sports', c.x, c.z, c.rot, 0xf0b23a); mine.mine = true; mine.tommy = true; settleCar(mine); } // parked by the start (PHS)
   // shared context for src/ modules (docs/roadmap/00-foundations.md §1)
-  if (/[?&]dbg\b/.test(location.search)) { window.__ctx = ctx; window.__club = () => CLUB; } // for poking at the game from the console while testing
+  Object.assign(ctx, { SF, wheelFx, carLights: m => NIGHTL.carLights(m, nightAmount), releaseCar: m => { if (m && m.model && m.model.startsWith('sf-')) SF.drop(m.model.slice(3)); }, sfCarFor: (type, id) => { // the room's car number picks the same Sketchfab car in every game (src/online/traffic.js)
+    const list = SF.cars.filter(e => e.t === type), h = Math.sin(id * 12.9898) * 43758.5453, r = h - Math.floor(h); if (!list.length || r > SF_SHARE) return null;
+    const e = list[Math.floor(r / SF_SHARE * list.length) % list.length]; if (SF.get(e.id)) return 'sf-' + e.id; SF.load(e.id); return null; } });
+  if (/[?&]dbg\b/.test(location.search)) { window.__ctx = ctx; window.__sfp = sfPlacer; window.__club = () => CLUB; } // for poking at the game from the console while testing
   Object.assign(ctx, { applyLook, lookOf: k => TUNE.lookOf(k), garageAt, garageSite, boatModel, CAR_TINTS,
     THREE, scene, camera, renderer, D, ZONE, KX, KZ, LAT0, LON0, edges, nodeEdges, NX, lightNodes, lightState, SPEED_T, CAR,
     heightAt, los, rayBuildings, collideCircle, addPoly, nearestEdge, edgePos, laneSample, laneOff, walkOff, agentFromNearest, advance, endNode,
@@ -9169,6 +9356,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   GAMES.init(); // crew garages in Poway, and their worlds when you go in (src/games)
   restoreSave();
   const sp0 = focusPos(); await loadRoofPhotos().catch(e => console.warn('[roofs]', e)); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
+  await Promise.race([SF_WARM, new Promise(r => setTimeout(r, 3000))]); // the first Sketchfab cars (src/sf.js), so the first traffic is made of them
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Uploading textures…'); await uploadInSteps(scene.children, f => { DL.msg = `Uploading textures… ${Math.round(f * 100)}%`; showProgress(); });
@@ -9183,7 +9371,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   keepAll();
   console.info('[boot]', BOOT_T.msg, ((performance.now() - BOOT_T.t) / 1000).toFixed(1) + 's;', 'ready after', (performance.now() / 1000).toFixed(1) + 's');
   worldReady = true; DL.on = false; last = performance.now(); performance.mark('pao:ready'); // marks for tools/packs/order.js
-  SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees. Ready.`);
+  SHELL.bootDone(`${D.buildings.length.toLocaleString()} buildings, ${D.roads.length.toLocaleString()} streets, ${(D.trees.length / 4).toLocaleString()} trees.`);
   $('play').disabled = false; $('newgame').hidden = !hadSave;
   loadLater(); startCareer();
 })().catch(err => { SHELL.bootFail('Failed to build the world: ' + err.message); console.error(err); });
@@ -9382,7 +9570,7 @@ function netState() {
   const v = player.inCar, p = v ? v.pos : player.pos;
   return { x: p.x, y: p.y, z: p.z, r: v ? v.rotY : player.rotY, spd: _spd, hp: player.health, w: player.weapon > 0 ? WEAPONS[player.weapon].id : '',
     aim: !!(player.weapon > 0 && (player.aiming || mouseDown)), dead: player.dead ? (player.deadKind === 'busted' ? 2 : 1) : 0, shots: player.shots || 0,
-    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead, pt: v.partsKey || '' } : null, ride: player.ride ? player.ride.id : null,
+    car: v ? { type: v.type, tint: v.tint, model: v.m.model, p: v.pitch || 0, rl: v.roll || 0, dead: !!v.dead, pt: v.partsKey || '', st: v.steer || 0, sk: v.skid || 0, k: v.skidK || 0, f: v.speed || 0 } : null, ride: player.ride ? player.ride.id : null,
     air: JET.on && JET.m ? { k: 'fighter', q: JET.m.quaternion.toArray() } : FLY.craft ? { k: FLY.craft.type === 'boat' ? 'boat:' + FLY.craft.kind : FLY.craft.kind, q: FLY.craft.g.quaternion.toArray() }
       : player.inPlane && currentPlane() ? { k: { prop: 'trainer', jet: 'bizjet', fighter: 'fighter' }[currentPlane().type] || 'cessna', q: currentPlane().model.quaternion.toArray() } : null };
 }
@@ -9484,7 +9672,8 @@ onNet('traffic:on', on => { // our own traffic makes way for the room's (parked 
 initWorld({
   focus: () => focusPos(), peds: () => peds, vehicles: () => vehicles, playerCar: () => player.inCar, notify,
   avatarIndex: a => a || '', avatarName: a => a || null, carTypeIndex: t => Object.keys(CAR).indexOf(t), carTypeName: i => Object.keys(CAR)[i] || null,
-  modelIndex: (t, m) => Math.max(0, CAR[t].model.indexOf(m)), modelName: (t, i) => CAR[t].model[i] || CAR[t].model[0],
+  modelIndex: (t, m) => { if (m && m.startsWith('sf-')) { const i = SF.cars.findIndex(e => 'sf-' + e.id === m); if (i >= 0) return 1000 + i; } return Math.max(0, CAR[t].model.indexOf(m)); }, // 1000 + n: the nth Sketchfab car (src/sf.js)
+  modelName: (t, i) => { if (i >= 1000) { const e = SF.cars[i - 1000]; if (e) return 'sf-' + e.id; } return CAR[t].model[i] || CAR[t].model[0]; },
   makePuppetPed: (x, z, avatar, cop) => { const p = new Ped(x, z, { look: cop ? { kind: 'police', avatar, gun: true, skin: '#b07a55', shirt: '#b8a77a', sleeve: '#b8a77a', pants: '#2c4430', hat: '#2c4430' } : { kind: 'civ', avatar } }); p.keep = true; p.ai = puppetAI; p.state = 'ai'; if (avatar && p.rig.avatar !== avatar) reskinWhenLoaded(p, avatar); return p; }, // the leader's exact person: load their avatar if we haven't
   makePuppetCar: (type, x, z, r, tint, model) => { const v = new Vehicle(type, x, z, r, tint, model); v.keep = true; v.mode = 'puppet'; settleCar(v); return v; },
   settle: (v, dt) => settleCar(v, dt), wreck: v => wreckCar(v),
@@ -9504,7 +9693,7 @@ initWorld({
 });
 SHELL.initShell({
   THREE, gfx: GFX, ready: () => worldReady, state: () => netState(),
-  startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin, cheat: t => CHEAT.handle(t),
+  startOnline, startOffline, toMenu: () => toMenu(), toMenuScreen, wear: wearSkin, cheat: t => CHEAT.handle(t), credits: el => renderCredits(el, SF),
   closet: { money: () => save.money, spend: n => { if (save.money < n) return false; save.money -= n; persist(); sfx.cash && sfx.cash(); return true; }, // the wardrobe (src/wardrobe.js)
     ach: id => !!(save.ach && save.ach[id]), level: () => (PROG.me && PROG.me.lvl) || 0, wardrobe: () => save.wardrobe || (save.wardrobe = { owned: {}, look: '' }), persist },
   voices: () => voices, setVoices: on => { voices = on; persist(); },

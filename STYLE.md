@@ -30,38 +30,41 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   shrubs are scans where a good one exists (`assets/nature`, Poly Haven), grown in code where not (palms, gums,
   peppers, live oaks, cypress).
 
-## UI (`src/ui/western.css`)
+## UI (`src/ui/sunset.css`)
 
-- **Palette:**
-  - leather and wood: `#150c09`, `#22140e`, `#3b2417`, `#5b3822`
-  - paper: `#f3e6cc`
-  - dust: `#bfa685`, `#c9a77a`
-  - sun gold: `#f2a33a`, `#ffc64d`
-  - rust: `#c4552c`; blood: `#c7362c`; cash green: `#9bd16e`
+Golden hour over Poway, seen through smoked glass. The sunset art carries the drama; the interface is quiet, dark glass
+over it, and the western comes through in the type and a few motifs, not in leather and wood textures.
+
+- **Palette** (from the loading art's dusk):
+  - night `#1a1220` (plum-black glass), dusk `#3a2338` (raised surfaces)
+  - ember `#ff7a2e` (the sun's glare: the one accent), flare `#ffc46b` (highlights, what's selected)
+  - bone `#f5e9d3` (text and the logo's cream), dust `#b9a48c` (secondary text)
+  - meaning only: cash green `#9bd16e`, blood `#e5483b`, siren blue `#5b8cff`
 - **Type:**
-  - **Rye** (woodtype) for headings, buttons and big titles
-  - **Barlow Condensed** for everything you read
-  - **Anton** for numbers that must read at a glance (money)
-  - **Yellowtail** for the script on the plate
-- **Panels:** saddle leather (radial gradient plus SVG grain), a stitched inner border, brass rivets in the corners.
-- **Buttons:** weathered wood signs with a brass nail; they swing a little on hover and press down. The primary
-  button is polished brass with a passing shine.
-- **Tabs and segments:** tooled leather; the selected one is brass.
-- **Toggles:** brass switches. **Sliders:** rope.
-- **HUD notes:** torn paper slips with a coloured edge.
-- **Cursors:** a brass arrow, and a spur rowel over anything you can click (SVG data URIs).
-- **The logos stay:** the licence plate (Poway / AUTOMOBILE / ONLINE · 92064 / PW sticker), `assets/brand/logo.png`
-  and `assets/brand/favicon.png`.
-- **Motion:**
-  - panels rise and warm in from sepia
-  - the loading screen's sun rays turn and its road dashes run
-  - dust drifts
-  - everything honours `prefers-reduced-motion`
-- **Loading screen:** a sunset drive into Poway.
-  - In the scene: a striped sun (like the logo's), Poway ridgelines with granite boulders, utility poles and wires,
-    palms and a eucalyptus, a fence line.
-  - The progress bar is a road with a car kicking up dust.
-  - The version is a red rubber stamp on the plate.
+  - **Mr Dafoe** (brush script) for the wordmark only: "Poway" over "AUTOMOBILE ONLINE"
+  - **Barlow**, uppercase and widely tracked (about .3em), for the small captions the loading screen and the corners use;
+    never as a label over every heading
+  - **Barlow Condensed** for everything you read: headings in sentence case, buttons, lists, the HUD
+  - **Anton** for numbers that must read at a glance (money, speed)
+  - **Ultra** (slab poster) for WASTED and BUSTED only: the wanted-poster moment
+- **The horizon:** one ornament, a hairline running transparent to ember to flare to transparent, like the sun on the
+  sea. It tops each panel, marks the selected menu row and tab, and is the loading bar. Nothing else decorates.
+- **Panels:** smoked glass (night at about 72%, backdrop blur 16px), a bone hairline at 12%, 14 px corners, the horizon
+  along the top. **Buttons:** menu entries are rows of type, not boxes; the primary action is a sunlit pill (flare to
+  ember) with dark text; secondary actions are hairline pills. **Tabs and segments:** quiet text, the selected one
+  underlined by the horizon. **Toggles and sliders:** thin, ember when on.
+- **HUD:** smoked-glass slips with an ember edge for notes; a thin bone ring round the minimap; money in Anton with a
+  soft shadow, no outline; the street name in Barlow Condensed, the area in tracked caps.
+- **Cursors:** a slim bone arrow, and a small ember spur rowel over anything you can click.
+- **The wordmark:** the brush-script "Poway" over tracked "AUTOMOBILE ONLINE" replaces the licence plate on the loading
+  screen, the menu and the pause card. `assets/brand/logo.png` and `assets/brand/favicon.png` stay for the tab and
+  link previews.
+- **Loading screen:** the sunset drive (`assets/ui/sunset-drive.webp`): a muscle car on the coast road at sundown,
+  palms, the pier and the mountains. The wordmark top left, "SUN. DUST. OPPORTUNITY." top right, the tip, the status and
+  the horizon-line progress bar bottom left, "POWAY, CA" and the version bottom right. The art drifts in slowly (a
+  Ken Burns push); the menu reuses it, darkened on the left.
+- **Motion:** one slow push on the loading art, panels fading up when they open, the bar's glowing head. Everything
+  honours `prefers-reduced-motion`.
 
 ## World rules
 
@@ -234,6 +237,22 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - Marinas come from the mapped docks; the bigger the slip, the bigger the boat; boats bob out of step with each other.
 - Beaches have surf rental shacks by the towers, boards stuck in the sand, boards on car roofs in the beach towns.
 - Sand is soft: ruts and footprints, fading over a couple of minutes.
+
+## Sketchfab models (`src/sf.js`, `src/world/sfplace.js`, `assets/sf`)
+
+- Found and fitted by `tools/sketchfab/` (real size, standing on the ground, the front to +z) and credited on the
+  menu's Credits screen and in `assets/sf/CREDITS.md`. CC0, CC BY, CC BY-SA and CC BY-NC only, so no ads or paid
+  items while BY-NC models are in the game. No game or film rips, no real people, no brand storefronts.
+- Cars: every car a street makes for itself, nicer ones where the money is (the old built-in bodies only stand in
+  while a model loads, and for kinds with no Sketchfab car, like buses). They keep their own materials except the
+  paint (it takes the car's colour, clear-coated), the glass (the game's) and the lamps (lit at night).
+- Tyres on the ground (every car, other players' too): near-black rubber marks on paving only where a tyre slides,
+  fading over 45 s; white smoke only in a hard slide; tan dust off the pavement, thicker in a slide, none in the rain.
+- The rest fills in what the code doesn't build or grow: street furniture by neighbourhood, people at work by their
+  door (uniforms only there), everyday people standing about where it's busy, the club strip's doormen and crowd, a
+  place's own vehicle (fire truck, ambulance, school bus), garden plants (citrus, olive, bird of paradise, agave,
+  yucca, prickly pear). Never palms, gums, live oaks or cypress (grown in code), and nothing the beach code already
+  lays out (umbrellas, towels, boards).
 
 ## The club (`src/world/club.js`)
 

@@ -1,0 +1,174 @@
+/* Golden hour through smoked glass: the look of the loading screen, menus, panels, controls and HUD (STYLE.md has the
+   why and the rules). Loaded after the base styles in index.html and layered over them: same ids and classes, new skin.
+   Palette from the loading art's dusk. Type: Mr Dafoe (the wordmark only), Barlow tracked caps (small captions),
+   Barlow Condensed (everything you read), Anton (money, speed), Ultra (WASTED / BUSTED). One ornament: the horizon. */
+:root{
+  --night:#1a1220; --dusk:#3a2338; --ember:#ff7a2e; --flare:#ffc46b; --bone:#f5e9d3; --dust:#b9a48c;
+  --cash:#9bd16e; --blood:#e5483b; --siren-b:#5b8cff;
+  /* the base styles' names, pointed at the new palette */
+  --ink:var(--night); --ink-2:var(--dusk); --paper:var(--bone); --dim:var(--dust); --gold:var(--ember); --sun:var(--flare);
+  --caps:'Barlow','Barlow Condensed','Arial Narrow',sans-serif;
+  --wordmark:'Mr Dafoe','Yellowtail','Brush Script MT',cursive;
+  --poster:'Ultra','Rockwell Extra Bold','Anton',serif; --western:var(--poster);
+  --horizon:linear-gradient(90deg,transparent,var(--ember) 18%,var(--flare) 50%,var(--ember) 82%,transparent);
+  --glass:linear-gradient(180deg,rgba(46,31,48,.8),rgba(24,16,30,.84));
+  --hair:rgba(245,233,211,.12);
+  --cur:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Cpath d='M4 3 L4 20 L8.6 15.8 L11.8 22.6 L14.6 21.3 L11.5 14.6 L17.6 14.6 Z' fill='%23f5e9d3' stroke='%231a1220' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E") 4 3, default;
+  --cur-hand:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cg transform='translate(14 14)' stroke='%231a1220' stroke-width='1.2'%3E%3Cg fill='%23ff7a2e'%3E%3Cpath d='M0-11 L1.6-3 L0-1 L-1.6-3 Z'/%3E%3Cpath d='M0-11 L1.6-3 L0-1 L-1.6-3 Z' transform='rotate(72)'/%3E%3Cpath d='M0-11 L1.6-3 L0-1 L-1.6-3 Z' transform='rotate(144)'/%3E%3Cpath d='M0-11 L1.6-3 L0-1 L-1.6-3 Z' transform='rotate(216)'/%3E%3Cpath d='M0-11 L1.6-3 L0-1 L-1.6-3 Z' transform='rotate(288)'/%3E%3C/g%3E%3Ccircle r='2.8' fill='%23f5e9d3'/%3E%3C/g%3E%3C/svg%3E") 14 14, pointer;
+  color-scheme:dark;
+}
+html,body{cursor:var(--cur);background:var(--night)}
+button,a,label,input[type=checkbox],input[type=range],select,.srv,.wseg,[data-i],[role=button]{cursor:var(--cur-hand)!important}
+::selection{background:var(--ember);color:var(--night)}
+*{scrollbar-width:thin;scrollbar-color:rgba(245,233,211,.22) transparent}
+:focus-visible{outline:2px solid var(--flare);outline-offset:3px}
+
+/* ---------------------------------------------------------------- the wordmark: brush script over tracked caps */
+.mark{display:inline-flex;flex-direction:column;align-items:flex-start;color:var(--bone);user-select:none}
+.mark-script{font:400 76px/.78 var(--wordmark);transform:rotate(-7deg);transform-origin:0 100%;margin:0 0 0 -.03em;
+  text-shadow:0 4px 22px rgba(20,8,14,.55)}
+.mark-sub{position:relative;font:600 12px/1 var(--caps);letter-spacing:.44em;text-transform:uppercase;margin:6px 0 0 .35em;padding-top:11px;white-space:nowrap}
+.mark-sub::before{content:"";position:absolute;top:0;left:-.35em;width:100%;height:1px;background:var(--horizon)}
+.mark.big .mark-script{font-size:clamp(78px,9vw,128px)} .mark.big .mark-sub{font-size:clamp(12px,1vw,15px)}
+.mark.small .mark-script{font-size:52px} .mark.small .mark-sub{font-size:11px;letter-spacing:.36em}
+
+/* ---------------------------------------------------------------- panels: smoked glass, the horizon along the top */
+.screen,#pause>div,#travel .tv,#cheatsheet .cs,.modal-card,#garage>div:first-child,#dealer>div,#shop .shop,.panelw{
+  position:relative;background:var(--glass)!important;-webkit-backdrop-filter:blur(16px) saturate(1.15);backdrop-filter:blur(16px) saturate(1.15);
+  border:1px solid var(--hair)!important;border-radius:14px;box-shadow:0 24px 60px rgba(10,4,12,.55)!important}
+.screen::before,#pause>div::before,#travel .tv::before,#cheatsheet .cs::before,.modal-card::before,#garage>div:first-child::before,#dealer>div::before,#shop .shop::before,.panelw::before{
+  content:"";position:absolute;top:-1px;left:28px;right:28px;height:1px;background:var(--horizon);pointer-events:none}
+.screen header h2,.modal-card h2,#pause h2,#travel h2,#cheatsheet h3{font:600 34px/1.05 var(--ui)!important;letter-spacing:.005em!important;text-transform:none!important;color:var(--bone)!important;text-shadow:none}
+.screen header p,.fine{color:var(--dust)!important}
+.screen{animation:rise .35s cubic-bezier(.2,.9,.3,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}
+.modal{background:rgba(14,8,16,.62)!important}
+
+/* ---------------------------------------------------------------- the menu: the sunset drive behind, darkened on the left */
+#menu{background:none!important}
+#menu::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:url("../../assets/ui/sunset-drive.webp") 72% 50%/cover no-repeat}
+#menu::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:linear-gradient(90deg,rgba(22,13,24,.95) 0%,rgba(22,13,24,.84) 28%,rgba(22,13,24,.5) 58%,rgba(22,13,24,.3) 100%)}
+.menu-mark{display:none!important}
+.menu-col{gap:26px!important} #mnav{gap:0!important}
+.credit{font-size:11px!important;line-height:1.4!important;max-width:46ch!important;color:rgba(185,164,140,.62)!important}
+.linkbtn{font:500 12px/1 var(--caps)!important;letter-spacing:.24em!important;color:var(--dust)!important;text-decoration:none!important;border-bottom:1px solid rgba(185,164,140,.4);padding-bottom:3px!important}
+.linkbtn:hover{color:var(--bone)!important;border-color:var(--bone)}
+
+/* ---------------------------------------------------------------- buttons: hairline pills; the main action a sunlit pill */
+.mbtn{font:600 18px/1.05 var(--ui)!important;letter-spacing:.015em!important;text-transform:none!important;color:var(--bone)!important;
+  background:rgba(245,233,211,.06)!important;border:1px solid rgba(245,233,211,.22)!important;border-radius:999px!important;padding:12px 22px!important;
+  box-shadow:none!important;transition:background .18s,border-color .18s,color .18s,transform .12s,filter .18s!important;transform:none!important}
+.mbtn::after{display:none!important}
+.mbtn small{font:500 13px/1.15 var(--ui)!important;letter-spacing:.02em!important;color:var(--dust)!important}
+.mbtn:hover{background:rgba(245,233,211,.12)!important;border-color:rgba(245,233,211,.42)!important}
+.mbtn:active{transform:translateY(1px)!important}
+.mbtn.primary{background:linear-gradient(100deg,var(--flare),var(--ember))!important;color:#2b1206!important;border-color:transparent!important;
+  box-shadow:0 10px 26px rgba(255,122,46,.28)!important}
+.mbtn.primary small{color:rgba(43,18,6,.72)!important}
+.mbtn.primary:hover{filter:brightness(1.07) saturate(1.05)}
+.mbtn.small{font-size:16px!important;padding:9px 18px!important}
+.mbtn kbd,kbd{font:600 11px/1 var(--caps)!important;letter-spacing:.08em;background:rgba(26,18,32,.4)!important;color:inherit!important;border:1px solid currentColor;border-radius:4px;padding:2px 5px;opacity:.75}
+.mbtn[disabled]{opacity:.4!important}
+/* the main menu's entries are rows of type, not boxes: the horizon marks the one you're on */
+#mnav .mbtn{background:none!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:7px 0 7px 20px!important;
+  font:600 26px/1.05 var(--ui)!important;color:rgba(245,233,211,.74)!important;filter:none!important}
+#mnav .mbtn small{font-size:14px!important}
+#mnav .mbtn::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:linear-gradient(180deg,var(--flare),var(--ember));
+  transform:scaleY(0);transform-origin:50% 50%;transition:transform .22s cubic-bezier(.2,.9,.3,1)}
+#mnav .mbtn:hover,#mnav .mbtn.on{color:var(--bone)!important;background:linear-gradient(90deg,rgba(255,122,46,.12),transparent 70%)!important}
+#mnav .mbtn:hover::before,#mnav .mbtn.on::before{transform:scaleY(1)}
+#mnav .mbtn.primary{color:var(--flare)!important}
+#mnav .mbtn.primary small{color:var(--dust)!important}
+
+/* ---------------------------------------------------------------- tabs, segments, chips: quiet type, the horizon under the chosen one */
+.tabs button,.seg button{font:600 13px/1 var(--ui)!important;letter-spacing:.07em!important;text-transform:uppercase;background:transparent!important;color:var(--dust)!important;
+  border:0!important;border-bottom:1px solid var(--hair)!important;border-radius:0!important;box-shadow:none!important;padding:9px 12px 10px!important;transition:color .16s}
+.tabs button:hover,.seg button:hover{color:var(--bone)!important}
+.tabs button.on,.seg button.on,.tabs button.sel,.seg button.sel{color:var(--bone)!important;border-bottom-color:transparent!important;
+  background:var(--horizon) bottom/100% 2px no-repeat!important;text-shadow:none!important}
+.chips button{font:600 13px/1 var(--ui)!important;letter-spacing:.04em!important;text-transform:none!important;color:var(--dust)!important;background:transparent!important;
+  border:1px solid rgba(245,233,211,.18)!important;border-radius:999px!important;padding:7px 12px!important}
+.chips button:hover{color:var(--bone)!important;border-color:rgba(245,233,211,.4)!important}
+.chips button.on,.chips button.sel{color:var(--flare)!important;border-color:var(--ember)!important;background:rgba(255,122,46,.1)!important}
+
+/* ---------------------------------------------------------------- options: thin switches and sliders, ember when on */
+.check input[type=checkbox]{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:10px;flex:none;position:relative;margin:0;
+  background:rgba(245,233,211,.14);border:1px solid rgba(245,233,211,.2);transition:background .2s,border-color .2s}
+.check input[type=checkbox]::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--bone);transition:transform .2s cubic-bezier(.3,1.4,.5,1)}
+.check input[type=checkbox]:checked{background:linear-gradient(90deg,var(--ember),var(--flare));border-color:transparent}
+.check input[type=checkbox]:checked::after{transform:translateX(16px);background:#2b1206}
+input[type=range]{appearance:none;-webkit-appearance:none;height:2px;border-radius:1px;background:rgba(245,233,211,.25);accent-color:var(--ember)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--bone);border:3px solid var(--ember);box-shadow:0 0 0 4px rgba(255,122,46,.15)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--bone);border:3px solid var(--ember)}
+input[type=text],input[type=search],input[type=password],input:not([type]),select,textarea{background:rgba(12,7,14,.55)!important;color:var(--bone)!important;
+  border:1px solid rgba(245,233,211,.18)!important;border-radius:8px;font:500 16px var(--ui);transition:border-color .16s}
+input:focus,select:focus,textarea:focus{border-color:var(--ember)!important;outline:none}
+
+/* ---------------------------------------------------------------- server cards */
+.srv{background:linear-gradient(170deg,rgba(58,35,56,.55),rgba(26,18,32,.6))!important;border:1px solid var(--hair)!important;border-left:1px solid var(--hair)!important;border-radius:12px;
+  box-shadow:inset 3px 0 0 var(--acc,var(--ember)),0 10px 24px rgba(10,4,12,.35);transition:transform .18s,border-color .18s}
+.srv:hover:not([disabled]){transform:translateY(-2px)!important;border-color:rgba(245,233,211,.3)!important}
+.srv b{font:600 28px/1 var(--ui)!important;letter-spacing:.005em!important;text-transform:none!important;color:var(--bone)!important}
+.srv .meta{font:600 12px/1 var(--caps)!important;letter-spacing:.18em!important;color:var(--dust)!important}
+.srv .bar{height:2px!important;background:rgba(245,233,211,.12)!important}
+
+/* ---------------------------------------------------------------- HUD: glass slips, a thin ring round the map */
+.note{background:rgba(26,18,32,.8)!important;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--bone)!important;text-shadow:none!important;
+  border-left:3px solid var(--ember)!important;border-radius:6px;box-shadow:0 8px 20px rgba(10,4,12,.35);font:600 16px/1.3 var(--ui)!important;padding:9px 14px!important}
+.note.red{border-left-color:var(--blood)!important} .note.green{border-left-color:var(--cash)!important} .note.blue{border-left-color:var(--siren-b)!important}
+.note b,.note.news b{color:var(--flare)!important}
+#minimap{border:2px solid rgba(245,233,211,.55)!important;box-shadow:0 0 0 1px rgba(26,18,32,.6),0 10px 24px rgba(0,0,0,.45)!important}
+#hp{height:4px!important;border:0!important;border-radius:2px;background:rgba(26,18,32,.6)!important} #hpf{border-radius:2px}
+#money{-webkit-text-stroke:0!important;text-shadow:0 2px 14px rgba(0,0,0,.55),0 1px 0 rgba(0,0,0,.6)!important}
+#dmph{-webkit-text-stroke:0!important;text-shadow:0 2px 14px rgba(0,0,0,.55)!important}
+#street b{font:600 30px/1.05 var(--ui)!important;letter-spacing:.005em!important;color:var(--bone)!important}
+#street i{font:500 12px/1.4 var(--caps)!important;letter-spacing:.26em!important;color:var(--flare)!important}
+#clock{font:600 20px/1 var(--ui)!important;color:var(--bone)!important}
+#rep{font:500 11px/1 var(--caps)!important;letter-spacing:.24em!important}
+#radio{color:var(--flare)!important}
+#big h1{font-family:var(--poster)!important;-webkit-text-stroke:0!important;letter-spacing:.02em!important;text-shadow:0 6px 30px rgba(0,0,0,.6),0 2px 0 rgba(0,0,0,.5)}
+#big p{font:500 15px/1 var(--caps)!important;letter-spacing:.34em!important}
+#big.pass h1{color:var(--flare)!important}
+.bub{background:var(--bone)!important;color:var(--night)!important;font-weight:600} .bub::after{border-top-color:var(--bone)!important}
+#helpline kbd{background:rgba(26,18,32,.7)!important}
+
+/* ---------------------------------------------------------------- the pause card */
+#pause{background:linear-gradient(90deg,rgba(22,13,24,.9),rgba(22,13,24,.55) 55%,rgba(22,13,24,.2))!important}
+#pause>div{padding:36px 32px 28px!important} #pause .mark{margin-bottom:10px}
+
+/* ---------------------------------------------------------------- loading screen: the sunset drive, the type in the corners */
+#boot{display:block!important;overflow:hidden;background:var(--night)!important}
+.boot-art{position:absolute;inset:0;background:url("../../assets/ui/sunset-drive.webp") 60% 55%/cover no-repeat;animation:push 40s cubic-bezier(.2,.6,.3,1) both}
+.boot-art::after{content:"";position:absolute;inset:0;
+  background:radial-gradient(60% 55% at 0% 0%,rgba(24,13,24,.66),transparent 70%),linear-gradient(0deg,rgba(18,10,16,.82) 0%,rgba(18,10,16,.3) 24%,transparent 44%)}
+@keyframes push{from{transform:scale(1.09) translate(1.4%,.8%)}}
+.boot-top,.boot-bottom{position:absolute;left:clamp(20px,4.2vw,72px);right:clamp(20px,4.2vw,72px);display:flex;justify-content:space-between;gap:24px;z-index:1}
+.boot-top{top:clamp(22px,6vh,64px);align-items:flex-start}
+.boot-bottom{bottom:clamp(20px,6vh,60px);align-items:flex-end}
+.boot-tag{margin:8px 0 0;font:500 13px/1 var(--caps);letter-spacing:.34em;text-transform:uppercase;color:var(--bone);text-shadow:0 1px 8px rgba(0,0,0,.45)}
+.boot-left{display:flex;flex-direction:column;align-items:flex-start;gap:12px;width:min(400px,72vw)}
+.boot-tip{font:500 16px/1.45 var(--ui)!important;color:rgba(245,233,211,.86)!important;text-shadow:0 1px 6px rgba(0,0,0,.6)!important;max-width:44ch;min-height:2.9em;margin:0 0 6px}
+.boot-tip:empty{visibility:hidden}
+.boot-status{display:flex;align-items:baseline;gap:14px;min-width:0;width:100%}
+.boot-label{font:500 12px/1 var(--caps);letter-spacing:.38em;text-transform:uppercase;color:var(--bone)}
+.boot-msg{font:500 14px/1.25 var(--ui)!important;letter-spacing:.02em!important;color:var(--dust)!important;min-height:0}
+.road{position:relative;width:100%;height:2px!important;background:rgba(245,233,211,.22)!important;border:0!important;overflow:visible!important}
+.road::after{display:none!important}
+.road-fill{background:linear-gradient(90deg,rgba(255,122,46,.25),var(--ember) 40%,var(--flare))!important;box-shadow:0 0 14px rgba(255,150,70,.55)}
+.road-car{top:-3px!important;width:8px!important;height:8px!important;border-radius:50%!important;background:var(--flare)!important;box-shadow:0 0 14px 4px rgba(255,180,90,.75)!important}
+#boot .boot-go{margin-top:10px;min-width:0;flex-direction:row;align-items:center;gap:12px;padding:13px 26px!important;font-size:19px!important}
+.boot-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px;text-align:right}
+.boot-place{display:flex;align-items:center;gap:16px;font:500 12px/1 var(--caps);letter-spacing:.38em;text-transform:uppercase;color:var(--bone)}
+.boot-place::before{content:"";width:clamp(48px,8vw,120px);height:1px;background:rgba(245,233,211,.55)}
+.ver-stamp{font:500 11px/1 var(--caps);letter-spacing:.3em;text-transform:uppercase;color:var(--dust)}
+.ver-stamp small{font:inherit;margin-left:.9em;color:var(--flare)}
+.menu-ver{font:500 11px/1 var(--caps);letter-spacing:.3em;text-transform:uppercase;color:var(--dust);opacity:.85}
+@media (max-width:700px){
+  .boot-top{flex-direction:column;gap:10px} .boot-tag{font-size:11px;letter-spacing:.26em}
+  .boot-bottom{flex-direction:column;align-items:stretch} .boot-left{width:100%} .boot-right{align-items:flex-start;text-align:left}
+  .boot-place::before{display:none} .mark.big .mark-script{font-size:72px}
+}
+@media (max-aspect-ratio:3/4){.boot-art{background-position:27% 62%} #menu::before{background-position:27% 62%}} /* portrait: keep the car in frame */
+@media (max-height:640px){.mark .mark-script{font-size:56px} #mnav .mbtn{font-size:22px!important;padding:6px 0 6px 18px!important} .boot-tip{display:none}}
+@media (prefers-reduced-motion:reduce){.boot-art,.screen,#mnav .mbtn::before{animation:none!important;transition:none!important}}

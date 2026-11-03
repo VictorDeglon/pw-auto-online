@@ -45,13 +45,14 @@ export function bootProgress(frac, msg) {
 }
 function nextTip() { const t = $('boottip'); t.style.opacity = 0; setTimeout(() => { t.textContent = TIPS[tipI++ % TIPS.length]; t.style.opacity = 1; }, 350); }
 export function bootDone(msg) {
-  bootProgress(1, msg); clearInterval(tipTimer);
+  bootProgress(1, msg); clearInterval(tipTimer); bootLabel('Ready');
   const go = $('bootgo'); go.hidden = false; go.focus();
   const enter = () => { removeEventListener('keydown', key); $('boot').classList.add('out'); setTimeout(() => { $('boot').hidden = true; }, 650); showMenu(); };
   const key = e => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); enter(); } };
   go.onclick = enter; addEventListener('keydown', key);
 }
-export function bootFail(msg) { $('loadmsg').textContent = msg; clearInterval(tipTimer); }
+export function bootFail(msg) { $('loadmsg').textContent = msg; clearInterval(tipTimer); bootLabel('Stopped'); }
+function bootLabel(t) { const l = document.querySelector('#boot .boot-label'); if (l) l.textContent = t; } // the caption beside the status
 
 // ---------------------------------------------------------------- main menu
 export function showMenu(scr) {
@@ -60,7 +61,7 @@ export function showMenu(scr) {
 }
 export function hideMenu() { $('menu').hidden = true; closeChar(); if (unwatch) { unwatch(); unwatch = null; } screen = null; }
 function open(name) {
-  for (const id of ['online', 'career', 'character', 'achievements', 'settings', 'controls']) { $('scr-' + id).hidden = id !== name; }
+  for (const id of ['online', 'career', 'character', 'achievements', 'settings', 'controls', 'credits']) { const e = $('scr-' + id); if (e) e.hidden = id !== name; }
   for (const b of document.querySelectorAll('#mnav [data-go]')) b.classList.toggle('on', b.dataset.go === name);
   if (screen === 'character' && name !== 'character') closeChar();
   if (screen === 'career' && name !== 'career') closeCareer();
@@ -71,6 +72,7 @@ function open(name) {
   if (name === 'career') openCareer();
   if (name === 'settings') openSettings();
   if (name === 'achievements') renderAchievements($('achgrid'));
+  if (name === 'credits' && H && H.credits) H.credits($('creditlist'));
   achSub();
 }
 export function achSub() { const e = $('achsub'); if (e) e.textContent = `${achievementCount()} / ${ACHIEVEMENTS.length}`; }
