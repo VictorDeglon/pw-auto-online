@@ -483,7 +483,7 @@ button.mini{align-self:flex-start;font:700 12px/1 var(--ui);letter-spacing:.08em
       <button class="mbtn" data-go="controls">Controls</button>
     </nav>
     <button class="linkbtn" id="newgame" hidden>Reset offline progress</button>
-    <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0), Quaternius (CC0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY 3.0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
+    <div class="credit">Streets and buildings © OpenStreetMap contributors (ODbL). Aerial imagery: USGS NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles. Textures: Poly Haven (CC0). Vehicles and trees: Kenney (CC0), Quaternius (CC0). Palms: PlantCatalog by e-on software, via Sketchfab (CC BY 4.0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY 3.0). People: Microsoft Rocketbox (MIT). Radio: original songs composed live in the game; plus Kevin MacLeod, incompetech.com (CC BY 4.0). A fan-made game; not affiliated with the City of Poway.</div>
   </div>
 
   <section class="screen" id="scr-online" hidden>
@@ -630,11 +630,11 @@ import { BG, bgBudget } from './src/budget.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 import * as PHS from './src/phs.js'; // PHS: Poway High School campus (assets/phs/phs.glb + data/phs.js)
-import { loadGround, groundPatch, groundStandIn, setGround } from './src/nature/ground.js';
+import { loadGround, groundPatch, groundStandIn, setGround, GROUND_RELIEF } from './src/nature/ground.js';
 import { createTreeFilter } from './src/world/treeFilter.js';
 import { RoadSurface } from './src/world/roadsurface.js';
 import { loadVegetation, Vegetation, natureUniforms } from './src/nature/vegetation.js';
-import { makeContext, plantOne, treeRandom } from './src/nature/placement.js';
+import { makeContext, plantOne, treeRandom, palmScale } from './src/nature/placement.js';
 import { buildCoverMap, GroundCover, scatterShrubs, scatterOnCover, loadCards } from './src/nature/groundcover.js';
 import { loadPHPlants, grassCard } from './src/nature/phplants.js';
 import { growTrees } from './src/nature/proctrees.js';
@@ -1281,7 +1281,8 @@ async function loadAssets() {
   M.lampHead = new THREE.MeshBasicMaterial({ color: 0x777777 });
   M.lampGlow = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
   M.signal = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  // terrain: photo colour far away, photo-classified PBR ground layers up close (src/nature/ground.js)
+  // terrain: the photo-classified PBR ground layers, each in its own colour, near and far (src/nature/ground.js)
+  GROUND_RELIEF.on = GFX.grass > 0 ? 1 : 0; // the far relief: not on Potato
   M.outer = new THREE.MeshStandardMaterial({ roughness: 1, polygonOffset: true, polygonOffsetFactor: 1.5, polygonOffsetUnits: 3.0 }); // beyond the photo: procedural chaparral / grassland
   M.outer.onBeforeCompile = groundPatch(ground, { procedural: true });
   M.terrainShader = photoBias => groundPatch(ground, { photoBias, edge: photoRect() }); // near its edge the photo fades into the outer hills
@@ -3450,7 +3451,7 @@ async function plantNature() {
   const w = { roads: D.roads, roadSegGrid, RSG, ckey, cgrid, CELL, polys, pools: D.pools || [], areas: mapAreas, areaBins: mapBins, AB: MB,
     exclude: [...(window.GTP_NATURE_EXCLUDE || []), ...PLANT_CLEAR], heightAt, groundAt, slopeAt, reject: offLimits };
   try { // the species the scans don't cover, grown in code and baked into impostors (src/nature/proctrees.js)
-    const grown = await growTrees(THREE, renderer); for (const [k, sp] of grown) NATURE.lib.species.set(k, sp);
+    const grown = await growTrees(THREE, renderer, undefined, { skip: new Set(NATURE.lib.species.keys()) }); for (const [k, sp] of grown) NATURE.lib.species.set(k, sp); // the real models (palms, oaks, cypress) win
   } catch (e) { console.warn('[nature] grown trees', e); }
   try { // scanned shrubs, wild bushes, ice plant, stones and pebbles, dead branches (src/nature/phplants.js, Poly Haven CC0)
     const NEAR = { shrub: 24, bush: 24, iceplant: 40, pebbles: 14, stone: 20, branches: 14 }; // ice plant out to 40 m: the banks round the lots read as planted from the street
@@ -3494,7 +3495,7 @@ async function plantNature() {
         const want2 = want === 'scruboak' && NATURE.lib.species.has('shrub') ? 'shrub' : want; // foundation shrubs: the scanned garden ones
         const sp = NATURE.lib.species.has(want2) ? want2 : 'olive', lib = NATURE.lib.species.get(sp); if (!lib) continue;
         const vi = Math.floor(rr() * lib.variants.length), GV = lib.variants[vi], idx = V.inst.get(sp) ? V.inst.get(sp).x.length : 0;
-        const scale = s && sp === 'shrub' ? (0.7 + rr() * 0.75) / Math.max(0.2, GV.height) : s || (sp.startsWith('palm') ? 0.8 + rr() * 0.4 : (7 + rr() * 6) / Math.max(0.5, GV.height)); // a front-yard tree is a mature one: 7-13 m
+        const scale = s && sp === 'shrub' ? (0.7 + rr() * 0.75) / Math.max(0.2, GV.height) : s || (sp.startsWith('palm') ? palmScale(sp, GV, rr) : sp === 'citrus' ? (3.5 + rr() * 2) / Math.max(0.5, GV.height) : sp === 'bottlebrush' ? (5 + rr() * 3) / Math.max(0.5, GV.height) : (7 + rr() * 6) / Math.max(0.5, GV.height)); // a front-yard tree is a mature one: 7-13 m (a lemon or orange 3.5-5.5, a bottlebrush 5-8)
         const tint = sp === 'scruboak' ? [0.78 + rr() * 0.1, 0.86, 0.66] : sp === 'shrub' ? [0.95 + rr() * 0.1, 1.0, 0.9] : [1, 1, 1];
         if (!V.add(sp, x, groundAt(x, z) - 0.05, z, rr() * Math.PI * 2, scale, vi, tint)) continue;
         if (!s) col.push(x, z, sp, idx);
@@ -4367,7 +4368,7 @@ function plantTile(t, img) {
       let sp = pickW2(town ? R.town : R.wildTree); if (!NATURE.lib.species.has(sp)) sp = town ? 'olive' : 'oak';
       const lib = NATURE.lib.species.get(sp); if (!lib || !lib.variants || !lib.variants.length) continue;
       const vi = Math.floor(Math.random() * lib.variants.length), V = lib.variants[vi], th = TREE_H[sp] || [6, 10];
-      const s2 = sp.startsWith('palm') ? rand(0.85, 1.15) : rand(th[0], th[1]) / Math.max(0.5, V.height), tint = [rand(0.85, 1.05), rand(0.9, 1.08), rand(0.85, 1)];
+      const s2 = sp.startsWith('palm') ? palmScale(sp, V, Math.random) : rand(th[0], th[1]) / Math.max(0.5, V.height), tint = [rand(0.85, 1.05), rand(0.9, 1.08), rand(0.85, 1)];
       if (!veg.add(sp, x, y, z, rand(0, TAU), s2, vi, tint)) continue;
       const ti = treeC.length / 2; treeC.push(x, z); gridAdd(x, z, x, z, 't', ti); kit.ti.push(ti);
       const pr = { kind: 'tree', x, z, ti, veg: [sp, veg.inst.get(sp).x.length - 1], vegObj: veg, alive: true }; addProp(pr); kit.props.push(pr); nt++;
@@ -9133,6 +9134,8 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
     loadImage('assets/world/overview.jpg').then(img => { const b = OUTER.bounds(); if (img) groundImgs.splice(0, 0, { img, x0: OUTER.idx.i0 * OUTER.idx.tile, z0: OUTER.idx.j0 * OUTER.idx.tile, x1: (OUTER.idx.i1 + 1) * OUTER.idx.tile, z1: (OUTER.idx.j1 + 1) * OUTER.idx.tile, tile: 'overview' }); photoMask = null; });
   }
   progress('Building Poway High…'); await PHS.loadPHS(phsCtx); // PHS
+  if (PHS.state.root) PHS.state.root.traverse(o => { const m = o.isMesh && o.material; // the campus's own ground, cut from the aerial photo, is painted like the rest (src/nature/ground.js): its photo only chooses the layers
+    if (m && m.name === 'Terrain_Ortho' && !m.userData.painted) { m.userData.painted = true; m.onBeforeCompile = groundPatch(TX.ground, { photoBias: 1.5 }); m.needsUpdate = true; } });
   prepMapImages();
   pickSpawn();
   player.pos.set(spawnPt.x, heightAt(spawnPt.x, spawnPt.z), spawnPt.z); player.rotY = spawnPt.rot; cam.yaw = spawnPt.rot + Math.PI;

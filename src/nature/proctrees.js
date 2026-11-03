@@ -268,7 +268,7 @@ function palm(B, r, o) {
 }
 
 // ---------------------------------------------------------------- the species
-async function makeVariants(THREE, base) {
+async function makeVariants(THREE, base, skip = new Set()) {
   const r0 = rng(77);
   const [gum, pepper, oak] = await Promise.all(['leafset022', 'leafset013', 'leafset024'].map(n => sheetImage(base, n))), cyp = pepper; // cypress: the narrow leaves, small and dark
   const card = async (sheet, o, seed) => { await idle(); return texFrom(THREE, twigCard(sheet, leafBlobs(sheet), rng(seed), o)); };
@@ -286,7 +286,7 @@ async function makeVariants(THREE, base) {
     pepper: { trans: 0.25, sway: 0.016, list: [] }, cypress: { trans: 0.15, sway: 0.008, list: [] }, // jacarandas and the small slender trees are scans now (assets/nature)
     oak: { trans: 0.15, sway: 0.008, list: [] },
   };
-  const jobs = [], grow = (name, fn, bark, leaf) => jobs.push(() => { const B = new Builder(); fn(B); S[name].list.push({ geo: B.geometry(THREE), mats: mats(bark, leaf) }); });
+  const jobs = [], grow = (name, fn, bark, leaf) => skip.has(name) || jobs.push(() => { const B = new Builder(); fn(B); S[name].list.push({ geo: B.geometry(THREE), mats: mats(bark, leaf) }); });
   // palms, each its own: tall leaners curving back up, trimmed ones with a boot, young bushy ones still in their skirts
   const FAN = [{ height: 22, lean: 0.12, curve: 0.3, fronds: 30, boot: 1.6 }, { height: 14, lean: 0.05, fronds: 38, skirt: 3.6 }, { height: 26, lean: 0.32, curve: 0.65, fronds: 26, boot: 1.2 },
     { height: 9, lean: 0.2, curve: 0.25, fronds: 42, skirt: 2.4, frond: 1.1 }, { height: 18, lean: 0.24, fronds: 28, skirt: 1.3 }, { height: 24, lean: 0.08, curve: 0.5, fronds: 21, boot: 0.8, frond: 0.9 }];
@@ -301,6 +301,7 @@ async function makeVariants(THREE, base) {
   // coast live oak: a short, thick trunk splitting low into big sinuous limbs; a dense, rounded crown wider than it is tall
   for (let i = 0; i < 3; i++) { const r = rng(700 + i); grow('oak', B => broadleaf(B, r, { trunk: [1.8, 2.3, 1.5][i], radius: 0.55, depth: 3, kids: [4, 3, 3], spread: [1.0, 0.75, 0.65], ratio: [2.4, 0.62, 0.55], wiggle: 0.5, up: 0.04, droop: 0.25, cards: 11, card: 1.7, hang: 0.1, tall: 0.9 }), T.bark, T.oak); }
   for (const j of jobs) { await idle(); j(); } // one tree at a time between frames
+  for (const k of Object.keys(S)) if (!S[k].list.length) delete S[k];
   return S;
 }
 
@@ -314,8 +315,10 @@ void main() { if (useMap > 0.5 && texture2D(map, vUv2).a < 0.5) discard; vec3 n 
 
 function decodeDir(fx, fy) { const ax = (fx + 0.5) / G * 2 - 1, ay = (fy + 0.5) / G * 2 - 1; const d = [(ax + ay) * 0.5, 0, (ax - ay) * 0.5]; d[1] = 1 - Math.abs(d[0]) - Math.abs(d[2]); return norm(d); }
 
+// opts.skip: species a real model now draws (assets/nature/veg.json), not grown
 export async function growTrees(THREE, renderer, base = 'assets/pbr/atlas/', opts = {}) {
-  const S = await makeVariants(THREE, base);
+  const S = await makeVariants(THREE, base, opts.skip);
+  if (!Object.keys(S).length) return new Map();
   return speciesFrom(THREE, renderer, S, opts);
 }
 // species records (vegetation library format) from { name: { trans, sway, list: [{ geo, mats }] } }, all baked into one

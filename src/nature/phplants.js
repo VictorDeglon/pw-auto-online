@@ -59,20 +59,28 @@ export async function loadPHPlants(THREE, gltfLoader, renderer, base = 'assets/n
   return speciesFrom(THREE, renderer, S, { cell: 128 });
 }
 
-// a scanned grass clump seen from the side, as a ground-cover card (ImageData, RGBA, transparent background): the
-// clump is framed to the card, bottom-centred, so the card's foot is the clump's root
+// a tuft of scanned grass seen from the side, as a ground-cover card (ImageData, RGBA, transparent background). The
+// model is a row of separate small clumps, so they are gathered into one dense tuft (side by side and behind each other,
+// taller in the middle, all scaled to the card's height) and rendered with sRGB output; the card's foot is the root.
 export async function grassCard(THREE, gltfLoader, renderer, id, W = 512, H = 256, base = 'assets/nature/polyhaven/') {
   const g = await gltfLoader.loadAsync(`${base}${id}/${id}_1k.gltf`).catch(() => null); if (!g) return null;
   const root = g.scene; root.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(root), sx = box.max.x - box.min.x, sy = box.max.y - box.min.y, cx = (box.min.x + box.max.x) / 2;
-  const half = Math.max(sx / 2, sy * W / H / 2) * 1.02, cam = new THREE.OrthographicCamera(cx - half, cx + half, box.min.y + half * 2 * H / W, box.min.y, -100, 100);
-  cam.position.set(0, 0, 50); cam.lookAt(0, 0, 0);
-  const scene = new THREE.Scene(); scene.add(root);
-  root.traverse(o => { if (o.isMesh) { const m = o.material; o.material = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: 0.5, side: THREE.DoubleSide }); } });
-  const rt = new THREE.WebGLRenderTarget(W, H), prev = { rt: renderer.getRenderTarget(), col: renderer.getClearColor(new THREE.Color()), a: renderer.getClearAlpha() };
+  const clumps = []; root.traverse(o => { if (!o.isMesh) return; const geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); geo.computeBoundingBox(); const b = geo.boundingBox;
+    geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2); const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    clumps.push({ geo, h: Math.max(0.02, b.max.y - b.min.y), mat: new THREE.MeshBasicMaterial({ map: m.map, alphaTest: 0.5, side: THREE.DoubleSide }) }); });
+  if (!clumps.length) return null;
+  const scene = new THREE.Scene(), aspect = W / H; let a = 77; const r = () => (a = (a * 16807) % 2147483647) / 2147483647;
+  for (let k = 0, n = 34; k < n; k++) { // the card spans x -aspect/2..aspect/2, y 0..1
+    const c = clumps[Math.floor(r() * clumps.length)], u = (r() * 2 - 1) * 0.92, ht = (0.55 + 0.45 * r()) * (1 - 0.45 * u * u);
+    const m = new THREE.Mesh(c.geo, c.mat); m.scale.setScalar(ht / c.h); m.position.set(u * aspect / 2 * 0.86, 0, -r() * 2); m.rotation.y = r() * Math.PI * 2; scene.add(m);
+  }
+  const cam = new THREE.OrthographicCamera(-aspect / 2, aspect / 2, 1.02, 0, -10, 10); cam.position.set(0, 0, 5); cam.lookAt(0, 0, 0);
+  const rt = new THREE.WebGLRenderTarget(W, H); rt.texture.colorSpace = THREE.SRGBColorSpace; // the bytes read back are sRGB, as the card textures expect
+  const prev = { rt: renderer.getRenderTarget(), col: renderer.getClearColor(new THREE.Color()), a: renderer.getClearAlpha() };
   renderer.setRenderTarget(rt); renderer.setClearColor(new THREE.Color(0, 0, 0), 0); renderer.clear(); renderer.render(scene, cam);
   const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
-  renderer.setRenderTarget(prev.rt); renderer.setClearColor(prev.col, prev.a); rt.dispose();
+  renderer.setRenderTarget(prev.rt); renderer.setClearColor(prev.col, prev.a); rt.dispose(); for (const c of clumps) { c.geo.dispose(); c.mat.dispose(); }
   const out = new ImageData(W, H); for (let y = 0; y < H; y++) out.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4); // GL rows run bottom up
-  return out;
+  let n = 0; for (let i = 3; i < out.data.length; i += 4) if (out.data[i] >= 128) n++;
+  return n > W * H * 0.08 ? out : null; // a card that came out (nearly) empty is no card: the drawn one stands in
 }

@@ -203,8 +203,14 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
   lights down long rows; a concrete apron straight off the curb where a lot meets its street. The drive aisles the map
   draws through a lot are asphalt like the lot, never a house driveway's concrete.
 - Trails are decomposed granite (`SURF.path`): compacted down the middle, loose at ragged edges, stones along them.
-- Ground never shows bare and flat: lawns are dense, wild ground is grass, bushes in clumped stands, pebbles and stones;
-  lawn and garden edges fray and lawns have worn patches.
+- The aerial photo never shows on the ground (`src/nature/ground.js`): it only decides which ground lies where. Each
+  ground is painted in its own colour, near and far: tan decomposed granite, golden thatch (olive where it's greener,
+  straw in the sun), lawn, leaf litter and bark mulch, warm granite, beach sand. Past the first few metres, dark wild
+  ground takes the olive of the chaparral standing on it.
+- Ground never shows bare and flat: lawns are dense, wild ground is golden oats and brome, bushes in clumped stands,
+  pebbles and stones; lawn and garden edges fray and lawns have worn patches. The grass runs on past the near ring in
+  coarser rings of wider tufts (lawn to ~75 m, wild grass to ~300 m on High), so it never ends in a circle round you.
+  Grass grows only where plants may: never on roads, tracks, courts, lots or campuses.
 - Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
   crown; real meshes out to ~85 m on High.
 - Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.

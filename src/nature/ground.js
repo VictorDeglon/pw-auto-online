@@ -1,15 +1,17 @@
 // Natural ground surface for the terrain meshes.
 //
 // The aerial photo (NAIP, ~2.4 m/texel) is the truth for what covers the
-// ground, but up close it is a blurry smear. Near the camera this shader keeps the photo's large-scale colour and
-// replaces its detail with tiled, height-blended PBR layers chosen per pixel from the photo itself:
+// ground, but it is a blurry smear with cars, shadows and treetops baked in. So it is painted over: the shader only
+// reads it (blurred) to choose, per pixel, which of these tiled, height-blended PBR layers lies there, each in its
+// own colour, and none of the photo's colour shows:
 //   soil   decomposed granite (Poly Haven gravelly_sand)        bare tan / grey ground, trails, firebreaks
 //   dry    dry annual grass (ambientCG Grass003, tinted by photo) golden hillsides and vacant lots
 //   lawn   irrigated turf (ambientCG Grass004)                     bright green yards, parks, fairways
 //   litter leaf litter in shade (ambientCG Ground023)              under oaks and chaparral (photo shows canopy)
 //   rock   weathered granite (Poly Haven rock_boulder_dry)         steep slopes and bright outcrops, triplanar
-// Beyond ~500 m the plain photo is used. Outside the photo coverage ("outer hills") the same layers are driven by
-// procedural chaparral / grassland patches instead of the photo.
+// Beyond ~500 m the textures give way to the same layers' colours (far off, dark wild ground takes the colour of the
+// chaparral on it). Outside the photo coverage ("outer hills") the same layers are driven by procedural chaparral /
+// grassland patches instead of the photo.
 
 export const GROUND_LAYERS = ['soil', 'dry', 'lawn', 'litter', 'rock', 'sand'];
 // linear mean colour of each layer (tools/nature/pack_ground.py), used to turn a layer into a photo-tinted detail
@@ -63,7 +65,7 @@ export function setGround(ground, real) {
 // shared GLSL: noise + the layer sampler
 const COMMON = /* glsl */`
 uniform highp sampler2DArray gAlb; uniform highp sampler2DArray gNrm;
-uniform vec3 gMean[6]; uniform float gTile[6]; uniform float gPhotoBias; uniform float gNear; uniform float gFar; uniform float gProcedural; uniform float gDetail;
+uniform vec3 gMean[6]; uniform float gTile[6]; uniform float gPhotoBias; uniform float gNear; uniform float gFar; uniform float gProcedural; uniform float gDetail; uniform float gRelief;
 uniform float gEdgeOn; uniform vec4 gEdge; uniform float gEdgeW; uniform sampler2D gTint; uniform float gTintOn;
 uniform sampler2D gLand; uniform float gLandOn; uniform vec4 gLandR;
 uniform sampler2D gShore; uniform vec4 gShoreR; uniform float gSea;
@@ -197,6 +199,10 @@ export function setPoolHoles(THREE, pools, cell = 16, margin = 0.3) {
   HOLE_U.gHoles.value = gt; HOLE_U.gHoleP.value = pt; HOLE_U.gHoleR.value = [x0, z0, cell, N]; HOLE_U.gHoleOn.value = 1;
 }
 
+// the far relief (the scrub canopy's lumps, the thatch's tussocks): off on the lowest presets. setGroundRelief(ground, on)
+export const GROUND_RELIEF = { on: 1 };
+export function setGroundRelief(ground, on) { GROUND_RELIEF.on = on ? 1 : 0; for (const u of ground.users || []) u.gRelief.value = GROUND_RELIEF.on; }
+
 // onBeforeCompile patch for MeshStandardMaterial terrain. opts: { photoBias, procedural, edge: [x0, z0, x1, z1], edgeW }
 // edge: the photo's rectangle in world x/z, for the photo terrain (see setGroundTint)
 export function groundPatch(ground, opts = {}) {
@@ -204,7 +210,7 @@ export function groundPatch(ground, opts = {}) {
     gAlb: { value: ground.alb }, gNrm: { value: ground.nrm },
     gMean: { value: GROUND_LAYERS.flatMap(k => MEANS[k]) },
     gTile: { value: TILE }, gPhotoBias: { value: opts.photoBias ?? 1.5 }, gNear: { value: opts.near ?? 140 }, gFar: { value: opts.far ?? 520 }, // detail out to here: nearer, the photo's smear showed past the first street
-    gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 },
+    gProcedural: { value: opts.procedural ? 1 : 0 }, gDetail: { value: opts.detail ?? 1 }, gRelief: { value: GROUND_RELIEF.on },
     gEdgeOn: { value: opts.edge ? 1 : 0 }, gEdge: { value: opts.edge || [0, 0, 0, 0] }, gEdgeW: { value: opts.edgeW ?? 300 }, gTint: { value: null }, gTintOn: { value: 0 },
     gLand: { value: null }, gLandOn: { value: 0 }, gLandR: { value: [0, 0, 1, 1] }, ...HOLE_U, ...PAD_U, ...TRACK_U, ...SHORE_U,
   };
@@ -288,7 +294,24 @@ export function groundPatch(ground, opts = {}) {
           w = mix(w, vec4(1.0 - mulch, 0.0, 0.0, mulch), xeri * (1.0 - wRock));
           w = mix(w, vec4(0.0, 0.0, 1.0, 0.0), lawnZ * (1.0 - wRock));
         }
-        vec3 col = photo; gNormalW = Nw;
+        // the painted ground: every layer in its own colour, near and far. The photo only says which layer goes where
+        // (its colours, shadows, cars and smears never show), so nothing of it seeps through at any distance.
+        float macro2 = gFbm(vWp.xz * 0.045 + 5.1), urb = 0.0;
+        if (gLandOn > 0.5) urb = texture2D(gLand, (vWp.xz - gLandR.xy) / gLandR.zw).b;
+        vec3 cSoil = mix(vec3(0.30, 0.22, 0.13), mix(vec3(0.25, 0.165, 0.09), vec3(0.34, 0.275, 0.185), macro2), smoothstep(0.3, 0.7, gFbm(vWp.xz * 0.021 + 2.3))) * (0.88 + 0.24 * macro); // decomposed granite: tan, redder or paler in places
+        cSoil = mix(cSoil, vec3(0.46, 0.36, 0.24) * (0.88 + 0.24 * macro), wSand); // beach sand
+        float greenish = smoothstep(0.55, 0.8, macro2), pale = smoothstep(0.62, 0.85, gFbm(vWp.xz * 0.06 + 9.7));
+        vec3 cDry = mix(mix(vec3(0.25, 0.18, 0.08), vec3(0.15, 0.135, 0.06), greenish), vec3(0.33, 0.26, 0.135), pale * (1.0 - greenish)) * (0.85 + 0.3 * macro); // golden thatch, olive where it's greener, straw in the sun
+        float tired = smoothstep(0.45, 0.75, gFbm(vWp.xz * 0.09 + 11.0));
+        vec3 cLawn = mix(vec3(0.062, 0.115, 0.026), vec3(0.11, 0.12, 0.045), tired * 0.6) * (0.85 + 0.3 * macro); // a watered lawn, patchy in the heat
+        float chapK = smoothstep(25.0, 220.0, dd) * (1.0 - urb) * (1.0 - xeri) * (1.0 - lawnZ); // past the first few metres, dark wild ground is the chaparral standing on it, not its litter
+        // the scrub seen from off: a lumpy canopy, dark in the gaps between the shrubs, grey-green sage among them
+        float canopy = gFbm(vWp.xz * 0.45 + 3.1), sageK = smoothstep(0.62, 0.8, gNoise(vWp.xz * 0.21 + 1.7));
+        vec3 chapC = mix(vec3(0.048, 0.054, 0.03), vec3(0.10, 0.105, 0.07), sageK * 0.7) * (0.8 + 0.4 * macro2) * mix(0.5, 1.3, smoothstep(0.25, 0.72, canopy));
+        vec3 cLitFar = mix(gMean[3] * 0.85, chapC, chapK);
+        vec3 cRock = gMean[4] * vec3(1.02, 0.98, 0.92) * (0.9 + 0.2 * macro);
+        vec3 col = (w.x * cSoil + w.y * cDry + w.z * cLawn + w.w * cLitFar + wRock * cRock) / max(w.x + w.y + w.z + w.w + wRock, 1e-3);
+        gNormalW = Nw;
         if (gF > 0.002) {
           vec3 n0, n1, n2, n3, nR; vec4 L0 = vec4(0), L1 = vec4(0), L2 = vec4(0), L3 = vec4(0), LR = vec4(0);
           n0 = n1 = n2 = n3 = vec3(0, 0, 1); nR = Nw;
@@ -302,25 +325,28 @@ export function groundPatch(ground, opts = {}) {
           float top = max(max(max(h4.x, h4.y), max(h4.z, h4.w)), hr) - 0.25;
           vec4 b = max(h4 - top, 0.0) * step(0.01, w); float br = max(hr - top, 0.0) * step(0.01, wRock);
           float bs = b.x + b.y + b.z + b.w + br + 1e-4; b /= bs; br /= bs;
-          // photo-tinted detail: layer texture divided by its mean colour keeps the photo's hue and adds structure
-          vec3 tint = soft * (0.88 + 0.24 * macro);
-          tint *= mix(vec3(1.0), vec3(1.1, 1.02, 0.8), (1.0 - lawnZ) * (1.0 - xeri) * (1.0 - wRock)); // the wild: sun-baked, brown-green, never blue-grey
-          float tired = smoothstep(0.45, 0.75, gFbm(vWp.xz * 0.09 + 11.0));
-          tint = mix(tint, mix(vec3(0.062, 0.115, 0.026), vec3(0.11, 0.12, 0.045), tired * 0.6) * (0.85 + 0.3 * macro), lawnZ * 0.8); // a watered lawn, patchy in the heat
-          tint = mix(tint, vec3(0.30, 0.22, 0.13) * (0.85 + 0.3 * macro), xeri * (1.0 - mulch) * 0.8); // decomposed granite
-          tint = mix(tint, vec3(0.46, 0.36, 0.24) * (0.88 + 0.24 * macro), wSand * 0.55); // beach sand: warm tan whatever grey the far photo shows
+          // each layer's texture over its own colour: the texture divided by its mean colour adds the structure
           vec3 dS = L0.rgb / mix(gMean[0], gMean[5], wSand), dD = L1.rgb / gMean[1], dL = L2.rgb / gMean[2], dR = LR.rgb / gMean[4];
           float lumD = dot(dD, vec3(0.2126, 0.7152, 0.0722)), lumL = dot(dL, vec3(0.2126, 0.7152, 0.0722));
-          vec3 near = tint * (b.x * dS + b.y * mix(vec3(lumD), dD, 0.25) + b.z * mix(vec3(lumL), dL, 0.5) + br * mix(vec3(dot(dR, vec3(0.333))), dR, 0.4));
-          // under canopy the photo shows treetops, not ground: use the litter's own colour, shaded by the photo
-          near += b.w * L3.rgb * clamp(lum / 0.05, 0.35, 1.0) * 0.9;
-          col = mix(photo, near, gF);
+          vec3 near = b.x * cSoil * dS + b.y * cDry * mix(vec3(lumD), dD, 0.25) + b.z * cLawn * mix(vec3(lumL), dL, 0.5) + br * cRock * mix(vec3(dot(dR, vec3(0.333))), dR, 0.4);
+          near += b.w * mix(L3.rgb * 0.85, cLitFar, chapK); // leaf litter and mulch in their own colour
+          col = mix(col, near, gF);
           vec3 nT = normalize(n0 * b.x + n1 * b.y + n2 * b.z + n3 * b.w + vec3(0, 0, 1) * br);
           vec3 T = normalize(vec3(Nw.y, -Nw.x, 0.0)), B = normalize(vec3(0.0, -Nw.z, Nw.y));
           vec3 nGround = normalize(T * nT.x + B * nT.y + Nw * nT.z);
           gNormalW = normalize(mix(Nw, normalize(nGround * (1.0 - br) + nR * br), gF));
         }
         diffuseColor.rgb = col;
+        { // relief where there's no texture to give it: the scrub canopy's lumps (about a metre), the thatch's tussocks, lit by the sun
+          float kC = chapK * w.w, kD = w.y * smoothstep(60.0, 300.0, dd), fade = (1.0 - smoothstep(900.0, 2200.0, dd)) * gRelief;
+          if ((kC + kD) * fade > 0.03) {
+            float hgt = canopy * 1.2 * kC + gFbm(vWp.xz * 0.9 + 7.7) * 0.25 * kD;
+            vec3 dpx = dFdx(vWp), dpy = dFdy(vWp), r1 = cross(dpy, Nw), r2 = cross(Nw, dpx); float det = dot(dpx, r1);
+            vec3 grad = sign(det) * (dFdx(hgt) * r1 + dFdy(hgt) * r2);
+            gNormalW = normalize(mix(gNormalW, normalize(abs(det) * Nw - grad), clamp((kC + kD) * fade, 0.0, 1.0)));
+            diffuseColor.rgb *= mix(1.0, 0.86 + 0.28 * gFbm(vWp.xz * 0.9 + 7.7), kD * fade);
+          }
+        }
         if (wSand > 0.01 && gF > 0.002) { // the beach up close: lumps and wind ripples in the dry sand; dark, damp, glossy sand where the waves reach
           vec2 p = vWp.xz; float wet = smoothstep(-14.0, -3.0, sdShore), e = 0.35;
           #define SANDH(q) (gFbm((q) * 0.55) * 0.5 + gFbm((q) * 2.3) * 0.12 + 0.03 * sin(dot(q, vec2(5.1, 2.3)) + 3.0 * gNoise((q) * 0.7)) * (1.0 - wet))

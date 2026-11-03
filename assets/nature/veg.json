@@ -241,6 +241,65 @@
      "width": 1.095
     }
    ]
+  },
+  "palm_fan": {
+   "atlas": "imp/palm_fan",
+   "G": 8,
+   "cell": 192,
+   "blocks": [
+    2,
+    2
+   ],
+   "variants": [
+    {
+     "name": "palm_fan_a",
+     "lod": "lod/palm_fan_a.glb",
+     "block": [
+      0,
+      0
+     ],
+     "center": [
+      0.0,
+      4.7393,
+      -0.0
+     ],
+     "radius": 4.847,
+     "height": 9.479,
+     "width": 3.946
+    },
+    {
+     "name": "palm_fan_c",
+     "lod": "lod/palm_fan_c.glb",
+     "block": [
+      1,
+      0
+     ],
+     "center": [
+      0.0,
+      4.2917,
+      -0.0
+     ],
+     "radius": 4.4326,
+     "height": 8.583,
+     "width": 3.953
+    },
+    {
+     "name": "palm_fan_d",
+     "lod": "lod/palm_fan_d.glb",
+     "block": [
+      0,
+      1
+     ],
+     "center": [
+      0.0,
+      5.356,
+      -0.0
+     ],
+     "radius": 5.5167,
+     "height": 10.712,
+     "width": 5.716
+    }
+   ]
   }
  }
 }

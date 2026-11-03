@@ -8,6 +8,25 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.12.0 Wild Oats (2026-11-03)
+
+- **The aerial photo is painted over:** the ground no longer shows the photo anywhere, near or far (its cars,
+  shadows, treetops and smears are gone). The photo only decides what lies where; each ground is drawn in its own
+  colour and texture: tan decomposed granite, golden thatch, lawn, leaf litter and mulch, granite, sand. Chaparral
+  reads as a lumpy olive canopy from a distance, the thatch has tussocks, and Poway High's campus ground is painted
+  the same way.
+- **Grass everywhere, as far as you can see:** the wild grass was nearly invisible (its scanned card had come out as a
+  few black specks); it is now a dense tuft of scanned blades with oat heads, golden in the sun. Past the near grass,
+  coarser rings carry the lawns on to ~75 m and the wild oats and brome to ~300 m on High, so the grass never ends in
+  a circle round you. Grass keeps off tracks, campuses, lots and yards' dry gardens, and thins under thick brush.
+- **Parks are watered only where they're green:** a park's dry hillsides (Lake Poway's among them) are wild grass and
+  chaparral again, not mown lawn.
+- **Real palms:** Mexican fan palms (one in its skirt of dead fronds) and a California fan palm from Sketchfab
+  (PlantCatalog, CC BY 4.0, credited in `assets/nature/CREDITS.md` and the menu) replace the fan palms grown in code,
+  and grow to their species' height (10-22 m). The tools that fit them (`tools/nature/bake_sf.sh`, `fit_plant.py`)
+  are ready for the date palms, oak, cypress, bottlebrush, citrus, yucca and prickly pear chosen to follow; until
+  those arrive, the bottlebrush and citrus planted in town and yards stand in as olives.
+
 ## 0.10.1 (2026-10-31)
 
 - **Every shopping centre's stores, on their real buildings:** each of the 275 stores the map names in Poway's centres

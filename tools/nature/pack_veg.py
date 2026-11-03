@@ -12,11 +12,14 @@ except ImportError:  # numpy-only fallback below
     ndimage = None
 
 SPECIES = {  # species -> variant bake names (in atlas block order)
-    'oak': ['oak'], 'olive': ['olive'], 'scruboak': ['scruboak'], 'slender': ['slender'], 'jacaranda': ['jacaranda'],
+    'olive': ['olive'], 'scruboak': ['scruboak'], 'slender': ['slender'], 'jacaranda': ['jacaranda'],
     'chapbig': ['chapbig_large', 'chapbig_medium', 'chapbig_small'],
     'chap': ['chap_a', 'chap_b', 'chap_c', 'chap_d'],
     'sage': ['sage_a', 'sage_b', 'sage_c', 'sage_d'],
-    'palm_fan': ['palm_fan_a', 'palm_fan_b'], 'palm_date': ['palm_date_a'],
+    # the Sketchfab plants (bake_sf.sh); four variants at most, so an atlas is 2 x 2 blocks
+    'palm_fan': ['palm_fan_a', 'palm_fan_b', 'palm_fan_c', 'palm_fan_d'], 'palm_date': ['palm_date_a', 'palm_date_b'],
+    'palm_queen': ['palm_queen_a', 'palm_queen_b'], 'oak': ['oak_a'], 'cypress': ['cypress_a'],
+    'bottlebrush': ['bottlebrush_a', 'bottlebrush_b'], 'citrus': ['citrus_a', 'citrus_b'],
     'eucalyptus': ['eucalyptus_a', 'eucalyptus_b'],
     'opuntia': ['opuntia_a', 'opuntia_b'], 'yucca': ['yucca_a', 'yucca_b'], 'agave': ['agave_a'],
 }

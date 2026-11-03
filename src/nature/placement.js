@@ -11,19 +11,24 @@
 
 import { pointInPoly } from '../world/treeFilter.js';
 
-export const TREE_SPECIES = new Set(['oak', 'olive', 'scruboak', 'slender', 'cypress', 'jacaranda', 'eucalyptus', 'palm_fan', 'palm_date', 'palm_queen', 'pepper']);
-const FALLBACK = { cypress: 'slender', eucalyptus: 'slender', palm_fan: 'slender', palm_date: 'olive', palm_queen: 'palm_fan', opuntia: 'sage', yucca: 'sage', agave: 'sage', scruboak: 'chapbig', chapbig: 'chap', chap: 'sage', sage: 'scruboak' }; // the scrub oak scan stands in for chaparral and sage until those are baked
+export const TREE_SPECIES = new Set(['oak', 'olive', 'scruboak', 'slender', 'cypress', 'jacaranda', 'eucalyptus', 'palm_fan', 'palm_date', 'palm_queen', 'pepper', 'bottlebrush', 'citrus']);
+const FALLBACK = { bottlebrush: 'olive', citrus: 'olive', cypress: 'slender', eucalyptus: 'slender', palm_fan: 'slender', palm_date: 'olive', palm_queen: 'palm_fan', opuntia: 'sage', yucca: 'sage', agave: 'sage', scruboak: 'chapbig', chapbig: 'chap', chap: 'sage', sage: 'scruboak' }; // the scrub oak scan stands in for chaparral and sage until those are baked
 // albedo tints: the scans are a touch greener than Poway in the dry season; chaparral reads dark olive, sage grey
 const TINT = {
   oak: [0.74, 0.80, 0.66], olive: [0.96, 0.98, 0.92], scruboak: [0.72, 0.76, 0.62], slender: [0.9, 0.92, 0.82], cypress: [0.86, 0.90, 0.80],
-  jacaranda: [1, 1, 1], eucalyptus: [1, 1, 1], palm_fan: [1, 1, 1], palm_date: [1, 1, 1], palm_queen: [1, 1, 1], pepper: [1, 1, 1],
+  jacaranda: [1, 1, 1], eucalyptus: [1, 1, 1], palm_fan: [0.9, 0.92, 0.84], palm_date: [0.92, 0.94, 0.86], palm_queen: [0.92, 0.94, 0.86], pepper: [1, 1, 1], // the scanned palms are a touch lime for SoCal
+  bottlebrush: [0.9, 0.92, 0.84], citrus: [0.9, 0.94, 0.86],
   chapbig: [0.95, 1.0, 0.82], chap: [0.66, 0.71, 0.56], // the laurel sumac scan is dark already; the lemonade berry one bright sage: [0.98, 0.95, 0.86], opuntia: [1, 1, 1], yucca: [1, 1, 1], agave: [1, 1, 1],
 };
 // max height (m) a species is allowed to reach when scaled to fit the photo canopy
-const MAXH = { oak: 16, olive: 9, scruboak: 6, slender: 12, cypress: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, palm_queen: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
+const MAXH = { bottlebrush: 9, citrus: 6, oak: 16, olive: 9, scruboak: 6, slender: 12, cypress: 16, jacaranda: 14, eucalyptus: 36, palm_fan: 26, palm_date: 14, palm_queen: 14, pepper: 13, chapbig: 4.2, chap: 3, sage: 1.6, opuntia: 1.6, yucca: 4, agave: 2 };
 const MINS = { sage: 1.3, chap: 1.0 }; // the scans of these are small; never shrink them further
 // mature heights (m): a street tree here is usually full grown; the photo's canopy can understate it
-const MINH = { eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 7, cypress: 9, scruboak: 3 };
+const MINH = { bottlebrush: 5, citrus: 3.5, eucalyptus: 18, oak: 9, olive: 5.5, jacaranda: 9, pepper: 8, slender: 7, cypress: 9, scruboak: 3 };
+
+// palms grow to their species' height, whatever the model's own: Mexican fan palms tower over the houses
+const PALMH = { palm_fan: [10, 22], palm_date: [7, 13], palm_queen: [8, 13] };
+export function palmScale(sp, V, rnd) { const h = PALMH[sp] || PALMH.palm_fan; return (h[0] + (h[1] - h[0]) * rnd()) / Math.max(1, V.height); }
 
 function pickW(rnd, table) { // [[name, weight], ...]
   let t = 0; for (const e of table) t += e[1];
@@ -75,7 +80,7 @@ export function plantOne(D, i, r, ctx, veg, rnd) {
   if (area === 6) sp = pickW(rnd, [['eucalyptus', 6], ['oak', 3], ['scruboak', 1]]);              // groves (kind 2 is parking: nothing grows there)
   else if (urban || area === 1 || area === 3) {                                                     // planted
     if (kind === 3) sp = pickW(rnd, [['chap', 5], ['olive', 2], ['slender', 1], ['agave', 1]]);
-    else if (kind === 0) sp = pickW(rnd, [['olive', 18], ['jacaranda', 14], ['slender', 8], ['palm_fan', 18], ['pepper', 12], ['oak', 10], ['scruboak', 6], ['eucalyptus', 6], ['palm_date', 6], ['palm_queen', 7]]);
+    else if (kind === 0) sp = pickW(rnd, [['olive', 18], ['jacaranda', 14], ['slender', 8], ['palm_fan', 18], ['pepper', 12], ['oak', 10], ['scruboak', 6], ['eucalyptus', 6], ['palm_date', 6], ['palm_queen', 7], ['bottlebrush', 9], ['citrus', 6]]);
     else sp = pickW(rnd, [['oak', 24], ['jacaranda', 16], ['eucalyptus', 26], ['pepper', 14], ['scruboak', 6], ['olive', 6], ['palm_fan', 8]]);
   } else {                                                                                          // wild
     const v = ctx.valley(x, z); ctx.slopeAt(x, z, sl); const steep = Math.hypot(sl[0], sl[1]);
@@ -86,7 +91,7 @@ export function plantOne(D, i, r, ctx, veg, rnd) {
   }
   const want = sp; sp = resolve(sp); if (!sp) return null; // shrubs drawn with a stand-in scan stay drive-through
   const lib = veg.lib.species.get(sp), vi = Math.floor(rnd() * lib.variants.length), V = lib.variants[vi];
-  let scale = TREE_SPECIES.has(sp) && sp.startsWith('palm') ? 0.8 + rnd() * 0.35 : (2 * r) / Math.max(0.3, V.width);
+  let scale = TREE_SPECIES.has(sp) && sp.startsWith('palm') ? palmScale(want, V, rnd) : (2 * r) / Math.max(0.3, V.width);
   scale = Math.min(scale, (MAXH[want] || MAXH[sp] || 12) / Math.max(0.3, V.height));
   if (MINH[want] && TREE_SPECIES.has(want)) scale = Math.max(scale, (MINH[want] * (0.85 + rnd() * 0.5)) / Math.max(0.3, V.height));
   scale = Math.max(scale, MINS[sp] || 0.5) * (0.92 + rnd() * 0.16);
