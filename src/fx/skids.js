@@ -1,7 +1,8 @@
 // Tyre marks: dark rubber laid on the road where a tyre slides (a drift, a locked-up stop, a burnout), for every car on
 // screen, other players' too, so a drift leaves the same marks for everyone watching. One mesh, a ring of quads that
-// overwrites its oldest, each fading out over LIFE seconds; drawn a hair over the asphalt.
-//   const SK = createSkids(THREE, scene, { max, life })
+// overwrites its oldest, each fading out over LIFE seconds; drawn a hair over the asphalt. A second one in a dusty brown
+// (color) lays the ruts a slide leaves in the dirt.
+//   const SK = createSkids(THREE, scene, { max, life, color })
 //   SK.mark(key, x, y, z, width, k)   tyre `key` (a car and wheel) is sliding here: a quad from where it last was
 //   SK.lift(key)                       that tyre is rolling again: the next mark starts fresh
 //   SK.update(t)                       t: seconds (any steady clock)
@@ -15,7 +16,7 @@ export function createSkids(THREE, scene, o = {}) {
   geo.setAttribute('position', pa); geo.setAttribute('aBorn', ba); geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e7); // the marks are all over town: never culled
   const U = { uT: { value: 0 }, uLife: { value: LIFE } };
-  const mat = new THREE.MeshBasicMaterial({ color: 0x0b0b0b, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -16 }); // over the asphalt and the campus paving and paint (-4, -8)
+  const mat = new THREE.MeshBasicMaterial({ color: o.color ?? 0x0b0b0b, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -16 }); // over the asphalt and the campus paving and paint (-4, -8)
   mat.onBeforeCompile = sh => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = 'attribute vec2 aBorn; uniform float uT; uniform float uLife; varying float vA;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vA = aBorn.y * clamp(1.0 - (uT - aBorn.x) / uLife, 0.0, 1.0);');

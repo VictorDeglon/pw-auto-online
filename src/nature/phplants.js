@@ -92,3 +92,33 @@ export async function grassCard(THREE, gltfLoader, renderer, id, W = 512, H = 25
   let lit = 0; for (let i = 3; i < out.data.length; i += 4) if (out.data[i] >= 128) lit++;
   return lit > W * H * 0.08 ? out : null; // a card that came out (nearly) empty is no card: the drawn one stands in
 }
+
+// the ground's own scatter seen from above, as a card that lies flat (ImageData, RGBA, transparent between pieces): the
+// left half a patch of gravel and stones (namaqualand_stones_01, stone_01, namaqualand_rocks_01), the right half dead
+// twigs (dry_branches_medium_01) among a few stones. Rendered lit from high up, so each stone carries its own shading.
+export async function groundCard(THREE, gltfLoader, renderer, W = 1024, H = 512, base = 'assets/nature/polyhaven/') {
+  const load = id => gltfLoader.loadAsync(`${base}${id}/${id}_1k.gltf`).catch(() => null);
+  const [st, st2, rk, br] = await Promise.all(['namaqualand_stones_01', 'stone_01', 'namaqualand_rocks_01', 'dry_branches_medium_01'].map(load));
+  const pieces = (g, maxN = 99) => { const out = []; if (!g) return out; g.scene.updateMatrixWorld(true); g.scene.traverse(o => { if (!o.isMesh || out.length >= maxN) return;
+    const geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); geo.computeBoundingBox(); const b = geo.boundingBox;
+    geo.translate(-(b.min.x + b.max.x) / 2, -b.min.y, -(b.min.z + b.max.z) / 2); const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    out.push({ geo, size: Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 0.01), mat: new THREE.MeshLambertMaterial({ map: m.map, side: THREE.DoubleSide }) }); }); return out; };
+  const stones = [...pieces(st), ...pieces(st2), ...pieces(rk)], twigs = pieces(br);
+  if (!stones.length) return null;
+  const scene = new THREE.Scene(); let a = 91; const r = () => (a = (a * 16807) % 2147483647) / 2147483647;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x777068, 1.6)); const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(0.4, 1, 0.25); scene.add(sun);
+  const put = (p, x, z, size) => { const m = new THREE.Mesh(p.geo, p.mat); m.scale.setScalar(size / p.size); m.position.set(x, 0, z); m.rotation.y = r() * Math.PI * 2; scene.add(m); };
+  // the card spans x 0..2 (a 1 m square a half), z -0.5..0.5; pieces stay clear of each half's edge
+  for (let k = 0; k < 70; k++) { const x = 0.12 + r() * 0.76, z = (r() - 0.5) * 0.76, big = r() < 0.12; put(stones[Math.floor(r() * stones.length)], x, z, big ? 0.09 + r() * 0.08 : 0.025 + r() * 0.05); }
+  for (let k = 0; k < (twigs.length ? 9 : 0); k++) put(twigs[Math.floor(r() * twigs.length)], 1.15 + r() * 0.7, (r() - 0.5) * 0.7, 0.18 + r() * 0.3);
+  for (let k = 0; k < 14; k++) put(stones[Math.floor(r() * stones.length)], 1.12 + r() * 0.76, (r() - 0.5) * 0.76, 0.02 + r() * 0.04);
+  const cam = new THREE.OrthographicCamera(0, 2, 0.5, -0.5, -5, 5); cam.position.set(0, 2, 0); cam.up.set(0, 0, -1); cam.lookAt(0, 0, 0);
+  const rt = new THREE.WebGLRenderTarget(W, H); rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const prev = { rt: renderer.getRenderTarget(), col: renderer.getClearColor(new THREE.Color()), a: renderer.getClearAlpha() };
+  renderer.setRenderTarget(rt); renderer.setClearColor(new THREE.Color(0, 0, 0), 0); renderer.clear(); renderer.render(scene, cam);
+  const px = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+  renderer.setRenderTarget(prev.rt); renderer.setClearColor(prev.col, prev.a); rt.dispose(); for (const p of [...stones, ...twigs]) { p.geo.dispose(); p.mat.dispose(); }
+  const out = new ImageData(W, H); for (let y = 0; y < H; y++) out.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+  let lit = 0; for (let i = 3; i < out.data.length; i += 4) if (out.data[i] >= 128) lit++;
+  return lit > W * H * 0.05 ? out : null;
+}

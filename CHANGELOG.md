@@ -39,6 +39,12 @@ update you ship**, and add an entry here at the same time:
 - **Gazania** (Poly Haven, CC0), the yellow and orange daisy of SoCal front beds and banks: in beds round some of the
   houses' foundation shrubs, among the ice plant on the banks round the parking lots and shopping centres, and here and
   there along the freeway banks (about 43,000 clumps).
+- **Gravel, stones and twigs on the bare ground:** within ~25 m of you the dirt between the grass is scattered with
+  scanned stones and dead twigs (rendered once from Poly Haven scans and laid flat), thickest where the ground is bare,
+  twigs more under the brush; the ground used to be one flat, blurry texture there.
+- **Tyre marks when you stop hard:** braking hard (S or down) never left marks (only the handbrake, a slide or a
+  burnout did); it now lays dark marks on all four tyres from the first moment. Drifts mark the parking lots too (they
+  counted as unpaved), and a slide on dirt leaves brown ruts that last a minute.
 - `?brick=4` (testing): runs the game as if on a computer four times slower, on the Potato preset.
 
 ## 0.12.1 (2026-11-03)

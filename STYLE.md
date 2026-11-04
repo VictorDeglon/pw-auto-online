@@ -231,6 +231,7 @@ over it, and the western comes through in the type and a few motifs, not in leat
   Gazania (yellow and orange daisies) in beds round some foundation shrubs and among the ice plant on lot and freeway
   banks. Grass and the ground's pebbles, stones and dead
   branches grow denser on stronger presets (Medium and up denser than before 0.12.2); none is drawn behind the camera.
+  Near you (~25 m) the bare ground carries scanned stones and dead twigs lying on it, thickest where it's bare.
 - Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
   crown; real meshes out to ~85 m on High.
 - Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.
@@ -266,8 +267,9 @@ over it, and the western comes through in the type and a few motifs, not in leat
   car keeps its shape and colours for less: past ~70 m no cabin or badges, past ~110 m its paint and everything else as
   one piece in each part's own average colour, past ~170 m a lofted stand-in of its own profile in its paint colour
   (dark glass band, dark tyres), past ~560 m not drawn (all longer on High and Ultra, shorter on Low and Potato).
-- Tyres on the ground (every car, other players' too): near-black rubber marks on paving only where a tyre slides,
-  fading over 45 s; white smoke only in a hard slide; tan dust off the pavement, thicker in a slide, none in the rain.
+- Tyres on the ground (every car, other players' too): near-black rubber marks on paving and parking lots only where
+  a tyre slides or locks (a hard stop marks all four from the start), fading over 45 s; brown ruts in the dirt, a
+  minute; white smoke only in a hard slide; tan dust off the pavement, thicker in a slide, none in the rain.
 - The rest fills in what the code doesn't build or grow: street furniture by neighbourhood, people at work by their
   door (uniforms only there), everyday people standing about where it's busy, the club strip's doormen and crowd, a
   place's own vehicle (fire truck, ambulance, school bus), garden plants (citrus, olive, bird of paradise, agave,

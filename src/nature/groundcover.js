@@ -103,7 +103,7 @@ export async function buildCoverMap(THREE, opts) {
     tall = tall * (1 - tended) * (1 - urban * 0.6);
     const m = M[k] / 255;
     out[k] = Math.round(Math.min(1, grass) * m * 255); out[k + 1] = Math.round(Math.min(1, brush) * m * 255);
-    out[k + 2] = Math.round(dry * 255); out[k + 3] = Math.round(Math.min(1, tall) * m * 255);
+    out[k + 2] = Math.round(dry * m * 255); out[k + 3] = Math.round(Math.min(1, tall) * m * 255); // (dry masked too: none on roads, roofs or lots)
   }
   const tex = new THREE.DataTexture(out, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.flipY = false; tex.needsUpdate = true;
@@ -125,6 +125,11 @@ function grassTuft(THREE, cards = 3) { // three crossed cards (two in a far ring
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setIndex(I); return g;
+}
+function flatCard(THREE) { // one card lying on the ground (the vertex shader drapes its corners on the terrain)
+  const g = new THREE.InstancedBufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5], 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)); g.setIndex([0, 2, 1, 0, 3, 2]); return g;
 }
 function brushClump(THREE) { // three crossed cards and a cap; the fragment shader cuts leafy clusters out of them
   const P = [], N = [], U = [], I = [];
@@ -208,7 +213,7 @@ export async function loadCards(THREE, base = 'assets/pbr/atlas/', scanned = {})
   const tall = (() => { const W = 1024, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d', { willReadFrequently: true });
     const bl = imageCanvas(lawn), oc = imageCanvas(oatsTop); g.filter = 'saturate(0.55) sepia(0.35) brightness(0.95)'; g.drawImage(bl, 0, H * 0.18, W, H * 0.82); g.drawImage(bl, W * 0.12, H * 0.3, W * 0.8, H * 0.7); g.filter = 'none'; g.drawImage(oc, 0, 0, W, H);
     return g.getImageData(0, 0, W, H); })();
-  const withOats = im => { const c = imageCanvas(im), g = c.getContext('2d', { willReadFrequently: true }); g.globalAlpha = 0.85; g.drawImage(imageCanvas(oatsTop), 0, 0, c.width, c.height * 0.62); return g.getImageData(0, 0, c.width, c.height); }; // the scanned tuft with oat heads standing out of i
+  const withOats = im => { const c = imageCanvas(im), g = c.getContext('2d', { willReadFrequently: true }); g.globalAlpha = 0.85; g.drawImage(imageCanvas(oatsTop), 0, 0, c.width, c.height * 0.62); return g.getImageData(0, 0, c.width, c.height); }; // the scanned tuft with oat heads standing out of it
   // or, with the scanned stalks in: golden panicles and brome rising out of the tuft (each sheet is four plants side by
   // side; brome's roots are cut off), behind and in front of it
   const withStalks = im => {
@@ -219,9 +224,9 @@ export async function loadCards(THREE, base = 'assets/pbr/atlas/', scanned = {})
     g.globalAlpha = 1; g.drawImage(imageCanvas(im), 0, 0);
     for (let i = 0; i < 5; i++) stalk(true); // and some in front
     return g.getImageData(0, 0, W, H);
-  };t
+  };
   const brush = leafCard(imageCanvas(sheet), rng(23)), tall2 = scanned.tall ? (dry ? withStalks(scanned.tall) : withOats(scanned.tall)) : tall, lawn2 = scanned.lawn || lawn; // scanned.lawn: Bermuda grass tufts
-  return { lawn: cardTex(THREE, lawn2), oats: cardTex(THREE, tall2), brush: cardTex(THREE, brush), lum: [lum(lawn2), lum(brush), lum(tall2)] };
+  return { lawn: cardTex(THREE, lawn2), oats: cardTex(THREE, tall2), brush: cardTex(THREE, brush), gravel: scanned.gravel ? cardTex(THREE, scanned.gravel) : null, lum: [lum(lawn2), lum(brush), lum(tall2), 0] };
 }
 
 // ---------------------------------------------------------------- card textures, drawn once (no downloads)
@@ -284,10 +289,11 @@ const VS_BODY = /* glsl */`
     if (fl > 0.5 && dot(wp - cameraPosition.xz, f2 / fl) < -6.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; } }
   vec2 cuv = (wp - uCov.xy) / uCov.zw, cm = 300.0 / uCov.zw; // the cover map's 300 m pad: no data out there (the outer world)
   vec4 cv = texture2D(uCover, cuv);
-  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.8) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : min(1.0, cv.a * 1.7 + cv.b * 0.55 * (1.0 - cv.r) * (1.0 - cv.g * 0.85) * step(0.02, cv.a)); // 0 lawn, 1 brush, 2 wild grass (sparser dry grass on the dry ground too, little under thick brush: only where wild grass may grow, never in a yard; B isn't masked)
+  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.8) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : uKind < 2.5 ? min(1.0, cv.a * 1.7 + cv.b * 0.55 * (1.0 - cv.r) * (1.0 - cv.g * 0.85) * step(0.02, cv.a))
+    : step(0.04, cv.b) * (1.0 - cv.r) * min(1.0, 0.2 + 1.1 * (1.0 - cv.g * 0.6) * (1.0 - cv.a * 0.7)); // 0 lawn, 1 brush, 2 wild grass (sparser dry grass on the dry ground too, little under thick brush), 3 gravel and twigs: on natural ground (B > 0: it's masked off roads, roofs and lots), most where it's bare
   dens *= step(cm.x, cuv.x) * step(cuv.x, 1.0 - cm.x) * step(cm.y, cuv.y) * step(cuv.y, 1.0 - cm.y);
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
-  float thin = uKind < 0.5 || uKind > 1.5 ? mix(1.0, uR0 > 0.0 ? 0.6 : 0.35, smoothstep(uR0 > 0.0 ? uR0 : uR * 0.3, uR, dist)) : 1.0;
+  float thin = uKind > 2.5 ? 1.0 - smoothstep(uR * 0.5, uR, dist) * 0.5 : uKind < 0.5 || uKind > 1.5 ? mix(1.0, uR0 > 0.0 ? 0.6 : 0.35, smoothstep(uR0 > 0.0 ? uR0 : uR * 0.3, uR, dist)) : 1.0;
   if (h3 >= dens * thin || poolHole(wp, 1.6) > 0.5) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; } // nothing grows in a pool or on its deck
   float ang = h1 * 6.2831853, cs = cos(ang), sn = sin(ang);
   vec3 p = position;
@@ -295,6 +301,7 @@ const VS_BODY = /* glsl */`
   // the edge of the ring: clumps sink into the ground instead of dithering away
   float sink = smoothstep(0.0, 1.0, vFade);
   if (uKind < 0.5) { sc = (0.07 + 0.07 * h4) * sink * mix(1.0, uBig, 0.3); p.xz *= 0.42 * (0.8 + 0.4 * h2) * uBig; p.y *= sc; }                     // mown lawn
+  else if (uKind > 2.5) { sc = (0.55 + 0.6 * h4) * sink; p.xz *= sc; } // a patch of gravel or twigs, half a metre to a metre across
   else if (uKind > 1.5) { sc = (0.35 + 0.6 * h4) * mix(0.6, 1.0, dens) * sink * mix(1.0, uBig, 0.15); p.xz *= 0.75 * (0.8 + 0.4 * h2) * uBig; p.y *= sc; } // wild oats and brome (uBig: a far ring's wider clumps)
   else { sc = (0.55 + 0.9 * h4) * (0.6 + 0.5 * dens) * sink; p *= sc; }
   p = vec3(cs * p.x + sn * p.z, p.y, -sn * p.x + cs * p.z);
@@ -308,10 +315,11 @@ const VS_BODY = /* glsl */`
     vec2 d = wp + p.xz - uPush[k].xy; float l = length(d);
     if (uPush[k].z > 0.0 && l < uPush[k].z) { float w = 1.0 - l / uPush[k].z; p.xz += d / max(l, 0.05) * w * hy * 1.4; p.y *= 1.0 - w * 0.6; }
   }
-  vec3 transformed = vec3(wp.x + p.x, hgtAt(wp) - 0.04 + p.y, wp.y + p.z);
+  vec3 transformed = vec3(wp.x + p.x, (uKind > 2.5 ? hgtAt(wp + p.xz) + 0.012 : hgtAt(wp) - 0.04) + p.y, wp.y + p.z); // a flat card's corners each on the ground
   // colour: lawn green to golden dry grass; brush from dark chaparral to grey-green sage
   float t = clamp(position.y, 0.0, 1.0);
-  if (uKind < 0.5) { // irrigated lawn: green, a little patchy
+  if (uKind > 2.5) vGC = vec3(0.92, 0.95, 1.0) * (0.8 + 0.35 * h3); // the scan's own colours, cooled a touch (the scanned stones are red Namaqualand granite; Poway's weathers grey-tan)
+  else if (uKind < 0.5) { // irrigated lawn: green, a little patchy
     vec3 lawn = vec3(0.075, 0.145, 0.032), tired = vec3(0.13, 0.14, 0.055); // as light as the turf under it: blades, not dark tufts
     vGC = mix(lawn, tired, smoothstep(0.5, 0.9, gh(floor(wp * 0.25))) * 0.5) * (0.85 + 0.3 * h3);
   } else if (uKind > 1.5) { // wild grass: green in spring, gold through summer and fall
@@ -323,7 +331,7 @@ const VS_BODY = /* glsl */`
     vec3 c = mix(chap, sage, h2 * 0.8); c = mix(c, dryb, smoothstep(0.75, 1.0, cv.b) * h4 * 0.6);
     vGC = c * (0.85 + 0.3 * h3);
   }
-  vLeaf = uv; vSeed = h4;
+  vLeaf = uKind > 2.5 ? vec2(uv.x * 0.5 + step(1.0 - 0.15 - 0.6 * cv.g, h2) * 0.5, uv.y) : uv; vSeed = h4; // (3: the card's right half is twigs, more of them under brush)
 `;
 function patch(mat, U, kind) {
   mat.onBeforeCompile = sh => {
@@ -346,7 +354,7 @@ function patch(mat, U, kind) {
           if (card.a * (1.0 + mip * 0.3) < 0.5) discard;
         }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb *= vGC * (uCardLum > 0.0 ? vec3(dot(card.rgb, vec3(0.299, 0.587, 0.114)) / uCardLum) : card.rgb * 2.0) * mix(${kind === 0 ? '0.86, 1.08' : kind > 0.5 && kind < 1.5 ? '0.6, 1.1' : '0.55, 1.12'}, smoothstep(0.0, 0.8, vLeaf.y)); // the scan's light and shade, darker at the root (a mown lawn hardly: its roots are in the thatch)`);
+        diffuseColor.rgb *= ${kind === 3 ? 'vGC * card.rgb;' : `vGC * (uCardLum > 0.0 ? vec3(dot(card.rgb, vec3(0.299, 0.587, 0.114)) / uCardLum) : card.rgb * 2.0) * mix(${kind === 0 ? '0.86, 1.08' : kind > 0.5 && kind < 1.5 ? '0.6, 1.1' : '0.55, 1.12'}, smoothstep(0.0, 0.8, vLeaf.y));`} // the scan's light and shade, darker at the root (a mown lawn hardly: its roots are in the thatch)`);
   };
   mat.customProgramCacheKey = () => 'groundcover3' + kind;
 }
@@ -367,6 +375,9 @@ export class GroundCover {
       { kind: 0, s: 0.7 / Math.sqrt(q), R: 45 + 30 * qf, r0: 24, big: 2.2, geo: grassTuft(THREE, 2) },
       { kind: 2, s: 1.8 / Math.sqrt(q), R: farR, r0: 55, big: 2.7, geo: grassTuft(THREE, 2) },
     ];
+    // gravel, stones and dead twigs lying on the dirt round you (a scanned card, phplants.js groundCard): the bare ground
+    // between the tufts was one flat, blurry texture
+    if (C && C.gravel) this.layers.push({ kind: 3, s: 0.7 / Math.sqrt(q), R: 26, geo: flatCard(THREE) });
     // height texture around the camera: past the far ring, with room to move before it's re-centred
     this.HM = 2.6; this.HN = Math.ceil((farR + 75) * 2 / this.HM / 8) * 8; // texels, metres per texel
     this.hData = new Float32Array(this.HN * this.HN);
@@ -379,19 +390,19 @@ export class GroundCover {
       uTime: U.uTime, uWind: U.uWind, uGust: U.uGust || { value: 0.6 },
       uPush: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
     };
-    const cards = C ? [C.lawn, C.brush, C.oats] : [cardTexture(THREE, grassBlades), cardTexture(THREE, brushLeaves), cardTexture(THREE, grassBlades)];
+    const cards = C ? [C.lawn, C.brush, C.oats, C.gravel] : [cardTexture(THREE, grassBlades), cardTexture(THREE, brushLeaves), cardTexture(THREE, grassBlades)];
     for (const L of this.layers) {
       // the cells within the ring (a disc for the near layers), round the camera's cell
       const N = Math.ceil(2 * L.R / L.s), lo = Math.max(0, ((L.r0 || 0) - 2 * L.s) / L.s), hi = L.R / L.s + 1.5, list = [];
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = i - N / 2, z = j - N / 2, d = Math.hypot(x + 0.5, z + 0.5); if (d >= lo && d <= hi) list.push(x, z); }
       const cells = new Float32Array(list);
       L.geo.setAttribute('iCell', new THREE.InstancedBufferAttribute(cells, 2)); L.geo.instanceCount = cells.length / 2;
-      const U2 = Object.assign({}, this.shared, { uBase: { value: new THREE.Vector2() }, uS: { value: L.s }, uR: { value: L.R }, uR0: { value: L.r0 || 0 }, uBig: { value: L.big || 1 }, uCard: { value: cards[L.kind] }, uCardLum: { value: C ? C.lum[L.kind] : 0 } });
+      const U2 = Object.assign({}, this.shared, { uBase: { value: new THREE.Vector2() }, uS: { value: L.s }, uR: { value: L.R }, uR0: { value: L.r0 || 0 }, uBig: { value: L.big || 1 }, uCard: { value: cards[L.kind] }, uCardLum: { value: C ? C.lum[L.kind] || 0 : 0 } });
       L.U = U2;
       const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
       patch(mat, U2, L.kind);
       const mesh = new THREE.Mesh(L.geo, mat); mesh.frustumCulled = false; mesh.receiveShadow = true; mesh.castShadow = false;
-      mesh.name = ['groundcover:lawn', 'groundcover:brush', 'groundcover:tall'][L.kind] + (L.r0 ? ':far' : ''); scene.add(mesh); L.mesh = mesh;
+      mesh.name = ['groundcover:lawn', 'groundcover:brush', 'groundcover:tall', 'groundcover:gravel'][L.kind] + (L.r0 ? ':far' : ''); scene.add(mesh); L.mesh = mesh;
     }
     this.instances = this.layers.reduce((n, L) => n + L.geo.instanceCount, 0);
   }

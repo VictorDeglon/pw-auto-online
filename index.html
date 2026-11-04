@@ -628,7 +628,7 @@ import { RoadSurface } from './src/world/roadsurface.js';
 import { loadVegetation, Vegetation, natureUniforms } from './src/nature/vegetation.js';
 import { makeContext, plantOne, treeRandom, palmScale } from './src/nature/placement.js';
 import { buildCoverMap, GroundCover, scatterShrubs, scatterOnCover, loadCards } from './src/nature/groundcover.js';
-import { loadPHPlants, grassCard } from './src/nature/phplants.js';
+import { loadPHPlants, grassCard, groundCard } from './src/nature/phplants.js';
 import { growTrees } from './src/nature/proctrees.js';
 import { loadRocks, loadBoulders } from './src/nature/rocks.js';
 import { createFauna } from './src/nature/fauna.js';
@@ -3645,7 +3645,8 @@ async function plantNature() {
   if (NATURE.cover) {
     const [tallCard, lawnCard] = await Promise.all([grassCard(THREE, gltfLoader, renderer, ['grass_medium_01', 'grass_medium_02']).catch(() => null), // scanned wild grass clumps, two kinds mixed (Poly Haven CC0)
       grassCard(THREE, gltfLoader, renderer, 'grass_bermuda_01', 512, 256, undefined, 46).catch(() => null)]); // and Bermuda grass for the lawns
-    const cards = await loadCards(THREE, undefined, { tall: tallCard, lawn: lawnCard }).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
+    const gravelCard = await groundCard(THREE, gltfLoader, renderer).catch(() => null); // gravel, stones and twigs for the bare ground (phplants.js)
+    const cards = await loadCards(THREE, undefined, { tall: tallCard, lawn: lawnCard, gravel: gravelCard }).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
     const before = new Set(scene.children);
     NATURE.gc = new GroundCover(THREE, scene, NATURE.cover, groundAt, NATURE.U, { quality: GRASS_Q, cards });
     const gcNew = sceneSince(before); for (const m of gcNew) m.visible = false; await showCompiled(gcNew.map(m => (m.visible = true, m)));
@@ -4657,6 +4658,7 @@ const smoke = new Particles(700, false), fire = new Particles(500, true);
 const NUKE_FX = createNukeFX(THREE, scene, { potato: 0.35, low: 0.55, medium: 0.8, high: 1, ultra: 1 }[GFX.id] || 0.8); // the nuke's flash, shockwave and mushroom cloud (src/fx/nuke.js)
 const FX = createFX({ THREE, scene, camera, heightAt: (x, z) => heightAt(x, z), smoke, fire, quality: { potato: 0.35, low: 0.6, medium: 1, high: 1.2, ultra: 1.5 }[GFX.id] || 1 }); // src/fx/fx.js
 const SKIDS = createSkids(THREE, scene, { max: GFX.id === 'potato' ? 800 : 3000 }); // tyre marks (src/fx/skids.js), laid by wheelFx
+const RUTS = createSkids(THREE, scene, { max: GFX.id === 'potato' ? 400 : 1500, life: 60, color: 0x2e2419 }); // and the ruts a slide leaves in the dirt
 function blood(x, y, z, n = 10, dir) { // droplets; with a direction (the bullet's) most of them spray out the far side
   for (let i = 0; i < n; i++) { const k = dir && i < n * 0.7 ? rand(3, 7) : 0, r = rand(0.35, 0.6);
     smoke.emit(x, y, z, (dir ? dir.x * k : 0) + rand(-2, 2), (dir ? dir.y * k : 0) + rand(0, 3), (dir ? dir.z * k : 0) + rand(-2, 2), rand(0.1, 0.3), rand(0.5, 1), r, 0.015, 0.015, 0, 12); }
@@ -5512,7 +5514,7 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
     const avf = Math.abs(vf), avs = Math.abs(vs), me = v.driver === 'player'; let sk = 0, k = 0;
     if (avs > 3 && avf > 4) { sk |= 1; k = (avs - 3) / 6; if (avs > 7) sk |= 2; }
     if (hand && avf > 3) { sk |= 1; k = Math.max(k, 0.6); }
-    if (me && brake && avf > 9) { sk |= 3; k = Math.max(k, (avf - 9) / 14); }
+    if (me && (brake || (throttle < 0 && vf > 9)) && avf > 9) { sk |= 3; k = Math.max(k, 0.4 + (avf - 9) / 20); } // a hard stop (S / down on a car going forward; the brake flag is only the getting-in hold) leaves dark marks from the start
     if (me && throttle > 0.9 && vf > -0.5 && vf < 6 && s.acc >= 12) { sk |= 1; k = Math.max(k, 0.8 - vf / 10); }
     v.skid = weather.wet > 0.5 ? 0 : sk; v.skidK = Math.min(1, k);
   }
@@ -5531,17 +5533,20 @@ function drivePhysics(v, throttle, steerIn, brake, hand, dt) {
 // Vehicle, or another player's id); speed: forward, signed; mask: which tyres slide (1 rear, 2 front); k: how hard.
 const _wfx = []; let WFX_N = 0;
 function wheelFx(key, m, x, y, z, yaw, speed, mask, k, dt) {
-  const c = camera.position; if ((x - c.x) ** 2 + (z - c.z) ** 2 > 150 * 150 || !ROADS || x > ARENA_X0) { if (m._fxOn) { for (let i = 0; i < 4; i++) SKIDS.lift(key + i); m._fxOn = false; } return; }
+  const c = camera.position; if ((x - c.x) ** 2 + (z - c.z) ** 2 > 150 * 150 || !ROADS || x > ARENA_X0) { if (m._fxOn) { for (let i = 0; i < 4; i++) { SKIDS.lift(key + i); RUTS.lift(key + i); } m._fxOn = false; } return; }
   m._fxOn = true;
   const fx = Math.sin(yaw), fz = Math.cos(yaw), sx = fz, sz = -fx, as = Math.abs(speed), L = m.L || 4.5, W = m.W || 1.8;
   let n = 0; // the tyres: where the car's own wheels sit, or its four corners
   for (const w of m.wheels) if (n < 4) { const p = w.piv.position; _wfx[n++] = [p.x, p.z, w.front]; }
   if (n < 4) { n = 4; _wfx[0] = [W * 0.42, L * 0.32, true]; _wfx[1] = [-W * 0.42, L * 0.32, true]; _wfx[2] = [W * 0.42, -L * 0.32, false]; _wfx[3] = [-W * 0.42, -L * 0.32, false]; }
-  const paved = ROADS.onRoad(x, z, 0.5) || (PADS && PADS.at(x, z) !== null) || PHS.groundAt(x, z) !== null, tw = clamp(W * 0.12, 0.18, 0.32);
+  const paved = ROADS.onRoad(x, z, 0.5) || inParkingLot(x, z) || (PADS && PADS.at(x, z) !== null) || PHS.groundAt(x, z) !== null, tw = clamp(W * 0.12, 0.18, 0.32); // (the parking lots too: where most drifting happens)
+  const dirt = !paved && !onSand(x, z); // (the beach has its own ruts)
   for (let i = 0; i < n; i++) {
     const [lx, lz, front] = _wfx[i], wx = x + fx * lz + sx * lx, wz = z + fz * lz + sz * lx;
+    const sy = Math.max(heightAt(wx, wz), meshAt(wx, wz) ?? -1e9); // on the drawn surface: a parking lot's paving lies on the ground mesh, up to ~0.3 m over the road height there
+    if (dirt && as > 1.2 && mask & (front ? 2 : 1)) RUTS.mark(key + i, wx, sy, wz, tw * 1.3, Math.min(0.75, k * 0.8 + 0.3)); else RUTS.lift(key + i); // ruts in the dirt, wider and browner
     if (paved && as > 1.2 && mask & (front ? 2 : 1)) {
-      SKIDS.mark(key + i, wx, heightAt(wx, wz), wz, tw, k);
+      SKIDS.mark(key + i, wx, sy, wz, tw, k);
       if (!front && k > 0.35 && Math.random() < dt * 14 * k) smoke.emit(wx, y + 0.25, wz, rand(-.5, .5), rand(.4, 1), rand(-.5, .5), 0.7, 1.4, 0.82, 0.82, 0.82, 1.8); // tyre smoke
     } else SKIDS.lift(key + i);
     if (!paved && !front && as > 4 && weather.wet < 0.3 && Math.random() < dt * Math.min(9, as * 0.35 + (mask ? 6 : 0))) // dust off the dirt, thicker in a slide
@@ -9422,7 +9427,7 @@ function tick(rdt) {
   PROF.mark('dust'); const tOut = performance.now(); OUTER.update(rdt); const usedOut = performance.now() - tOut; PROF.mark('outer');
   { const tL = performance.now(); updateLazy(worldHold ? 30 : Math.max(0.5, Math.min(bgBudget(lazyQueue.length > 6 ? 6 : 4), (lazyQueue.length > 6 ? 6 : 4) - usedOut * 0.5))); STREAM_MS += usedOut + performance.now() - tL; } PROF.mark('lazy'); /* streaming shares the frame: what the outer tiles took, the core's chunks give up */ cullCore(rdt); PROF.mark('cull'); // the world streams first: nothing else in the frame can hold it up
   updatePlayer(CH.slowmo && !player.dead ? rdt : dt); PROF.mark('player'); if (PILOT && !player.dead) PILOT.update(CH.slowmo ? rdt : dt); updateArsenal(dt); PROF.mark('arsenal'); updateCheats(dt); updateNukeWaves(); updateGore(dt); if (!JET.on && JET.abandoned > 0) updateJet(dt); updateScore(rdt); PROF.mark('score'); const t0 = performance.now(); updateNetTraffic(); updateNetPeds(); trafficPre(dt); PROF.mark('trafficPre'); updateVehicles(dt); trafficTime(performance.now() - t0);
-  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); sfLod(); SKIDS.update(simTime); if ((sfTickT += dt) > 1) { sfTickT = 0; SF.tick(performance.now()); sfSwap(); } if (!GAMES.inside) { const f = focusPos(); sfPlacer().update(f.x, f.z, dt); } updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
+  PROF.mark('vehicles'); updatePeds(dt); updateCrowd(dt); if (online) { updateRemotes(dt); updateWorld(dt); } updatePolice(dt); updatePopulation(dt); sfLod(); SKIDS.update(simTime); RUTS.update(simTime); if ((sfTickT += dt) > 1) { sfTickT = 0; SF.tick(performance.now()); sfSwap(); } if (!GAMES.inside) { const f = focusPos(); sfPlacer().update(f.x, f.z, dt); } updatePickups(dt); updateJob(dt); updateStory(dt); updateGps(dt); PROF.mark('peds+police'); updateWeather(dt); PROF.mark('weather');
   updatePlanes(dt, keys, cam, mouseDown);
   MILITARY.update(dt);
   GANG.update(dt);
