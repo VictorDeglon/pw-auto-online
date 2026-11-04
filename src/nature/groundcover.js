@@ -289,7 +289,7 @@ const VS_BODY = /* glsl */`
     if (fl > 0.5 && dot(wp - cameraPosition.xz, f2 / fl) < -6.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; } }
   vec2 cuv = (wp - uCov.xy) / uCov.zw, cm = 300.0 / uCov.zw; // the cover map's 300 m pad: no data out there (the outer world)
   vec4 cv = texture2D(uCover, cuv);
-  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.8) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : uKind < 2.5 ? min(1.0, cv.a * 1.7 + cv.b * 0.55 * (1.0 - cv.r) * (1.0 - cv.g * 0.85) * step(0.02, cv.a))
+  float dens = uKind < 0.5 ? min(1.0, cv.r * 1.8) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : uKind < 2.5 ? min(1.0, max(cv.a * 1.7 + cv.b * 0.55 * (1.0 - cv.r) * (1.0 - cv.g * 0.85) * step(0.02, cv.a), step(0.04, cv.b) * (1.0 - cv.r) * (0.6 - cv.g * 0.35)))
     : step(0.04, cv.b) * (1.0 - cv.r) * min(1.0, 0.2 + 1.1 * (1.0 - cv.g * 0.6) * (1.0 - cv.a * 0.7)); // 0 lawn, 1 brush, 2 wild grass (sparser dry grass on the dry ground too, little under thick brush), 3 gravel and twigs: on natural ground (B > 0: it's masked off roads, roofs and lots), most where it's bare
   dens *= step(cm.x, cuv.x) * step(cuv.x, 1.0 - cm.x) * step(cm.y, cuv.y) * step(cuv.y, 1.0 - cm.y);
   // thin out with distance so the far ring is cheaper to look at, then fade out at the edge
@@ -302,7 +302,7 @@ const VS_BODY = /* glsl */`
   float sink = smoothstep(0.0, 1.0, vFade);
   if (uKind < 0.5) { sc = (0.07 + 0.07 * h4) * sink * mix(1.0, uBig, 0.3); p.xz *= 0.42 * (0.8 + 0.4 * h2) * uBig; p.y *= sc; }                     // mown lawn
   else if (uKind > 2.5) { sc = (0.55 + 0.6 * h4) * sink; p.xz *= sc; } // a patch of gravel or twigs, half a metre to a metre across
-  else if (uKind > 1.5) { sc = (0.35 + 0.6 * h4) * mix(0.6, 1.0, dens) * sink * mix(1.0, uBig, 0.15); p.xz *= 0.75 * (0.8 + 0.4 * h2) * uBig; p.y *= sc; } // wild oats and brome (uBig: a far ring's wider clumps)
+  else if (uKind > 1.5) { sc = (0.5 + 0.8 * h4) * mix(0.6, 1.0, dens) * sink * mix(1.0, uBig, 0.15); p.xz *= 0.75 * (0.8 + 0.4 * h2) * uBig; p.y *= sc; } // wild oats and brome (uBig: a far ring's wider clumps)
   else { sc = (0.55 + 0.9 * h4) * (0.6 + 0.5 * dens) * sink; p *= sc; }
   p = vec3(cs * p.x + sn * p.z, p.y, -sn * p.x + cs * p.z);
   // wind: gusts roll across the field as waves (a travelling noise), the blades bend with height
@@ -369,11 +369,11 @@ export class GroundCover {
     this.layers = [
       { kind: 0, s: 0.26 / Math.sqrt(q), R: 32, geo: grassTuft(THREE) },  // mown lawn, dense and short
       { kind: 1, s: 3.2 / Math.sqrt(q), R: 200, geo: brushClump(THREE) }, // shrubs
-      { kind: 2, s: 0.5 / Math.sqrt(q), R: 90, geo: grassTuft(THREE) },   // tall wild grass: thick enough that the dirt only shows through
+      { kind: 2, s: 0.38 / Math.sqrt(q), R: 90, geo: grassTuft(THREE) },  // tall wild grass, thick: the dirt only shows through in gaps (all natural ground has some, not just where the photo reads as grass)
       // and past them, coarser rings of wider clumps on two cards, so the grass runs on to the hills instead of ending
       // in a circle round you (each one a ring of cells: none drawn inside it)
       { kind: 0, s: 0.7 / Math.sqrt(q), R: 45 + 30 * qf, r0: 24, big: 2.2, geo: grassTuft(THREE, 2) },
-      { kind: 2, s: 1.8 / Math.sqrt(q), R: farR, r0: 55, big: 2.7, geo: grassTuft(THREE, 2) },
+      { kind: 2, s: 1.4 / Math.sqrt(q), R: farR, r0: 55, big: 2.7, geo: grassTuft(THREE, 2) },
     ];
     // gravel, stones and dead twigs lying on the dirt round you (a scanned card, phplants.js groundCard): the bare ground
     // between the tufts was one flat, blurry texture

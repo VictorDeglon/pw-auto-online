@@ -1164,7 +1164,7 @@ gltfLoader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr
   const parse = gltfLoader.parse.bind(gltfLoader);
   gltfLoader.parse = (data, path, onLoad, onError) => parse(data, path, g => { g.scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) if (m.transmission) m.transmission = 0; }); onLoad(g); }, onError);
 }
-const SF = createSF(gltfLoader, { onUploaded: t => texMean(t), onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge); onUploaded: a texture's last look at its pixels (sfFar)
+const SF = createSF(gltfLoader, { onUploaded: t => texMean(t), upload: t => renderer.initTexture(t), onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge); onUploaded: a texture's last look at its pixels (sfFar)
   const t = carProto.get('sf-' + id); carProto.delete('sf-' + id); if (!t) return;
   for (const root of [t.body, ...t.wheels.map(w => w.mesh)]) root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.name === 'Plain' || o.material.userData.own) o.material.dispose(); } });
 } });

@@ -103,7 +103,7 @@ export function natureUniforms(THREE) {
 // ---------------------------------------------------------------- impostor material
 const IMP_VS = /* glsl */`
 uniform vec4 uVar[8]; uniform vec2 uBlk[8]; uniform vec2 uBlocks; uniform float uG;
-uniform float uNear, uBand, uFar;
+uniform float uNear, uBand, uFar, uTime, uWind, uGust, uSway;
 attribute vec4 iPos;   // base x, y, z, rotation about Y
 attribute vec2 iSV;    // scale, variant
 attribute vec3 iTint;
@@ -134,6 +134,11 @@ void main() {
   vec3 bu = normalize(vec3(0.0, 1.0, 0.0) - vO * vO.y); vec3 br = cross(bu, vO);
   vec3 rel = (br * position.x + bu * position.y) * R;
   vec3 pW = cW + ROT(rel) * s;
+  { // the same sway as the near mesh (so the hand-over doesn't jump), each plant on its own phase, gusts rolling across the land
+    float is = 1.0 / max(s, 1e-3), hgt = max(pW.y - iPos.y, 0.0) * is, ph = dot(iPos.xz, vec2(0.13, 0.17)), wave = 0.5 + 0.5 * sin(dot(iPos.xz, vec2(0.013, 0.007)) - uTime * 1.7);
+    float sw = uWind * uSway * hgt * hgt / (1.0 + hgt) * (0.6 + uGust * wave); // in the model's own units and axes, as the mesh does, then turned and scaled like it
+    float dx = sin(uTime * 1.3 + ph + hgt * 0.4) * sw, lx = IROT(pW - iPos.xyz).x * is + dx;
+    pW += ROT(vec3(dx, 0.0, cos(uTime * 1.1 + ph * 1.3 + lx * 0.4) * sw * 0.7)) * s; }
   vec3 n = vO / (abs(vO.x) + abs(vO.y) + abs(vO.z));
   vec2 g = clamp((vec2(n.x + n.z, n.x - n.z) * 0.5 + 0.5) * uG - 0.5, 0.0, uG - 1.0);
   vec2 f0 = floor(g), fr = g - f0, f1 = min(f0 + 1.0, uG - 1.0);
@@ -178,7 +183,7 @@ function impostorMaterial(THREE, sp, U) {
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]),
   });
   Object.assign(m.uniforms, U, sp.hasLod || sp.lods.some(l => l) ? (sp.near != null ? { uNear: { value: sp.near } } : {}) : { uNear: { value: 0 }, uBand: { value: 1e-3 } }, { // sp.near: small plants swap to their impostor sooner
-    uAlb: { value: sp.alb }, uNrm: { value: sp.nrm }, uVar: { value: uVar }, uBlk: { value: uBlk },
+    uAlb: { value: sp.alb }, uNrm: { value: sp.nrm }, uVar: { value: uVar }, uBlk: { value: uBlk }, uSway: { value: sp.sway ?? 0.012 },
     uBlocks: { value: new THREE.Vector2(sp.blocks[0], sp.blocks[1]) }, uG: { value: sp.G }, uTrans: { value: sp.trans ?? 0.18 }, uPremul: { value: sp.premul ? 1 : 0 },
   });
   if (sp.imps) sp.imps.push(m);
@@ -192,16 +197,16 @@ function impostorMaterial(THREE, sp, U) {
 function patchNear(mat, U, sway, leaf) {
   const SW = { value: sway };
   mat.onBeforeCompile = sh => {
-    for (const k of ['uNear', 'uBand', 'uTime', 'uWind', 'uSunDir', 'uSunCol']) sh.uniforms[k] = U[k];
+    for (const k of ['uNear', 'uBand', 'uTime', 'uWind', 'uGust', 'uSunDir', 'uSunCol']) sh.uniforms[k] = U[k];
     sh.uniforms.uSway = SW; // a uniform, not a constant: every species shares the same two programs (each one costs half a second to compile on Windows)
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uNear, uBand, uTime, uWind, uSway; varying float vNearFade;')
+      .replace('#include <common>', '#include <common>\nuniform float uNear, uBand, uTime, uWind, uGust, uSway; varying float vNearFade;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         #ifdef USE_INSTANCING
           vec3 ipos = vec3(instanceMatrix[3]);
           vNearFade = 1.0 - smoothstep(uNear, uNear + uBand, distance(ipos, cameraPosition));
           float hgt = max(transformed.y, 0.0), ph = dot(ipos.xz, vec2(0.13, 0.17));
-          float sw = uWind * uSway * hgt * hgt / (1.0 + hgt);
+          float wave = 0.5 + 0.5 * sin(dot(ipos.xz, vec2(0.013, 0.007)) - uTime * 1.7), sw = uWind * uSway * hgt * hgt / (1.0 + hgt) * (0.6 + uGust * wave); // gusts roll across as waves
           transformed.x += sin(uTime * 1.3 + ph + transformed.y * 0.4) * sw;
           transformed.z += cos(uTime * 1.1 + ph * 1.3 + transformed.x * 0.4) * sw * 0.7;
           ${leaf ? 'transformed += objectNormal * sin(uTime * 6.3 + dot(transformed, vec3(3.1, 1.7, 2.3)) + ph) * 0.025 * uWind * min(hgt, 1.0);' : ''}

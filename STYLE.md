@@ -223,8 +223,9 @@ over it, and the western comes through in the type and a few motifs, not in leat
   ground is painted in its own colour, near and far: tan decomposed granite, golden thatch (olive where it's greener,
   straw in the sun), lawn, leaf litter and bark mulch, warm granite, beach sand. Past the first few metres, dark wild
   ground takes the olive of the chaparral standing on it.
-- Ground never shows bare and flat: lawns are dense, wild ground is golden oats and brome, bushes in clumped stands,
-  pebbles and stones; lawn and garden edges fray and lawns have worn patches. The grass runs on past the near ring in
+- Ground never shows bare and flat: lawns are dense, wild ground is golden oats and brome (knee to thigh high, and
+  some on every patch of natural ground, not only where the photo reads as grass), bushes in clumped stands, pebbles
+  and stones; lawn and garden edges fray and lawns have worn patches. The grass runs on past the near ring in
   coarser rings of wider tufts (lawn to ~75 m, wild grass to ~300 m on High), so it never ends in a circle round you.
   Grass grows only where plants may: never on roads, tracks, courts, lots or campuses. Lawns are scanned Bermuda grass
   tufts; the wild grass mixes two scanned clumps with scanned dry stalks and brome rising out of it (golden seed heads).
@@ -236,6 +237,8 @@ over it, and the western comes through in the type and a few motifs, not in leat
   bigger shrubs behind it, never bare dirt; the curb in front is lined with parked cars.
 - Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
   crown; real meshes out to ~85 m on High.
+- Everything outdoors moves in the wind, each plant on its own phase, with gusts rolling across the land as waves:
+  grass, shrubs and trees near and far (the far trees sway like the near ones, so the hand-over doesn't jump).
 - Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.
 - The sky moves: clouds billow and drift, fair-weather cumulus come and go, and their shadows cross the ground.
 - Dusk is violet overhead and orange at the horizon (`C.duskTop`, `C.duskHor` in index.html), with pink-lit clouds.

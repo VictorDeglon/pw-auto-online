@@ -32,7 +32,7 @@ export function createSF(loader, hooks = {}) {
       if (S.loading.has(id)) return S.loading.get(id);
       const e = S.byIdMap.get(id); if (!e || S.failed.has(id)) return Promise.resolve(null); // a broken file isn't fetched again
       const p = new Promise(res => loader.load(`assets/sf/${e.f}`, g => { g.scene.animations = g.animations || []; res(g.scene); }, undefined, err => { console.warn('[sf]', id, err && err.message || err); res(null); }))
-        .then(scene => scene && e.k === 'car' ? slim(scene, hooks.onUploaded).then(() => scene, () => scene) : scene)
+        .then(scene => scene && e.k === 'car' ? slim(scene, hooks).then(() => scene, () => scene) : scene)
         .then(scene => { S.loading.delete(id); if (scene) { S.models.set(id, scene); S.last.set(id, performance.now()); } else S.failed.add(id); return scene; });
       p.then(() => {}); S.loading.set(id, p); return p;
     },
@@ -112,10 +112,20 @@ function cut(im, w, h) {
 // Once a car's texture is on the GPU its decoded copy (an ImageBitmap, ~1 MB at 512 px) is let go: a few hundred cars'
 // worth was ~370 MB held for nothing (nothing re-uploads them; a model loaded again brings fresh ones). onUploaded(t)
 // runs first, for whatever still wants the pixels (index.html: the far LOD's average colour).
-// (a decoded image two textures share is let go once both are up, and cut once for both)
-async function slim(root, onUploaded) {
-  const seen = new Set(), jobs = [], users = new Map(), cuts = new Map();
-  const free = t => { const im = t.image; t.onUpdate = null; if (onUploaded) try { onUploaded(t); } catch (e) { } t.image = null; const n = (users.get(im) || 1) - 1; users.set(im, n); if (n <= 0 && im && im.close) im.close(); };
+// The GLTF loader clones a texture for each use of one image (another sampler, base colour and emissive): the clones
+// share its Source, so letting go of one lets go of all. The first upload of any of them uploads the rest (upload(t),
+// just after that draw), and only then does the image go; before, a clone first drawn later (a lamp's glow, a nearer
+// LOD) found no pixels and drew blank.
+async function slim(root, hooks) {
+  const seen = new Set(), jobs = [], users = new Map(), cuts = new Map(), groups = new Map();
+  const free = t => {
+    const g = groups.get(t.source); if (!g || g.done) return; g.done = true;
+    for (const s of g.list) s.onUpdate = null;
+    Promise.resolve().then(() => {
+      for (const s of g.list) { if (s !== t && hooks.upload) try { hooks.upload(s); } catch (e) { } if (hooks.onUploaded) try { hooks.onUploaded(s); } catch (e) { } }
+      const im = t.image; t.image = null; const n = (users.get(im) || 1) - 1; users.set(im, n); if (n <= 0 && im && im.close) im.close();
+    });
+  };
   const texs = [];
   root.traverse(o => {
     for (const m of o.isMesh ? [].concat(o.material) : []) {
@@ -123,11 +133,12 @@ async function slim(root, onUploaded) {
       for (const k of ['map', 'emissiveMap', 'roughnessMap', 'metalnessMap', 'alphaMap']) { const t = m[k]; if (t && t.image && !seen.has(t)) { seen.add(t); texs.push(t); } }
     }
   });
-  for (const t of texs) {
-    const im = t.image, s = CAR_TEX / Math.max(im.width, im.height);
-    if (!(s < 1)) { if (im.close) { users.set(im, (users.get(im) || 0) + 1); t.onUpdate = free; } continue; }
+  for (const t of texs) { let g = groups.get(t.source); if (!g) groups.set(t.source, g = { list: [], done: false }); g.list.push(t); }
+  for (const [, g] of groups) {
+    const t = g.list[0], im = t.image, s = CAR_TEX / Math.max(im.width, im.height);
+    if (!(s < 1)) { if (im.close) { users.set(im, (users.get(im) || 0) + 1); for (const x of g.list) x.onUpdate = free; } continue; }
     let job = cuts.get(im); if (!job) { job = cut(im, Math.round(im.width * s), Math.round(im.height * s)); cuts.set(im, job); }
-    jobs.push(job.then(b => { if (b !== im && im.close) im.close(); t.image = b; t.needsUpdate = true; users.set(b, (users.get(b) || 0) + 1); t.onUpdate = free; }, () => { }));
+    jobs.push(job.then(b => { if (b !== im && im.close) im.close(); t.image = b; for (const x of g.list) { x.needsUpdate = true; x.onUpdate = free; } users.set(b, (users.get(b) || 0) + 1); }, () => { }));
   }
   await Promise.all(jobs);
 }

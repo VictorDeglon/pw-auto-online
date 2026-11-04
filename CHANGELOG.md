@@ -54,6 +54,11 @@ update you ship**, and add an entry here at the same time:
 - **Poway High's frontage:** a chain-link fence at the back of the sidewalk where the campus meets the street (with gaps
   for the campus's walks; solid, you can't walk or drive through it), brush and bigger shrubs behind it, and the curb in
   front lined with parked cars.
+- **Grass everywhere:** every patch of natural ground now grows wild oats and brome, not only where the aerial photo
+  reads as grass (the chaparral, the dry banks and the bare lots between houses were flat dirt and shrubs), taller (knee
+  to thigh high) and denser, near you and in the far rings out to the hills.
+- **Trees sway far off too:** distant trees moved not at all and snapped into motion as they turned into real models;
+  they now sway like the near ones, and gusts roll across trees and shrubs as waves, as they already did on the grass.
 - `tools/audit/ground-audit.js` (testing): walks the town chunk by chunk and lists where the terrain pokes through
   paving, where two paved surfaces fight, walls and fences without collision, and plants on roads or in buildings.
 - `?brick=4` (testing): runs the game as if on a computer four times slower, on the Potato preset.
