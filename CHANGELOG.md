@@ -8,7 +8,7 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
-## 0.12.2 (2026-11-03)
+## 0.12.3 (2026-11-03)
 
 - **Smooth on every computer:** driving fast through town on Medium (the same 750 m run), the median frame went from
   145 ms to 30-60 ms, the slowest 1 % from 2.1 s to 0.2-0.4 s and frames over a quarter of a second from 430 to
@@ -54,6 +54,14 @@ update you ship**, and add an entry here at the same time:
 - **Poway High's frontage:** a chain-link fence at the back of the sidewalk where the campus meets the street (with gaps
   for the campus's walks; solid, you can't walk or drive through it), brush and bigger shrubs behind it, and the curb in
   front lined with parked cars.
+- **Light in the air** (Medium and up, `src/volumetrics.js`): a mist lying over the land round you, lit by the sun
+  only where it gets through, so beams of light stream between the trunks of an oak grove, under branches, past roofs
+  and off ridges, from any angle, glowing gold toward a low sun and pale in the shade. It follows the hour and the
+  weather: thickest on a dawn with the marine layer (gone by nine), golden at sunset, faint at a clear noon, heavy in
+  fog and rain, dusty on a Santa Ana, beams gone under cloud, a faint glow by moonlight; it drifts inland on the sea
+  breeze. Each pixel marches its view ray through the shadow map at a quarter (Medium) or half (High, Ultra)
+  resolution and comes back to full along depth edges, so a trunk against a lit shaft stays sharp. `?vol=0` turns it
+  off (testing).
 - **Grass everywhere:** every patch of natural ground now grows wild oats and brome, not only where the aerial photo
   reads as grass (the chaparral, the dry banks and the bare lots between houses were flat dirt and shrubs), taller (knee
   to thigh high) and denser, near you and in the far rings out to the hills.

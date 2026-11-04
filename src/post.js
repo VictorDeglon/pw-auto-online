@@ -5,19 +5,22 @@
 //   3 realistic  no ink, no banding. Bloom from a mip chain at half resolution (lamps, headlights, sun glints glow),
 //                eye adaptation (the exposure follows the average brightness of the frame, smoothly, worked out on
 //                the GPU so nothing is read back), Unreal's filmic curve, a light grade, vignette and grain.
-//                Optional half-resolution ambient occlusion from the depth buffer (High and Ultra).
+//                Optional half-resolution ambient occlusion from the depth buffer (High and Ultra), and light in
+//                the air: shafts through a shadow-mapped mist (src/volumetrics.js; Medium and up).
 //   const post = createPost(THREE, renderer, camera, level, { msaa, ao })   post.render(scene, camera, night)
+//   vol: { steps, div, light() } the mist's march (steps, 1 / resolution) and the light whose shadow map it reads
 //   msaa: samples for the realistic look's HDR target (4 on High+). 0 = no MSAA, edge-directed AA in the composite
 //   instead (Medium: 4x MSAA cost ~2.5 ms a frame on the dev Mac, the edge AA a fraction of that).
 //   post.setLevel(n)   post.U.* (uniforms index.html sets: uDusk)   post.debug() -> what the eye adaptation sees
+import { createVolumetrics } from './volumetrics.js';
 export function createPost(THREE, renderer, camera, level = 2, opts = {}) {
-  const O = { msaa: 4, ao: false, ...opts };
+  const O = { msaa: 4, ao: false, vol: null, ...opts };
   const size = new THREE.Vector2();
   const webgl2 = renderer.capabilities.isWebGL2;
   let rt = null, rtKind = '';
   // ink and ambient occlusion read the depth texture. Ink has always run without MSAA (the outlines hide most of the
   // jaggies); the realistic look keeps 4x MSAA and three resolves the depth into the depth texture with the colour.
-  function wantKind() { return level === 3 ? (O.msaa && webgl2 ? 'm' + O.msaa : 's') + (O.ao ? 'd' : '') : level === 2 ? 'sd' : 'm4'; }
+  function wantKind() { return level === 3 ? (O.msaa && webgl2 ? 'm' + O.msaa : 's') + (O.ao || O.vol ? 'd' : '') : level === 2 ? 'sd' : 'm4'; }
   function makeTarget(kind) {
     renderer.getDrawingBufferSize(size);
     const t = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: kind[0] === 'm' && webgl2 ? parseInt(kind.slice(1)) : 0 });
@@ -259,14 +262,28 @@ function realistic(THREE, renderer, U, O, VS) {
       gl_FragColor = vec4(w > 0. ? s / w : c.x, c.y, 0., 1.);
     }`, blurU);
 
+  // ---- light in the air (src/volumetrics.js): needs the depth and the sun's shadow map
+  const VOL = O.vol && renderer.capabilities.isWebGL2 ? createVolumetrics(THREE, renderer, O.vol) : null;
+
   // ---- composite
   const CU = {
     tCol: U.tCol, uRes: U.uRes, uTime: U.uTime, uNight: U.uNight, uDusk: U.uDusk, tBloom: { value: null }, tExp: { value: null }, tAO: { value: null },
     uBloom: { value: 0.05 }, uBloomN: { value: 1 / MIPS }, uExpK: { value: 1 }, uAO: { value: 0 }, uDbg: { value: 0 }, uAA: { value: 0 },
     uSun: U.uSun, uGrade: U.uGrade, tDepC: { value: null }, uIPV: { value: new THREE.Matrix4() }, uCloudSh: U.uCloudSh, uCloudT: U.uCloudT, uCloudCov: U.uCloudCov,
+    tVol: { value: null }, uVol: { value: new THREE.Vector4(0, 1, 0.1, 1000) }, // on, resolution x, y, ...: near and far in uVolZ
+    uVolZ: { value: new THREE.Vector2(0.1, 1000) },
   };
   const comp = sm(/* glsl */`
-    uniform sampler2D tCol, tBloom, tExp, tAO, tDepC; uniform vec2 uRes; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA, uGrade, uCloudT, uCloudCov; uniform vec3 uSun; uniform vec4 uCloudSh; uniform mat4 uIPV;
+    uniform sampler2D tCol, tBloom, tExp, tAO, tDepC, tVol; uniform vec2 uRes, uVolZ; uniform float uTime, uNight, uDusk, uBloom, uBloomN, uExpK, uAO, uDbg, uAA, uGrade, uCloudT, uCloudCov; uniform vec3 uSun; uniform vec4 uCloudSh, uVol; uniform mat4 uIPV;
+    float lz(float d) { float z = d * 2. - 1.; return 2. * uVolZ.x * uVolZ.y / (uVolZ.y + uVolZ.x - z * (uVolZ.y - uVolZ.x)); }
+    vec4 volAt(vec2 uv) { // the mist's low-resolution result brought up to this pixel: bilinear, but each of the 4 texels
+      // counts only as much as its depth matches this pixel's, so a trunk against a lit shaft keeps a clean edge
+      vec2 g = uv * uVol.yz - .5, b = floor(g), f = g - b; float z0 = lz(texture2D(tDepC, uv).r);
+      vec4 s = vec4(0.); float w = 0.;
+      #define VTAP(ox, oy, wb) { vec2 tc = (b + vec2(ox, oy) + .5) / uVol.yz; float k = (wb) / (1e-3 + abs(lz(texture2D(tDepC, tc).r) - z0) / z0 * 12.); s += texture2D(tVol, tc) * k; w += k; }
+      VTAP(0., 0., (1. - f.x) * (1. - f.y)) VTAP(1., 0., f.x * (1. - f.y)) VTAP(0., 1., (1. - f.x) * f.y) VTAP(1., 1., f.x * f.y)
+      return w > 1e-6 ? s / w : texture2D(tVol, uv);
+    }
     float cH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float cN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(cH(i), cH(i + vec2(1., 0.)), f.x), mix(cH(i + vec2(0., 1.)), cH(i + vec2(1., 1.)), f.x), f.y); }
     float cF(vec2 p) { float v = 0., a = .5; for (int i = 0; i < 4; i++) { v += a * cN(p); p = p * 2.03 + 17.1; a *= .5; } return v; }
@@ -294,6 +311,7 @@ function realistic(THREE, renderer, U, O, VS) {
       }
       col = max(col + (col - (cE + cW + cN + cS) * .25) * sharp, 0.);                    // light sharpening
       if (uAO > 0.) col *= mix(1., texture2D(tAO, vUv).r, uAO);
+      if (uVol.x > 0.) { vec4 v = volAt(vUv); col = col * v.a + v.rgb; }                 // light in the air, and what it hides
       col = mix(col, texture2D(tBloom, vUv).rgb * uBloomN, uBloom);                     // energy-preserving bloom
       float ex = exp2(texture2D(tExp, vec2(.5)).r) * uExpK;
       col *= ex;
@@ -312,7 +330,7 @@ function realistic(THREE, renderer, U, O, VS) {
         // the sun gets through, trees, roofs and hills block it), so rays stream past whatever stands in front of the sun
         vec2 dl = (uSun.xy - vUv) * (1. / 28.); vec2 q = vUv; float dec = 1.; vec3 acc = vec3(0.);
         for (int i = 0; i < 28; i++) { q += dl; vec3 sm = texture2D(tCol, clamp(q, 0., 1.)).rgb * ex; float b = max(dot(sm, vec3(.2126, .7152, .0722)) - 1.1, 0.); acc += min(sm, vec3(8.)) * b * dec; dec *= .955; }
-        col += acc * (uSun.z * .022) * vec3(1., .82, .58);
+        col += acc * (uSun.z * (uVol.x > 0. ? .011 : .022)) * vec3(1., .82, .58);       // (half as strong over the mist's own shafts)
       }
       col *= mix(vec3(1.), vec3(1.1, 1., .86), uDusk);                                   // golden-hour white balance
       vec3 t = filmic(col);
@@ -337,7 +355,8 @@ function realistic(THREE, renderer, U, O, VS) {
       t *= mix(vec3(1.), vec3(.66, .58, .5), (.14 + .1 * uGrade) * smoothstep(.1, .62, r2 * 1.6) / .4); // vignette, burnt at the edges
       t += (h(vUv * uRes) - .5) * (.022 + .012 * uGrade);                                // grain (and no banding)
       gl_FragColor = vec4(t, 1.);
-      if (uDbg > 0.) gl_FragColor = vec4(vec3(uAO > 0. ? texture2D(tAO, vUv).r : 1.), 1.); // the occlusion alone
+      if (uDbg > 1.5) gl_FragColor = vec4(srgb(clamp(filmic(volAt(vUv).rgb * ex), 0., 1.)), 1.); // the light in the air alone
+      else if (uDbg > 0.) gl_FragColor = vec4(vec3(uAO > 0. ? texture2D(tAO, vUv).r : 1.), 1.); // the occlusion alone
     }`, CU);
 
   const _v4 = new THREE.Vector4();
@@ -374,6 +393,11 @@ function realistic(THREE, renderer, U, O, VS) {
       } else CU.uAO.value = 0;
       CU.tBloom.value = mips[0].texture; CU.tExp.value = expT[expI].texture; CU.uAA.value = rt.samples ? 0 : 1;
       CU.tDepC.value = rt.depthTexture || null; if (!rt.depthTexture) CU.uCloudSh.value.w = 0; else CU.uIPV.value.copy(cam.matrixWorld).multiply(cam.projectionMatrixInverse);
+      const L = VOL && rt.depthTexture && O.vol.light && O.vol.light();
+      if (L && L.castShadow && L.shadow.map && VOL.U.uMed.value.x > 1e-6) {
+        const vt = VOL.render(rt.depthTexture, cam, size, L);
+        CU.tVol.value = vt.texture; CU.uVol.value.set(1, vt.width, vt.height, 0); CU.uVolZ.value.set(cam.near, cam.far);
+      } else CU.uVol.value.x = 0;
       CU.uBloom.value = 0.045 + night * 0.035;
       pass(comp, null);
     },
@@ -383,6 +407,6 @@ function realistic(THREE, renderer, U, O, VS) {
       const f = half ? THREE.DataUtils.fromHalfFloat : x => x;
       return { ev: +f(b[0]).toFixed(3), meanLog2Lum: +f(b[1]).toFixed(3), target: +f(b[2]).toFixed(3), base: +adaptU.uBase.value.toFixed(3) };
     },
-    U: { CU, adaptU, aoU },
+    U: { CU, adaptU, aoU }, VOL,
   };
 }

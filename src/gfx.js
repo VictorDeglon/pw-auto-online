@@ -9,6 +9,7 @@
 //   ao      ambient occlusion in the realistic look (half resolution, from depth)
 //   csm     shadow cascades (src/cascades.js; 0 = one shadow map around the player)
 //   lod     how far detail reaches (a multiplier): cars' detail steps, street furniture, cars drawn at all
+//   vol     steps of the light-in-the-air march (src/volumetrics.js; 0 = none), volDiv its resolution (1 / n)
 // With nothing chosen in Settings the preset follows the machine (makeGovernor): one that can't hold its frame rate even
 // at the lowest render scale steps down a preset, at once for what can change while playing and fully from the next
 // load; one that ran with plenty of headroom gets a step back up (never past what detectPreset guessed) next time.
@@ -16,15 +17,15 @@ const KEY = 'pw-auto-online-gfx', KEY_AUTO = 'pw-auto-online-gfx-auto';
 
 export const PRESETS = {
   potato: { label: 'Potato', note: 'Old laptops and school Chromebooks. No shadows or grass, short view, few people.',
-    scale: 0.6, minScale: 0.45, aa: false, shadows: 0, grass: 0, view: 750, peds: 26, traffic: 18, parked: 14, pool: 5, pedDraw: 110, veg: 900, fps: 30, look: 0, ibl: 0, atmos: 0, ao: 0, csm: 0, lod: 0.6 },
+    scale: 0.6, minScale: 0.45, aa: false, shadows: 0, grass: 0, view: 750, peds: 26, traffic: 18, parked: 14, pool: 5, pedDraw: 110, veg: 900, fps: 30, look: 0, ibl: 0, atmos: 0, ao: 0, csm: 0, lod: 0.6, vol: 0 },
   low: { label: 'Low', note: 'Integrated graphics. Light grass, no shadows.',
-    scale: 0.8, minScale: 0.55, aa: false, shadows: 0, grass: 0.35, view: 1100, peds: 44, traffic: 34, parked: 26, pool: 8, pedDraw: 150, veg: 1400, fps: 40, look: 1, ibl: 0, atmos: 0, ao: 0, csm: 0, lod: 0.8 },
+    scale: 0.8, minScale: 0.55, aa: false, shadows: 0, grass: 0.35, view: 1100, peds: 44, traffic: 34, parked: 26, pool: 8, pedDraw: 150, veg: 1400, fps: 40, look: 1, ibl: 0, atmos: 0, ao: 0, csm: 0, lod: 0.8, vol: 0 },
   medium: { label: 'Medium', note: 'Most laptops. Shadows on, grass at medium density, sky reflections, bloom and haze.',
-    scale: 1, minScale: 0.7, aa: true, shadows: 1024, grass: 0.9, view: 1500, peds: 64, traffic: 48, parked: 42, pool: 12, pedDraw: 200, veg: 2000, fps: 50, look: 3, msaa: 0, ibl: 128, atmos: 1, ao: 0, csm: 0, lod: 1 },
+    scale: 1, minScale: 0.7, aa: true, shadows: 1024, grass: 0.9, view: 1500, peds: 64, traffic: 48, parked: 42, pool: 12, pedDraw: 200, veg: 2000, fps: 50, look: 3, msaa: 0, ibl: 128, atmos: 1, ao: 0, csm: 0, lod: 1, vol: 12, volDiv: 4 },
   high: { label: 'High', note: 'Gaming laptops and desktops. Adds ambient occlusion and sharper shadows near you.',
-    scale: 1.5, minScale: 0.85, aa: true, shadows: 2048, grass: 1.4, view: 2300, peds: 80, traffic: 60, parked: 56, pool: 14, pedDraw: 260, veg: 2400, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2, lod: 1.3 },
+    scale: 1.5, minScale: 0.85, aa: true, shadows: 2048, grass: 1.4, view: 2300, peds: 80, traffic: 60, parked: 56, pool: 14, pedDraw: 260, veg: 2400, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2, lod: 1.3, vol: 18, volDiv: 2 },
   ultra: { label: 'Ultra', note: 'Strong desktop GPUs. Dense grass, crisp shadows, longest view.',
-    scale: 2, minScale: 1, aa: true, shadows: 4096, grass: 2, view: 2600, peds: 96, traffic: 72, parked: 72, pool: 20, pedDraw: 320, veg: 2600, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2, lod: 1.6 },
+    scale: 2, minScale: 1, aa: true, shadows: 4096, grass: 2, view: 2600, peds: 96, traffic: 72, parked: 72, pool: 20, pedDraw: 320, veg: 2600, fps: 55, look: 3, msaa: 4, ibl: 256, atmos: 1, ao: 1, csm: 2, lod: 1.6, vol: 26, volDiv: 2 },
 };
 export const ORDER = ['potato', 'low', 'medium', 'high', 'ultra'];
 

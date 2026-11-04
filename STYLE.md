@@ -21,7 +21,15 @@ Real Poway, at real scale, in sun-baked colour. Nothing toy-like, nothing plasti
 - **Shade:** the sky light in shade is half-saturated (`ENV.sat` 0.5 in `src/skyenv.js`) and the hemisphere fill is the
   horizon colour 55% of the way to warm white, so shadows are soft blue-grey at noon, never saturated blue or violet.
 - **Light shafts:** from the sun's bright pixels, 28 steps, warm (1, 0.82, 0.58). They fade off screen, at sunset,
-  under cloud and at night.
+  under cloud and at night. Half strength where there's light in the air (below).
+- **Light in the air** (`src/volumetrics.js`; Medium and up): a mist lying over the land round you, lit by the sun
+  only where the shadow map lets it through, so beams stream between trunks, under branches, past roofs and off
+  ridges from any angle, glowing toward a low sun (a forward lobe, g 0.7, 0.82 at golden hour) and pale with the
+  sky's light in the shade. It pools low (thinning over ~30 m above the ground round you; ~75 m on a misty dawn) and
+  drifts with the wind in slow patches (inland on the sea breeze, out to sea on a Santa Ana). How much, by the hour
+  and the weather: thickest on a dawn with the marine layer (burnt off by nine), gold at golden hour, faint at a clear
+  noon, heavy in fog and rain, dusty on a Santa Ana; under cloud the beams go and the mist stays. By night the moon
+  lights it, faintly. It reaches 120 m on Medium and 230 m on High and Ultra (the far shadow cascade).
 - **Dust** (`src/fx/dust.js`): forward-scattered motes. Most visible looking into the sun, thicker over dirt than
   lawns, none in rain or at night.
 - **World palette:** stucco creams and tans, terracotta and concrete tile, grey sidewalks, mid-grey sun-bleached
@@ -87,7 +95,8 @@ over it, and the western comes through in the type and a few motifs, not in leat
 - Every preset looks the same up close. What changes with the preset is how far detail reaches (`lod`: car detail
   steps, street furniture, cars at all), grass and ground-detail density, the view distance, shadow and texture sizes
   (impostor atlases 1024/1536/2048 px on Potato/Low/Medium, full size above; the street-sign sheet 2048 px on Medium
-  and below), and how many people and cars are about.
+  and below), how fine the light in the air is (none on Potato and Low; 12 steps at quarter resolution on Medium, 18
+  and 26 at half on High and Ultra), and how many people and cars are about.
 - With nothing picked in Settings the preset follows the computer: one that can't keep up even at the lowest render
   scale steps down a preset (with a note saying so), and one with plenty of headroom gets a step back up next time.
 - Nothing is drawn that can't be seen: the town behind the main menu's painting, street furniture past its distance,
@@ -231,7 +240,7 @@ over it, and the western comes through in the type and a few motifs, not in leat
   tufts; the wild grass mixes two scanned clumps with scanned dry stalks and brome rising out of it (golden seed heads).
   Gazania (yellow and orange daisies) in beds round some foundation shrubs and among the ice plant on lot and freeway
   banks. Grass and the ground's pebbles, stones and dead
-  branches grow denser on stronger presets (Medium and up denser than before 0.12.2); none is drawn behind the camera.
+  branches grow denser on stronger presets (Medium and up denser than before 0.12.3); none is drawn behind the camera.
   Near you (~25 m) the bare ground carries scanned stones and dead twigs lying on it, thickest where it's bare.
 - A school campus meets its street behind a galvanized chain-link fence at the back of the sidewalk, with brush and
   bigger shrubs behind it, never bare dirt; the curb in front is lined with parked cars.
