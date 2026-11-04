@@ -33,8 +33,12 @@ update you ship**, and add an entry here at the same time:
 - **Trees no longer vanish up close:** the oak's close-up model was broken (a texture slot pointing at nothing), so
   oaks disappeared as you came up to them and fell over as the old stand-in; it loads again, and a plant whose
   close-up model fails now keeps its far look instead of vanishing.
-- **More grass and ground detail:** lawns are scanned Bermuda grass, the wild grass mixes two scanned clumps, and
+- **More grass and ground detail:** lawns are scanned Bermuda grass, the wild grass mixes two scanned clumps with
+  scanned dry stalks and brome rising out of it (golden seed heads; ambientCG Foliage002 and Foliage003, CC0), and
   grass, pebbles, stones and dead branches grow denser on Medium and up.
+- **Gazania** (Poly Haven, CC0), the yellow and orange daisy of SoCal front beds and banks: in beds round some of the
+  houses' foundation shrubs, among the ice plant on the banks round the parking lots and shopping centres, and here and
+  there along the freeway banks (about 43,000 clumps).
 - `?brick=4` (testing): runs the game as if on a computer four times slower, on the Potato preset.
 
 ## 0.12.1 (2026-11-03)

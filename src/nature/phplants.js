@@ -2,15 +2,18 @@
 // fine-leaved wild bush that reads as California buckwheat and sage among the chaparral, ice plant for the banks along
 // the freeways, stones and pebble scatters for the bare dirt, and dead branches under the oaks. Each model is merged
 // into one geometry (a material group per part, standing on y = 0, centred) and baked into impostors with the grown
-// trees' baker (src/nature/proctrees.js speciesFrom), so thousands of them cost a handful of instanced draws.
+// trees' baker (src/nature/proctrees.js speciesFrom), so thousands of them cost a handful of instanced draws. Gazania,
+// the yellow and orange daisy every SoCal bank and front bed is planted with, comes as one model of eight plants: each
+// is a variant of its own (split).
 //   const lib3 = await loadPHPlants(THREE, gltfLoader, renderer)   -> Map(name -> species): shrub, bush, iceplant,
-//                                                                    pebbles, stone, branches
+//                                                                    gazania, pebbles, stone, branches
 import { speciesFrom } from './proctrees.js';
 
 const SETS = {
   shrub: { ids: ['shrub_02', 'shrub_03', 'shrub_04'], trans: 0.2, sway: 0.01 },
   bush: { ids: ['wild_rooibos_bush'], trans: 0.25, sway: 0.014 },
   iceplant: { ids: ['crystalline_iceplant'], trans: 0.1, sway: 0 },
+  gazania: { ids: ['flower_gazania'], trans: 0.15, sway: 0.006, split: 8 },
   pebbles: { ids: ['namaqualand_stones_01'], trans: 0, sway: 0 },
   stone: { ids: ['stone_01', 'rock_07'], trans: 0, sway: 0 },
   branches: { ids: ['dry_branches_medium_01'], trans: 0, sway: 0 },
@@ -52,7 +55,13 @@ function mergeScene(THREE, root) {
 export async function loadPHPlants(THREE, gltfLoader, renderer, base = 'assets/nature/polyhaven/') {
   const S = {};
   await Promise.all(Object.entries(SETS).map(async ([name, set]) => {
-    const list = (await Promise.all(set.ids.map(id => gltfLoader.loadAsync(`${base}${id}/${id}_1k.gltf`).then(g => mergeScene(THREE, g.scene)).catch(e => { console.warn('[polyhaven]', id, e); return null; })))).filter(Boolean);
+    const parts = g => { // the model, or (split) each of its first meshes on its own
+      if (!set.split) return [g.scene];
+      g.scene.updateMatrixWorld(true); const out = [];
+      g.scene.traverse(o => { if (!o.isMesh || out.length >= set.split) return; const m = o.clone(), r = new THREE.Group(); o.matrixWorld.decompose(m.position, m.quaternion, m.scale); r.add(m); out.push(r); });
+      return out;
+    };
+    const list = (await Promise.all(set.ids.map(id => gltfLoader.loadAsync(`${base}${id}/${id}_1k.gltf`).then(g => parts(g).map(r => mergeScene(THREE, r))).catch(e => { console.warn('[polyhaven]', id, e); return []; })))).flat().filter(Boolean);
     if (list.length) S[name] = { trans: set.trans, sway: set.sway, list };
   }));
   if (!Object.keys(S).length) return new Map();

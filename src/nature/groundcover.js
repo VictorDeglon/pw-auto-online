@@ -201,14 +201,26 @@ function leafCard(sheet, r) {
 }
 export async function loadCards(THREE, base = 'assets/pbr/atlas/', scanned = {}) { // scanned.tall: a scanned grass clump card (src/nature/phplants.js grassCard)
   const lum = im => { const d = im.data; let s = 0, n = 0; const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; for (let i = 0; i < d.length; i += 4 * 7) if (d[i + 3] > 128) { s += 0.299 * lin(d[i]) + 0.587 * lin(d[i + 1]) + 0.114 * lin(d[i + 2]); n++; } return n ? s / n : 0.2; };
-  const [lawn, oats, sheet] = await Promise.all([atlasImage(base, 'foliage001'), atlasImage(base, 'foliage004'), atlasImage(base, 'leafset013')]);
+  const [lawn, oats, sheet, dry, brome] = await Promise.all([atlasImage(base, 'foliage001'), atlasImage(base, 'foliage004'), atlasImage(base, 'leafset013'),
+    atlasImage(base, 'foliage002').catch(() => null), atlasImage(base, 'foliage003').catch(() => null)]); // dry stalks with seed panicles, and brome (ambientCG, CC0)
   const oatsTop = new ImageData(new Uint8ClampedArray(oats.data.buffer.slice(0, oats.width * (oats.height >> 1) * 4)), oats.width, oats.height >> 1); // the top row of seed heads
   // wild grass: a clump of blades with oat heads standing out of it (the oats alone read as bare sticks)
   const tall = (() => { const W = 1024, H = 512, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d', { willReadFrequently: true });
     const bl = imageCanvas(lawn), oc = imageCanvas(oatsTop); g.filter = 'saturate(0.55) sepia(0.35) brightness(0.95)'; g.drawImage(bl, 0, H * 0.18, W, H * 0.82); g.drawImage(bl, W * 0.12, H * 0.3, W * 0.8, H * 0.7); g.filter = 'none'; g.drawImage(oc, 0, 0, W, H);
     return g.getImageData(0, 0, W, H); })();
-  const withOats = im => { const c = imageCanvas(im), g = c.getContext('2d', { willReadFrequently: true }); g.globalAlpha = 0.85; g.drawImage(imageCanvas(oatsTop), 0, 0, c.width, c.height * 0.62); return g.getImageData(0, 0, c.width, c.height); }; // the scanned tuft with oat heads standing out of it
-  const brush = leafCard(imageCanvas(sheet), rng(23)), tall2 = scanned.tall ? withOats(scanned.tall) : tall, lawn2 = scanned.lawn || lawn; // scanned.lawn: Bermuda grass tufts
+  const withOats = im => { const c = imageCanvas(im), g = c.getContext('2d', { willReadFrequently: true }); g.globalAlpha = 0.85; g.drawImage(imageCanvas(oatsTop), 0, 0, c.width, c.height * 0.62); return g.getImageData(0, 0, c.width, c.height); }; // the scanned tuft with oat heads standing out of i
+  // or, with the scanned stalks in: golden panicles and brome rising out of the tuft (each sheet is four plants side by
+  // side; brome's roots are cut off), behind and in front of it
+  const withStalks = im => {
+    const c = imageCanvas(im), g = c.getContext('2d', { willReadFrequently: true }), W = c.width, H = c.height, r = rng(57), dc = imageCanvas(dry), bc = brome ? imageCanvas(brome) : null;
+    const stalk = (front) => { const useB = bc && r() < 0.35, src = useB ? bc : dc, k = Math.floor(r() * 4), sw = src.width / 4, sh = src.height * (useB ? 0.8 : 1), h = H * (0.72 + r() * 0.3), w = h * sw / sh;
+      g.globalAlpha = front ? 1 : 0.9; g.drawImage(src, k * sw, 0, sw, sh, (0.04 + r() * 0.92) * W - w / 2, H - h, w, h); };
+    g.clearRect(0, 0, W, H); for (let i = 0; i < 6; i++) stalk(false); // behind the tuft
+    g.globalAlpha = 1; g.drawImage(imageCanvas(im), 0, 0);
+    for (let i = 0; i < 5; i++) stalk(true); // and some in front
+    return g.getImageData(0, 0, W, H);
+  };t
+  const brush = leafCard(imageCanvas(sheet), rng(23)), tall2 = scanned.tall ? (dry ? withStalks(scanned.tall) : withOats(scanned.tall)) : tall, lawn2 = scanned.lawn || lawn; // scanned.lawn: Bermuda grass tufts
   return { lawn: cardTex(THREE, lawn2), oats: cardTex(THREE, tall2), brush: cardTex(THREE, brush), lum: [lum(lawn2), lum(brush), lum(tall2)] };
 }
 

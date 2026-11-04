@@ -24,7 +24,7 @@ SETS = {
   # bark, wood
   'bark_gum': ('ph', 'bark_bluegum', '1k'), 'bark_plane': ('ph', 'bark_platanus', '1k'), 'bark': ('ph', 'bark_brown_02', '1k'), 'wood': ('ph', 'wood_planks_grey', '1k'),
 }
-ATLAS = ['Foliage001', 'Foliage004', 'Foliage006', 'Foliage007', # scanned grass blades and wild-oat seed heads (colour + opacity)
+ATLAS = ['Foliage001', 'Foliage002', 'Foliage003', 'Foliage004', 'Foliage006', 'Foliage007', # scanned grass blades, dry stalks with seed heads and wild oats (colour + opacity)
          'LeafSet001', 'LeafSet002', 'LeafSet013', 'LeafSet020', 'LeafSet022', 'LeafSet024', 'LeafSet025'] # scanned leaves the tree generator builds twigs from
 
 def get(url):

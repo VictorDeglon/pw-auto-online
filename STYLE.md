@@ -227,7 +227,9 @@ over it, and the western comes through in the type and a few motifs, not in leat
   pebbles and stones; lawn and garden edges fray and lawns have worn patches. The grass runs on past the near ring in
   coarser rings of wider tufts (lawn to ~75 m, wild grass to ~300 m on High), so it never ends in a circle round you.
   Grass grows only where plants may: never on roads, tracks, courts, lots or campuses. Lawns are scanned Bermuda grass
-  tufts; the wild grass mixes two scanned clumps under its oat heads. Grass and the ground's pebbles, stones and dead
+  tufts; the wild grass mixes two scanned clumps with scanned dry stalks and brome rising out of it (golden seed heads).
+  Gazania (yellow and orange daisies) in beds round some foundation shrubs and among the ice plant on lot and freeway
+  banks. Grass and the ground's pebbles, stones and dead
   branches grow denser on stronger presets (Medium and up denser than before 0.12.2); none is drawn behind the camera.
 - Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
   crown; real meshes out to ~85 m on High.
