@@ -1157,12 +1157,13 @@ function progress(msg) {
   DL.msg = msg; showProgress();
 }
 const texLoader = new THREE.TextureLoader(), gltfLoader = new GLTFLoader();
+const _texMean = new WeakMap(); // texMean's cache (up here: car textures can go up, and let go of their pixels, before the car code below has run)
 gltfLoader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/')); // the Sketchfab models' meshes are Draco-packed
 { // no model comes in see-through: a material with transmission makes three draw the whole scene once more, every frame it's in view
   const parse = gltfLoader.parse.bind(gltfLoader);
   gltfLoader.parse = (data, path, onLoad, onError) => parse(data, path, g => { g.scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) if (m.transmission) m.transmission = 0; }); onLoad(g); }, onError);
 }
-const SF = createSF(gltfLoader, { onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge)
+const SF = createSF(gltfLoader, { onUploaded: t => texMean(t), onUnload: id => { // nothing uses it any more: its template's merged copies go too (sfMerge); onUploaded: a texture's last look at its pixels (sfFar)
   const t = carProto.get('sf-' + id); carProto.delete('sf-' + id); if (!t) return;
   for (const root of [t.body, ...t.wheels.map(w => w.mesh)]) root.traverse(o => { if (o.isMesh) { o.geometry.dispose(); if (o.material.name === 'Plain' || o.material.userData.own) o.material.dispose(); } });
 } });
@@ -3113,7 +3114,11 @@ function buildSignAtlas() {
   SIGN.num = []; g.textAlign = 'center'; g.textBaseline = 'middle';
   for (let i = 0; i < 256; i++) { const x = (i % 32) * 128, y = 3600 + Math.floor(i / 32) * 32, nn = 12000 + Math.floor(Math.abs(Math.sin(i * 91.7) * 1e4)) % 6000 + (i % 2);
     g.fillStyle = '#ecebe6'; g.fillRect(x + 4, y + 3, 120, 26); g.fillStyle = '#121212'; g.font = `bold 23px ${F}`; g.fillText(String(nn), x + 64, y + 17, 112); SIGN.num.push([x, y, 128, 32]); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.flipY = true; SIGN.tex = t;
+  // drawn at 4096 (the uvs stay in its pixels); Medium and below upload it at 2048 (a quarter of the memory, signs still
+  // sharp at reading distance), and the canvas lets go of its pixels once they're on the GPU (64 MB at 4096)
+  let src = c; const cap = { potato: 1024, low: 2048, medium: 2048 }[GFX.id]; if (cap) { src = document.createElement('canvas'); src.width = src.height = cap; const g2 = src.getContext('2d'); g2.imageSmoothingQuality = 'high'; g2.drawImage(c, 0, 0, cap, cap); c.width = c.height = 1; }
+  const t = new THREE.CanvasTexture(src); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.flipY = true; SIGN.tex = t;
+  t.onUpdate = () => { t.onUpdate = null; src.width = src.height = 1; };
   M.sign = new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.1, vertexColors: true });
   M.sign.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
     if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.47, 0.48, 0.49) * (0.9 + 0.1 * fract(sin(dot(floor(vMapUv * 900.0), vec2(12.9898, 78.233))) * 43758.5453)); // the back: bare galvanised aluminium`); };
@@ -3566,7 +3571,8 @@ async function plantNature() {
     for (let k = 0; k < col.length; k += 4) { const ti = treeC.length / 2; treeC.push(col[k], col[k + 1]); gridAdd(col[k], col[k + 1], col[k], col[k + 1], 't', ti); addProp({ kind: 'tree', x: col[k], z: col[k + 1], ti, veg: [col[k + 2], col[k + 3]], alive: true }); }
   };
   // ---- brush, bushes, pebbles, stones and dead branches over the cover map (the photo's brush and bare dirt)
-  const caps = { scruboak: 220000 * Q, bush: 200000 * Q, pebbles: 140000 * Q, stone: 60000 * Q, branches: 20000 * Q }, sc = NATURE.scatter = { scruboak: 0, bush: 0, pebbles: 0, stone: 0, branches: 0 };
+  const FEAT = { potato: 0.6, low: 0.8, medium: 1.3, high: 1.7, ultra: 2.2 }[GFX.id] || 1, fs = 1 / Math.sqrt(FEAT); // ground detail (pebbles, stones, dead branches) by preset: denser on stronger machines
+  const caps = { scruboak: 220000 * Q, bush: 200000 * Q, pebbles: 140000 * Q * FEAT, stone: 60000 * Q * FEAT, branches: 20000 * Q * FEAT }, sc = NATURE.scatter = { scruboak: 0, bush: 0, pebbles: 0, stone: 0, branches: 0 };
   const wild = (x, z) => offLimits(x, z, 2) || ctx.built(x, z) >= 2, bare = c => { const g = c[0] / 255, b = c[1] / 255, t = c[3] / 255; return (1 - g) * (1 - b * 0.8) * (1 - t * 0.7); };
   const plantB = async t => {
     t.b = true; const C = NATURE.cover, b = [t.i * TS, t.j * TS, (t.i + 1) * TS, (t.j + 1) * TS];
@@ -3575,10 +3581,10 @@ async function plantNature() {
     sc.bush += await scatterOnCover(C, V, groundAt, 'bush', b, { step: 6, cap: caps.bush - sc.bush, seed: seedOf(t, 4), size: [0.5, 1.9], sink: 0.1, reject: wild, clumped: true,
       want: c => { const br = c[1] / 255, tl = c[3] / 255; return br > 0.12 ? Math.min(0.9, br * 0.7 + tl * 0.15) : tl > 0.4 ? 0.12 : 0; }, tint: (br, dry) => [0.92 * br * (1 + dry * 0.25), 0.9 * br, 0.74 * br * (1 - dry * 0.2)] });
     // bare ground isn't bare: granite pebbles and stones on the dirt out of town
-    sc.pebbles += await scatterOnCover(C, V, groundAt, 'pebbles', b, { step: 6, cap: caps.pebbles - sc.pebbles, seed: seedOf(t, 5), size: [0.9, 2.2], byWidth: true, sink: 0.25, reject: wild, want: c => Math.max(0, bare(c) - 0.35) * 0.9 });
-    sc.stone += await scatterOnCover(C, V, groundAt, 'stone', b, { step: 9, cap: caps.stone - sc.stone, seed: seedOf(t, 6), size: [0.15, 0.7], sink: 0.3, reject: wild, want: c => Math.max(0, bare(c) - 0.2) * 0.5 + (c[1] / 255) * 0.08,
+    sc.pebbles += await scatterOnCover(C, V, groundAt, 'pebbles', b, { step: 6 * fs, cap: caps.pebbles - sc.pebbles, seed: seedOf(t, 5), size: [0.9, 2.2], byWidth: true, sink: 0.25, reject: wild, want: c => Math.max(0, bare(c) - 0.35) * 0.9 });
+    sc.stone += await scatterOnCover(C, V, groundAt, 'stone', b, { step: 9 * fs, cap: caps.stone - sc.stone, seed: seedOf(t, 6), size: [0.15, 0.7], sink: 0.3, reject: wild, want: c => Math.max(0, bare(c) - 0.2) * 0.5 + (c[1] / 255) * 0.08,
       tint: br => [br * 1.0, br * 0.94, br * 0.86] });
-    sc.branches += await scatterOnCover(C, V, groundAt, 'branches', b, { step: 14, cap: caps.branches - sc.branches, seed: seedOf(t, 7), size: [1.2, 2.4], byWidth: true, sink: 0.05, reject: wild, want: c => (c[1] / 255) * 0.18 });
+    sc.branches += await scatterOnCover(C, V, groundAt, 'branches', b, { step: 14 * fs, cap: caps.branches - sc.branches, seed: seedOf(t, 7), size: [1.2, 2.4], byWidth: true, sink: 0.05, reject: wild, want: c => (c[1] / 255) * 0.18 });
   };
   const show = async () => { const added = V.flush(true); if (added.length) await showCompiled(added.map(m => (m.visible = true, m))); };
   const byDistance = () => { const f = focusPos(); return [...tiles.values()].map(t => [Math.hypot((t.i + 0.5) * TS - f.x, (t.j + 0.5) * TS - f.z), t]).sort((a, b) => a[0] - b[0]); };
@@ -3631,8 +3637,9 @@ async function plantNature() {
     } catch (e) { console.error('[nature] cover map', e); }
   }
   if (NATURE.cover) {
-    const tallCard = await grassCard(THREE, gltfLoader, renderer, 'grass_medium_01').catch(() => null); // a scanned wild grass clump (Poly Haven CC0)
-    const cards = await loadCards(THREE, undefined, { tall: tallCard }).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
+    const [tallCard, lawnCard] = await Promise.all([grassCard(THREE, gltfLoader, renderer, ['grass_medium_01', 'grass_medium_02']).catch(() => null), // scanned wild grass clumps, two kinds mixed (Poly Haven CC0)
+      grassCard(THREE, gltfLoader, renderer, 'grass_bermuda_01', 512, 256, undefined, 46).catch(() => null)]); // and Bermuda grass for the lawns
+    const cards = await loadCards(THREE, undefined, { tall: tallCard, lawn: lawnCard }).catch(e => { console.warn('[nature] scanned grass cards', e); return null; });
     const before = new Set(scene.children);
     NATURE.gc = new GroundCover(THREE, scene, NATURE.cover, groundAt, NATURE.U, { quality: GRASS_Q, cards });
     const gcNew = sceneSince(before); for (const m of gcNew) m.visible = false; await showCompiled(gcNew.map(m => (m.visible = true, m)));
@@ -4223,7 +4230,7 @@ function updateLazy(budget) { // every frame: run the nearest pending chunk buil
 }
 // which chunks are wanted (called with the chunk visibility pass, twice a second)
 function planLazy(fx, fz, want = GFX.view + 200) {
-  const drop = GFX.view + 1200, add = [];
+  const drop = GFX.view + 600, add = []; // (was + 1200: a long drive kept ~25 chunks out past the view, 120 MB of them never drawn)
   for (const ch of chunks.values()) {
     const L = ch.lazy; if (!L) continue;
     const d = Math.max(0, hyp(ch.cx - fx, ch.cz - fz) - CHUNK * 0.7);
@@ -5004,7 +5011,6 @@ function sfMerge(node, origin) {
 // Far away a Sketchfab car is drawn in two pieces instead of 11-30: its paint, and everything else (glass, trim, lamps,
 // tyres) merged into one vertex-coloured mesh, each textured part taking its texture's average colour (sfLod).
 const SF_FAR_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.2 }); SF_FAR_MAT.name = 'SFFar';
-const _texMean = new WeakMap();
 function texMean(t) { // a texture's average colour (linear), from an 8x8 copy of its image
   if (!t || !t.image) return null; let c = _texMean.get(t); if (c) return c; c = new THREE.Color(0.5, 0.5, 0.5);
   try { const cv = document.createElement('canvas'); cv.width = cv.height = 8; const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(t.image, 0, 0, 8, 8);
@@ -9374,7 +9380,7 @@ function tick(rdt) {
     updateWeather(rdt * 0.3); updatePopulation(rdt); trafficPre(rdt); updateVehicles(rdt); updatePeds(rdt); smoke.update(rdt); fire.update(rdt);
     sigT -= rdt; if (sigT <= 0) { sigT = 0.1; updateSignals(); }
     visT -= rdt; if (visT <= 0) { visT = 1; updateChunkVisibility(cx, cz); }
-    drawFrame(); return;
+    if ($('menu').hidden) drawFrame(); return; // the main menu's painting (src/ui/sunset.css) covers the screen: the town under it was a whole frame drawn for nothing
   }
   // in play the mouse is captured and hidden; in any menu it's free and shown. Esc in play pauses (pointerlockchange);
   // a menu closed with Esc can't grab the mouse back (browsers don't let Esc do that), so the game carries on and one
@@ -9549,7 +9555,7 @@ async function loadLater() {
     const air = createAirTraffic(THREE, scene, AIR, { heightAt, gfx: GFX.id, onFlyby: (fl, d) => sfx.whoosh(clamp(1.2 - d / 500, 0.2, 1)) });
     await showCompiled(sceneSince(before)); await warmLoose(air.warmSet()); ctx.AIRT = AIRT = air; // the parked ones, then the first flight's models and lights
   });
-  await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer); await plantNature(); OUTER.plantAll(); });
+  await step('plants', async () => { NATURE.lib = await loadVegetation(THREE, gltfLoader, renderer, undefined, { maxTex: { potato: 1024, low: 1536, medium: 2048 }[GFX.id] || 0 }); await plantNature(); OUTER.plantAll(); });
   await step('power lines', loadPower);
   await step('harbor', loadHarbor);
   console.info('[later] everything in after', ((performance.now() - t0) / 1000).toFixed(1) + 's'); performance.mark('pao:later'); LATER_DONE = true;

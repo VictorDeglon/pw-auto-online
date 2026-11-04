@@ -13,10 +13,15 @@
 export const IGN = 'fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))';
 
 // ---------------------------------------------------------------- loading
-export async function loadVegetation(THREE, gltfLoader, renderer, base = 'assets/nature/') {
+// maxTex: the impostor atlases are cut down to this many pixels on their long side (up to 3072 x 3072 each, ~290 MB of
+// GPU memory for the set; 1024 on Potato), off the main thread, and their decoded copies let go once they're up.
+export async function loadVegetation(THREE, gltfLoader, renderer, base = 'assets/nature/', { maxTex = 0 } = {}) {
   const man = await (await fetch(base + 'veg.json')).json();
   const texLoader = new THREE.TextureLoader();
-  const tex = (url, srgb) => texLoader.loadAsync(url).then(t => t.image && t.image.decode ? t.image.decode().then(() => t, () => t) : t).then(t => { // decoded off the main thread now, not in the frame that uploads it
+  const cut = t => { const im = t.image, s = maxTex / Math.max(im.width, im.height); if (!(s < 1) || typeof createImageBitmap === 'undefined') return t;
+    return createImageBitmap(im, { resizeWidth: Math.round(im.width * s), resizeHeight: Math.round(im.height * s), resizeQuality: 'high', imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
+      .then(b => { t.image = b; t.flipY = false; t.onUpdate = () => { t.onUpdate = null; t.image = null; b.close(); }; return t; }, () => t); };
+  const tex = (url, srgb) => texLoader.loadAsync(url).then(t => t.image && t.image.decode ? t.image.decode().then(() => t, () => t) : t).then(cut).then(t => { // decoded off the main thread now, not in the frame that uploads it
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 4;
     t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; return t;
   });

@@ -208,8 +208,8 @@ export async function loadCards(THREE, base = 'assets/pbr/atlas/', scanned = {})
     const bl = imageCanvas(lawn), oc = imageCanvas(oatsTop); g.filter = 'saturate(0.55) sepia(0.35) brightness(0.95)'; g.drawImage(bl, 0, H * 0.18, W, H * 0.82); g.drawImage(bl, W * 0.12, H * 0.3, W * 0.8, H * 0.7); g.filter = 'none'; g.drawImage(oc, 0, 0, W, H);
     return g.getImageData(0, 0, W, H); })();
   const withOats = im => { const c = imageCanvas(im), g = c.getContext('2d', { willReadFrequently: true }); g.globalAlpha = 0.85; g.drawImage(imageCanvas(oatsTop), 0, 0, c.width, c.height * 0.62); return g.getImageData(0, 0, c.width, c.height); }; // the scanned tuft with oat heads standing out of it
-  const brush = leafCard(imageCanvas(sheet), rng(23)), tall2 = scanned.tall ? withOats(scanned.tall) : tall;
-  return { lawn: cardTex(THREE, lawn), oats: cardTex(THREE, tall2), brush: cardTex(THREE, brush), lum: [lum(lawn), lum(brush), lum(tall2)] };
+  const brush = leafCard(imageCanvas(sheet), rng(23)), tall2 = scanned.tall ? withOats(scanned.tall) : tall, lawn2 = scanned.lawn || lawn; // scanned.lawn: Bermuda grass tufts
+  return { lawn: cardTex(THREE, lawn2), oats: cardTex(THREE, tall2), brush: cardTex(THREE, brush), lum: [lum(lawn2), lum(brush), lum(tall2)] };
 }
 
 // ---------------------------------------------------------------- card textures, drawn once (no downloads)
@@ -268,6 +268,8 @@ const VS_BODY = /* glsl */`
   vFade = (1.0 - smoothstep(uR * 0.6, uR, dist)) * (uR0 > 0.0 ? smoothstep(uR0, uR0 + 18.0, dist) : 1.0); // a far ring grows up out of the ground where the near one sinks into it
   // a tuft that isn't there stops here, before the reads the ones that are need (every vertex of a tuft does this work)
   if (vFade < 0.001) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+  { vec2 f2 = -vec2(viewMatrix[0].z, viewMatrix[2].z); float fl = length(f2); // behind the camera (half of every ring round you) stops here too, unless you look nearly straight down
+    if (fl > 0.5 && dot(wp - cameraPosition.xz, f2 / fl) < -6.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; } }
   vec2 cuv = (wp - uCov.xy) / uCov.zw, cm = 300.0 / uCov.zw; // the cover map's 300 m pad: no data out there (the outer world)
   vec4 cv = texture2D(uCover, cuv);
   float dens = uKind < 0.5 ? min(1.0, cv.r * 1.8) : uKind < 1.5 ? min(1.0, cv.g * 1.3) : min(1.0, cv.a * 1.7 + cv.b * 0.55 * (1.0 - cv.r) * (1.0 - cv.g * 0.85) * step(0.02, cv.a)); // 0 lawn, 1 brush, 2 wild grass (sparser dry grass on the dry ground too, little under thick brush: only where wild grass may grow, never in a yard; B isn't masked)

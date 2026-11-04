@@ -32,7 +32,7 @@ export function createSF(loader, hooks = {}) {
       if (S.loading.has(id)) return S.loading.get(id);
       const e = S.byIdMap.get(id); if (!e || S.failed.has(id)) return Promise.resolve(null); // a broken file isn't fetched again
       const p = new Promise(res => loader.load(`assets/sf/${e.f}`, g => { g.scene.animations = g.animations || []; res(g.scene); }, undefined, err => { console.warn('[sf]', id, err && err.message || err); res(null); }))
-        .then(scene => scene && e.k === 'car' ? slim(scene).then(() => scene, () => scene) : scene)
+        .then(scene => scene && e.k === 'car' ? slim(scene, hooks.onUploaded).then(() => scene, () => scene) : scene)
         .then(scene => { S.loading.delete(id); if (scene) { S.models.set(id, scene); S.last.set(id, performance.now()); } else S.failed.add(id); return scene; });
       p.then(() => {}); S.loading.set(id, p); return p;
     },
@@ -91,16 +91,20 @@ export function createSF(loader, hooks = {}) {
   return api;
 }
 
-async function slim(root) {
-  const seen = new Set(), jobs = [];
+// Once a car's texture is on the GPU its decoded copy (an ImageBitmap, ~1 MB at 512 px) is let go: a few hundred cars'
+// worth was ~370 MB held for nothing (nothing re-uploads them; a model loaded again brings fresh ones). onUploaded(t)
+// runs first, for whatever still wants the pixels (index.html: the far LOD's average colour).
+const freeAfterUpload = onUploaded => t => { const im = t.image; t.onUpdate = null; if (onUploaded) try { onUploaded(t); } catch (e) { } t.image = null; if (im && im.close) im.close(); };
+async function slim(root, onUploaded) {
+  const seen = new Set(), jobs = [], free = freeAfterUpload(onUploaded);
   root.traverse(o => {
     for (const m of o.isMesh ? [].concat(o.material) : []) {
       for (const k of ['normalMap', 'aoMap']) if (m[k]) { m[k].dispose(); m[k] = null; m.needsUpdate = true; }
       for (const k of ['map', 'emissiveMap', 'roughnessMap', 'metalnessMap', 'alphaMap']) {
         const t = m[k], im = t && t.image; if (!im || seen.has(t)) continue; seen.add(t);
-        const s = CAR_TEX / Math.max(im.width, im.height); if (!(s < 1)) continue;
+        const s = CAR_TEX / Math.max(im.width, im.height); if (!(s < 1)) { if (im.close) t.onUpdate = free; continue; }
         jobs.push(createImageBitmap(im, { resizeWidth: Math.round(im.width * s), resizeHeight: Math.round(im.height * s), resizeQuality: 'medium' })
-          .then(b => { if (im.close) im.close(); t.image = b; t.needsUpdate = true; }, () => { }));
+          .then(b => { if (im.close) im.close(); t.image = b; t.needsUpdate = true; t.onUpdate = free; }, () => { }));
       }
     }
   });
