@@ -172,3 +172,36 @@ input:focus,select:focus,textarea:focus{border-color:var(--ember)!important;outl
 @media (max-aspect-ratio:3/4){.boot-art{background-position:27% 62%} #menu::before{background-position:27% 62%}} /* portrait: keep the car in frame */
 @media (max-height:640px){.mark .mark-script{font-size:56px} #mnav .mbtn{font-size:22px!important;padding:6px 0 6px 18px!important} .boot-tip{display:none}}
 @media (prefers-reduced-motion:reduce){.boot-art,.screen,#mnav .mbtn::before{animation:none!important;transition:none!important}}
+
+/* ---------------------------------------------------------------- the car lot: kinds and search on top, the chosen car, then the list */
+#dealer .dl{cursor:auto;margin:14px;padding:18px 18px 14px;width:min(470px,calc(100vw - 28px));height:calc(100% - 28px);box-sizing:border-box;display:flex;flex-direction:column;
+  font:500 15px/1.3 var(--ui);color:var(--bone)}
+#dealer .dl-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+#dealer .dl-name{font:600 26px/1.05 var(--ui)}
+#dealer .dl-cash{font:400 24px/1 var(--display);color:var(--cash);letter-spacing:.02em}
+#dealer .dl-hint{color:var(--dust);font-size:13px;margin:4px 0 10px}
+#dealer .dl-kinds{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+#dealer .dl-kinds small{opacity:.6;margin-left:2px}
+#dealer .dl-tools{display:flex;gap:8px;margin-bottom:10px}
+#dealer .dl-tools input,#dealer .dl-tools select{font:500 15px/1 var(--ui);color:var(--bone);background:rgba(245,233,211,.06);border:1px solid rgba(245,233,211,.18);border-radius:999px;padding:8px 14px;outline:0}
+#dealer .dl-tools input{flex:1;min-width:0}
+#dealer .dl-tools input:focus,#dealer .dl-tools select:focus{border-color:var(--ember)}
+#dealer .dl-tools option{background:var(--night)}
+#dealer .dl-sel{padding:12px 2px 12px;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);margin-bottom:6px;min-height:150px}
+#dealer .dl-title{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font:600 20px/1.1 var(--ui)}
+#dealer .dl-title span{font:400 22px/1 var(--display);color:var(--flare);letter-spacing:.02em;white-space:nowrap}
+#dealer .dl-blurb{color:var(--dust);font-size:14px;margin:5px 0 8px}
+#dealer .dl-bar{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px}
+#dealer .dl-bar span{width:64px;color:var(--dust)} #dealer .dl-bar em{width:28px;text-align:right;font-style:normal}
+#dealer .dl-bar i{flex:1;height:4px;border-radius:2px;background:rgba(245,233,211,.1);overflow:hidden}
+#dealer .dl-bar i b{display:block;height:100%;background:linear-gradient(90deg,var(--ember),var(--flare))}
+#dealer .dl-sel .mbtn{margin-top:10px}
+#dealer .dl-list{flex:1;overflow:auto;margin:0 -6px;padding:0 6px}
+#dealer .dl-row{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:8px;cursor:var(--cur-hand)}
+#dealer .dl-row b{font-weight:600} #dealer .dl-row span{color:var(--dust);font-variant-numeric:tabular-nums;white-space:nowrap}
+#dealer .dl-row:hover{background:rgba(245,233,211,.06)}
+#dealer .dl-row.on{background:linear-gradient(90deg,rgba(255,122,46,.16),transparent 80%);box-shadow:inset 2px 0 0 var(--ember)}
+#dealer .dl-row.on span{color:var(--flare)}
+#dealer .dl-trim{font-weight:600;color:var(--dust)} #dealer .dl-trim.t-sport{color:var(--flare)} #dealer .dl-trim.t-elite{color:var(--ember)}
+#dealer .dl-none{color:var(--dust);padding:14px 4px}
+#dealer .dl-close{align-self:flex-start;margin-top:10px}

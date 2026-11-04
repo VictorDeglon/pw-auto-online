@@ -148,7 +148,7 @@ cheat. That's fine for playing with friends; it isn't an anti-cheat system.
 Map data © OpenStreetMap contributors (ODbL). Building footprints also from Microsoft (ODbL). Aerial imagery: USGS
 NAIP (public domain). Terrain: Mapzen / AWS Terrain Tiles, USGS 3DEP. Textures and trees: Poly Haven (CC0). Vehicles:
 Kenney and Quaternius (CC0). Aircraft: Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza (CC BY
-3.0, see `assets/aircraft/LICENSE.md`). People: Microsoft Rocketbox Avatar Library (MIT, see `assets/humans/LICENSE-Rocketbox.md`). Outlaws: rigged characters from Sketchfab by
+3.0, see `assets/aircraft/LICENSE.md`). People: Microsoft Rocketbox Avatar Library (MIT, see `assets/humans/LICENSE-Rocketbox.md`); their animations are from Mixamo by Adobe, re-aimed onto the Rocketbox skeleton by `tools/humans/mixamo.mjs` (the clips are listed in `tools/humans/mixamo.json`). Outlaws: rigged characters from Sketchfab by
 renderpeople and others (CC BY 4.0; each model, its author, its link and what was changed are in `assets/humans/outlaws.json`). Music: Kevin
 MacLeod, incompetech.com (CC BY 4.0). Firebase JS SDK (Apache-2.0).
 

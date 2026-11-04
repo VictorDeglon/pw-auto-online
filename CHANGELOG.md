@@ -8,6 +8,29 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.12.2 (2026-11-03)
+
+- **Everyone moves with Mixamo animations:** 99 clips from Mixamo, re-aimed onto the game's skeleton, for every
+  person, deputy, outlaw and player: new walks (women walk their own way, outlaws swagger), runs and a sprint matched
+  to the ground so feet don't slide, crouch-walking, strafing and backing off while aiming, pistol and rifle stances,
+  jumps, falls and landings, real punches, hooks, uppercuts and kicks, flinches when hit, deaths, knockdowns and
+  getting back up, and a bigger crowd of idles (bored, looking around, happy). The fingers move too.
+- **A real dodge roll and slide:** X dives into a forward roll and C from a sprint slides feet first, instead of the
+  body spinning like a coin.
+- **Emotes, dances and the club crowd's moves load:** the second set of animations was never fetched, so anyone
+  asked to cheer, dance or laugh stood still; it now loads once the town is up.
+- **The cowboy's hands:** outlaws (the rigged Sketchfab characters) no longer hold their hands flat out sideways; every
+  bone is lined up with the skeleton the clips were made for, roll included.
+- **Emote wheel (U):** wave, cheer, clap, laugh, point, thumbs up, salute, shrug, taunt, dance (one of eleven each
+  time), sit and warm your hands by a fire. You turn to face the nearest player.
+- **Other players see it all:** emotes, stances, rolls, jumps, punches, falls and deaths go out with your position,
+  so everyone in the room sees what your character does.
+- **Every car is for sale:** the dealers sell all 319 Sketchfab cars, with made-up showroom names, prices from their
+  class and top speed, kinds to filter by, sorting and a search box, alongside the lot's classics in three trims. A
+  car you buy always arrives as its own model.
+- **The old cars are back:** about a third of the street's cars are the game's own stock bodies again.
+- **Twelve cars that drove backwards** now face the right way.
+
 ## 0.12.1 (2026-11-03)
 
 - **More real trees and plants:** Canary Island date palms, slender date palms for the queen palms, a broad oak and

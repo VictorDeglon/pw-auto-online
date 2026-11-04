@@ -16,6 +16,7 @@ const BASE = [
   ['Vehicles, trees and props', 'Kenney', 'CC0', 'https://kenney.nl/'], ['Cars and buses', 'Quaternius', 'CC0', 'https://quaternius.com/'],
   ['Aircraft', 'Poly by Google, Vojtěch Balák, Gilang Romadhan and jeremy via Poly Pizza', 'CC-BY 3.0', 'https://poly.pizza/'],
   ['People', 'Microsoft Rocketbox', 'MIT', 'https://github.com/microsoft/Microsoft-Rocketbox'],
+  ['Animations', 'Mixamo by Adobe', 'Mixamo terms', 'https://www.mixamo.com/'],
   ['Radio', 'Kevin MacLeod, incompetech.com', 'CC-BY 4.0', 'https://incompetech.com/'],
 ];
 

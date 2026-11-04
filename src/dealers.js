@@ -1,9 +1,10 @@
 // Dealers: car lots and a marina. Walk up to the salesperson and press E to browse; hover a listing and it turns on
 // the lot's turntable with the camera circling it; buy it and it's yours (a car joins your garage list and waits at
-// the lot's exit, a boat waits at the dock). Every car comes in three trims, and the trim sets the car's own numbers:
-// upgrades (src/carmods.js) multiply those, so a better car gets more out of the same upgrade.
+// the lot's exit, a boat waits at the dock). Every Sketchfab car in the game (src/sf.js) is on sale, filtered by kind,
+// sorted and searched; the lot's classics (the stock bodies) come in three trims, and the trim sets the car's own
+// numbers: upgrades (src/carmods.js) multiply those, so a better car gets more out of the same upgrade.
 //   const DL = createDealers(H)   DL.setup()   DL.openAt(D)   DL.close()   DL.open   DL.target (what the camera circles)
-//   H: { THREE, scene, CAR, TUNE, buildCar, boatModel, boatKinds(), ll, site, heightAt, addPoly, addInteract, canvasTex, clearPlants(poly),
+//   H: { THREE, scene, CAR, TUNE, buildCar, carBase, releaseCar(m), sfCars(), sfGet(id), sfLoad(id), boatModel, boatKinds(), ll, site, heightAt, addPoly, addInteract, canvasTex, clearPlants(poly),
 //        person(x, z, rot, i), money(), spend(n), addCar(listing, spot), addBoat(listing, D), notify, sfx, opened(), closed() }
 export function createDealers(H) {
   const { THREE } = H;
@@ -99,49 +100,101 @@ export function createDealers(H) {
     });
   }
 
+  // ---------------------------------------------------------------- every Sketchfab car (src/sf.js) is on sale too, with its own numbers
+  // and its showroom name (catalog g: real makers are only named in the credits). One trim each; the price follows its
+  // class and its top speed.
+  const TIER = ['Economy', 'Everyday', 'Luxury', 'Exotic'], TIER_PRICE = [6500, 15000, 42000, 150000], MPH_PER_V = 1.88;
+  let sfL = null;
+  function sfListings() {
+    if (sfL) return sfL; const cars = H.sfCars ? H.sfCars() : []; if (!cars.length) return [];
+    return (sfL = cars.map(e => {
+      const b = H.CAR[e.t]; if (!b || !e.v) return null;
+      const mph = Math.round(e.v * MPH_PER_V), base = H.carBase(e.t, 'sf-' + e.id);
+      return { sf: e.id, type: e.t, model: 'sf-' + e.id, name: e.g || e.n, trim: '', tier: e.tier | 0, mph, base: { vmax: base.vmax, acc: base.acc, turn: b.turn },
+        price: Math.round(TIER_PRICE[e.tier | 0] * Math.min(3, Math.max(0.5, (e.v / 50) ** 1.6)) / 500) * 500,
+        blurb: `${TIER[e.tier | 0]} ${e.t === 'suv' ? 'SUV' : e.t}, ${mph} mph flat out. Model by ${e.a}.` };
+    }).filter(Boolean));
+  }
+  const KINDS = [['all', 'All'], ['sports', 'Sports'], ['sedan', 'Sedans'], ['suv', 'SUVs'], ['pickup', 'Pickups'], ['van', 'Vans'], ['police', 'Police'], ['lot', 'Lot classics']];
+  const F = { kind: 'all', sort: 'price', q: '' };
+  let view = []; // the car listings that pass the filter, in order
+  function filtered() {
+    const all = [...sfListings(), ...listings.map(l => ({ ...l, lot: true }))], q = F.q.trim().toLowerCase();
+    const v = all.filter(l => (F.kind === 'all' || (F.kind === 'lot' ? l.lot : !l.lot && l.type === F.kind)) && (!q || l.name.toLowerCase().includes(q)));
+    if (F.sort === 'price') v.sort((a, b) => a.price - b.price); else if (F.sort === 'speed') v.sort((a, b) => b.base.vmax - a.base.vmax); else v.sort((a, b) => a.name.localeCompare(b.name));
+    return v;
+  }
+
   // ---------------------------------------------------------------- the preview on the turntable
-  let shown = null;
-  const lookFor = (L, i) => ({ paint: H.TUNE.COLORS[[5, 13, 2, 1, 8, 15, 6, 10][i % 8]][1], finish: L.trim === 'Elite' ? 3 : L.trim === 'Sport' ? 1 : 0, parts: L.trim === 'Elite' ? { rims: 1, spoiler: L.type === 'sports' ? 2 : 0 } : {} }); // the car you see is the car you get
+  let shown = null, want = 0;
+  const lookFor = (L, i) => L.sf ? { paint: null, finish: 0, parts: {} } : ({ paint: H.TUNE.COLORS[[5, 13, 2, 1, 8, 15, 6, 10][i % 8]][1], finish: L.trim === 'Elite' ? 3 : L.trim === 'Sport' ? 1 : 0, parts: L.trim === 'Elite' ? { rims: 1, spoiler: L.type === 'sports' ? 2 : 0 } : {} }); // the car you see is the car you get (a Sketchfab car in its own paint)
+  function unshow() { if (!shown) return; H.scene.remove(shown.g); if (shown.m && H.releaseCar) H.releaseCar(shown.m); shown = null; }
   function preview(i) {
-    if (shown) { H.scene.remove(shown.g); shown = null; }
-    const at = D.at, L = list()[i]; if (!at || !L) return;
-    if (at.kind === 'car') { const m = H.buildCar(L.type, 0xffffff, L.model); H.TUNE.applyLook({ m, spec: { L: m.L, W: m.W, H: m.H } }, lookFor(L, i)); m.g.position.set(at.pad.x, at.pad.y + 0.06, at.pad.z); m.g.rotation.y = at.pad.rot; H.scene.add(m.g); shown = { g: m.g, L: m.L, H: m.H }; }
+    const at = D.at, L = list()[i], ask = ++want; if (!at || !L) return;
+    if (L.sf && H.sfGet && !H.sfGet(L.sf)) { // not loaded yet: the turntable waits for it (a stock stand-in would be the wrong car)
+      D.loading = L.sf; H.sfLoad(L.sf).then(() => { if (ask === want && D.open) { D.loading = null; preview(i); details(); } }); return;
+    }
+    D.loading = null; unshow();
+    if (at.kind === 'car') { const m = H.buildCar(L.type, 0xffffff, L.model); H.TUNE.applyLook({ m, spec: { L: m.L, W: m.W, H: m.H } }, lookFor(L, i)); m.g.position.set(at.pad.x, at.pad.y + 0.06, at.pad.z); m.g.rotation.y = at.pad.rot; H.scene.add(m.g); shown = { g: m.g, m, L: m.L, H: m.H }; }
     else { const g = H.boatModel(L.kind); if (!g) return; g.position.set(at.pad.x, at.pad.y, at.pad.z); g.rotation.y = at.pad.rot; H.scene.add(g); const b = new THREE.Box3().setFromObject(g), sz = b.getSize(new THREE.Vector3()); shown = { g, L: Math.max(sz.x, sz.z), H: sz.y }; }
     D.target = { pos: shown.g.position, spec: { L: shown.L, H: shown.H }, rotY: shown.g.rotation.y };
   }
-  const list = () => !D.at ? [] : D.at.kind === 'car' ? listings : BOATS.filter(b => H.boatKinds().includes(b.kind));
+  const list = () => !D.at ? [] : D.at.kind === 'car' ? view : BOATS.filter(b => H.boatKinds().includes(b.kind));
 
-  // ---------------------------------------------------------------- the menu
+  // ---------------------------------------------------------------- the menu: filters on top, the chosen car under them, then the list
   const $ = id => document.getElementById(id), fmt = n => '$' + Math.round(n).toLocaleString();
-  const bar = (label, n) => `<div style="display:flex;align-items:center;gap:8px;margin:2px 0"><span style="width:66px;opacity:.75">${label}</span><span style="flex:1;height:6px;background:#1b1f25;border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${n * 10}%;background:linear-gradient(90deg,#3df2ff,#1f5fff)"></i></span><b style="width:26px;text-align:right">${n.toFixed(1)}</b></div>`;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const bar = (label, n) => `<div class="dl-bar"><span>${label}</span><i><b style="width:${n * 10}%"></b></i><em>${n.toFixed(1)}</em></div>`;
+  const trimTag = x => x.trim ? ` <span class="dl-trim t-${x.trim.toLowerCase()}">${x.trim}</span>` : '';
   function render() {
-    let el = $('dealer'); if (!el) { el = document.createElement('div'); el.id = 'dealer'; document.body.appendChild(el); el.addEventListener('click', click); el.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('[data-i]'); if (b && +b.dataset.i !== D.sel) { D.sel = +b.dataset.i; preview(D.sel); render(); } }); }
-    el.style.cssText = 'position:fixed;inset:0;z-index:40;display:flex;justify-content:flex-end;font:600 15px/1.35 var(--ui,system-ui);color:#f3efe6;cursor:grab'; // drag the backdrop to turn the view
-    const L = list(), at = D.at, money = H.money();
-    let h = `<div style="cursor:auto;background:rgba(18,21,27,.95);border-left:1px solid #2f3540;padding:18px 20px;width:min(460px,94vw);height:100%;box-sizing:border-box;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px">${at.name}</div><div style="color:#7dff6a">${fmt(money)}</div></div>`;
-    h += `<div style="opacity:.65;font-size:13px;margin:4px 0 10px">${at.kind === 'car' ? 'Hover a car to see it on the turntable. A car\'s own numbers set how far upgrades take it: an Elite gains the most from the same parts.' : 'Hover a boat to see it at the slip. It waits at the dock once it\'s yours.'}</div>`;
-    L.forEach((x, i) => {
-      const on = i === D.sel, R = at.kind === 'car' ? H.TUNE.ratings(x.base) : null;
-      h += `<div data-i="${i}" style="margin:6px 0;padding:9px 11px;border-radius:9px;border:1px solid ${on ? '#3df2ff' : '#2a313b'};background:${on ? 'rgba(61,242,255,.08)' : 'rgba(255,255,255,.02)'};cursor:pointer">`;
-      h += `<div style="display:flex;justify-content:space-between"><b>${x.name}${x.trim ? ` <span style="color:${x.trim === 'Elite' ? '#f0b23a' : x.trim === 'Sport' ? '#3df2ff' : '#aab'}">${x.trim}</span>` : ''}</b><span>${fmt(x.price)}</span></div>`;
-      if (on) { h += `<div style="opacity:.7;font-size:13px;margin:3px 0">${x.blurb}</div>`; if (R) h += bar('Speed', R.speed) + bar('Accel', R.accel) + bar('Handling', R.handling); h += `<button data-buy="${i}" ${money < x.price ? 'disabled' : ''} style="margin-top:7px;padding:7px 14px;border-radius:7px;border:0;background:${money < x.price ? '#2a313b' : '#3df2ff'};color:#0b0d10;font:inherit;cursor:pointer">${money < x.price ? 'Not enough money' : 'Buy for ' + fmt(x.price)}</button>`; }
-      h += `</div>`;
-    });
-    h += `<button data-close="1" style="margin-top:12px;padding:7px 14px;border-radius:7px;border:1px solid #3a424e;background:#2a313b;color:inherit;font:inherit;cursor:pointer">Close (Esc)</button></div>`;
-    el.innerHTML = h; el.hidden = false;
+    let el = $('dealer');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'dealer'; document.body.appendChild(el); el.addEventListener('click', click);
+      let hov = 0; el.addEventListener('mouseover', e => { const b = e.target.closest && e.target.closest('[data-i]'); if (!b || +b.dataset.i === D.sel) return; clearTimeout(hov); hov = setTimeout(() => select(+b.dataset.i), 90); }); // a short wait: sweeping down the list doesn't fetch every car on the way
+      el.addEventListener('input', e => { if (e.target.id === 'dlq') { F.q = e.target.value; refilter(); } });
+      el.addEventListener('change', e => { if (e.target.id === 'dlsort') { F.sort = e.target.value; refilter(); } });
+    }
+    el.style.cssText = 'position:fixed;inset:0;z-index:40;display:flex;justify-content:flex-end;cursor:grab'; // drag the backdrop to turn the view
+    const at = D.at, car = at.kind === 'car';
+    let h = `<div class="dl"><div class="dl-head"><div class="dl-name">${esc(at.name)}</div><div class="dl-cash" id="dlcash"></div></div>`;
+    h += `<div class="dl-hint">${car ? 'Hover a car to see it on the turntable; drag the background to turn it.' : 'Hover a boat to see it at the slip. It waits at the dock once it\'s yours.'}</div>`;
+    if (car) {
+      const all = [...sfListings(), ...listings.map(l => ({ ...l, lot: true }))], n = k => k === 'all' ? all.length : k === 'lot' ? listings.length : all.filter(l => !l.lot && l.type === k).length;
+      h += `<div class="chips dl-kinds">${KINDS.map(([k, t]) => `<button data-kind="${k}" class="${F.kind === k ? 'on' : ''}">${t} <small>${n(k)}</small></button>`).join('')}</div>`;
+      h += `<div class="dl-tools"><input id="dlq" type="search" placeholder="Search by name" value="${esc(F.q)}" autocomplete="off"><select id="dlsort"><option value="price"${F.sort === 'price' ? ' selected' : ''}>Cheapest first</option><option value="speed"${F.sort === 'speed' ? ' selected' : ''}>Fastest first</option><option value="name"${F.sort === 'name' ? ' selected' : ''}>A to Z</option></select></div>`;
+    }
+    h += `<div class="dl-sel" id="dlsel"></div><div class="dl-list" id="dllist"></div><button data-close="1" class="mbtn small dl-close">Close <kbd>Esc</kbd></button></div>`;
+    el.innerHTML = h; el.hidden = false; rows(); details();
   }
+  function rows() {
+    const L = list(), el = $('dllist'); if (!el) return;
+    el.innerHTML = L.length ? L.map((x, i) => `<div data-i="${i}" class="dl-row${i === D.sel ? ' on' : ''}"><b>${esc(x.name)}${trimTag(x)}</b><span>${fmt(x.price)}</span></div>`).join('') : '<div class="dl-none">No cars by that name. Clear the search to see them all.</div>';
+  }
+  function details() {
+    const L = list(), x = L[D.sel], el = $('dlsel'), money = H.money(); if ($('dlcash')) $('dlcash').textContent = fmt(money); if (!el) return;
+    if (!x) { el.innerHTML = ''; return; }
+    const R = D.at.kind === 'car' ? H.TUNE.ratings(x.base) : null, short = money < x.price;
+    el.innerHTML = `<div class="dl-title"><b>${esc(x.name)}${trimTag(x)}</b><span>${fmt(x.price)}</span></div><div class="dl-blurb">${esc(x.blurb)}</div>` + (R ? bar('Speed', R.speed) + bar('Accel', R.accel) + bar('Handling', R.handling) : '') +
+      `<button data-buy="${D.sel}" class="mbtn small${short ? '' : ' primary'}" ${short || D.loading ? 'disabled' : ''}>${D.loading ? 'Bringing it out…' : short ? 'Not enough money' : 'Buy for ' + fmt(x.price)}</button>`;
+  }
+  function select(i) {
+    D.sel = i; const el = $('dllist'); if (el) for (const r of el.children) r.classList.toggle('on', +r.dataset.i === i);
+    preview(i); details();
+  }
+  function refilter() { view = filtered(); D.sel = 0; rows(); if ($('dllist')) $('dllist').scrollTop = 0; select(0); }
   function click(e) {
     const b = e.target.closest && e.target.closest('button'); if (!b) return;
     if (b.dataset.close) return close();
+    if (b.dataset.kind) { F.kind = b.dataset.kind; for (const c of b.parentNode.children) c.classList.toggle('on', c === b); refilter(); return; }
     if (b.dataset.buy != null) {
-      const L = list()[+b.dataset.buy]; if (!L || H.money() < L.price) return;
+      const L = list()[+b.dataset.buy]; if (!L || H.money() < L.price || D.loading) return;
       const ok = D.at.kind === 'car' ? H.addCar(L, D.at.exit, lookFor(L, +b.dataset.buy)) : H.addBoat(L, D.at); if (!ok) return;
-      H.spend(L.price); H.sfx && H.sfx.cash && H.sfx.cash(); H.notify(`${D.at.kind === 'car' ? `Your ${L.trim} ${L.name} is parked at the lot's exit, and it's in your garage list` : `Your ${L.name} is waiting at the dock`}.`, 'green', 5000);
+      H.spend(L.price); H.sfx && H.sfx.cash && H.sfx.cash(); H.notify(`${D.at.kind === 'car' ? `Your ${L.trim ? L.trim + ' ' : ''}${L.name} is parked at the lot's exit, and it's in your garage list` : `Your ${L.name} is waiting at the dock`}.`, 'green', 5000);
       close();
     }
   }
-  function openAt(at) { if (D.open) return; D.open = true; D.at = at; D.sel = 0; preview(0); render(); H.opened(); }
-  function close() { if (!D.open) return; D.open = false; if (shown) { H.scene.remove(shown.g); shown = null; } D.target = null; const el = $('dealer'); if (el) el.hidden = true; H.closed(); }
+  function openAt(at) { if (D.open) return; D.open = true; D.at = at; D.sel = 0; view = at.kind === 'car' ? filtered() : []; render(); preview(0); details(); H.opened(); }
+  function close() { if (!D.open) return; D.open = false; want++; D.loading = null; unshow(); D.target = null; const el = $('dealer'); if (el) el.hidden = true; H.closed(); }
   D.setup = setup; D.openAt = openAt; D.close = close; D.dealers = dealers; D.listings = listings; D.boats = BOATS;
   return D;
 }

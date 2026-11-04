@@ -4,6 +4,7 @@
 //   node tools/sketchfab/catalog.mjs build/sf/cars.json build/sf/things.json
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { speedOf } from './speeds.mjs';
+import { gameName } from './names.mjs';
 
 const REJECTS = new Set(JSON.parse(readFileSync('tools/sketchfab/rejects.json', 'utf8'))); // struck out on the contact sheets, after fitting too
 const picks = process.argv.slice(2).flatMap(f => existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : []).filter(p => !REJECTS.has(p.uid));
@@ -20,7 +21,7 @@ for (const p of picks) {
     if ((t === 'pickup' || t === 'suv') && R.H < 1.5) t = R.H < 1.3 ? 'sports' : 'sedan';
     if (t === 'sedan' && R.H > 1.75) t = R.L > 5.2 ? 'pickup' : 'suv';
     const ws = Object.values(R.wheels || {}), r = ws.length ? ws.reduce((a, w) => a + w.r, 0) / ws.length : 0.34;
-    cars.push({ ...base, t, tier: p.tier, r: r2(r), w: ws.length === 4 ? 1 : 0, p: R.paint ? 1 : 0, ...speedOf(p.n, t, p.tier) }); // v, ac: its top speed and pull (speeds.mjs)
+    cars.push({ ...base, g: gameName(p.n, t, p.id), t, tier: p.tier, r: r2(r), w: ws.length === 4 ? 1 : 0, p: R.paint ? 1 : 0, ...speedOf(p.n, t, p.tier) }); // g: its showroom name (names.mjs); v, ac: its top speed and pull (speeds.mjs)
   } else things.push({ ...base, k: p.kind, q: p.q, ...(R.anims && R.anims.length ? { an: R.anims } : {}) });
 }
 writeFileSync('assets/sf/catalog.json', JSON.stringify({ v: 1, cars, things }));

@@ -54,7 +54,10 @@ over it, and the western comes through in the type and a few motifs, not in leat
 - **Panels:** smoked glass (night at about 72%, backdrop blur 16px), a bone hairline at 12%, 14 px corners, the horizon
   along the top. **Buttons:** menu entries are rows of type, not boxes; the primary action is a sunlit pill (flare to
   ember) with dark text; secondary actions are hairline pills. **Tabs and segments:** quiet text, the selected one
-  underlined by the horizon. **Toggles and sliders:** thin, ember when on.
+  underlined by the horizon. **Toggles and sliders:** thin, ember when on. **Long lists** (the car lot's hundreds of
+  cars): rows of type, the price in dust, the chosen row marked by an ember edge and a faint ember wash; filters as
+  chips with their counts, search and sort as hairline pills above, the chosen item's details between them and the
+  list.
 - **HUD:** smoked-glass slips with an ember edge for notes; a thin bone ring round the minimap; money in Anton with a
   soft shadow, no outline; the street name in Barlow Condensed, the area in tracked caps.
 - **Cursors:** a slim bone arrow, and a small ember spur rowel over anything you can click.
@@ -245,8 +248,10 @@ over it, and the western comes through in the type and a few motifs, not in leat
 - Found and fitted by `tools/sketchfab/` (real size, standing on the ground, the front to +z) and credited on the
   menu's Credits screen and in `assets/sf/CREDITS.md`. CC0, CC BY, CC BY-SA and CC BY-NC only, so no ads or paid
   items while BY-NC models are in the game. No game or film rips, no real people, no brand storefronts.
-- Cars: every car a street makes for itself, nicer ones where the money is (the old built-in bodies only stand in
-  while a model loads, and for kinds with no Sketchfab car, like buses). They keep their own materials except the
+- Cars: about seven in ten of the cars a street makes for itself, nicer ones where the money is; the rest are the
+  game's own stock bodies, and so are the kinds with no Sketchfab car, like buses. The dealers sell every one under a
+  made-up showroom name (`tools/sketchfab/names.mjs`): a maker that sounds a little like the real one, a word from
+  the desert or the coast, the year. Real makers and models are named in the credits only. They keep their own materials except the
   paint (it takes the car's colour, clear-coated), the glass (the game's) and the lamps (lit at night).
 - Tyres on the ground (every car, other players' too): near-black rubber marks on paving only where a tyre slides,
   fading over 45 s; white smoke only in a hard slide; tan dust off the pavement, thicker in a slide, none in the rain.

@@ -103,7 +103,12 @@ function remoteAI(p, dt) {
   let dr = st.r - p.rotY; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); p.rotY += dr * k;
   if (p.rig.human && ctx.showGun) ctx.showGun(p.rig, st.w && st.w !== 'fists' ? st.w : null);
   else if (p.rig.gun) p.rig.gun.visible = !!st.w && st.w !== 'fists';
-  return { speed: st.car ? 0 : st.spd, mode: st.aim ? 'aim' : null };
+  if (p.rig.human) { // what their body's doing, as their own game plays it: emotes and stances (md), strafing, one-shots (ev: a roll, a jump, a punch, a fall)
+    p.rig.strafe = st.sf || 0;
+    if (st.ev && st.ev.n !== rem.evN) { if (rem.evN !== undefined && ctx.playOnce) ctx.playOnce(p.rig, st.ev.k, st.ev.o); rem.evN = st.ev.n; } // (the one they had when we met isn't replayed)
+    if (!st.dead && p.rig.once && p.rig.once.hold && ctx.stopOnce) ctx.stopOnce(p.rig); // back up after a death or a bust
+  }
+  return { speed: st.car ? 0 : st.spd, mode: st.md || (st.aim ? 'aim' : null) };
 }
 
 // every frame: dead / alive, cars, visibility, shots
