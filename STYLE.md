@@ -232,6 +232,8 @@ over it, and the western comes through in the type and a few motifs, not in leat
   banks. Grass and the ground's pebbles, stones and dead
   branches grow denser on stronger presets (Medium and up denser than before 0.12.2); none is drawn behind the camera.
   Near you (~25 m) the bare ground carries scanned stones and dead twigs lying on it, thickest where it's bare.
+- A school campus meets its street behind a galvanized chain-link fence at the back of the sidewalk, with brush and
+  bigger shrubs behind it, never bare dirt; the curb in front is lined with parked cars.
 - Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
   crown; real meshes out to ~85 m on High.
 - Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.

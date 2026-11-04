@@ -663,6 +663,7 @@ import { loadAircraft, createAirTraffic, makeAircraft, parkAircraft, helipad } f
 import { createPilot, BOATS as BOAT_STATS } from './src/pilot.js';
 import { createDealers } from './src/dealers.js';
 import { VERSION } from './src/version.js';
+import { bakeGet, bakePut, bakeKey } from './src/bakecache.js'; // the slow parts of a load kept on the player's computer
 import { loadSurfaces, wallArrayMaterial, STYLE, ROLE } from './src/world/surfaces.js';
 import { createWallArray } from './src/world/wallarr.js';
 import { pitchedRoof, shedRoof, mansard, roofUnits, wings as roofWings } from './src/world/roofs.js';
@@ -3532,7 +3533,8 @@ async function plantNature() {
     for (const [k, sp] of rocks) NATURE.lib.species.set(k, sp); rockList = list;
   } catch (e) { console.warn('[nature] boulders', e); }
   const V = NATURE.veg = new Vegetation(THREE, NATURE.lib, scene, NATURE.U);
-  const ctx = makeContext(D, w), F = createTreeFilter(D.trees, w), Q = Math.min(1, GRASS_Q), counts = NATURE.counts = {}; NATURE.filter = F.stats;
+  const treeKey = bakeKey('trees', D.trees.length, PLANT_CLEAR.length, D.buildings.length), treePre = await bakeGet(treeKey); // which trees pass the cleanup: from the last visit when it's there
+  const ctx = makeContext(D, w), F = createTreeFilter(D.trees, w, treePre), Q = Math.min(1, GRASS_Q), counts = NATURE.counts = {}; NATURE.filter = F.stats;
   let tY = performance.now(); const breathe = async () => { if (performance.now() - tY > BG.slice) { await tick(); tY = performance.now(); } }; // BG.slice: what the frames leave (src/budget.js)
   for (const _ of F.prepare()) await breathe();
   // ---- the tiles: trees by their detections, boulders, the houses' own planting (GARDEN)
@@ -3677,6 +3679,7 @@ async function plantNature() {
       try { if (!t.a) await plantA(t); if (NATURE.cover && !t.b) await plantB(t); await show(); } catch (e) { console.warn('[nature] tile', t.i, t.j, e); t.a = t.b = true; }
       if (++n % 4 === 0) await tick();
     }
+    bakePut(treeKey, { state: F.state, radius: F.radius }); // for the next visit
     console.info('[nature] map planted in', ((performance.now() - t0) / 1000).toFixed(1) + 's:', counts, 'scatter', sc, 'trees filtered', F.stats, 'ground cover instances', NATURE.gc ? NATURE.gc.instances : 0);
   })();
   console.info('[nature] the tiles round you are planted; the rest of the map streams in');
@@ -4022,7 +4025,10 @@ async function buildWorld() {
     const crv = ROADS ? ROADS.carveAt(_tmpA[0], _tmpA[1], 0.18) : 0;
     MESHG[J * HGW + I] = heightAt(_tmpA[0], _tmpA[1]) - (inZ[J * HGW + I] ? 0.35 : 0) - crv;
   }
-  { const t0 = performance.now(), n = fitUnderRoads(MESHG, HGW, HGH, (i, j, out) => aerInv(i * CELLPX, j * CELLPX, out), 12.8, 4); console.info('[terrain] cells lowered under roads', n, Math.round(performance.now() - t0), 'ms'); await tick(); }
+  { const t0 = performance.now(), key = bakeKey('meshg', HGW, HGH, D.roads.length, D.bounds.join(',')), got = await bakeGet(key); // the terrain fitted under the roads: from the last visit when it's there (src/bakecache.js)
+    if (got && got.length === MESHG.length) { MESHG.set(got); console.info('[terrain] fitted under the roads (kept from the last visit)', Math.round(performance.now() - t0), 'ms'); }
+    else { const n = fitUnderRoads(MESHG, HGW, HGH, (i, j, out) => aerInv(i * CELLPX, j * CELLPX, out), 12.8, 4); console.info('[terrain] cells lowered under roads', n, Math.round(performance.now() - t0), 'ms'); bakePut(key, MESHG.slice()); }
+    await tick(); }
   for (let cj = 0; cj < nchz; cj++) for (let ci = 0; ci < nchx; ci++) {
     const i0 = ci * cellsPer, j0 = cj * cellsPer, i1 = Math.min(HGW - 1, i0 + cellsPer), j1 = Math.min(HGH - 1, j0 + cellsPer);
     if (i1 <= i0 || j1 <= j0) continue;
@@ -4274,7 +4280,7 @@ function planLazy(fx, fz, want = GFX.view + 200) {
 }
 // at load: the streets and buildings round you, a slice at a time with the bar moving; the rest of the view streams in
 // as you play (all of it at once held the page for twenty seconds on a fast PC)
-async function buildLazyNear(x, z, r = Math.min(GFX.view + 200, 800)) {
+async function buildLazyNear(x, z, r = Math.min(GFX.view + 200, 380)) { // (at load: the streets you can see from the spawn; the rest streams in while you play)
   planLazy(x, z, r); let t = performance.now();
   while (lazyQueue.length || lazyJob) { updateLazy(40); if (performance.now() - t > 120) { showProgress(); await new Promise(res => setTimeout(res, 0)); t = performance.now(); } }
 }
@@ -9608,7 +9614,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
   GAMES.init(); // crew garages in Poway, and their worlds when you go in (src/games)
   restoreSave();
   const sp0 = focusPos(); await loadRoofPhotos().catch(e => console.warn('[roofs]', e)); progress('Building the streets around you…'); await buildLazyNear(sp0.x, sp0.z);
-  await Promise.race([SF_WARM, new Promise(r => setTimeout(r, 3000))]); // the first Sketchfab cars (src/sf.js), so the first traffic is made of them
+  await Promise.race([SF_WARM, new Promise(r => setTimeout(r, 1500))]); // the first Sketchfab cars (src/sf.js), so the first traffic is made of them (stock bodies stand in for the late ones and are swapped out of sight)
   for (let i = 0; i < Math.round(GFX.traffic * 0.85); i++) spawnTraffic(sp0.x, sp0.z, 20, 340, true);
   for (let i = 0; i < Math.round(GFX.peds * 0.8); i++) spawnPed(sp0.x, sp0.z, 10, 200);
   progress('Uploading textures…'); await uploadInSteps(scene.children, f => { DL.msg = `Uploading textures… ${Math.round(f * 100)}%`; showProgress(); });

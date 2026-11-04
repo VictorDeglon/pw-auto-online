@@ -91,23 +91,44 @@ export function createSF(loader, hooks = {}) {
   return api;
 }
 
+// The cut to CAR_TEX px runs in a worker: createImageBitmap's resize of a decoded image ran on the page's own thread
+// (1.6 s of a load for the first cars). An image the worker can't resize comes back as it was.
+let rw = null, rseq = 0; const rwait = new Map();
+function resizer() {
+  if (rw !== null) return rw;
+  try {
+    rw = new Worker(URL.createObjectURL(new Blob([`onmessage = async e => { const { id, im, w, h } = e.data;
+      try { const b = await createImageBitmap(im, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' }); im.close(); postMessage({ id, b }, [b]); }
+      catch (err) { postMessage({ id, b: im }, [im]); } };`], { type: 'text/javascript' })));
+    rw.onmessage = e => { const p = rwait.get(e.data.id); rwait.delete(e.data.id); if (p) p(e.data.b); };
+  } catch (e) { rw = false; }
+  return rw;
+}
+function cut(im, w, h) {
+  const W = typeof ImageBitmap !== 'undefined' && im instanceof ImageBitmap ? resizer() : false;
+  if (!W) return createImageBitmap(im, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' });
+  const id = ++rseq; return new Promise(res => { rwait.set(id, res); W.postMessage({ id, im, w, h }, [im]); });
+}
 // Once a car's texture is on the GPU its decoded copy (an ImageBitmap, ~1 MB at 512 px) is let go: a few hundred cars'
 // worth was ~370 MB held for nothing (nothing re-uploads them; a model loaded again brings fresh ones). onUploaded(t)
 // runs first, for whatever still wants the pixels (index.html: the far LOD's average colour).
-const freeAfterUpload = onUploaded => t => { const im = t.image; t.onUpdate = null; if (onUploaded) try { onUploaded(t); } catch (e) { } t.image = null; if (im && im.close) im.close(); };
+// (a decoded image two textures share is let go once both are up, and cut once for both)
 async function slim(root, onUploaded) {
-  const seen = new Set(), jobs = [], free = freeAfterUpload(onUploaded);
+  const seen = new Set(), jobs = [], users = new Map(), cuts = new Map();
+  const free = t => { const im = t.image; t.onUpdate = null; if (onUploaded) try { onUploaded(t); } catch (e) { } t.image = null; const n = (users.get(im) || 1) - 1; users.set(im, n); if (n <= 0 && im && im.close) im.close(); };
+  const texs = [];
   root.traverse(o => {
     for (const m of o.isMesh ? [].concat(o.material) : []) {
       for (const k of ['normalMap', 'aoMap']) if (m[k]) { m[k].dispose(); m[k] = null; m.needsUpdate = true; }
-      for (const k of ['map', 'emissiveMap', 'roughnessMap', 'metalnessMap', 'alphaMap']) {
-        const t = m[k], im = t && t.image; if (!im || seen.has(t)) continue; seen.add(t);
-        const s = CAR_TEX / Math.max(im.width, im.height); if (!(s < 1)) { if (im.close) t.onUpdate = free; continue; }
-        jobs.push(createImageBitmap(im, { resizeWidth: Math.round(im.width * s), resizeHeight: Math.round(im.height * s), resizeQuality: 'medium' })
-          .then(b => { if (im.close) im.close(); t.image = b; t.needsUpdate = true; t.onUpdate = free; }, () => { }));
-      }
+      for (const k of ['map', 'emissiveMap', 'roughnessMap', 'metalnessMap', 'alphaMap']) { const t = m[k]; if (t && t.image && !seen.has(t)) { seen.add(t); texs.push(t); } }
     }
   });
+  for (const t of texs) {
+    const im = t.image, s = CAR_TEX / Math.max(im.width, im.height);
+    if (!(s < 1)) { if (im.close) { users.set(im, (users.get(im) || 0) + 1); t.onUpdate = free; } continue; }
+    let job = cuts.get(im); if (!job) { job = cut(im, Math.round(im.width * s), Math.round(im.height * s)); cuts.set(im, job); }
+    jobs.push(job.then(b => { if (b !== im && im.close) im.close(); t.image = b; t.needsUpdate = true; users.set(b, (users.get(b) || 0) + 1); t.onUpdate = free; }, () => { }));
+  }
   await Promise.all(jobs);
 }
 

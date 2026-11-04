@@ -132,11 +132,13 @@ export function* filterTreesSteps(trees, w) {
 // its neighbours. Here the spacing rule doesn't depend on the order the trees come in (a tree goes when a bigger
 // neighbour that passes its own tests stands too close), so a tile comes out the same whichever tile is planted first.
 //   const F = createTreeFilter(trees, w); for (const _ of F.prepare()) ...;  F.keep(i) -> bool;  F.radius, F.stats
-export function createTreeFilter(trees, w) {
+// pre: { state, radius } from an earlier load (src/bakecache.js): the trees' own tests are taken from it, not run again
+export function createTreeFilter(trees, w, pre) {
   const n = trees.length / 4, state = new Uint8Array(n), radius = new Float32Array(n), stats = newStats(n), test = treeTests(trees, w, radius, stats);
+  if (pre && pre.state && pre.state.length === n && pre.radius && pre.radius.length === n) { state.set(pre.state); radius.set(pre.radius); }
   const G = 8, grid = new Map(), own = i => { if (!state[i]) state[i] = test(i) === KEEP ? 1 : 2; return state[i] === 1; };
   return {
-    radius, stats,
+    radius, stats, state,
     *prepare() { for (let i = 0; i < n; i++) { if ((i & 8191) === 8191) yield; const k = Math.floor(trees[i * 4] / G) * 100000 + Math.floor(trees[i * 4 + 1] / G); (grid.get(k) || grid.set(k, []).get(k)).push(i); } },
     keep(i) {
       if (!own(i)) return false;

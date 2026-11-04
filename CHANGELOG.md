@@ -45,6 +45,17 @@ update you ship**, and add an entry here at the same time:
 - **Tyre marks when you stop hard:** braking hard (S or down) never left marks (only the handbrake, a slide or a
   burnout did); it now lays dark marks on all four tyres from the first moment. Drifts mark the parking lots too (they
   counted as unpaved), and a slide on dirt leaves brown ruts that last a minute.
+- **Coming back is quicker:** the slowest parts of a load (the terrain fitted under every street, which of the 320,000
+  mapped trees pass the cleanup) are kept on your computer after the first visit (`src/bakecache.js`, IndexedDB) and
+  taken from there next time; the asset packs were already kept. An update works them out again once.
+- **Into the game sooner:** only the streets you can see from where you start are built before you play (the rest
+  streams in round you as you go), the loading screen waits at most a second and a half for the first scanned cars,
+  and their textures are cut down in a worker instead of on the page.
+- **Poway High's frontage:** a chain-link fence at the back of the sidewalk where the campus meets the street (with gaps
+  for the campus's walks; solid, you can't walk or drive through it), brush and bigger shrubs behind it, and the curb in
+  front lined with parked cars.
+- `tools/audit/ground-audit.js` (testing): walks the town chunk by chunk and lists where the terrain pokes through
+  paving, where two paved surfaces fight, walls and fences without collision, and plants on roads or in buildings.
 - `?brick=4` (testing): runs the game as if on a computer four times slower, on the Potato preset.
 
 ## 0.12.1 (2026-11-03)
