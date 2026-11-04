@@ -19,7 +19,7 @@ export { splitSkin };
 
 const BASE = 'assets/humans/';
 import { RESERVED, SWIM } from './reserved.js';
-export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [], swim: [] }, player: null, prepare: null };
+export const HUMANS = { ready: false, manifest: null, proto: new Map(), clips: { m: {}, f: {} }, pools: { civ: [], police: [], plain: [], swim: [] }, player: null, prepare: null, once: new Set(), mx: null };
 
 function prep(scene) {
   // stand on y = 0, face +Z, about 1.75 m tall whatever the export units were
@@ -55,12 +55,19 @@ function stripRootMotion(clip) {
 }
 
 const CORE = ['idle', 'walk', 'run', 'sprint', 'talk', 'wave'];
+// the Mixamo clips (tools/humans/mixamo.mjs): a pack per sex, {sex}_core.glb with the game and {sex}_more.glb once the
+// world is up. anim/mixamo.json lists them, which play once (a roll, a punch) and each walk's ground speed (v, m/s).
+async function loadPack(loader, s, p) {
+  try { const g = await loader.loadAsync(`${BASE}anim/${s}_${p}.glb`); for (const c of g.animations) HUMANS.clips[s][c.name] = c; }
+  catch (e) { console.warn('[humans] clips', s, p, e); }
+}
 async function loadClip(loader, s, c) {
   try { const g = await loader.loadAsync(`${BASE}anim/${s}_${c}.glb`); const clip = g.animations[0]; if (clip) { clip.name = c; clip.tracks = clip.tracks.filter(t => t.name.startsWith('Bip01')); HUMANS.clips[s][c] = ['walk', 'run', 'sprint', 'injured', 'stroll'].includes(c) ? stripRootMotion(clip) : clip; } }
   catch (e) { console.warn('[humans] clip', s, c, e); }
 }
 // the rest of the clips (crouch, cheer, dance, laugh, listen, talk2, look, injured, stroll), fetched in the background
 export async function loadExtraClips() {
+  if (HUMANS.mx && !HUMANS.mx.moreIn) { HUMANS.mx.moreIn = true; const loader = new GLTFLoader(); await Promise.all(['m', 'f'].map(s => loadPack(loader, s, 'more'))); return; }
   if (!HUMANS.extra || !HUMANS.extra.length) return;
   const loader = new GLTFLoader(), list = HUMANS.extra; HUMANS.extra = [];
   for (const c of list) await Promise.all(['m', 'f'].map(s => loadClip(loader, s, c)));
@@ -94,8 +101,12 @@ export async function loadHumans(opts = {}) {
   const now = opts.crowd === false ? [me, ...(src ? [src] : [])] : want;
   HUMANS.crowd = pools; HUMANS.later = want.filter(n => !now.includes(n));
   await Promise.all(now.map(n => loadAvatar(loader, n)));
-  await Promise.all(['m', 'f'].flatMap(s => man.clips.filter(c => CORE.includes(c)).map(c => loadClip(loader, s, c))));
-  HUMANS.extra = man.clips.filter(c => !CORE.includes(c)); // crowd and emote clips: loadExtraClips() after the world is up
+  const mx = await fetch(BASE + 'anim/mixamo.json').then(r => r.ok ? r.json() : null).catch(() => null);
+  if (mx) { HUMANS.mx = mx; HUMANS.once = new Set(mx.once); await Promise.all(['m', 'f'].map(s => loadPack(loader, s, 'core'))); }
+  else { // the Rocketbox clips, one file each
+    await Promise.all(['m', 'f'].flatMap(s => man.clips.filter(c => CORE.includes(c)).map(c => loadClip(loader, s, c))));
+    HUMANS.extra = man.clips.filter(c => !CORE.includes(c)); // crowd and emote clips: loadExtraClips() after the world is up
+  }
   fillPools(HUMANS.later.length ? me : null); // the player's own skin stays out of the crowd until the crowd is in
   HUMANS.player = HUMANS.proto.has(me) ? me : HUMANS.proto.has(man.player) ? man.player : HUMANS.pools.civ[0];
   HUMANS.ready = HUMANS.proto.size > 0 && Object.keys(HUMANS.clips.m).length > 0;
@@ -174,9 +185,8 @@ export function makeHuman(skin, props = {}) {
   const inst = skClone(P.root), g = new THREE.Group(), body = new THREE.Group(); body.add(inst); g.add(body);
   const hand = inst.getObjectByName('Bip01_R_Hand'), armR = new THREE.Group();
   if (hand) { hand.add(armR); armR.scale.setScalar(1 / Math.max(1e-3, hand.getWorldScale(new THREE.Vector3()).x)); }
-  const mixer = new THREE.AnimationMixer(inst), clips = HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? HUMANS.clips[P.sex] : HUMANS.clips.m;
-  const actions = {}; for (const k in clips) { const c = clipFor(P, k, clips); if (!c) continue; actions[k] = mixer.clipAction(c); actions[k].play(); actions[k].setEffectiveWeight(0); }
-  const r = { human: true, name, sex: HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? P.sex : 'm', g, body, inst, mixer, actions, cur: null, armR, armL: new THREE.Group(), legL: new THREE.Group(), legR: new THREE.Group(), phase: Math.random() * 10, punch: 0, gun: props.gun || new THREE.Object3D(), phone: props.phone || new THREE.Object3D() };
+  const mixer = new THREE.AnimationMixer(inst), actions = {}; // actions are made the first time a clip is wanted (a hundred clips each, on every person, all ticking, would be a lot)
+  const r = { human: true, name, sex: HUMANS.clips[P.sex] && Object.keys(HUMANS.clips[P.sex]).length ? P.sex : 'm', g, body, inst, mixer, actions, cur: null, once: null, idleK: IDLES[Math.floor(Math.random() * IDLES.length)], armR, armL: new THREE.Group(), legL: new THREE.Group(), legR: new THREE.Group(), phase: Math.random() * 10, punch: 0, gun: props.gun || new THREE.Object3D(), phone: props.phone || new THREE.Object3D() };
   const holder = new THREE.Group(); holder.add(r.gun); r.gun.position.set(0, 0, 0.08); r.gun.rotation.set(0, 0, 0); g.add(holder); r.gun = holder; // placed by holdWeapon
   r.phone.position.set(0.05, 0, 0.03); armR.add(r.phone);
   r.proto = P;
@@ -192,8 +202,16 @@ export function freeHuman(r) {
   if (r.mixer) { r.mixer.stopAllAction(); r.mixer.uncacheRoot(r.inst); }
 }
 
+// the clip a rig plays for a key: women walk their own walk, outlaws swagger (when those clips are in)
+const ALIAS = { f: { walk: 'fwalk' }, outlaw: { walk: 'swagger' } }, IDLES = ['idle', 'idle', 'idle2', 'idle3', 'bored']; // ('look' turns the whole body round: a pose, not an idle)
+function clipKey(r, k) { const a = (ALIAS[r.proto && r.proto.retarget ? 'outlaw' : r.sex] || {})[k]; return a && (HUMANS.clips[r.sex] || {})[a] ? a : k; }
+function makeAction(r, k) { // made when first wanted (clips that arrived after this rig was made too)
+  const ck = clipKey(r, k), c = r.proto ? clipFor(r.proto, ck, HUMANS.clips[r.sex] || {}) : (HUMANS.clips[r.sex] || {})[ck]; if (!c) return null;
+  const a = r.actions[k] = r.mixer.clipAction(c); if (HUMANS.once.has(ck)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+  return a;
+}
 function setAction(r, k, fade = 0.25) {
-  if (!r.actions[k]) { const c = r.proto ? clipFor(r.proto, k, HUMANS.clips[r.sex] || {}) : (HUMANS.clips[r.sex] || {})[k]; if (c) { r.actions[k] = r.mixer.clipAction(c); r.actions[k].play(); r.actions[k].setEffectiveWeight(0); } else k = 'idle'; } // clips that arrived after this rig was made
+  if (!r.actions[k] && !makeAction(r, k)) { if (k === 'idle' || (!r.actions.idle && !makeAction(r, 'idle'))) return; k = 'idle'; } // no such clip: stand
   if (r.cur === k) return;
   const next = r.actions[k], prev = r.cur && r.actions[r.cur]; if (!next) return; // (nothing to play it from yet)
   next.reset(); next.setEffectiveWeight(1); next.play();
@@ -201,18 +219,64 @@ function setAction(r, k, fade = 0.25) {
   r.cur = k;
 }
 
-// speed in m/s; mode as in the blocky animRig ('phone', 'aim', 'hands', 'fists', 'talk', 'wave')
+// a one-shot (a roll, a jump, a punch, a hit, getting up): it plays over whatever the legs were doing and then lets go.
+// o: { from, to } (a part of the clip, 0..1), speed, fade (in), out (seconds before the end it starts fading back),
+// hold (stay on the last frame until another one-shot or stopOnce: a body that fell). r.onceN counts them, so the game
+// can tell other players (src/online/remote.js plays the same ones).
+export function playOnce(r, k, o = {}) {
+  if (!r || !r.human || !hasClip(r, k)) return false;
+  if (r.cur === k) r.cur = null; // the same move again: from the top
+  setAction(r, k, o.fade ?? 0.1);
+  const a = r.actions[k]; if (!a || r.cur !== k) return false;
+  const dur = a.getClip().duration, to = Math.min(1, o.to ?? 1); a.time = (o.from || 0) * dur; a.timeScale = o.speed || 1;
+  if (to < 1) { a.setLoop(THREE.LoopRepeat, Infinity); a.clampWhenFinished = false; } else if (HUMANS.once.has(clipKey(r, k))) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+  r.once = { k, end: to * dur, out: o.hold ? 0 : o.out ?? 0.15, hold: !!o.hold }; r.onceK = k; r.onceO = o; r.onceN = (r.onceN || 0) + 1;
+  return true;
+}
+export function stopOnce(r) { if (r && r.once) r.once = null; }
+// the ground a walk or run clip covers at its own pace (m/s, measured by tools/humans/mixamo.mjs), so feet don't slide
+const V0 = { walk: 1.35, run: 3.6, sprint: 5.6, stroll: 1.05, injured: 3 }; // the Rocketbox clips'
+const paceOf = (r, k) => { const ck = clipKey(r, k); return (HUMANS.mx && HUMANS.mx.v[ck]) || V0[k] || 1.4; };
+// what to play for a speed and a mode: standing still, a mode is a pose or an emote (wave, cheer, dance, sit, …) when
+// there's a clip of that name; moving, it picks the gait. r.longGun: the gun in hand is a long one; r.strafe: -1 left,
+// 1 right, 2 backwards (aiming while moving)
+function pick(r, speed, mode) {
+  const has = k => hasClip(r, k);
+  if (mode === 'fall' && has('fall')) return 'fall';
+  if (speed < 0.25) {
+    if (mode === 'aim') return has('pistolidle') ? (r.longGun ? 'rifleidle' : 'pistolidle') : 'idle';
+    if (mode === 'fists') return has('fightidle') ? 'fightidle' : 'idle';
+    if (mode === 'talk' || mode === 'phone') return mode === 'phone' && has('phone') ? 'phone' : 'talk';
+    if (mode === 'hands') return has('terrified') ? 'terrified' : 'idle';
+    for (const [m, k] of [['injured', 'injuredidle'], ['drunk', 'drunkidle'], ['swim', 'tread']]) if (mode === m) return has(k) ? k : 'idle';
+    if (mode && has(mode)) return mode;
+    return has(r.idleK) ? r.idleK : 'idle';
+  }
+  const gait = speed < 2.6 ? 'walk' : speed < 5.2 ? 'run' : 'sprint', or = (k, fb = gait) => has(k) ? k : fb;
+  if (mode === 'aim') return r.strafe === -1 ? or('strafeL') : r.strafe === 1 ? or('strafeR') : r.strafe === 2 ? or('walkback') : speed < 2.6 ? or(r.longGun ? 'riflewalk' : 'pistolwalk') : or(r.longGun ? 'riflerun' : 'pistolrun');
+  if (mode === 'swim') return or('swim');
+  if (mode === 'crouch') return or('crouchwalk');
+  if (mode === 'injured') return or('injured');
+  if (mode === 'drunk') return or('drunk');
+  if (mode === 'stroll' && speed < 1.5) return or('stroll');
+  if (mode === 'phone' && speed < 2.2) return or('textwalk');
+  return gait;
+}
+// a punch (the game sets r.punch when someone swings): a cross, a hook, an uppercut or a kick, the strike itself
+const PUNCHES = [['punch', { from: 0.48, to: 0.8, speed: 1.3 }], ['hook', { from: 0.38, to: 0.64, speed: 1.3 }], ['uppercut', { from: 0.2, to: 0.75, speed: 1.4 }], ['punch', { from: 0.48, to: 0.8, speed: 1.3 }], ['kick', { from: 0.15, to: 0.75, speed: 1.4 }]];
+// speed in m/s; mode as in the blocky animRig ('phone', 'aim', 'hands', 'fists', 'talk', 'wave') or any clip's name
 export function animHuman(r, speed, dt, mode) {
-  let k, ts = 1;
-  const POSE = ['crouch', 'cheer', 'dance', 'laugh', 'listen', 'talk2', 'look'];
-  if (speed < 0.25) k = mode === 'talk' || mode === 'phone' ? 'talk' : mode === 'wave' ? 'wave' : POSE.includes(mode) && hasClip(r, mode) ? mode : 'idle';
-  else if (mode === 'injured' && speed >= 1.6 && hasClip(r, 'injured')) { k = 'injured'; ts = speed / 3; }
-  else if (mode === 'stroll' && speed < 1.5 && hasClip(r, 'stroll')) { k = 'stroll'; ts = speed / 1.05; }
-  else if (speed < 2.6) { k = 'walk'; ts = speed / 1.35; }
-  else if (speed < 5.2) { k = 'run'; ts = speed / 3.6; }
-  else { k = 'sprint'; ts = speed / 5.6; }
-  setAction(r, k);
-  if (r.actions[k]) r.actions[k].timeScale = Math.min(2.2, Math.max(0.5, ts));
+  let k = null, ts = 1;
+  if (r.punch > 0 && !r.punchOn) { r.punchOn = true; const [pk, po] = PUNCHES[Math.floor(Math.random() * PUNCHES.length)]; playOnce(r, pk, po); } else if (!(r.punch > 0)) r.punchOn = false;
+  if (r.once) { // a one-shot in progress
+    const a = r.actions[r.once.k];
+    if (a && r.cur === r.once.k && (a.time < r.once.end - r.once.out * a.timeScale || r.once.hold)) { k = r.once.k; if (r.once.hold && a.time >= r.once.end) a.paused = true; } else r.once = null;
+  }
+  if (!k) {
+    k = pick(r, speed, mode); if (speed >= 0.25 && ((HUMANS.mx && HUMANS.mx.v[clipKey(r, k)]) || V0[k])) ts = speed / paceOf(r, k); // gaits keep pace with the ground
+    setAction(r, k, r.cur && r.actions[r.cur] && HUMANS.once.has(clipKey(r, r.cur)) ? 0.2 : 0.25);
+    k = r.cur || k; if (r.actions[k]) r.actions[k].timeScale = Math.min(2.2, Math.max(0.5, ts));
+  }
   r.mixer.update(dt);
   r.phone.visible = mode === 'phone';
   if (r.punch > 0) r.punch -= dt;
@@ -222,15 +286,23 @@ export function animHuman(r, speed, dt, mode) {
   else if (r.gun.visible) holdWeapon(r, null, { dt });
 }
 
-// ---- outlaws: the Rocketbox clips re-aimed onto a rig of another shape
-// Each mapped bone follows the Biped bone of the same name in world space: the rotation the Biped bone has made since
-// its rest pose is applied to the outlaw's bone, after first turning the outlaw's bone so it points the way the Biped's
-// pointed at rest (so a rig that rests in an A-pose still follows a T-pose's arms). The pelvis also takes the bob, scaled
-// to the outlaw's leg length. Bones the Biped doesn't have (fingers, the face, cloth) keep their rest pose.
+// ---- outlaws: the clips re-aimed onto a rig of another shape
+// Each mapped bone follows the Biped bone of the same name in world space: the turn the Biped bone has made since its
+// rest pose is applied to the outlaw's bone, after first turning the outlaw's bone so that at rest it points and rolls
+// the way the Biped's does (two directions per bone: along it, and across the palm for hands and fingers, forward for
+// arms, to the left for the rest). Without the roll, a rig resting in a T-pose kept its hands flat out sideways while its
+// arms hung down. Fingers map too when the rig has Mixamo's (…HandIndex1…). The pelvis also takes the bob, scaled to the
+// outlaw's leg length. Bones the Biped doesn't have (the face, cloth) keep their rest pose.
 const CHAIN = { Bip01_Spine: 'Bip01_Spine1', Bip01_Spine1: 'Bip01_Spine2', Bip01_Spine2: 'Bip01_Neck', Bip01_Neck: 'Bip01_Head' };
-for (const s of ['L', 'R']) Object.assign(CHAIN, { [`Bip01_${s}_Clavicle`]: `Bip01_${s}_UpperArm`, [`Bip01_${s}_UpperArm`]: `Bip01_${s}_Forearm`, [`Bip01_${s}_Forearm`]: `Bip01_${s}_Hand`,
-  [`Bip01_${s}_Thigh`]: `Bip01_${s}_Calf`, [`Bip01_${s}_Calf`]: `Bip01_${s}_Foot`, [`Bip01_${s}_Foot`]: `Bip01_${s}_Toe0` });
-const MAPPED = new Set(['Bip01_Pelvis', 'Bip01_Head', 'Bip01_L_Hand', 'Bip01_R_Hand', 'Bip01_L_Toe0', 'Bip01_R_Toe0', ...Object.keys(CHAIN)]);
+const ALONG_PARENT = { Bip01_Head: 'Bip01_Neck' }; // no tip in both rigs: along the bone before
+const FINGER_NAMES = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+for (const s of ['L', 'R']) {
+  Object.assign(CHAIN, { [`Bip01_${s}_Clavicle`]: `Bip01_${s}_UpperArm`, [`Bip01_${s}_UpperArm`]: `Bip01_${s}_Forearm`, [`Bip01_${s}_Forearm`]: `Bip01_${s}_Hand`, [`Bip01_${s}_Hand`]: `Bip01_${s}_Finger2`,
+    [`Bip01_${s}_Thigh`]: `Bip01_${s}_Calf`, [`Bip01_${s}_Calf`]: `Bip01_${s}_Foot`, [`Bip01_${s}_Foot`]: `Bip01_${s}_Toe0` });
+  Object.assign(ALONG_PARENT, { [`Bip01_${s}_Toe0`]: `Bip01_${s}_Foot`, [`Bip01_${s}_Hand`]: `Bip01_${s}_Forearm` });
+  for (let i = 0; i < 5; i++) { CHAIN[`Bip01_${s}_Finger${i}`] = `Bip01_${s}_Finger${i}1`; CHAIN[`Bip01_${s}_Finger${i}1`] = `Bip01_${s}_Finger${i}2`; ALONG_PARENT[`Bip01_${s}_Finger${i}2`] = `Bip01_${s}_Finger${i}1`; }
+}
+const MAIN = ['Bip01_Pelvis', 'Bip01_Head', 'Bip01_L_Hand', 'Bip01_R_Hand', 'Bip01_L_Toe0', 'Bip01_R_Toe0', ...Object.keys(CHAIN).filter(n => !/Finger/.test(n))];
 function restOf(root) {
   root.updateMatrixWorld(true); const by = new Map(), rest = new Map(), list = [];
   root.traverse(o => { if (!o.isBone) return; by.set(o.name, o); list.push(o); rest.set(o.name, { q: o.getWorldQuaternion(new THREE.Quaternion()), p: o.getWorldPosition(new THREE.Vector3()), lq: o.quaternion.clone() }); });
@@ -245,28 +317,34 @@ function sourceRig(sex) {
   const inst = skClone(P.root), S = { inst, mixer: new THREE.AnimationMixer(inst), ...restOf(inst) };
   SRC.set(sex, S); return S;
 }
+function frameOf(a, b) { // a rotation whose x axis is a and whose xy plane holds b
+  const x = a.clone().normalize(), z = new THREE.Vector3().crossVectors(x, b); if (z.lengthSq() < 1e-6) z.crossVectors(x, Math.abs(x.y) < 0.9 ? _up : _z); z.normalize();
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, new THREE.Vector3().crossVectors(z, x), z));
+}
+function alignOf(P, S, T) { // per Biped bone name: the turn that makes the outlaw's rest match the Biped's, and which outlaw bone it drives
+  P.map = new Map(); for (const n of MAIN) if (T.rest.has(n) && S.rest.has(n)) P.map.set(n, n);
+  for (const b of T.list) { const m = /(Left|Right)Hand(Thumb|Index|Middle|Ring|Pinky)([123])(?!\d)/.exec(b.name); if (m) { const n = `Bip01_${m[1][0]}_Finger${FINGER_NAMES.indexOf(m[2])}${m[3] === '1' ? '' : +m[3] - 1}`; if (S.rest.has(n)) P.map.set(n, b.name); } }
+  const ps = n => S.rest.has(n) ? S.rest.get(n).p : null, pt = n => P.map.has(n) ? T.rest.get(P.map.get(n)).p : null;
+  const along = n => { const c = CHAIN[n]; if (c && ps(c) && pt(c)) return [new THREE.Vector3().subVectors(ps(c), ps(n)), new THREE.Vector3().subVectors(pt(c), pt(n))]; return ALONG_PARENT[n] && pt(ALONG_PARENT[n]) ? along(ALONG_PARENT[n]) : [_up.clone(), _up.clone()]; };
+  const side = (pos, s) => new THREE.Vector3().subVectors(pos(`Bip01_${s}_Finger1`), pos(`Bip01_${s}_Finger${pt(`Bip01_${s}_Finger4`) ? 4 : 3}`)); // across the palm, index to little finger
+  const leftOf = pos => new THREE.Vector3().subVectors(pos('Bip01_L_Thigh'), pos('Bip01_R_Thigh')).setY(0).normalize();
+  const L = [leftOf(ps), leftOf(pt)], F = L.map(l => new THREE.Vector3().crossVectors(l, _up));
+  const across = n => { const s = n.includes('_L_') ? 'L' : 'R'; if (/Hand|Finger/.test(n) && pt(`Bip01_${s}_Finger1`) && pt(`Bip01_${s}_Finger3`)) return [side(ps, s), side(pt, s)]; return /Clavicle|Arm|Forearm|Hand/.test(n) ? F : L; };
+  P.align = new Map(); P.rev = new Map();
+  for (const [n, tn] of P.map) { const [as, at] = along(n), [cs, ct] = across(n); P.align.set(n, frameOf(as, cs).multiply(frameOf(at, ct).invert())); P.rev.set(tn, n); }
+  const tp = T.rest.get('Bip01_Pelvis'), sp = S.rest.get('Bip01_Pelvis');
+  P.hipK = tp && sp && sp.p.y > 0.05 ? tp.p.y / sp.p.y : 1;
+}
 function clipFor(P, k, clips) {
   if (!P.retarget) return clips[k] || null;
   if (P.clips[k]) return P.clips[k];
   const c = clips[k] || (HUMANS.clips.m || {})[k]; if (!c) return null;
   const S = sourceRig(P.sex); if (!S) return null;
   const T = P.T || (P.T = restOf(P.root));
-  if (!P.align) { // per bone: the turn that makes the outlaw's rest direction match the Biped's
-    P.align = new Map();
-    for (const n of MAPPED) {
-      const a = new THREE.Quaternion(), ch = CHAIN[n];
-      if (ch && T.rest.has(n) && T.rest.has(ch) && S.rest.has(n) && S.rest.has(ch)) {
-        const dt = new THREE.Vector3().subVectors(T.rest.get(ch).p, T.rest.get(n).p), ds = new THREE.Vector3().subVectors(S.rest.get(ch).p, S.rest.get(n).p);
-        if (dt.lengthSq() > 1e-8 && ds.lengthSq() > 1e-8) a.setFromUnitVectors(dt.normalize(), ds.normalize());
-      }
-      P.align.set(n, a);
-    }
-    const tp = T.rest.get('Bip01_Pelvis'), sp = S.rest.get('Bip01_Pelvis');
-    P.hipK = tp && sp && sp.p.y > 0.05 ? tp.p.y / sp.p.y : 1;
-  }
+  if (!P.align) alignOf(P, S, T);
   const act = S.mixer.clipAction(c); S.mixer.stopAllAction(); act.reset(); act.play(); act.setEffectiveWeight(1);
   const fps = 30, n = Math.max(2, Math.round(c.duration * fps) + 1), times = new Float32Array(n);
-  const mapped = T.list.filter(b => MAPPED.has(b.name) && S.by.has(b.name)), vals = new Map(mapped.map(b => [b.name, new Float32Array(n * 4)]));
+  const mapped = T.list.filter(b => P.rev.has(b.name)), vals = new Map(mapped.map(b => [b.name, new Float32Array(n * 4)]));
   const pel = T.by.get('Bip01_Pelvis'), pos = pel && S.by.has('Bip01_Pelvis') ? new Float32Array(n * 3) : null;
   const W = new Map(), q = new THREE.Quaternion(), d = new THREE.Quaternion(), loc = new THREE.Quaternion(), v = new THREE.Vector3(), base = new THREE.Quaternion();
   const pelParentInv = pel && pel.parent ? pel.parent.matrixWorld.clone().invert() : null;
@@ -275,11 +353,13 @@ function clipFor(P, k, clips) {
     S.mixer.setTime(t); S.inst.updateMatrixWorld(true); W.clear();
     for (const b of T.list) {
       const pw = b.parent && W.get(b.parent.name) || (b.parent ? b.parent.getWorldQuaternion(base) : base.identity());
-      let wq;
-      if (vals.has(b.name)) {
-        S.by.get(b.name).getWorldQuaternion(q); d.copy(S.rest.get(b.name).q).invert().premultiply(q); // the Biped bone's turn since rest
-        wq = d.clone().multiply(P.align.get(b.name)).multiply(T.rest.get(b.name).q);
-        loc.copy(pw).invert().multiply(wq); loc.toArray(vals.get(b.name), i * 4);
+      let wq; const sn = P.rev.get(b.name);
+      if (sn) {
+        S.by.get(sn).getWorldQuaternion(q); d.copy(S.rest.get(sn).q).invert().premultiply(q); // the Biped bone's turn since rest
+        wq = d.clone().multiply(P.align.get(sn)).multiply(T.rest.get(b.name).q);
+        loc.copy(pw).invert().multiply(wq); const arr = vals.get(b.name);
+        if (i > 0 && loc.x * arr[i * 4 - 4] + loc.y * arr[i * 4 - 3] + loc.z * arr[i * 4 - 2] + loc.w * arr[i * 4 - 1] < 0) loc.set(-loc.x, -loc.y, -loc.z, -loc.w); // the short way round
+        loc.toArray(arr, i * 4);
       } else wq = pw.clone().multiply(T.rest.get(b.name).lq);
       W.set(b.name, wq);
     }

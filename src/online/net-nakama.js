@@ -355,6 +355,9 @@ function pack(st) {
   if (st.ride) o.rd = String(st.ride).slice(0, 40); // riding as a passenger in that player's car
   if (st.car && st.car.pt) o.cx = String(st.car.pt).slice(0, 240); // body-shop parts
   if (st.air) { o.ak = String(st.air.k).slice(0, 16); o.aq = st.air.q.map(v => Math.round(v * 1000) / 1000); } // flying: which aircraft, and its attitude
+  if (st.md) o.md = String(st.md).slice(0, 16); // on foot: what the body's doing (an emote, crouching, falling…: src/humans.js)
+  if (st.sf) o.sf = st.sf | 0; // aiming on the move: strafing (±1) or backing off (2)
+  if (st.ev) { const e = st.ev.o || {}; o.e = String(st.ev.k).slice(0, 16); o.en = st.ev.n % 1000; o.eo = [q(e.from || 0), q(e.to ?? 1), q(e.speed || 1), e.hold ? 1 : 0]; } // the last one-shot (a roll, a punch…), numbered
   return o;
 }
 let lastSent = '', lastState = null;
@@ -369,7 +372,8 @@ export function unpack(p) {
   if (!p) return null;
   return { x: p.x, y: p.y ?? 0, z: p.z, r: p.r || 0, spd: p.v || 0, hp: p.h ?? 100, w: p.w || '', aim: !!p.a, dead: p.d || 0, shots: p.sh || 0,
     car: p.c ? { type: p.c, tint: p.ct, model: p.cm || null, p: p.cp || 0, rl: p.cl || 0, st: +p.cs || 0, f: typeof p.cf === 'number' ? p.cf : null, sk: (p.ck | 0) & 3, k: ((p.ck | 0) >> 2) / 7, dead: !!p.cd, pt: typeof p.cx === 'string' ? p.cx : '' } : null, ride: typeof p.rd === 'string' ? p.rd : null,
-    air: typeof p.ak === 'string' && Array.isArray(p.aq) && p.aq.length === 4 ? { k: p.ak, q: p.aq } : null };
+    air: typeof p.ak === 'string' && Array.isArray(p.aq) && p.aq.length === 4 ? { k: p.ak, q: p.aq } : null,
+    md: typeof p.md === 'string' ? p.md : null, sf: p.sf | 0, ev: typeof p.e === 'string' && Array.isArray(p.eo) ? { k: p.e, n: p.en | 0, o: { from: +p.eo[0] || 0, to: +p.eo[1] || 1, speed: +p.eo[2] || 1, hold: !!p.eo[3] } } : null };
 }
 export function sendChat(text) {
   if (!NET.server) return false;

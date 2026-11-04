@@ -92,18 +92,9 @@
   "assets/pbr/metal_wall_c.webp",
   "assets/pbr/metal_wall_n.webp",
   "assets/pbr/metal_wall_arm.webp",
-  "assets/humans/anim/m_idle.glb",
-  "assets/humans/anim/m_run.glb",
-  "assets/humans/anim/m_sprint.glb",
-  "assets/humans/anim/m_talk.glb",
-  "assets/humans/anim/m_walk.glb",
-  "assets/humans/anim/m_wave.glb",
-  "assets/humans/anim/f_run.glb",
-  "assets/humans/anim/f_sprint.glb",
-  "assets/humans/anim/f_idle.glb",
-  "assets/humans/anim/f_talk.glb",
-  "assets/humans/anim/f_walk.glb",
-  "assets/humans/anim/f_wave.glb",
+  "assets/humans/anim/mixamo.json",
+  "assets/humans/anim/m_core.glb",
+  "assets/humans/anim/f_core.glb",
   "assets/mat/512/albedo0.webp",
   "assets/mat/512/nr0.webp",
   "assets/mat/512/albedo1.webp",
@@ -269,6 +260,8 @@
   "assets/pbr/atlas/foliage004_c.png",
   "assets/pbr/atlas/foliage004_a.png",
   "assets/world/power.json",
-  "assets/world/harbor.json"
+  "assets/world/harbor.json",
+  "assets/humans/anim/m_more.glb",
+  "assets/humans/anim/f_more.glb"
  ]
 }

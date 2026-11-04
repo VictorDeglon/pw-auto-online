@@ -11,8 +11,8 @@ export const CLUB_AT = { x: -4339, z: -2437.7, rot: -1.866 }; // found clear of 
 const W = 24, DP = 18, HT = 6, DOOR = 2.6;
 const CAST = [ // who's in, where (local metres: +z is the front door), doing what
   { a: 'Female_Party_01', x: -2.6, z: -6.6, y: 0.8, ry: 0, m: 'dance', t: 0 },
-  { a: 'Female_Party_02', x: 0.2, z: -6.9, y: 0.8, ry: 0, m: 'dance', t: 1.7 },
-  { a: 'Female_Adult_12', x: 2.9, z: -6.6, y: 0.8, ry: 0, m: 'dance', t: 3.1 },
+  { a: 'Female_Party_02', x: 0.2, z: -6.9, y: 0.8, ry: 0, m: 'salsa', t: 1.7 },
+  { a: 'Female_Adult_12', x: 2.9, z: -6.6, y: 0.8, ry: 0, m: 'samba', t: 3.1 },
   { a: 'Male_Adult_05~a0000200032', x: 6.4, z: -5.6, y: 0, ry: 0.5, m: 'dance', t: 0.6, dj: true }, // headphones round his neck (src/wardrobe.js)
   { a: 'Business_Male_03', x: -10.9, z: -1.5, y: 0, ry: Math.PI / 2, m: 'talk2', t: 0 },
   { a: 'Business_Male_04~a0010000034', x: 3.0, z: 10.6, y: 0, ry: 0, m: 'idle', t: 0, door: true }, // the doorman: shades, broad (no reserved skins: src/reserved.js)
