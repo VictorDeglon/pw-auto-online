@@ -1374,7 +1374,8 @@ class GB {
 // are read back (a collapsing building's vertices): the normals, colours, uvs and facade data are dropped from memory
 // once they're on the GPU (that was ~80% of the town's geometry in JS, 300-550 MB within the view). After a lost
 // WebGL context the chunks rebuild from their data (see 'webglcontextlost').
-function dropArray() { this.array = null; }
+const KEEP_ARRAYS = /[?&]audit\b/.test(location.search); // the ground audit reads every mesh's vertices (tools/audit/ground-audit.js)
+function dropArray() { if (!KEEP_ARRAYS) this.array = null; }
 // triangle whose winding is flipped so its normal agrees with the hint (hx,hy,hz)
 function tri(gb, a, b, c, ca, cb, cc, ua, ub, uc, hx, hy, hz) {
   const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
@@ -3596,6 +3597,17 @@ async function plantNature() {
   const byDistance = () => { const f = focusPos(); return [...tiles.values()].map(t => [Math.hypot((t.i + 0.5) * TS - f.x, (t.j + 0.5) * TS - f.z), t]).sort((a, b) => a[0] - b[0]); };
   const NEAR = 1100; // the tiles planted before the step ends
   for (const [d, t] of byDistance()) { if (d > NEAR) break; await plantA(t); await show(); }
+  { // Poway High's frontage (buildCampusFrontage): brush along the fence, bigger shrubs and the odd bottlebrush behind
+    const rf = mulberry(5150), lib = NATURE.lib.species, P = PHS.excludePoly && PHS.excludePoly(), pr = { x: 0, z: 0 }; let nf = 0;
+    const put = (sp, x, z, h, tint) => { const L = lib.get(sp); if (!L) return; pr.x = x; pr.z = z; if ((P && !pip(x, z, P)) || collideCircle(pr, 0.6, false) || offLimits(x, z, 0.3)) return;
+      const vi = Math.floor(rf() * L.variants.length), GV = L.variants[vi]; if (V.add(sp, x, groundAt(x, z) - 0.05, z, rf() * TAU, h / Math.max(0.2, GV.height), vi, tint)) nf++; };
+    for (const run of FRONT.fences) for (let i = 0; i < run.length; i += 4) { const x = run[i], z = run[i + 1], nx = run[i + 2], nz = run[i + 3], tx = -nz, tz = nx;
+      for (let k = 0; k < 2; k++) { const a = 0.7 + rf() * 1.2, b = (rf() - 0.5) * 2.2; put(rf() < 0.6 ? 'bush' : 'shrub', x + nx * a + tx * b, z + nz * a + tz * b, 0.6 + rf() * 0.7, [0.95, 1, 0.9]); } // brush against the fence
+      if (rf() < 0.75) { const a = 2.4 + rf() * 1.8, b = (rf() - 0.5) * 2; put(rf() < 0.7 ? 'chapbig' : 'scruboak', x + nx * a + tx * b, z + nz * a + tz * b, 1.6 + rf() * 1.4, [0.85, 0.92, 0.75]); } // larger shrubs behind
+      if (rf() < 0.18) { const a = 3.8 + rf() * 1.5; put('bottlebrush', x + nx * a, z + nz * a, 2.2 + rf() * 1.2, [0.95, 1, 0.9]); }
+    }
+    if (nf) { NATURE.frontage = nf; await show(); }
+  }
   { // granite stones along the trails: cobbles kicked to the edges, the odd one in the path
     const lib = rockLib, rr = mulberry(4402); let ns = 0;
     if (lib && ROADS) D.roads.forEach((r, ri) => { const ts = ROADS.trailSide(ri); if (!ts || ns > 16000) return; const [, , wd, p0] = r, sw = ROADS.sw[ri], off = ts * (wd / 2 + sw + 1.4);
@@ -8887,6 +8899,56 @@ function updateCrowd(dt) {
 // PARK_DROP; a car that's been hit, moved or taken is left alone, and once it's gone the spot fills again.
 const curbCars = new Map(); let curbT = 0;
 const PARK_R = 160, PARK_DROP = 240, CURB_P = { downtown: 0.62, beach: 0.55, working: 0.5, suburb: 0.36, comfy: 0.3, rich: 0.22, rural: 0.08 };
+// ---- Poway High's street frontage: where the campus meets a street, a chain-link fence at the back of the sidewalk (gaps
+// where the campus's own walks and drives come out), a bed of brush and bigger shrubs behind it (planted with the rest,
+// plantNature), and the curb in front of it lined with parked cars (updateCurbParking). The campus is kept out of the
+// town's planting and grass (its own GLB has its ground), so that strip used to be bare dirt.
+const FRONT = { fences: [], curb: new Set() }; // fences: [x, z, nx, nz, ...] runs (n: away from the street); curb: edge index * 2 + side
+function buildCampusFrontage() {
+  const P = PHS.excludePoly && PHS.excludePoly(); if (!P || !ROADS) return;
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (let i = 0; i < P.length; i += 2) { x0 = Math.min(x0, P[i]); x1 = Math.max(x1, P[i]); z0 = Math.min(z0, P[i + 1]); z1 = Math.max(z1, P[i + 1]); }
+  const o = { x: 0, z: 0, tx: 0, tz: 0 }, pr = { x: 0, z: 0 };
+  for (const e of edges) {
+    if (e.t < 1 || e.t > 5 || e.outer || e.link) continue;
+    let near = false; for (let k = 0; k < e.pts.length && !near; k += 2) near = e.pts[k] > x0 - 40 && e.pts[k] < x1 + 40 && e.pts[k + 1] > z0 - 40 && e.pts[k + 1] < z1 + 40; if (!near) continue;
+    for (const side of [1, -1]) {
+      let run = [], campus = 0, n = 0;
+      const flush = () => { if (run.length >= 16) FRONT.fences.push(run); run = []; };
+      for (let s = 1.5; s < e.len - 1.5; s += 2.5) {
+        edgePos(e, s, o); const nx = -o.tz * side, nz = o.tx * side; n++; // side 1: right of +t (as the curb parking counts)
+        let off = e.w / 2; while (off < e.w / 2 + 8 && ROADS.onRoad(o.x + nx * off, o.z + nz * off, 0.2)) off += 0.25; // to the back of the sidewalk
+        const x = o.x + nx * (off + 0.3), z = o.z + nz * (off + 0.3), deep = pip(o.x + nx * (off + 4), o.z + nz * (off + 4), P);
+        if (deep) campus++;
+        pr.x = x; pr.z = z;
+        const gate = (s % 45) < 3; // a gap now and then: the campus's walks come out to the sidewalk (its own ground model covers the strip, so they can't be told apart)
+        const ok = off < e.w / 2 + 8 && deep && !gate && pip(x, z, P) && !nearestEdge(x, z, 4, q => q.t === 6) && !collideCircle(pr, 0.4, false);
+        if (ok) run.push(x, z, nx, nz); else flush();
+      }
+      flush();
+      if (n && campus / n > 0.3) FRONT.curb.add(e.i * 2 + (side > 0 ? 1 : 0)); // the campus behind this curb: keep it parked full
+    }
+  }
+  if (!FRONT.fences.length) return;
+  // the fence: galvanized posts every 2.5 m with a top rail, chain-link between them (a drawn diamond mesh, cut out)
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.strokeStyle = 'rgba(196,200,204,1)'; g.lineWidth = 3;
+  for (let k = -64; k <= 64; k += 16) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 64, 64); g.stroke(); g.beginPath(); g.moveTo(k + 64, 0); g.lineTo(k, 64); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const metal = new THREE.MeshStandardMaterial({ color: 0x9aa0a5, roughness: 0.45, metalness: 0.7 }), mesh = new THREE.MeshStandardMaterial({ map: t, color: 0xb8bcc0, roughness: 0.5, metalness: 0.6, alphaTest: 0.35, side: THREE.DoubleSide });
+  const posts = [], panel = { p: [], n: [], uv: [] }, H = 1.83, post = new THREE.CylinderGeometry(0.035, 0.035, H + 0.05, 6).translate(0, (H + 0.05) / 2, 0);
+  for (const run of FRONT.fences) for (let i = 0; i < run.length; i += 4) {
+    const x = run[i], z = run[i + 1], y = heightAt(x, z); posts.push(post.clone().translate(x, y, z));
+    if (i + 4 >= run.length) continue;
+    const x2 = run[i + 4], z2 = run[i + 5], y2 = heightAt(x2, z2), L = Math.hypot(x2 - x, z2 - z);
+    const rail = new THREE.CylinderGeometry(0.022, 0.022, L, 5).rotateZ(Math.PI / 2).rotateY(-Math.atan2(z2 - z, x2 - x)).translate((x + x2) / 2, (y + y2) / 2 + H, (z + z2) / 2); posts.push(rail);
+    const nx = run[i + 2], nz = run[i + 3], q = [[x, y + 0.04, z], [x2, y2 + 0.04, z2], [x2, y2 + H, z2], [x, y + H, z]], u = L / 0.4, v = H / 0.4;
+    for (const [a, b] of [[0, 0], [1, 1], [2, 2], [0, 0], [2, 2], [3, 3]]) { panel.p.push(...q[a]); panel.n.push(nx, 0, nz); panel.uv.push([0, u, u, 0][b], [0, 0, v, v][b]); }
+    addPoly([x - nx * 0.06, z - nz * 0.06, x2 - nx * 0.06, z2 - nz * 0.06, x2 + nx * 0.06, z2 + nz * 0.06, x + nx * 0.06, z + nz * 0.06], Math.min(y, y2) - 0.3, Math.max(y, y2) + H); // solid: you can't walk or drive through it
+  }
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(panel.p, 3)); pg.setAttribute('normal', new THREE.Float32BufferAttribute(panel.n, 3)); pg.setAttribute('uv', new THREE.Float32BufferAttribute(panel.uv, 2)); pg.computeBoundingSphere();
+  const mp = new THREE.Mesh(BGU.mergeGeometries(posts), metal), mm = new THREE.Mesh(pg, mesh);
+  for (const m of [mp, mm]) { m.castShadow = true; m.receiveShadow = true; m.matrixAutoUpdate = false; m.name = 'campus-fence'; scene.add(m); }
+  console.info('[campus] fence runs', FRONT.fences.length, 'curbs kept parked', FRONT.curb.size);
+}
 function updateCurbParking(dt) {
   if ((curbT -= dt) > 0) return; curbT = 0.5;
   if (GAMES.inside || WORLD.following) return;
@@ -8900,10 +8962,12 @@ function updateCurbParking(dt) {
   for (let ix = -r; ix <= r && made < 6; ix++) for (let iz = -r; iz <= r && made < 6; iz++) {
     for (const ei of egrid.get(ckey(gx + ix, gz + iz)) || []) {
       if (seen.has(ei)) continue; seen.add(ei); const e = edges[ei]; if (e.t < 1 || e.t > 5 || e.len < 34 || e.inI) continue;
-      const n = lanesPerDir(e), room = e.w / 2 - (e.ow ? laneOffset(e, n - 1) + 1.5 : laneOffset(e, n - 1) + 1.6); if (room < 2.05 && !(e.t >= 4 && n === 1 && e.w >= 9)) continue;
-      const Z = zoneHere(e.pts[0], e.pts[1]), p = CURB_P[Z ? Z.kind : 'suburb'] ?? 0.35;
+      const n = lanesPerDir(e), room = e.w / 2 - (e.ow ? laneOffset(e, n - 1) + 1.5 : laneOffset(e, n - 1) + 1.6), wide = room >= 2.05 || (e.t >= 4 && n === 1 && e.w >= 9);
+      if (!wide && !FRONT.curb.has(ei * 2) && !FRONT.curb.has(ei * 2 + 1)) continue;
+      const Z = zoneHere(e.pts[0], e.pts[1]), p0 = CURB_P[Z ? Z.kind : 'suburb'] ?? 0.35;
       for (let s = 14, slot = 0; s < e.len - 14; s += 6.4, slot++) for (const side of [1, -1]) {
         const key = ei * 4096 + slot * 2 + (side > 0 ? 1 : 0); if (curbCars.has(key)) continue;
+        const forced = FRONT.curb.has(ei * 2 + (side > 0 ? 1 : 0)), p = forced ? 0.9 : p0; if (!forced && !wide) continue; // a campus frontage's curb: nearly full
         const h = Math.sin(key * 12.9898 + 78.233) * 43758.5453; if (h - Math.floor(h) > p) continue;
         edgePos(e, s, o); const off = (e.w / 2 - 1.15) * side, x = o.x - o.tz * off, z = o.z + o.tx * off; // side 1: right of +t (src/roadnet.js)
         if (hyp(x - f.x, z - f.z) > PARK_R || hyp(x - f.x, z - f.z) < 30 && inView(x, z)) continue; // not popping in under your nose
@@ -9505,6 +9569,7 @@ let ROOF_TEX_P = null; // the roof photos' download, started with the others (lo
     loadImage('assets/world/overview.jpg').then(img => { const b = OUTER.bounds(); if (img) groundImgs.splice(0, 0, { img, x0: OUTER.idx.i0 * OUTER.idx.tile, z0: OUTER.idx.j0 * OUTER.idx.tile, x1: (OUTER.idx.i1 + 1) * OUTER.idx.tile, z1: (OUTER.idx.j1 + 1) * OUTER.idx.tile, tile: 'overview' }); photoMask = null; });
   }
   progress('Building Poway High…'); await PHS.loadPHS(phsCtx); // PHS
+  try { buildCampusFrontage(); } catch (e) { console.warn('[campus] frontage', e); }
   if (PHS.state.root) PHS.state.root.traverse(o => { const m = o.isMesh && o.material; // the campus's own ground, cut from the aerial photo, is painted like the rest (src/nature/ground.js): its photo only chooses the layers
     if (m && m.name === 'Terrain_Ortho' && !m.userData.painted) { m.userData.painted = true; m.onBeforeCompile = groundPatch(TX.ground, { photoBias: 1.5 }); m.needsUpdate = true; } });
   prepMapImages();
@@ -9747,6 +9812,8 @@ $('newgame').addEventListener('click', () => {
   location.reload();
 });
 requestAnimationFrame(frame);
+// for the ground and collision audit (tools/audit/ground-audit.js): kept off the window.__gtp line so it doesn't conflict
+window.__gtpAudit = { M, SURF: () => SURF, TERR, get PADS() { return PADS; }, inParkingLot, collideCircle, meshAt, pip, polys, cgrid, ckey, CELL, D, CHUNK, updateChunkVisibility, onSand };
 window.__gtp = { curb: { cars: curbCars, update: dt => updateCurbParking(dt) }, prof: PROF, get POWER() { return POWER; }, loadPower, get HARBOR() { return HARBOR; }, get WATER() { return WATER; }, EDGE_SPOTS, Vehicle, CAR, settleCar, get ROAD_ENDS() { return ROAD_ENDS; }, OUTER, teleport, openGarage, closeGarage, SHOW, get SALES() { return SALES; }, garageSite, lakeShore, ll, BLD, buildingsNear, SURF: () => SURF, AIRPORT_PLANES, get garageOpen() { return garageOpen; }, get BUILDER() { return BUILDER; }, edgesN: () => edges.length, polysN: () => polys.length, polysAt: i => polys[i], get PARK() { return PARK; }, get INTERIORS() { return INTERIORS; }, get SIGNALS() { return SIGNALS; }, skyU, dentCar, PROPS, fellProp, fallers, get PILOT() { return PILOT; }, FLY, spawnJet, cheat: { handle: t => CHEAT.handle(t), CHEAT, CH, JET, WW, RW, closeMenus, SCORE, nukeAt, nukeBlast, NUKE_FX, BLD_REPAIR: () => rebuilding.length }, busyAt, HOME, NET, WORLD, PROPS, fellProp, toggleMap: () => toggleMap(), toggleTravel: () => toggleTravel(), CHUNK_STATS, POST, get PLAZA() { return PLAZA; }, crowd: { groups, startPullOver, startToCar, campusWant, get campusC() { return campusC; } }, renderer, explosionAt, BLD, FX, collapseBuilding, ACH, openShop: () => openShop(DEALERS[0]), closeShop, DEALERS, pctl: { get emote() { return emote; } }, nature: NATURE, player, vehicles, peds, police, keys, cam, toggleCar, crime, setWeather, setWanted, save, persist, heightAt, groundAt, terrainAt, offLimits, boats, LAKES, get ROADS() { return ROADS; }, get DEALER() { return DEALER; }, scene, camera, THREE, chunks, aerPx, ctx, bus, clock, story: storyDebug, setPaused, HGdata: () => ({ HG, HGW, HGH, HBASE }), step: (n, dt) => { for (let i = 0; i < n; i++) tick(dt); }, buildNear: (x, z, r) => buildLazyNear(x, z, r), roofPhoto: i => ({ dark: roofPhotoDark(BLD[i]), colour: roofPhotoColor(BLD[i]) }), stepProf: (n, dt) => { for (let i = 0; i < n; i++) { PROF.start(); tick(dt); PROF.end(); } }, traffic: { inters, signalAspect, lightState, stats: trafficStats, teleport: trafficTeleport, dump: trafficDump, sim: trafficSim, TS, ctlAt, juncs, edges, get n() { return TRAFFIC_N; }, set n(k) { TRAFFIC_N = k; } }, signalAspect, get simTime() { return simTime; }, get hour() { return hour; }, set hour(h) { hour = h; } };
 // ============================================================ menus and online play (src/ui/shell.js, src/online/*)
 let online = false, netT = 0, badgeT = 0, lastHit = null, SENS = 1;
