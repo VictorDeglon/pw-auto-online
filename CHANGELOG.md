@@ -10,9 +10,9 @@ update you ship**, and add an entry here at the same time:
 
 ## 0.12.2 (2026-11-03)
 
-- **Smooth on every computer:** driving fast through town on Medium, the median frame went from 145 ms to under
-  30 ms and frames over a quarter of a second from 430 to about 20 in the same run; no shaders compile while you
-  drive. What was drawn and never seen is gone: the town's 3,662 hydrants, its lamps, mailboxes, pedestals and sign
+- **Smooth on every computer:** driving fast through town on Medium (the same 750 m run), the median frame went from
+  145 ms to 30-60 ms, the slowest 1 % from 2.1 s to 0.2-0.4 s and frames over a quarter of a second from 430 to
+  12-66; a car model's first appearance builds its shaders off the frame. What was drawn and never seen is gone: the town's 3,662 hydrants, its lamps, mailboxes, pedestals and sign
   poles were each one mesh for the whole map, drawn whole every frame (the hydrants alone 2.3 million triangles), and
   are now in cells drawn only near you; empty plant, boat, trailer and power-pole meshes no longer cost a draw; the
   town behind the main menu's painting isn't drawn; grass behind the camera isn't drawn; a car whose wheel carried

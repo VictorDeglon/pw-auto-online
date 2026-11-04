@@ -5063,14 +5063,15 @@ function sfFar(bb, wheels, k) {
 // slices along its length, each its height and width, a paint band below the glass line and a dark band above, dark
 // boxes for the tyres. Vertex colours times the car's paint (its own material, so a respray follows).
 function sfProxy(bb, wheels, k) {
-  const S = 10, V = new THREE.Vector3(); let z0 = 1e9, z1 = -1e9, glass = 1e9, y0 = 1e9;
+  const S = 10, V = new THREE.Vector3(), gy = []; let z0 = 1e9, z1 = -1e9, glass = 1e9, y0 = 1e9;
   const shell = bb.children.filter(m => !m.userData.detail);
-  for (const m of shell) { const p = m.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const z = p.getZ(i), y = p.getY(i); if (z < z0) z0 = z; if (z > z1) z1 = z; if (y < y0) y0 = y; } if (/^Glass_/.test(m.material.name || '')) for (let i = 0; i < p.count; i++) glass = Math.min(glass, p.getY(i)); }
+  for (const m of shell) { const p = m.geometry.attributes.position; for (let i = 0; i < p.count; i++) { const z = p.getZ(i), y = p.getY(i); if (z < z0) z0 = z; if (z > z1) z1 = z; if (y < y0) y0 = y; } if (/^Glass_/.test(m.material.name || '')) for (let i = 0; i < p.count; i += 3) gy.push(p.getY(i)); }
+  if (gy.length) { gy.sort((a, b) => a - b); glass = gy[Math.floor(gy.length * 0.3)]; } // the glass line: most of the glass is above it (a lamp's glass down at the bumper isn't the windows)
   if (!(z1 > z0)) return null;
   const top = new Float32Array(S).fill(-1e9), half = new Float32Array(S), low = new Float32Array(S).fill(1e9);
   for (const m of shell) { const p = m.geometry.attributes.position; for (let i = 0; i < p.count; i++) { V.fromBufferAttribute(p, i); const j = Math.min(S - 1, Math.floor((V.z - z0) / (z1 - z0) * S)); if (V.y > top[j]) top[j] = V.y; if (V.y < low[j]) low[j] = V.y; const ax = Math.abs(V.x); if (ax > half[j]) half[j] = ax; } }
   for (let j = 0; j < S; j++) if (top[j] < -1e8) { top[j] = j ? top[j - 1] : y0 + 0.5 / k; half[j] = j ? half[j - 1] : 0.8 / k; low[j] = j ? low[j - 1] : y0; }
-  const H = Math.max(...top) - y0; if (glass > 1e8) glass = y0 + H * 0.6; const clear = y0 + H * 0.18;
+  const H = Math.max(...top) - y0; glass = glass > 1e8 ? y0 + H * 0.6 : Math.max(glass, y0 + H * 0.45); const clear = y0 + H * 0.18;
   const pos = [], colr = [], quad = (a, b, c, d, cl) => { for (const q of [a, b, c, a, c, d]) { pos.push(q[0], q[1], q[2]); colr.push(cl, cl, cl); } };
   const ring = j => { const z = z0 + (z1 - z0) * Math.min(1, Math.max(0, (j - 0.5) / (S - 1))), jj = Math.min(S - 1, j), w = half[jj], t = top[jj], b = Math.max(low[jj], clear), g = Math.min(t, glass);
     return [[-w, b, z], [-w, g, z], [-w * 0.82, t, z], [w * 0.82, t, z], [w, g, z], [w, b, z]]; };
