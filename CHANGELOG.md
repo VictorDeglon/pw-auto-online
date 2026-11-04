@@ -8,6 +8,35 @@ update you ship**, and add an entry here at the same time:
 
 `0.0.0` is the first commit. The numbers below were assigned afterwards, one per day of work in the git history.
 
+## 0.12.2 (2026-11-03)
+
+- **Smooth on every computer:** driving fast through town on Medium, the median frame went from 145 ms to under
+  30 ms and frames over a quarter of a second from 430 to about 20 in the same run; no shaders compile while you
+  drive. What was drawn and never seen is gone: the town's 3,662 hydrants, its lamps, mailboxes, pedestals and sign
+  poles were each one mesh for the whole map, drawn whole every frame (the hydrants alone 2.3 million triangles), and
+  are now in cells drawn only near you; empty plant, boat, trailer and power-pole meshes no longer cost a draw; the
+  town behind the main menu's painting isn't drawn; grass behind the camera isn't drawn; a car whose wheel carried
+  see-through lamp glass made the whole scene draw twice.
+- **Cars far away cost a fraction:** past ~110 m a car is its paint and one merged piece, past ~170 m a stand-in
+  lofted from its own shape in its own colour, past ~560 m not drawn (further on High and Ultra). Two-wheelers and
+  people far off are lighter too (people's shadows only near you).
+- **Much less memory:** the streets and buildings streamed round you keep only what they need once it's on the
+  GPU, a chunk's builders no longer hold on to their buffers, cars' textures let go of their decoded copies once
+  uploaded, the tree atlases and the street-sign sheet are smaller on Medium and below, and streamed chunks are
+  dropped sooner behind you.
+- **Graphics that follow the computer:** a better first guess (phones, integrated graphics, Apple chips), and with
+  nothing picked in Settings a computer that can't keep up even at the lowest render scale steps down a preset by
+  itself (with a note), while one with lots of headroom gets a step back up next time. A slow computer's frames
+  still leave room to stream the world, so the town fills in round you.
+- **Fewer freezes while things load:** textures are decoded off the main thread, the ground's texture sheets are
+  read in a worker, and a shop's room is only built when you're at its door.
+- **Trees no longer vanish up close:** the oak's close-up model was broken (a texture slot pointing at nothing), so
+  oaks disappeared as you came up to them and fell over as the old stand-in; it loads again, and a plant whose
+  close-up model fails now keeps its far look instead of vanishing.
+- **More grass and ground detail:** lawns are scanned Bermuda grass, the wild grass mixes two scanned clumps, and
+  grass, pebbles, stones and dead branches grow denser on Medium and up.
+- `?brick=4` (testing): runs the game as if on a computer four times slower, on the Potato preset.
+
 ## 0.12.1 (2026-11-03)
 
 - **More real trees and plants:** Canary Island date palms, slender date palms for the queen palms, a broad oak and

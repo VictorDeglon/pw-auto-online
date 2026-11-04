@@ -4212,8 +4212,14 @@ function* buildLazy(L) {
   L.phase = 'meshes'; const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [], free: true })) if (due()) yield;
   const old = L.meshes; L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
   for (const m of old) { L.ch.group.remove(m); m.geometry.dispose(); } // a rebuild: the old meshes go only now
+  // only a building's own meshes keep their positions in memory (a collapse moves them); and every new mesh is drawn
+  // once whatever the camera faces (FRESH), so all of it reaches the GPU and lets go of its arrays (dropArray). A
+  // mesh behind the camera or past the detail distance used to keep everything until it was first seen.
+  const bld = new Set(); for (const B of L.blds) for (const r of B.ranges) if (r[0]._mesh) bld.add(r[0]._mesh);
+  for (const m of L.meshes) { if (!bld.has(m)) m.geometry.attributes.position.onUpload(dropArray); m.frustumCulled = false; FRESH.push(m); }
   L.built = true; L.dirty = false; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
 }
+const FRESH = []; // streamed meshes drawn once with culling off (buildLazy), back to normal after the frame (drawFrame)
 function dropLazy(L) {
   for (const m of L.meshes) { L.ch.group.remove(m); m.geometry.dispose(); }
   L.meshes = []; L.built = false; L.dirty = false; for (const B of L.blds) { B.ranges = []; B.drawn = false; }
@@ -4573,6 +4579,7 @@ function drawFrame() {
   if (SHELL.previewOpen && SHELL.previewOpen()) return;
   for (const p of peds) p.rig.g.matrixWorldAutoUpdate = p.rig.g.visible; // a hidden body's ~90 bones wait until it shows again
   POST.render(scene, camera, nightAmount);
+  if (FRESH.length) { for (const m of FRESH) m.frustumCulled = true; FRESH.length = 0; }
 }
 function updateSignals() { if (SIGNALS) SIGNALS.update(signalAspect, nightAmount, simTime, camera.position); }
 // chunk visibility by distance (saves draw calls far away)
@@ -5272,9 +5279,15 @@ function buildCar(type, tint, model, wealth) {
     for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.26), band); p.position.set(sx * (T.W / 2 + 0.012), T.H * 0.45, -0.1); p.rotation.y = sx * Math.PI / 2; g.add(p); }
   }
   const beam = headlightBeam(THREE, T.L, T.W); g.add(beam); // the pool of its headlights on the road, at night
-  scene.add(g);
-  return { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true, far: sf && paint.length ? far : null, proxy: sf ? proxy : null, paint, lvl: 0 };
+  const M = { g, body, wheels, bars, beam, mats: [...mats.values()].filter(m => m.userData.base), allMats: [...mats.values()], L: T.L, W: T.W, H: T.H, wr: T.wr, model: name, detail: sf ? detail : null, shell, near: true, far: sf && paint.length ? far : null, proxy: sf ? proxy : null, paint, lvl: 0 };
+  // The first car of a Sketchfab model brings materials no program has been built for: it joins the scene once they're
+  // compiled off the frame (compileAsync), instead of compiling them inside one (on Windows ~0.5 s each)
+  if (sf && !SF_WARMED.has(name) && renderer.compileAsync) { SF_WARMED.add(name); M.warming = true;
+    renderer.compileAsync(g, camera, scene).catch(() => { }).then(() => { M.warming = false; if (!M.dropped) scene.add(g); }); }
+  else scene.add(g);
+  return M;
 }
+const SF_WARMED = new Set(); // Sketchfab models whose cars' programs exist
 const vehicles = [];
 // a car's stock numbers: its kind's (CAR), or a Sketchfab car's own top speed and pull (tools/sketchfab/speeds.mjs), so an
 // Aventador runs away from a Civic. Police cruisers never drop below the police car's, or nobody gets caught.
@@ -5300,9 +5313,9 @@ class Vehicle {
     vehicles.push(this);
   }
   get fx() { return Math.sin(this.rotY); } get fz() { return Math.cos(this.rotY); }
-  remove() { if (this.ownedId) lostOwned(this); if (!this.removed && this.m.model && this.m.model.startsWith('sf-')) SF.drop(this.m.model.slice(3)); this.removed = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) disposeSoon(m); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
+  remove() { if (this.ownedId) lostOwned(this); if (!this.removed && this.m.model && this.m.model.startsWith('sf-')) SF.drop(this.m.model.slice(3)); this.removed = true; this.m.dropped = true; scene.remove(this.m.g); const i = vehicles.indexOf(this); if (i >= 0) vehicles.splice(i, 1); for (const m of this.m.allMats) disposeSoon(m); this.m.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); }); }
   rebody(model) { // a new body on the same car, where it stands (sfSwap: a stock body traded for a Sketchfab car)
-    const old = this.m; scene.remove(old.g); if (old.model && old.model.startsWith('sf-')) SF.drop(old.model.slice(3));
+    const old = this.m; old.dropped = true; scene.remove(old.g); if (old.model && old.model.startsWith('sf-')) SF.drop(old.model.slice(3));
     for (const m of old.allMats) disposeSoon(m); old.body.traverse(o => { if (o.isMesh && o.userData.ownGeo) o.geometry.dispose(); });
     this.m = buildCar(this.type, this.tint, model); this.spec.L = this.m.L; this.spec.W = this.m.W; this.spec.H = this.m.H;
     const b = carBase(this.type, model); this.spec.vmax = b.vmax; this.spec.acc = b.acc;

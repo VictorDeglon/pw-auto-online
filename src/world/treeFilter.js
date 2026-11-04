@@ -62,7 +62,12 @@ function treeTests(trees, w, radius, stats) {
     for (let gx = Math.floor((p[0] - r) / PB); gx <= Math.floor((p[0] + r) / PB); gx++)
       for (let gz = Math.floor((p[1] - r) / PB); gz <= Math.floor((p[1] + r) / PB); gz++) { const k = gx * 100000 + gz; (poolBins.get(k) || poolBins.set(k, []).get(k)).push(i); }
   });
-  const ex = (w.exclude || []).map(p => ({ p, bb: bbox(p) }));
+  // excluded places (every yard's paving among them, ~90,000) binned on a 32 m grid: scanned whole for each of the
+  // ~320,000 trees, they were most of the plants step's time and its longest stalls. Huge ones stay in a short list.
+  const ex = (w.exclude || []).map(p => ({ p, bb: bbox(p) })), EB = 32, exBins = new Map(), exBig = [];
+  ex.forEach((e, i) => { const [x0, z0, x1, z1] = e.bb, i0 = Math.floor(x0 / EB), i1 = Math.floor(x1 / EB), j0 = Math.floor(z0 / EB), j1 = Math.floor(z1 / EB);
+    if ((i1 - i0 + 1) * (j1 - j0 + 1) > 256) { exBig.push(e); return; }
+    for (let gx = i0; gx <= i1; gx++) for (let gz = j0; gz <= j1; gz++) { const k = gx * 100000 + gz; (exBins.get(k) || exBins.set(k, []).get(k)).push(e); } });
   const rd = [0, 0];
   return i => {
     const x = trees[i * 4], z = trees[i * 4 + 1]; let r = trees[i * 4 + 3] || 3; radius[i] = r;
@@ -94,7 +99,7 @@ function treeTests(trees, w, radius, stats) {
       if (A.k === 2) { stats.parking++; return DROP; } // nothing grows in a parking lot
       if (polyEdgeDist(x, z, A.p) > 4) { stats.field++; return DROP; }
     }
-    for (const e of ex) if (x >= e.bb[0] && x <= e.bb[2] && z >= e.bb[1] && z <= e.bb[3] && pointInPoly(x, z, e.p)) { stats.excluded++; return DROP; }
+    for (const L of [exBins.get(Math.floor(x / EB) * 100000 + Math.floor(z / EB)), exBig]) if (L) for (const e of L) if (x >= e.bb[0] && x <= e.bb[2] && z >= e.bb[1] && z <= e.bb[3] && pointInPoly(x, z, e.p)) { stats.excluded++; return DROP; }
     return KEEP;
   };
 }

@@ -82,6 +82,17 @@ over it, and the western comes through in the type and a few motifs, not in leat
 - Surfaces are scanned PBR (assets/pbr, CC0) with wear: grime at the foot of walls, streaks under sills, patched
   asphalt, stained slabs.
 
+## Detail by preset (`src/gfx.js`)
+
+- Every preset looks the same up close. What changes with the preset is how far detail reaches (`lod`: car detail
+  steps, street furniture, cars at all), grass and ground-detail density, the view distance, shadow and texture sizes
+  (impostor atlases 1024/1536/2048 px on Potato/Low/Medium, full size above; the street-sign sheet 2048 px on Medium
+  and below), and how many people and cars are about.
+- With nothing picked in Settings the preset follows the computer: one that can't keep up even at the lowest render
+  scale steps down a preset (with a note saying so), and one with plenty of headroom gets a step back up next time.
+- Nothing is drawn that can't be seen: the town behind the main menu's painting, street furniture past its distance,
+  empty instanced meshes, a shop's room until you're at its door (7 m).
+
 ## Buildings (`src/world/bldgen.js`, `src/world/roofs.js`, the facade shader in `src/world/surfaces.js`)
 
 - Every building is generated from its footprint: its shape (area, the smallest rectangle round it and how much of it
@@ -215,7 +226,9 @@ over it, and the western comes through in the type and a few motifs, not in leat
 - Ground never shows bare and flat: lawns are dense, wild ground is golden oats and brome, bushes in clumped stands,
   pebbles and stones; lawn and garden edges fray and lawns have worn patches. The grass runs on past the near ring in
   coarser rings of wider tufts (lawn to ~75 m, wild grass to ~300 m on High), so it never ends in a circle round you.
-  Grass grows only where plants may: never on roads, tracks, courts, lots or campuses.
+  Grass grows only where plants may: never on roads, tracks, courts, lots or campuses. Lawns are scanned Bermuda grass
+  tufts; the wild grass mixes two scanned clumps under its oat heads. Grass and the ground's pebbles, stones and dead
+  branches grow denser on stronger presets (Medium and up denser than before 0.12.2); none is drawn behind the camera.
 - Trees: coast live oaks at their real size (wider than tall); leaves bright where the sun reaches, dark deep in the
   crown; real meshes out to ~85 m on High.
 - Fences and walls are physical: cars smash through wood fences easily and block walls only fast, and pay for it.
@@ -247,7 +260,10 @@ over it, and the western comes through in the type and a few motifs, not in leat
   items while BY-NC models are in the game. No game or film rips, no real people, no brand storefronts.
 - Cars: every car a street makes for itself, nicer ones where the money is (the old built-in bodies only stand in
   while a model loads, and for kinds with no Sketchfab car, like buses). They keep their own materials except the
-  paint (it takes the car's colour, clear-coated), the glass (the game's) and the lamps (lit at night).
+  paint (it takes the car's colour, clear-coated), the glass (the game's) and the lamps (lit at night). Further off a
+  car keeps its shape and colours for less: past ~70 m no cabin or badges, past ~110 m its paint and everything else as
+  one piece in each part's own average colour, past ~170 m a lofted stand-in of its own profile in its paint colour
+  (dark glass band, dark tyres), past ~560 m not drawn (all longer on High and Ultra, shorter on Low and Potato).
 - Tyres on the ground (every car, other players' too): near-black rubber marks on paving only where a tyre slides,
   fading over 45 s; white smoke only in a hard slide; tan dust off the pavement, thicker in a slide, none in the rain.
 - The rest fills in what the code doesn't build or grow: street furniture by neighbourhood, people at work by their
