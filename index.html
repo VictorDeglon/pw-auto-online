@@ -6334,7 +6334,7 @@ function updateAtmos(dt, day, night, hor, top, ld) {
     // and the valley's morning mist, burnt off by nine), gold in the low sun at golden hour, faint at a clear noon,
     // heavy in fog and rain; Santa Anas fill it with dust. Lit by the sun (or the moon) through the shadow map, and by the sky
     const V = VOL.U, f = focusPos(), gold = skyU.dusk.value, dawn = Math.exp(-((hour - 6.9) ** 2) / 1.6) * (1 - weather.rain * 0.4);
-    V.uMed.value.set(0.0005 + 0.003 * dawn + 0.0011 * gold + weather.haze * 0.0012 + Math.pow(weather.fog, 1.3) * 0.005 + weather.rain * 0.0018 + night * 0.0004,
+    V.uMed.value.set(0.0005 + 0.003 * dawn + 0.0015 * gold + weather.haze * 0.0012 + Math.pow(weather.fog, 1.3) * 0.005 + weather.rain * 0.0018 + night * 0.0004,
       1 / (30 + 45 * dawn + 25 * gold + 60 * weather.fog), heightAt(f.x, f.z) - 6, CASC ? 230 : 120); // as far as the shadow map reaches
     V.uSunDir.value.copy(ld); V.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity);
     V.uAmb.value.copy(ATM ? _hz : scene.fog.color).multiplyScalar(0.3 + 0.4 * weather.cloud); V.uG.value = 0.7 + 0.12 * gold; // the sky's light on it: dim under a clear sky (the sun does the work), most of it when it's grey

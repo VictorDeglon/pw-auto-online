@@ -280,7 +280,9 @@ function realistic(THREE, renderer, U, O, VS) {
       // counts only as much as its depth matches this pixel's, so a trunk against a lit shaft keeps a clean edge
       vec2 g = uv * uVol.yz - .5, b = floor(g), f = g - b; float z0 = lz(texture2D(tDepC, uv).r);
       vec4 s = vec4(0.); float w = 0.;
-      #define VTAP(ox, oy, wb) { vec2 tc = (b + vec2(ox, oy) + .5) / uVol.yz; float k = (wb) / (1e-3 + abs(lz(texture2D(tDepC, tc).r) - z0) / z0 * 12.); s += texture2D(tVol, tc) * k; w += k; }
+      // (a soft match: on a slope the texels' depths differ by a few percent and it stays bilinear, no blocks; across a
+      // silhouette they differ by far more and the far side drops out)
+      #define VTAP(ox, oy, wb) { vec2 tc = (b + vec2(ox, oy) + .5) / uVol.yz; float k = (wb) * max(.02, 1. - abs(lz(texture2D(tDepC, tc).r) - z0) / (z0 * .12)); s += texture2D(tVol, tc) * k; w += k; }
       VTAP(0., 0., (1. - f.x) * (1. - f.y)) VTAP(1., 0., f.x * (1. - f.y)) VTAP(0., 1., (1. - f.x) * f.y) VTAP(1., 1., f.x * f.y)
       return w > 1e-6 ? s / w : texture2D(tVol, uv);
     }

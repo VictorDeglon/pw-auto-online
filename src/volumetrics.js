@@ -70,7 +70,7 @@ export function createVolumetrics(THREE, renderer, { steps = 16, div = 2 } = {})
         float z0 = lz(texture2D(tDep, vUv).x); vec4 s = vec4(0.); float w = 0.;
         for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
           vec2 tc = vUv + vec2(float(x), float(y)) * uTx;
-          float k = (x == 0 && y == 0 ? 1. : x == 0 || y == 0 ? .7 : .5) / (1e-3 + abs(lz(texture2D(tDep, tc).x) - z0) / z0 * 12.);
+          float k = (x == 0 && y == 0 ? 1. : x == 0 || y == 0 ? .7 : .5) * max(.02, 1. - abs(lz(texture2D(tDep, tc).x) - z0) / (z0 * .12));
           s += texture2D(tVol, tc) * k; w += k;
         }
         gl_FragColor = s / w;
