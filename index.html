@@ -1356,13 +1356,13 @@ class GB {
   constructor(uv, fac) { this.p = new FBuf(); this.n = new FBuf(); this.c = new FBuf(); this.uv = uv ? new FBuf() : null; this.f = fac ? new FBuf() : null; this.m = fac && WALLARR ? new FBuf() : null; this.L = 0; } // m: the wall-array layer per vertex (L: the one new triangles get) // f: facade data per vertex (src/world/surfaces.js)
   mesh(mat, shadow = true, free = false) { // free: only the position stays in memory once it's on the GPU (see dropArray)
     if (!this.p.length) return null;
-    const g = new THREE.BufferGeometry();
+    const g = new THREE.BufferGeometry(), A = b => free ? b.a.subarray(0, b.length) : b.array(); // (an attribute that goes once uploaded takes the builder's own buffer: no copy)
     g.setAttribute('position', new THREE.BufferAttribute(this.p.array(), 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(this.n.array(), 3));
-    g.setAttribute('color', new THREE.BufferAttribute(this.c.array(), 3));
-    if (this.uv) g.setAttribute('uv', new THREE.BufferAttribute(this.uv.array(), 2));
-    if (this.f) g.setAttribute('fac', new THREE.BufferAttribute(this.f.array(), 4));
-    if (this.m) g.setAttribute('aWL', new THREE.BufferAttribute(this.m.array(), 1));
+    g.setAttribute('normal', new THREE.BufferAttribute(A(this.n), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(A(this.c), 3));
+    if (this.uv) g.setAttribute('uv', new THREE.BufferAttribute(A(this.uv), 2));
+    if (this.f) g.setAttribute('fac', new THREE.BufferAttribute(A(this.f), 4));
+    if (this.m) g.setAttribute('aWL', new THREE.BufferAttribute(A(this.m), 1));
     g.computeBoundingSphere();
     if (free) for (const k in g.attributes) if (k !== 'position') g.attributes[k].onUpload(dropArray);
     const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; m.matrixAutoUpdate = false; m.updateMatrix();
@@ -4212,14 +4212,22 @@ function* buildLazy(L) {
   L.phase = 'meshes'; const tmp = new THREE.Group(); for (const _ of meshChunkSteps(lc, tmp, { lod: [], free: true })) if (due()) yield;
   const old = L.meshes; L.meshes = [...tmp.children]; for (const m of L.meshes) L.ch.group.add(m);
   for (const m of old) { L.ch.group.remove(m); m.geometry.dispose(); } // a rebuild: the old meshes go only now
-  // only a building's own meshes keep their positions in memory (a collapse moves them); and every new mesh is drawn
-  // once whatever the camera faces (FRESH), so all of it reaches the GPU and lets go of its arrays (dropArray). A
-  // mesh behind the camera or past the detail distance used to keep everything until it was first seen.
+  // only a building's own meshes keep their positions in memory (a collapse moves them); and a new mesh that hasn't
+  // been drawn a few frames on (behind the camera, or past the detail distance) is drawn once anyway (FRESH), two a
+  // frame, so all of it reaches the GPU and lets go of its arrays (dropArray). Those used to keep everything.
   const bld = new Set(); for (const B of L.blds) for (const r of B.ranges) if (r[0]._mesh) bld.add(r[0]._mesh);
-  for (const m of L.meshes) { if (!bld.has(m)) m.geometry.attributes.position.onUpload(dropArray); m.frustumCulled = false; FRESH.push(m); }
+  for (const m of L.meshes) { if (!bld.has(m)) m.geometry.attributes.position.onUpload(dropArray); FRESH.push([m, PROF.n + 3]); }
   L.built = true; L.dirty = false; L.ch.lodNear = null; // re-apply distance detail and shadows to the new meshes
 }
-const FRESH = []; // streamed meshes drawn once with culling off (buildLazy), back to normal after the frame (drawFrame)
+const FRESH = [], FORCED = []; // streamed meshes waiting to be on the GPU [mesh, from frame] (buildLazy); the ones drawn this frame with culling off (drawFrame)
+function forceFresh() { // up to two meshes not drawn yet, drawn this frame whatever the camera faces (no shadow: just to upload)
+  for (let i = 0; i < FRESH.length && FORCED.length < 2;) {
+    const [m, due] = FRESH[i], a = m.geometry.attributes.normal || m.geometry.attributes.color;
+    if (!m.parent || !a || !a.array) { FRESH.splice(i, 1); continue; } // dropped, or already up
+    if (due > PROF.n || !m.parent.visible) { i++; continue; } // not yet, or its chunk is out of view: later
+    FORCED.push([m, m.visible, m.castShadow]); m.frustumCulled = false; m.visible = true; m.castShadow = false; FRESH.splice(i, 1);
+  }
+}
 function dropLazy(L) {
   for (const m of L.meshes) { L.ch.group.remove(m); m.geometry.dispose(); }
   L.meshes = []; L.built = false; L.dirty = false; for (const B of L.blds) { B.ranges = []; B.drawn = false; }
@@ -4578,8 +4586,9 @@ let SIGNALS = null;
 function drawFrame() {
   if (SHELL.previewOpen && SHELL.previewOpen()) return;
   for (const p of peds) p.rig.g.matrixWorldAutoUpdate = p.rig.g.visible; // a hidden body's ~90 bones wait until it shows again
+  if (FRESH.length) forceFresh();
   POST.render(scene, camera, nightAmount);
-  if (FRESH.length) { for (const m of FRESH) m.frustumCulled = true; FRESH.length = 0; }
+  if (FORCED.length) { for (const [m, vis, sh] of FORCED) { m.frustumCulled = true; m.visible = vis; m.castShadow = sh; } FORCED.length = 0; }
 }
 function updateSignals() { if (SIGNALS) SIGNALS.update(signalAspect, nightAmount, simTime, camera.position); }
 // chunk visibility by distance (saves draw calls far away)
